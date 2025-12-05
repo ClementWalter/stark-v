@@ -9,11 +9,13 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
+/* trunk-ignore(clippy/missing_safety_doc) */
 pub unsafe extern "C" fn _start() -> ! {
     // Call main
     main();
 
     // Halt after main returns
+    /* trunk-ignore(clippy/empty_loop) */
     loop {}
 }
 

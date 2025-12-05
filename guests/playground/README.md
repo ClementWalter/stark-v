@@ -6,7 +6,8 @@ A minimal RISC-V guest program for the risc0 zkVM target.
 
 ### Install the risc0 toolchain
 
-The risc0 toolchain provides a custom Rust compiler that targets the `riscv32im-risc0-zkvm-elf` architecture:
+The risc0 toolchain provides a custom Rust compiler that targets the
+`riscv32im-risc0-zkvm-elf` architecture:
 
 ```bash
 # Install rzup (risc0's toolchain manager)
@@ -16,7 +17,8 @@ curl -L https://risczero.com/install | bash
 rzup install
 ```
 
-This installs a custom rustc channel called `risc0` which is configured in `rust-toolchain.toml`.
+This installs a custom rustc channel called `risc0` which is configured in
+`rust-toolchain.toml`.
 
 ### Install LLVM tools (for inspection)
 
@@ -43,6 +45,7 @@ cargo build --target riscv32im-risc0-zkvm-elf --release
 ```
 
 The compiled ELF binary will be at:
+
 - Debug: `target/riscv32im-risc0-zkvm-elf/debug/playground`
 - Release: `target/riscv32im-risc0-zkvm-elf/release/playground`
 
@@ -56,7 +59,7 @@ llvm-objdump -d target/riscv32im-risc0-zkvm-elf/debug/playground
 
 ### Example output
 
-```
+```text
 target/riscv32im-risc0-zkvm-elf/debug/playground:	file format elf32-littleriscv
 
 Disassembly of section .text:
@@ -100,11 +103,13 @@ llvm-readelf -a target/riscv32im-risc0-zkvm-elf/debug/playground
 ## Understanding the Output
 
 The `riscv32im-risc0-zkvm-elf` target produces a 32-bit RISC-V ELF binary with:
+
 - **Architecture**: RV32IM (32-bit base integer + multiply/divide extension)
 - **ABI**: ILP32 (32-bit integers, longs, and pointers)
 - **Format**: Little-endian ELF
 
 Key RISC-V registers:
+
 - `sp` (x2): Stack pointer
 - `ra` (x1): Return address
 - `a0-a7` (x10-x17): Function arguments and return values
@@ -112,9 +117,11 @@ Key RISC-V registers:
 ## Program Structure
 
 This is a `#![no_std]` program with:
+
 - No standard library (bare metal)
 - No main runtime (`#![no_main]`)
 - Custom panic handler (infinite loop)
 - C-compatible `main` entry point
 
-The zkVM executor will load this ELF and execute it instruction by instruction, generating a cryptographic proof of correct execution.
+The zkVM executor will load this ELF and execute it instruction by instruction,
+generating a cryptographic proof of correct execution.

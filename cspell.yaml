@@ -1,0 +1,14 @@
+version: "0.2"
+suggestionsTimeout: 5000
+words:
+  - addi
+  - Clément
+  - Fondeur
+  - littleriscv
+  - objdump
+  - readelf
+  - risc0
+  - riscv
+  - rustc
+  - rzup
+  - zkvm
