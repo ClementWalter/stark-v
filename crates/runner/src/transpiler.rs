@@ -15,7 +15,7 @@ use crate::{
         ShiftOpcode, SystemOpcode, VmOpcode, RV32_MEMORY_AS, RV32_REGISTER_NUM_LIMBS,
     },
     program::Program,
-    vmexe::{SparseMemoryImage, VmExe},
+    vm_exe::{SparseMemoryImage, VmExe},
 };
 
 const SYSTEM_OPCODE: u8 = 0x0b;
