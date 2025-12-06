@@ -12,11 +12,11 @@ use std::path::Path;
 
 use eyre::Result;
 
-const MAX_GUEST_MEMORY: u32 = 1 << 29;
-
+/// Convenience function to load a VmExe from an ELF file.
+///
+/// This function is a wrapper around `VmExe::from_path` for backward compatibility.
 pub fn load_vmexe_from_elf(path: &Path) -> Result<VmExe> {
-    let elf = elf::Elf::from_path(path, MAX_GUEST_MEMORY)?;
-    transpiler::transpile_elf(elf)
+    VmExe::from_path(path)
 }
 
 #[cfg(test)]
