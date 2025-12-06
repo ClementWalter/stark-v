@@ -1,8 +1,3 @@
-[package]
-name = "stark-v"
-version = "0.1.0"
-edition = "2024"
-
 [workspace]
 resolver = "3"
 members = ["crates/builder", "crates/prover", "crates/runner"]
@@ -16,9 +11,3 @@ eyre = "0.6"
 rrs-lib = "0.1.0"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-
-[dependencies]
-clap.workspace = true
-eyre.workspace = true
-builder = { path = "crates/builder" }
-runner = { path = "crates/runner" }
