@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 serde.workspace = true
-thiserror = "2.0"
+thiserror.workspace = true
 toml.workspace = true

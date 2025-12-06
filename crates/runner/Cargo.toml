@@ -7,5 +7,8 @@ edition = "2024"
 derive_more.workspace = true
 elf.workspace = true
 rrs-lib.workspace = true
-thiserror = "2.0"
+thiserror.workspace = true
 tracing.workspace = true
+
+[lib]
+doctest = false
