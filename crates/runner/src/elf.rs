@@ -8,6 +8,9 @@ use elf::{
 };
 use eyre::{bail, Context, ContextCompat, Result};
 
+/// Size of a word in bytes for the RV32 (RISC-V 32-bit) architecture.
+/// In RV32, a word is 32 bits (4 bytes), which is the native integer size.
+/// See: https://riscv.org/technical/specifications/
 const WORD_SIZE: usize = 4;
 
 /// Minimal ELF decoder for RV32IM guests.
