@@ -2,11 +2,11 @@ mod elf;
 mod instruction;
 mod program;
 mod transpiler;
-mod vmexe;
+mod vm_exe;
 
 pub use instruction::{DebugInfo, Instruction};
 pub use program::Program;
-pub use vmexe::{SparseMemoryImage, VmExe};
+pub use vm_exe::{SparseMemoryImage, VmExe};
 
 use std::path::Path;
 
