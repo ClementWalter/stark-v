@@ -48,6 +48,5 @@ words:
   - unimp
   - vaddr
   - vm
-  - vmexe
   - xori
   - zkvm
