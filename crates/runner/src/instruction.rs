@@ -1,11 +1,12 @@
 #![allow(clippy::upper_case_acronyms)]
-use std::fmt;
+use derive_more::Display;
 
 pub const RV32_REGISTER_NUM_LIMBS: usize = 4;
 pub const RV32_MEMORY_AS: u32 = 2;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VmOpcode(u32);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Display)]
+#[display("{_0}")]
+pub struct VmOpcode(pub u32);
 
 impl VmOpcode {
     pub const fn from_usize(value: usize) -> Self {
@@ -14,12 +15,6 @@ impl VmOpcode {
 
     pub const fn as_usize(self) -> usize {
         self.0 as usize
-    }
-}
-
-impl fmt::Display for VmOpcode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

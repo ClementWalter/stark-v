@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+derive_more.workspace = true
 elf.workspace = true
 eyre.workspace = true
 rrs-lib.workspace = true
