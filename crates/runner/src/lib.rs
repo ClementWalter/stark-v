@@ -2,11 +2,11 @@ mod elf;
 mod instruction;
 mod program;
 mod transpiler;
-mod vmexe;
+mod vm_exe;
 
 pub use instruction::{DebugInfo, Instruction};
 pub use program::Program;
-pub use vmexe::{SparseMemoryImage, VmExe};
+pub use vm_exe::{SparseMemoryImage, VmExe};
 
 use std::path::Path;
 
@@ -15,7 +15,7 @@ use eyre::Result;
 /// Convenience function to load a VmExe from an ELF file.
 ///
 /// This function is a wrapper around `VmExe::from_path` for backward compatibility.
-pub fn load_vmexe_from_elf(path: &Path) -> Result<VmExe> {
+pub fn load_vm_exe_from_elf(path: &Path) -> Result<VmExe> {
     VmExe::from_path(path)
 }
 
@@ -34,7 +34,7 @@ mod tests {
         if !elf_path.exists() {
             return Ok(());
         }
-        let exe = load_vmexe_from_elf(&elf_path)?;
+        let exe = load_vm_exe_from_elf(&elf_path)?;
         assert!(!exe.program.is_empty());
         assert!(!exe.init_memory.is_empty());
         Ok(())

@@ -36,7 +36,7 @@ fn main() -> Result<()> {
         Commands::Build { guest_path } => {
             let build = builder::build_guest(&guest_path)?;
             println!("Guest built at {}", build.elf_path.display());
-            let exe = runner::load_vmexe_from_elf(&build.elf_path)?;
+            let exe = runner::load_vm_exe_from_elf(&build.elf_path)?;
             println!(
                 "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
                 exe.program.len(),
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
             );
         }
         Commands::RunElf { path } => {
-            let exe = runner::load_vmexe_from_elf(&path)?;
+            let exe = runner::load_vm_exe_from_elf(&path)?;
             println!(
                 "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
                 exe.program.len(),
