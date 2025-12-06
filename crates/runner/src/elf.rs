@@ -6,7 +6,8 @@ use elf::{
     file::Class,
     ElfBytes,
 };
-use eyre::{bail, Context, ContextCompat, Result};
+
+use crate::error::{Result, RunnerError};
 
 /// Size of a word in bytes for the RV32 (RISC-V 32-bit) architecture.
 /// In RV32, a word is 32 bits (4 bytes), which is the native integer size.
@@ -27,38 +28,41 @@ pub struct Elf {
 
 impl Elf {
     pub fn from_path(path: &Path, max_mem: u32) -> Result<Self> {
-        let bytes = fs::read(path).with_context(|| format!("reading ELF at {}", path.display()))?;
+        let bytes = fs::read(path).map_err(|source| RunnerError::ReadElfFile {
+            path: path.display().to_string(),
+            source,
+        })?;
         Self::decode(&bytes, max_mem)
     }
 
     pub fn decode(bytes: &[u8], max_mem: u32) -> Result<Self> {
         let mut image = BTreeMap::new();
         let elf = ElfBytes::<LittleEndian>::minimal_parse(bytes)
-            .map_err(|err| eyre::eyre!("Elf parse error: {err}"))?;
+            .map_err(|err| RunnerError::ElfParse(err.to_string()))?;
 
         if elf.ehdr.class != Class::ELF32 {
-            bail!("Not a 32-bit ELF");
+            return Err(RunnerError::Not32BitElf);
         } else if elf.ehdr.e_machine != EM_RISCV {
-            bail!("Invalid machine type, must be RISC-V");
+            return Err(RunnerError::InvalidMachineType);
         } else if elf.ehdr.e_type != ET_EXEC {
-            bail!("Invalid ELF type, must be executable");
+            return Err(RunnerError::InvalidElfType);
         }
 
-        let entry: u32 = elf
-            .ehdr
-            .e_entry
-            .try_into()
-            .map_err(|err| eyre::eyre!("entry exceeds 32 bits: {err}"))?;
+        let entry: u32 =
+            elf.ehdr
+                .e_entry
+                .try_into()
+                .map_err(|err: std::num::TryFromIntError| {
+                    RunnerError::EntryExceeds32Bits(err.to_string())
+                })?;
 
         if entry >= max_mem || !entry.is_multiple_of(WORD_SIZE as u32) {
-            bail!("Invalid entrypoint: 0x{entry:08x}");
+            return Err(RunnerError::InvalidEntrypoint(entry));
         }
 
-        let segments = elf
-            .segments()
-            .ok_or_else(|| eyre::eyre!("Missing segment table"))?;
+        let segments = elf.segments().ok_or(RunnerError::MissingSegmentTable)?;
         if segments.len() > 256 {
-            bail!("Too many program headers");
+            return Err(RunnerError::TooManyProgramHeaders);
         }
 
         let mut instructions = Vec::new();
@@ -66,28 +70,24 @@ impl Elf {
         for segment in segments.iter().filter(|seg| seg.p_type == PT_LOAD) {
             let file_size: u32 = segment.p_filesz.try_into()?;
             if file_size >= max_mem {
-                bail!("segment file size exceeds memory");
+                return Err(RunnerError::SegmentFileSizeExceedsMemory);
             }
             let mem_size: u32 = segment.p_memsz.try_into()?;
             if mem_size >= max_mem {
-                bail!("segment memory size exceeds memory");
+                return Err(RunnerError::SegmentMemorySizeExceedsMemory);
             }
             let vaddr: u32 = segment.p_vaddr.try_into()?;
             if !vaddr.is_multiple_of(WORD_SIZE as u32) {
-                bail!("unaligned segment address: 0x{vaddr:08x}");
+                return Err(RunnerError::UnalignedSegmentAddress(vaddr));
             }
             if (segment.p_flags & PF_X) != 0 && base_address > vaddr {
                 base_address = vaddr;
             }
             let offset: u32 = segment.p_offset.try_into()?;
             for i in (0..mem_size).step_by(WORD_SIZE) {
-                let addr = vaddr
-                    .checked_add(i)
-                    .ok_or_else(|| eyre::eyre!("vaddr overflow"))?;
+                let addr = vaddr.checked_add(i).ok_or(RunnerError::VaddrOverflow)?;
                 if addr >= max_mem {
-                    bail!(
-                        "address [0x{addr:08x}] exceeds maximum address for guest programs [0x{max_mem:08x}]"
-                    );
+                    return Err(RunnerError::AddressExceedsMaximum { addr, max_mem });
                 }
 
                 if i >= file_size {
@@ -99,7 +99,7 @@ impl Elf {
                 let len = min(file_size - i, WORD_SIZE as u32);
                 for j in 0..len {
                     let idx = (offset + i + j) as usize;
-                    let byte = bytes.get(idx).context("invalid segment offset")?;
+                    let byte = bytes.get(idx).ok_or(RunnerError::InvalidSegmentOffset)?;
                     word |= u32::from(*byte) << (j * 8);
                 }
                 image.insert(addr, word);

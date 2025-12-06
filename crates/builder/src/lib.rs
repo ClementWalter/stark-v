@@ -4,8 +4,11 @@ use std::{
     process::Command,
 };
 
-use eyre::{bail, Context, Result};
 use serde::Deserialize;
+
+mod error;
+
+pub use error::{BuilderError, Result};
 
 const GUEST_TARGET: &str = "riscv32im-risc0-zkvm-elf";
 const TOOLCHAIN: &str = "risc0";
@@ -30,21 +33,30 @@ struct ManifestPackage {
 pub fn build_guest(guest_dir: &Path) -> Result<BuildOutput> {
     let manifest_path = guest_dir.join("Cargo.toml");
     if !manifest_path.exists() {
-        bail!("missing Cargo.toml at {}", manifest_path.display());
+        return Err(BuilderError::MissingCargoToml(manifest_path));
     }
-    let manifest_contents = fs::read_to_string(&manifest_path)
-        .with_context(|| format!("reading {}", manifest_path.display()))?;
-    let manifest: CargoManifest = toml::from_str(&manifest_contents)
-        .with_context(|| format!("parsing {}", manifest_path.display()))?;
+    let manifest_contents =
+        fs::read_to_string(&manifest_path).map_err(|source| BuilderError::ReadFile {
+            path: manifest_path.clone(),
+            source,
+        })?;
+    let manifest: CargoManifest =
+        toml::from_str(&manifest_contents).map_err(|source| BuilderError::ParseToml {
+            path: manifest_path.clone(),
+            source,
+        })?;
 
     let status = Command::new("cargo")
         .current_dir(guest_dir)
         .env("RUSTUP_TOOLCHAIN", TOOLCHAIN)
         .args(["build", "--release", "--target", GUEST_TARGET])
         .status()
-        .with_context(|| format!("building guest at {}", guest_dir.display()))?;
+        .map_err(|source| BuilderError::BuildGuest {
+            path: guest_dir.to_path_buf(),
+            source,
+        })?;
     if !status.success() {
-        bail!("guest build failed for {}", guest_dir.display());
+        return Err(BuilderError::GuestBuildFailed(guest_dir.to_path_buf()));
     }
 
     let binary_name = &manifest.package.name;
@@ -54,7 +66,7 @@ pub fn build_guest(guest_dir: &Path) -> Result<BuildOutput> {
         .join(PROFILE_DIR)
         .join(binary_name);
     if !elf_path.exists() {
-        bail!("expected guest ELF at {}", elf_path.display());
+        return Err(BuilderError::ExpectedGuestElf(elf_path));
     }
 
     Ok(BuildOutput { elf_path })

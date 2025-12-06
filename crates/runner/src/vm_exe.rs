@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use eyre::Result;
-
 use crate::elf::Elf;
+use crate::error::Result;
 use crate::program::Program;
 use crate::transpiler;
 
