@@ -24,7 +24,7 @@ enum Commands {
         guest_path: PathBuf,
     },
     /// Decode a RISC-V ELF and emit a VmExe summary.
-    RunElf {
+    Run {
         /// Path to a compiled RISC-V guest ELF (RV32IM).
         #[arg(long)]
         path: PathBuf,
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
                 pc = exe.pc_start
             );
         }
-        Commands::RunElf { path } => {
+        Commands::Run { path } => {
             let exe = runner::load_vm_exe_from_elf(&path)?;
             tracing::info!(
                 "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
