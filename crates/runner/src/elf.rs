@@ -12,8 +12,8 @@ const WORD_SIZE: usize = 4;
 
 /// Minimal ELF decoder for RV32IM guests.
 ///
-/// Implementation inspired by `openvm/crates/toolchain/transpiler/src/elf.rs` which is licensed
-/// under MIT/Apache-2.0.
+/// Implementation inspired by https://github.com/openvm-org/openvm/blob/main/crates/toolchain/transpiler/src/elf.rs
+/// which is licensed under MIT/Apache-2.0.
 #[derive(Debug, Clone)]
 pub struct Elf {
     pub instructions: Vec<u32>,
