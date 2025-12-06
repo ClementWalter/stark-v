@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 eyre.workspace = true
-builder = { path = "../builder" }
-runner = { path = "../runner" }
+builder.workspace = true
+runner.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

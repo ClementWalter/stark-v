@@ -1,15 +1,16 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
-  - clippy
   - addi
   - andi
   - auipc
   - bgeu
   - bltu
   - Clément
+  - clippy
   - csrrw
   - divu
+  - doctest
   - ehdr
   - filesz
   - Fondeur
