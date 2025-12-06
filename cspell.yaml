@@ -1,6 +1,7 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
+  - clippy
   - addi
   - andi
   - auipc
@@ -49,5 +50,7 @@ words:
   - unimp
   - vaddr
   - vm
+  - worktree
+  - worktrees
   - xori
   - zkvm
