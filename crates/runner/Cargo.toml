@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+elf = "0.7.4"
+eyre = "0.6"
+rrs-lib = "0.1.0"
