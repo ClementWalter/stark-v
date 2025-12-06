@@ -89,19 +89,6 @@ impl Instruction {
             g: 0,
         }
     }
-
-    pub fn debug(discriminant: PhantomDiscriminant) -> Self {
-        Self {
-            opcode: SystemOpcode::PHANTOM.opcode(),
-            a: 0,
-            b: 0,
-            c: discriminant.0 as i64,
-            d: 0,
-            e: 0,
-            f: 0,
-            g: 0,
-        }
-    }
 }
 
 impl Default for Instruction {
