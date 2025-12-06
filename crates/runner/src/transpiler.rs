@@ -15,7 +15,7 @@ use crate::{
         ShiftOpcode, SystemOpcode, VmOpcode, RV32_MEMORY_AS, RV32_REGISTER_NUM_LIMBS,
     },
     program::Program,
-    vmexe::{SparseMemoryImage, VmExe},
+    vm_exe::{SparseMemoryImage, VmExe},
 };
 
 const SYSTEM_OPCODE: u8 = 0x0b;
@@ -38,7 +38,7 @@ pub fn transpile_elf(elf: Elf) -> Result<VmExe> {
         program_instructions.push(instruction);
     }
     let program = Program::from_instructions(program_instructions, elf.pc_base);
-    let init_memory = elf_memory_image_to_openvm_memory_image(elf.memory_image);
+    let init_memory = elf_memory_image_to_vm_memory_image(elf.memory_image);
     Ok(VmExe::new(program, elf.pc_start, init_memory))
 }
 
@@ -519,7 +519,7 @@ fn unimp() -> Instruction {
     }
 }
 
-fn elf_memory_image_to_openvm_memory_image(memory_image: BTreeMap<u32, u32>) -> SparseMemoryImage {
+fn elf_memory_image_to_vm_memory_image(memory_image: BTreeMap<u32, u32>) -> SparseMemoryImage {
     let mut result = SparseMemoryImage::new();
     for (addr, word) in memory_image {
         for (i, byte) in word.to_le_bytes().into_iter().enumerate() {
@@ -529,6 +529,9 @@ fn elf_memory_image_to_openvm_memory_image(memory_image: BTreeMap<u32, u32>) -> 
     result
 }
 
+// Use repr(u8) to ensure stable integer representation for instruction decoding.
+// The enum discriminants correspond to immediate values in RISC-V phantom instructions.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug)]
 enum PhantomImm {
     HintInput = 0,
