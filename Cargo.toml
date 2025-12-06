@@ -16,9 +16,13 @@ eyre = "0.6"
 rrs-lib = "0.1.0"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dependencies]
 clap.workspace = true
 eyre.workspace = true
 builder = { path = "crates/builder" }
 runner = { path = "crates/runner" }
+tracing.workspace = true
+tracing-subscriber.workspace = true

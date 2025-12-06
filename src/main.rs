@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use eyre::Result;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
 #[command(
@@ -31,13 +32,20 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Initialize tracing subscriber
+    fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
     let cli = Cli::parse();
     match cli.command {
         Commands::Build { guest_path } => {
             let build = builder::build_guest(&guest_path)?;
-            println!("Guest built at {}", build.elf_path.display());
+            tracing::info!("Guest built at {}", build.elf_path.display());
             let exe = runner::load_vm_exe_from_elf(&build.elf_path)?;
-            println!(
+            tracing::info!(
                 "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
                 exe.program.len(),
                 exe.init_memory.len(),
@@ -46,7 +54,7 @@ fn main() -> Result<()> {
         }
         Commands::RunElf { path } => {
             let exe = runner::load_vm_exe_from_elf(&path)?;
-            println!(
+            tracing::info!(
                 "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
                 exe.program.len(),
                 exe.init_memory.len(),

@@ -8,3 +8,4 @@ derive_more.workspace = true
 elf.workspace = true
 eyre.workspace = true
 rrs-lib.workspace = true
+tracing.workspace = true

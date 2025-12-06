@@ -25,7 +25,7 @@ impl VmExe {
             pc_start,
             init_memory,
         };
-        println!("VmExe: {:#?}", res);
+        tracing::debug!("VmExe: {:#?}", res);
         res
     }
 
