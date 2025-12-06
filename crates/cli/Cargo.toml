@@ -1,0 +1,16 @@
+[package]
+name = "stark-v-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "stark-v"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+eyre.workspace = true
+builder = { path = "../builder" }
+runner = { path = "../runner" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
