@@ -1,8 +1,15 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
+use eyre::Result;
+
+use crate::elf::Elf;
 use crate::program::Program;
+use crate::transpiler;
 
 pub type SparseMemoryImage = BTreeMap<(u32, u32), u8>;
+
+const MAX_GUEST_MEMORY: u32 = 1 << 29;
 
 #[derive(Clone, Debug)]
 pub struct VmExe {
@@ -20,5 +27,20 @@ impl VmExe {
         };
         println!("VmExe: {:#?}", res);
         res
+    }
+
+    /// Load a VmExe from an ELF file at the given path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the ELF file
+    ///
+    /// # Returns
+    ///
+    /// Returns a Result containing the VmExe or an error if the ELF file
+    /// could not be loaded or transpiled.
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let elf = Elf::from_path(path, MAX_GUEST_MEMORY)?;
+        transpiler::transpile_elf(elf)
     }
 }
