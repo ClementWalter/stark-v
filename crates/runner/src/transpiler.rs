@@ -529,6 +529,9 @@ fn elf_memory_image_to_openvm_memory_image(memory_image: BTreeMap<u32, u32>) -> 
     result
 }
 
+// Use repr(u8) to ensure stable integer representation for instruction decoding.
+// The enum discriminants correspond to immediate values in RISC-V phantom instructions.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug)]
 enum PhantomImm {
     HintInput = 0,
