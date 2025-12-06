@@ -44,6 +44,7 @@ words:
   - storeb
   - storeh
   - storew
+  - thiserror
   - transpiling
   - unimp
   - vaddr

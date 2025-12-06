@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use eyre::Result;
 use rrs_lib::{
     instruction_formats::{BType, IType, ITypeShamt, JType, RType, SType, UType},
     process_instruction, InstructionProcessor,
@@ -8,6 +7,7 @@ use rrs_lib::{
 
 use crate::{
     elf::Elf,
+    error::{Result, RunnerError},
     instruction::{
         BaseAluOpcode, BranchEqualOpcode, BranchLessThanOpcode, DivRemOpcode, Instruction,
         LessThanOpcode, MulHOpcode, MulOpcode, PhantomDiscriminant, Rv32AuipcOpcode,
@@ -60,7 +60,7 @@ fn transpile_instruction(word: u32, transpiler: &mut InstructionTranspiler) -> R
                 let exit_code: u8 = dec
                     .imm
                     .try_into()
-                    .map_err(|_| eyre::eyre!("TERMINATE imm must fit in u8"))?;
+                    .map_err(|_| RunnerError::TerminateImmTooBig)?;
                 let instruction = Instruction {
                     opcode: SystemOpcode::TERMINATE.opcode(),
                     c: exit_code as i64,
@@ -159,8 +159,7 @@ fn transpile_instruction(word: u32, transpiler: &mut InstructionTranspiler) -> R
             }
             _ => Ok(nop()),
         },
-        _ => process_instruction(transpiler, word)
-            .ok_or_else(|| eyre::eyre!("unsupported instruction: 0x{word:08x}")),
+        _ => process_instruction(transpiler, word).ok_or(RunnerError::UnsupportedInstruction(word)),
     }
 }
 

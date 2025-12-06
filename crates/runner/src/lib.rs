@@ -1,16 +1,16 @@
 mod elf;
+mod error;
 mod instruction;
 mod program;
 mod transpiler;
 mod vm_exe;
 
+pub use error::{Result, RunnerError};
 pub use instruction::{DebugInfo, Instruction};
 pub use program::Program;
 pub use vm_exe::{SparseMemoryImage, VmExe};
 
 use std::path::Path;
-
-use eyre::Result;
 
 /// Convenience function to load a VmExe from an ELF file.
 ///
