@@ -121,9 +121,13 @@ pub struct DebugInfo {
 /// Usage:
 /// ```
 /// define_opcodes! {
-///     EnumName {
-///         VARIANT1 = 0x100,
-///         VARIANT2 = 0x101,
+///     SystemOpcode {
+///         TERMINATE = 0x0,
+///         PHANTOM = 0x1,
+///     },
+///     BaseAluOpcode {
+///         ADD = 0x200,
+///         SUB = 0x201,
 ///     }
 /// }
 /// ```
@@ -138,8 +142,87 @@ pub struct DebugInfo {
 /// }
 /// ```
 macro_rules! define_opcodes {
-    // Pattern for enums with non-camel-case variants
+    // Entry point: process all enums sequentially
     (
+        @non_camel_case
+        $name:ident {
+            $(
+                $variant:ident = $value:expr
+            ),* $(,)?
+        }
+        $(,
+            $(@ $rest_attr:ident)?
+            $rest_name:ident {
+                $(
+                    $rest_variant:ident = $rest_value:expr
+                ),* $(,)?
+            }
+        )*
+        $(,)?
+    ) => {
+        define_opcodes! {
+            @single
+            @non_camel_case
+            $name {
+                $(
+                    $variant = $value
+                ),*
+            }
+        }
+
+        $(
+            define_opcodes! {
+                $(@ $rest_attr)?
+                $rest_name {
+                    $(
+                        $rest_variant = $rest_value
+                    ),*
+                }
+            }
+        )*
+    };
+
+    // Entry point: standard enum followed by more enums
+    (
+        $name:ident {
+            $(
+                $variant:ident = $value:expr
+            ),* $(,)?
+        }
+        $(,
+            $(@ $rest_attr:ident)?
+            $rest_name:ident {
+                $(
+                    $rest_variant:ident = $rest_value:expr
+                ),* $(,)?
+            }
+        )*
+        $(,)?
+    ) => {
+        define_opcodes! {
+            @single
+            $name {
+                $(
+                    $variant = $value
+                ),*
+            }
+        }
+
+        $(
+            define_opcodes! {
+                $(@ $rest_attr)?
+                $rest_name {
+                    $(
+                        $rest_variant = $rest_value
+                    ),*
+                }
+            }
+        )*
+    };
+
+    // Internal: single enum with non-camel-case variants
+    (
+        @single
         @non_camel_case
         $name:ident {
             $(
@@ -163,8 +246,9 @@ macro_rules! define_opcodes {
         }
     };
 
-    // Standard pattern for enums
+    // Internal: standard single enum
     (
+        @single
         $name:ident {
             $(
                 $variant:ident = $value:expr
@@ -191,35 +275,23 @@ define_opcodes! {
     SystemOpcode {
         TERMINATE = 0x0,
         PHANTOM = 0x1,
-    }
-}
-
-define_opcodes! {
+    },
     BaseAluOpcode {
         ADD = 0x200,
         SUB = 0x201,
         XOR = 0x202,
         OR = 0x203,
         AND = 0x204,
-    }
-}
-
-define_opcodes! {
+    },
     ShiftOpcode {
         SLL = 0x205,
         SRL = 0x206,
         SRA = 0x207,
-    }
-}
-
-define_opcodes! {
+    },
     LessThanOpcode {
         SLT = 0x208,
         SLTU = 0x209,
-    }
-}
-
-define_opcodes! {
+    },
     Rv32LoadStoreOpcode {
         LOADW = 0x210,
         LOADBU = 0x211,
@@ -229,68 +301,41 @@ define_opcodes! {
         STOREB = 0x215,
         LOADB = 0x216,
         LOADH = 0x217,
-    }
-}
-
-define_opcodes! {
+    },
     BranchEqualOpcode {
         BEQ = 0x220,
         BNE = 0x221,
-    }
-}
-
-define_opcodes! {
+    },
     BranchLessThanOpcode {
         BLT = 0x225,
         BLTU = 0x226,
         BGE = 0x227,
         BGEU = 0x228,
-    }
-}
-
-define_opcodes! {
+    },
     Rv32JalLuiOpcode {
         JAL = 0x230,
         LUI = 0x231,
-    }
-}
-
-define_opcodes! {
+    },
     Rv32JalrOpcode {
         JALR = 0x235,
-    }
-}
-
-define_opcodes! {
+    },
     Rv32AuipcOpcode {
         AUIPC = 0x240,
-    }
-}
-
-define_opcodes! {
+    },
     MulOpcode {
         MUL = 0x250,
-    }
-}
-
-define_opcodes! {
+    },
     MulHOpcode {
         MULH = 0x251,
         MULHSU = 0x252,
         MULHU = 0x253,
-    }
-}
-
-define_opcodes! {
+    },
     DivRemOpcode {
         DIV = 0x254,
         DIVU = 0x255,
         REM = 0x256,
         REMU = 0x257,
-    }
-}
-
-define_opcodes! {
+    },
     @non_camel_case
     Rv32HintStoreOpcode {
         HINT_STOREW = 0x260,
