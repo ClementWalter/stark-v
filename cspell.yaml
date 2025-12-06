@@ -11,6 +11,7 @@ words:
   - csrrw
   - divu
   - doctest
+  - dtolnay
   - ehdr
   - filesz
   - Fondeur
