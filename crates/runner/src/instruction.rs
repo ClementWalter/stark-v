@@ -111,8 +111,74 @@ pub struct DebugInfo {
     pub dsl_instruction: String,
 }
 
-macro_rules! impl_local_opcode {
-    ($name:ident) => {
+/// Unified macro for defining VM opcodes.
+///
+/// This macro generates:
+/// - An enum with `#[repr(usize)]` representation
+/// - Standard derives: Clone, Copy, Debug, PartialEq, Eq
+/// - An `opcode()` method that converts the enum variant to a VmOpcode
+///
+/// Usage:
+/// ```
+/// define_opcodes! {
+///     EnumName {
+///         VARIANT1 = 0x100,
+///         VARIANT2 = 0x101,
+///     }
+/// }
+/// ```
+///
+/// For enums with non-camel-case variants, use the `@non_camel_case` attribute:
+/// ```
+/// define_opcodes! {
+///     @non_camel_case
+///     EnumName {
+///         non_camel_case_variant = 0x100,
+///     }
+/// }
+/// ```
+macro_rules! define_opcodes {
+    // Pattern for enums with non-camel-case variants
+    (
+        @non_camel_case
+        $name:ident {
+            $(
+                $variant:ident = $value:expr
+            ),* $(,)?
+        }
+    ) => {
+        #[repr(usize)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[allow(non_camel_case_types)]
+        pub enum $name {
+            $(
+                $variant = $value,
+            )*
+        }
+
+        impl $name {
+            pub const fn opcode(self) -> VmOpcode {
+                VmOpcode::from_usize(self as usize)
+            }
+        }
+    };
+
+    // Standard pattern for enums
+    (
+        $name:ident {
+            $(
+                $variant:ident = $value:expr
+            ),* $(,)?
+        }
+    ) => {
+        #[repr(usize)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub enum $name {
+            $(
+                $variant = $value,
+            )*
+        }
+
         impl $name {
             pub const fn opcode(self) -> VmOpcode {
                 VmOpcode::from_usize(self as usize)
@@ -121,130 +187,116 @@ macro_rules! impl_local_opcode {
     };
 }
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SystemOpcode {
-    TERMINATE = 0x0,
-    PHANTOM = 0x1,
+define_opcodes! {
+    SystemOpcode {
+        TERMINATE = 0x0,
+        PHANTOM = 0x1,
+    }
 }
-impl_local_opcode!(SystemOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BaseAluOpcode {
-    ADD = 0x200,
-    SUB = 0x201,
-    XOR = 0x202,
-    OR = 0x203,
-    AND = 0x204,
+define_opcodes! {
+    BaseAluOpcode {
+        ADD = 0x200,
+        SUB = 0x201,
+        XOR = 0x202,
+        OR = 0x203,
+        AND = 0x204,
+    }
 }
-impl_local_opcode!(BaseAluOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShiftOpcode {
-    SLL = 0x205,
-    SRL = 0x206,
-    SRA = 0x207,
+define_opcodes! {
+    ShiftOpcode {
+        SLL = 0x205,
+        SRL = 0x206,
+        SRA = 0x207,
+    }
 }
-impl_local_opcode!(ShiftOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LessThanOpcode {
-    SLT = 0x208,
-    SLTU = 0x209,
+define_opcodes! {
+    LessThanOpcode {
+        SLT = 0x208,
+        SLTU = 0x209,
+    }
 }
-impl_local_opcode!(LessThanOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rv32LoadStoreOpcode {
-    LOADW = 0x210,
-    LOADBU = 0x211,
-    LOADHU = 0x212,
-    STOREW = 0x213,
-    STOREH = 0x214,
-    STOREB = 0x215,
-    LOADB = 0x216,
-    LOADH = 0x217,
+define_opcodes! {
+    Rv32LoadStoreOpcode {
+        LOADW = 0x210,
+        LOADBU = 0x211,
+        LOADHU = 0x212,
+        STOREW = 0x213,
+        STOREH = 0x214,
+        STOREB = 0x215,
+        LOADB = 0x216,
+        LOADH = 0x217,
+    }
 }
-impl_local_opcode!(Rv32LoadStoreOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BranchEqualOpcode {
-    BEQ = 0x220,
-    BNE = 0x221,
+define_opcodes! {
+    BranchEqualOpcode {
+        BEQ = 0x220,
+        BNE = 0x221,
+    }
 }
-impl_local_opcode!(BranchEqualOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BranchLessThanOpcode {
-    BLT = 0x225,
-    BLTU = 0x226,
-    BGE = 0x227,
-    BGEU = 0x228,
+define_opcodes! {
+    BranchLessThanOpcode {
+        BLT = 0x225,
+        BLTU = 0x226,
+        BGE = 0x227,
+        BGEU = 0x228,
+    }
 }
-impl_local_opcode!(BranchLessThanOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rv32JalLuiOpcode {
-    JAL = 0x230,
-    LUI = 0x231,
+define_opcodes! {
+    Rv32JalLuiOpcode {
+        JAL = 0x230,
+        LUI = 0x231,
+    }
 }
-impl_local_opcode!(Rv32JalLuiOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rv32JalrOpcode {
-    JALR = 0x235,
+define_opcodes! {
+    Rv32JalrOpcode {
+        JALR = 0x235,
+    }
 }
-impl_local_opcode!(Rv32JalrOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rv32AuipcOpcode {
-    AUIPC = 0x240,
+define_opcodes! {
+    Rv32AuipcOpcode {
+        AUIPC = 0x240,
+    }
 }
-impl_local_opcode!(Rv32AuipcOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MulOpcode {
-    MUL = 0x250,
+define_opcodes! {
+    MulOpcode {
+        MUL = 0x250,
+    }
 }
-impl_local_opcode!(MulOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MulHOpcode {
-    MULH = 0x251,
-    MULHSU = 0x252,
-    MULHU = 0x253,
+define_opcodes! {
+    MulHOpcode {
+        MULH = 0x251,
+        MULHSU = 0x252,
+        MULHU = 0x253,
+    }
 }
-impl_local_opcode!(MulHOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DivRemOpcode {
-    DIV = 0x254,
-    DIVU = 0x255,
-    REM = 0x256,
-    REMU = 0x257,
+define_opcodes! {
+    DivRemOpcode {
+        DIV = 0x254,
+        DIVU = 0x255,
+        REM = 0x256,
+        REMU = 0x257,
+    }
 }
-impl_local_opcode!(DivRemOpcode);
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
-pub enum Rv32HintStoreOpcode {
-    HINT_STOREW = 0x260,
-    HINT_BUFFER = 0x261,
+define_opcodes! {
+    @non_camel_case
+    Rv32HintStoreOpcode {
+        HINT_STOREW = 0x260,
+        HINT_BUFFER = 0x261,
+    }
 }
-impl_local_opcode!(Rv32HintStoreOpcode);
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
