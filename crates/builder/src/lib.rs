@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use eyre::{Context, Result, bail};
+use eyre::{bail, Context, Result};
 use serde::Deserialize;
 
 const GUEST_TARGET: &str = "riscv32im-risc0-zkvm-elf";

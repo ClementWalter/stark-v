@@ -1,3 +1,4 @@
+#![allow(clippy::upper_case_acronyms)]
 use std::fmt;
 
 pub const RV32_REGISTER_NUM_LIMBS: usize = 4;

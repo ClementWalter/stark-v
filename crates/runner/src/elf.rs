@@ -1,12 +1,12 @@
 use std::{cmp::min, collections::BTreeMap, fs, path::Path};
 
 use elf::{
-    ElfBytes,
     abi::{EM_RISCV, ET_EXEC, PF_X, PT_LOAD},
     endian::LittleEndian,
     file::Class,
+    ElfBytes,
 };
-use eyre::{Context, ContextCompat, Result, bail};
+use eyre::{bail, Context, ContextCompat, Result};
 
 const WORD_SIZE: usize = 4;
 
@@ -47,7 +47,7 @@ impl Elf {
             .try_into()
             .map_err(|err| eyre::eyre!("entry exceeds 32 bits: {err}"))?;
 
-        if entry >= max_mem || entry % WORD_SIZE as u32 != 0 {
+        if entry >= max_mem || !entry.is_multiple_of(WORD_SIZE as u32) {
             bail!("Invalid entrypoint: 0x{entry:08x}");
         }
 
@@ -70,7 +70,7 @@ impl Elf {
                 bail!("segment memory size exceeds memory");
             }
             let vaddr: u32 = segment.p_vaddr.try_into()?;
-            if vaddr % WORD_SIZE as u32 != 0 {
+            if !vaddr.is_multiple_of(WORD_SIZE as u32) {
                 bail!("unaligned segment address: 0x{vaddr:08x}");
             }
             if (segment.p_flags & PF_X) != 0 && base_address > vaddr {

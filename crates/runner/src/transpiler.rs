@@ -2,25 +2,24 @@ use std::collections::BTreeMap;
 
 use eyre::Result;
 use rrs_lib::{
-    InstructionProcessor,
     instruction_formats::{BType, IType, ITypeShamt, JType, RType, SType, UType},
-    process_instruction,
+    process_instruction, InstructionProcessor,
 };
 
 use crate::{
     elf::Elf,
     instruction::{
         BaseAluOpcode, BranchEqualOpcode, BranchLessThanOpcode, DivRemOpcode, Instruction,
-        LessThanOpcode, MulHOpcode, MulOpcode, PhantomDiscriminant, RV32_MEMORY_AS,
-        RV32_REGISTER_NUM_LIMBS, Rv32AuipcOpcode, Rv32HintStoreOpcode, Rv32JalLuiOpcode,
-        Rv32JalrOpcode, Rv32LoadStoreOpcode, Rv32Phantom, ShiftOpcode, SystemOpcode, VmOpcode,
+        LessThanOpcode, MulHOpcode, MulOpcode, PhantomDiscriminant, Rv32AuipcOpcode,
+        Rv32HintStoreOpcode, Rv32JalLuiOpcode, Rv32JalrOpcode, Rv32LoadStoreOpcode, Rv32Phantom,
+        ShiftOpcode, SystemOpcode, VmOpcode, RV32_MEMORY_AS, RV32_REGISTER_NUM_LIMBS,
     },
     program::Program,
     vmexe::{SparseMemoryImage, VmExe},
 };
 
 const SYSTEM_OPCODE: u8 = 0x0b;
-const CSR_OPCODE: u8 = 0b1110_011;
+const CSR_OPCODE: u8 = 0b1_110_011;
 const NATIVE_STOREW_FUNCT3: u8 = 0b111;
 const NATIVE_STOREW_FUNCT7: u32 = 2;
 const TERMINATE_FUNCT3: u8 = 0b000;
@@ -62,9 +61,11 @@ fn transpile_instruction(word: u32, transpiler: &mut InstructionTranspiler) -> R
                     .imm
                     .try_into()
                     .map_err(|_| eyre::eyre!("TERMINATE imm must fit in u8"))?;
-                let mut instruction = Instruction::default();
-                instruction.opcode = SystemOpcode::TERMINATE.opcode();
-                instruction.c = exit_code as i64;
+                let instruction = Instruction {
+                    opcode: SystemOpcode::TERMINATE.opcode(),
+                    c: exit_code as i64,
+                    ..Instruction::default()
+                };
                 Ok(instruction)
             }
             PHANTOM_FUNCT3 => {

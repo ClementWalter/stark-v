@@ -1,8 +1,8 @@
 # stark-v
 
-Utilities and experiments that sit alongside [`openvm`](../openvm). The `run-elf`
-subcommand wires in a lightweight version of OpenVM’s ELF-to-`VmExe` pipeline
-without depending on the upstream repository.
+Utilities and experiments that sit alongside [`openvm`](../openvm). The
+`run-elf` subcommand wires in a lightweight version of OpenVM’s ELF-to-`VmExe`
+pipeline without depending on the upstream repository.
 
 ## Building and transpiling the playground guest
 

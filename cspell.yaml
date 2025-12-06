@@ -2,13 +2,52 @@ version: "0.2"
 suggestionsTimeout: 5000
 words:
   - addi
+  - andi
+  - auipc
+  - bgeu
+  - bltu
   - Clément
+  - csrrw
+  - divu
+  - ehdr
+  - filesz
   - Fondeur
+  - funct
+  - jalr
   - littleriscv
+  - loadb
+  - loadbu
+  - loadh
+  - loadhu
+  - loadw
+  - memsz
+  - mulh
+  - mulhsu
+  - mulhu
   - objdump
+  - openvm
   - readelf
+  - remu
+  - repr
   - risc0
   - riscv
   - rustc
   - rzup
+  - serde
+  - shamt
+  - slli
+  - slti
+  - sltu
+  - sltui
+  - srai
+  - srli
+  - storeb
+  - storeh
+  - storew
+  - transpiling
+  - unimp
+  - vaddr
+  - vm
+  - vmexe
+  - xori
   - zkvm
