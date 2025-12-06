@@ -8,8 +8,16 @@ resolver = "3"
 members = ["crates/builder", "crates/prover", "crates/runner"]
 exclude = ["guests/playground"]
 
-[dependencies]
-clap = { version = "4.5.17", features = ["derive"] }
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+elf = "0.7.4"
 eyre = "0.6"
+rrs-lib = "0.1.0"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dependencies]
+clap.workspace = true
+eyre.workspace = true
 builder = { path = "crates/builder" }
 runner = { path = "crates/runner" }
