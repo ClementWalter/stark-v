@@ -6,7 +6,7 @@ mod transpiler;
 mod vm_exe;
 
 pub use error::{Result, RunnerError};
-pub use instruction::{DebugInfo, Instruction};
+pub use instruction::Instruction;
 pub use program::Program;
 pub use vm_exe::{SparseMemoryImage, VmExe};
 

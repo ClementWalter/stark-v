@@ -101,11 +101,6 @@ impl Default for Instruction {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DebugInfo {
-    pub dsl_instruction: String,
-}
-
 /// Unified macro for defining VM opcodes.
 ///
 /// This macro generates:
