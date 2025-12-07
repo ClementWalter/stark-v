@@ -252,7 +252,10 @@ mod tests {
 
         let result = Elf::decode(&bytes, MAX_GUEST_MEMORY);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::InvalidMachineType));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::InvalidMachineType
+        ));
     }
 
     #[test]
@@ -279,7 +282,10 @@ mod tests {
         bytes.extend_from_slice(&[0u8; 4]); // dummy segment data
         let result = Elf::decode(&bytes, MAX_GUEST_MEMORY);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::InvalidEntrypoint(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::InvalidEntrypoint(_)
+        ));
     }
 
     #[test]
@@ -291,7 +297,10 @@ mod tests {
         bytes.extend_from_slice(&[0u8; 4]);
         let result = Elf::decode(&bytes, MAX_GUEST_MEMORY);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::InvalidEntrypoint(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::InvalidEntrypoint(_)
+        ));
     }
 
     #[test]
@@ -309,7 +318,10 @@ mod tests {
 
         let result = Elf::decode(&bytes, MAX_GUEST_MEMORY);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::TooManyProgramHeaders));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::TooManyProgramHeaders
+        ));
     }
 
     #[test]
@@ -372,7 +384,10 @@ mod tests {
         add_program_header(&mut bytes, PT_LOAD, 10000, 0x1000, 4, 4, PF_X);
         let result = Elf::decode(&bytes, MAX_GUEST_MEMORY);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::InvalidSegmentOffset));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::InvalidSegmentOffset
+        ));
     }
 
     #[test]
@@ -439,7 +454,7 @@ mod tests {
 
         // Data segment (non-executable)
         add_program_header(&mut bytes, PT_LOAD, 116, 0x2000, 4, 4, 0); // no PF_X
-        // Code segment (executable)
+                                                                       // Code segment (executable)
         add_program_header(&mut bytes, PT_LOAD, 120, 0x1000, 4, 4, PF_X);
 
         bytes.extend_from_slice(&0xDEADBEEFu32.to_le_bytes()); // data
@@ -476,7 +491,10 @@ mod tests {
         let path = Path::new("/nonexistent/path/to/elf");
         let result = Elf::from_path(path, MAX_GUEST_MEMORY);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::ReadElfFile { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::ReadElfFile { .. }
+        ));
     }
 
     #[test]

@@ -56,9 +56,7 @@ mod tests {
         assert_eq!(program.len(), 1);
         assert_eq!(program.pc_base, 0x2000);
 
-        let (stored_inst, debug_info) = program.instructions_and_debug_infos[0]
-            .as_ref()
-            .unwrap();
+        let (stored_inst, debug_info) = program.instructions_and_debug_infos[0].as_ref().unwrap();
         assert_eq!(*stored_inst, inst);
         assert!(debug_info.is_none());
     }
@@ -69,7 +67,8 @@ mod tests {
         let inst2 = Instruction::new(VmOpcode(0x201), 2, 0, 0, 0, 0, 0, 0);
         let inst3 = Instruction::new(VmOpcode(0x202), 3, 0, 0, 0, 0, 0, 0);
 
-        let program = Program::from_instructions(vec![inst1.clone(), inst2.clone(), inst3.clone()], 0x3000);
+        let program =
+            Program::from_instructions(vec![inst1.clone(), inst2.clone(), inst3.clone()], 0x3000);
 
         assert_eq!(program.len(), 3);
         assert_eq!(program.pc_base, 0x3000);

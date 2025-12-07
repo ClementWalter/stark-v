@@ -64,7 +64,9 @@ fn test_cli_help() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("CLI utilities for the stark-v workspace"));
+        .stdout(predicate::str::contains(
+            "CLI utilities for the stark-v workspace",
+        ));
 }
 
 #[test]

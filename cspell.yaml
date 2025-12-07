@@ -13,6 +13,8 @@ words:
   - doctest
   - dtolnay
   - ehdr
+  - ELFCLASS
+  - ELFDATA
   - filesz
   - Fondeur
   - funct
@@ -25,6 +27,7 @@ words:
   - loadw
   - memsz
   - mulh
+  - paddr
   - mulhsu
   - mulhu
   - objdump
@@ -40,6 +43,8 @@ words:
   - shamt
   - slli
   - slti
+  - sltiu
+  - SLTIU
   - sltu
   - sltui
   - srai
@@ -47,6 +52,7 @@ words:
   - storeb
   - storeh
   - storew
+  - taiki
   - thiserror
   - transpiling
   - unimp

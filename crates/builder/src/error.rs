@@ -45,7 +45,10 @@ mod tests {
     #[test]
     fn test_missing_cargo_toml_display() {
         let err = BuilderError::MissingCargoToml(PathBuf::from("/path/to/Cargo.toml"));
-        assert_eq!(format!("{}", err), "missing Cargo.toml at /path/to/Cargo.toml");
+        assert_eq!(
+            format!("{}", err),
+            "missing Cargo.toml at /path/to/Cargo.toml"
+        );
     }
 
     #[test]

@@ -581,10 +581,13 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_000_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::ADD.opcode());
-        assert_eq!(inst.a, 4);  // rd * 4 = 1 * 4
-        assert_eq!(inst.b, 8);  // rs1 * 4 = 2 * 4
+        assert_eq!(inst.a, 4); // rd * 4 = 1 * 4
+        assert_eq!(inst.b, 8); // rs1 * 4 = 2 * 4
         assert_eq!(inst.c, 12); // rs2 * 4 = 3 * 4
     }
 
@@ -594,7 +597,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_000_00000_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -604,7 +610,10 @@ mod tests {
         let word: u32 = 0b0100000_00011_00010_000_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::SUB.opcode());
     }
 
@@ -614,7 +623,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_100_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::XOR.opcode());
     }
 
@@ -624,7 +636,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_110_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::OR.opcode());
     }
 
@@ -634,7 +649,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_111_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::AND.opcode());
     }
 
@@ -647,10 +665,13 @@ mod tests {
         let word: u32 = 0b000000101010_00010_000_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::ADD.opcode());
-        assert_eq!(inst.a, 4);  // rd * 4
-        assert_eq!(inst.b, 8);  // rs1 * 4
+        assert_eq!(inst.a, 4); // rd * 4
+        assert_eq!(inst.b, 8); // rs1 * 4
     }
 
     #[test]
@@ -659,7 +680,10 @@ mod tests {
         let word: u32 = 0b000000101010_00010_000_00000_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -669,7 +693,10 @@ mod tests {
         let word: u32 = 0b000000000001_00010_100_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::XOR.opcode());
     }
 
@@ -679,7 +706,10 @@ mod tests {
         let word: u32 = 0b000000000001_00010_110_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::OR.opcode());
     }
 
@@ -689,7 +719,10 @@ mod tests {
         let word: u32 = 0b000000000001_00010_111_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BaseAluOpcode::AND.opcode());
     }
 
@@ -701,7 +734,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_001_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, ShiftOpcode::SLL.opcode());
     }
 
@@ -711,7 +747,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_101_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, ShiftOpcode::SRL.opcode());
     }
 
@@ -721,7 +760,10 @@ mod tests {
         let word: u32 = 0b0100000_00011_00010_101_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, ShiftOpcode::SRA.opcode());
     }
 
@@ -731,7 +773,10 @@ mod tests {
         let word: u32 = 0b0000000_00101_00010_001_00001_0010011; // shamt=5
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, ShiftOpcode::SLL.opcode());
         assert_eq!(inst.c, 5); // shamt
     }
@@ -742,7 +787,10 @@ mod tests {
         let word: u32 = 0b0000000_00101_00010_101_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, ShiftOpcode::SRL.opcode());
     }
 
@@ -752,7 +800,10 @@ mod tests {
         let word: u32 = 0b0100000_00101_00010_101_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, ShiftOpcode::SRA.opcode());
     }
 
@@ -764,7 +815,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_010_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, LessThanOpcode::SLT.opcode());
     }
 
@@ -774,7 +828,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_011_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, LessThanOpcode::SLTU.opcode());
     }
 
@@ -784,7 +841,10 @@ mod tests {
         let word: u32 = 0b000000000001_00010_010_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, LessThanOpcode::SLT.opcode());
     }
 
@@ -794,7 +854,10 @@ mod tests {
         let word: u32 = 0b000000000001_00010_011_00001_0010011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, LessThanOpcode::SLTU.opcode());
     }
 
@@ -806,7 +869,10 @@ mod tests {
         let word: u32 = 0b000000000100_00010_000_00001_0000011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::LOADB.opcode());
     }
 
@@ -816,7 +882,10 @@ mod tests {
         let word: u32 = 0b000000000100_00010_001_00001_0000011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::LOADH.opcode());
     }
 
@@ -826,7 +895,10 @@ mod tests {
         let word: u32 = 0b000000000100_00010_010_00001_0000011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::LOADW.opcode());
     }
 
@@ -836,7 +908,10 @@ mod tests {
         let word: u32 = 0b000000000100_00010_100_00001_0000011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::LOADBU.opcode());
     }
 
@@ -846,7 +921,10 @@ mod tests {
         let word: u32 = 0b000000000100_00010_101_00001_0000011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::LOADHU.opcode());
     }
 
@@ -856,7 +934,10 @@ mod tests {
         let word: u32 = 0b111111111100_00010_010_00001_0000011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::LOADW.opcode());
         assert_eq!(inst.g, 1); // negative flag
     }
@@ -869,7 +950,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_000_00100_0100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::STOREB.opcode());
     }
 
@@ -879,7 +963,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_001_00100_0100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::STOREH.opcode());
     }
 
@@ -889,7 +976,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_010_00100_0100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::STOREW.opcode());
     }
 
@@ -901,7 +991,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_000_00100_1100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BranchEqualOpcode::BEQ.opcode());
     }
 
@@ -911,7 +1004,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_001_00100_1100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BranchEqualOpcode::BNE.opcode());
     }
 
@@ -921,7 +1017,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_100_00100_1100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BranchLessThanOpcode::BLT.opcode());
     }
 
@@ -931,7 +1030,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_101_00100_1100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BranchLessThanOpcode::BGE.opcode());
     }
 
@@ -941,7 +1043,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_110_00100_1100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BranchLessThanOpcode::BLTU.opcode());
     }
 
@@ -951,7 +1056,10 @@ mod tests {
         let word: u32 = 0b0000000_00011_00010_111_00100_1100011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, BranchLessThanOpcode::BGEU.opcode());
     }
 
@@ -964,7 +1072,10 @@ mod tests {
         let word: u32 = 0b0_0000001000_0_00000000_00001_1101111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32JalLuiOpcode::JAL.opcode());
         assert_eq!(inst.a, 4); // rd * 4
         assert_eq!(inst.f, 1); // rd != 0
@@ -976,7 +1087,10 @@ mod tests {
         let word: u32 = 0b0_0000001000_0_00000000_00000_1101111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32JalLuiOpcode::JAL.opcode());
         assert_eq!(inst.f, 0); // rd == 0
     }
@@ -987,11 +1101,14 @@ mod tests {
         let word: u32 = 0b000000000100_00010_000_00001_1100111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32JalrOpcode::JALR.opcode());
-        assert_eq!(inst.a, 4);  // rd * 4
-        assert_eq!(inst.b, 8);  // rs1 * 4
-        assert_eq!(inst.f, 1);  // rd != 0
+        assert_eq!(inst.a, 4); // rd * 4
+        assert_eq!(inst.b, 8); // rs1 * 4
+        assert_eq!(inst.f, 1); // rd != 0
     }
 
     #[test]
@@ -1000,7 +1117,10 @@ mod tests {
         let word: u32 = 0b111111111100_00010_000_00001_1100111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32JalrOpcode::JALR.opcode());
         assert_eq!(inst.g, 1); // negative flag
     }
@@ -1013,7 +1133,10 @@ mod tests {
         let word: u32 = 0b00000000000000010000_00001_0110111; // LUI x1, 0x10
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32JalLuiOpcode::LUI.opcode());
         assert_eq!(inst.f, 1);
     }
@@ -1024,7 +1147,10 @@ mod tests {
         let word: u32 = 0b00000000000000010000_00000_0110111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1034,7 +1160,10 @@ mod tests {
         let word: u32 = 0b00000000000000010000_00001_0010111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32AuipcOpcode::AUIPC.opcode());
     }
 
@@ -1044,7 +1173,10 @@ mod tests {
         let word: u32 = 0b00000000000000010000_00000_0010111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1056,7 +1188,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_000_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, MulOpcode::MUL.opcode());
     }
 
@@ -1066,7 +1201,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_001_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, MulHOpcode::MULH.opcode());
     }
 
@@ -1076,7 +1214,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_010_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, MulHOpcode::MULHSU.opcode());
     }
 
@@ -1086,7 +1227,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_011_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, MulHOpcode::MULHU.opcode());
     }
 
@@ -1096,7 +1240,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_100_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, DivRemOpcode::DIV.opcode());
     }
 
@@ -1106,7 +1253,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_101_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, DivRemOpcode::DIVU.opcode());
     }
 
@@ -1116,7 +1266,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_110_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, DivRemOpcode::REM.opcode());
     }
 
@@ -1126,7 +1279,10 @@ mod tests {
         let word: u32 = 0b0000001_00011_00010_111_00001_0110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, DivRemOpcode::REMU.opcode());
     }
 
@@ -1139,7 +1295,10 @@ mod tests {
         let word: u32 = 0b000000000000_00000_000_00000_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::TERMINATE.opcode());
         assert_eq!(inst.c, 0); // exit code
     }
@@ -1150,7 +1309,10 @@ mod tests {
         let word: u32 = 0b000000101010_00000_000_00000_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::TERMINATE.opcode());
         assert_eq!(inst.c, 42);
     }
@@ -1162,7 +1324,10 @@ mod tests {
         let elf = create_test_elf(vec![word]);
         let result = transpile_elf(elf);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::TerminateImmTooBig));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::TerminateImmTooBig
+        ));
     }
 
     #[test]
@@ -1171,7 +1336,10 @@ mod tests {
         let word: u32 = 0b000000000000_00000_011_00000_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode());
     }
 
@@ -1181,7 +1349,10 @@ mod tests {
         let word: u32 = 0b000000000001_00001_011_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode());
     }
 
@@ -1191,7 +1362,10 @@ mod tests {
         let word: u32 = 0b000000000010_00000_011_00001_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode());
     }
 
@@ -1201,7 +1375,10 @@ mod tests {
         let word: u32 = 0b000000000011_00001_011_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode());
     }
 
@@ -1211,7 +1388,10 @@ mod tests {
         let word: u32 = 0b000011111111_00000_011_00000_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::TERMINATE.opcode()); // unimp
     }
 
@@ -1221,7 +1401,10 @@ mod tests {
         let word: u32 = 0b000000000000_00001_001_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32HintStoreOpcode::HINT_STOREW.opcode());
     }
 
@@ -1231,7 +1414,10 @@ mod tests {
         let word: u32 = 0b000000000001_00001_001_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32HintStoreOpcode::HINT_BUFFER.opcode());
     }
 
@@ -1241,7 +1427,10 @@ mod tests {
         let word: u32 = 0b000000000010_00001_001_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1251,7 +1440,10 @@ mod tests {
         let word: u32 = 0b000000000100_00001_010_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::STOREW.opcode());
     }
 
@@ -1261,7 +1453,10 @@ mod tests {
         let word: u32 = 0b111111111100_00001_010_00010_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::STOREW.opcode());
         assert_eq!(inst.g, 1); // negative flag
     }
@@ -1272,7 +1467,10 @@ mod tests {
         let word: u32 = 0b0000010_00011_00010_111_00001_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, Rv32LoadStoreOpcode::STOREW.opcode());
     }
 
@@ -1282,7 +1480,10 @@ mod tests {
         let word: u32 = 0b0000011_00011_00010_111_00001_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1292,7 +1493,10 @@ mod tests {
         let word: u32 = 0b000000000000_00000_100_00000_0001011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1304,7 +1508,10 @@ mod tests {
         let word: u32 = 0b000000000000_00000_001_00000_1110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1314,7 +1521,10 @@ mod tests {
         let word: u32 = 0b000000000000_00001_001_00000_1110011;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::TERMINATE.opcode()); // UNIMP
     }
 
@@ -1326,7 +1536,10 @@ mod tests {
         let word: u32 = 0b0000_0000_0000_00000_000_00000_0001111;
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1339,7 +1552,10 @@ mod tests {
         let elf = create_test_elf(vec![word]);
         let result = transpile_elf(elf);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), RunnerError::UnsupportedInstruction(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            RunnerError::UnsupportedInstruction(_)
+        ));
     }
 
     // ========== Memory Image Conversion ==========
@@ -1385,9 +1601,30 @@ mod tests {
         let vm_exe = transpile_elf(elf).unwrap();
 
         assert_eq!(vm_exe.program.len(), 3);
-        assert_eq!(vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0.opcode, BaseAluOpcode::ADD.opcode());
-        assert_eq!(vm_exe.program.instructions_and_debug_infos[1].as_ref().unwrap().0.opcode, BaseAluOpcode::SUB.opcode());
-        assert_eq!(vm_exe.program.instructions_and_debug_infos[2].as_ref().unwrap().0.opcode, BaseAluOpcode::XOR.opcode());
+        assert_eq!(
+            vm_exe.program.instructions_and_debug_infos[0]
+                .as_ref()
+                .unwrap()
+                .0
+                .opcode,
+            BaseAluOpcode::ADD.opcode()
+        );
+        assert_eq!(
+            vm_exe.program.instructions_and_debug_infos[1]
+                .as_ref()
+                .unwrap()
+                .0
+                .opcode,
+            BaseAluOpcode::SUB.opcode()
+        );
+        assert_eq!(
+            vm_exe.program.instructions_and_debug_infos[2]
+                .as_ref()
+                .unwrap()
+                .0
+                .opcode,
+            BaseAluOpcode::XOR.opcode()
+        );
     }
 
     #[test]
@@ -1433,10 +1670,22 @@ mod tests {
 
     #[test]
     fn test_phantom_imm_from_repr() {
-        assert!(matches!(PhantomImm::from_repr(0), Some(PhantomImm::HintInput)));
-        assert!(matches!(PhantomImm::from_repr(1), Some(PhantomImm::PrintStr)));
-        assert!(matches!(PhantomImm::from_repr(2), Some(PhantomImm::HintRandom)));
-        assert!(matches!(PhantomImm::from_repr(3), Some(PhantomImm::HintLoadByKey)));
+        assert!(matches!(
+            PhantomImm::from_repr(0),
+            Some(PhantomImm::HintInput)
+        ));
+        assert!(matches!(
+            PhantomImm::from_repr(1),
+            Some(PhantomImm::PrintStr)
+        ));
+        assert!(matches!(
+            PhantomImm::from_repr(2),
+            Some(PhantomImm::HintRandom)
+        ));
+        assert!(matches!(
+            PhantomImm::from_repr(3),
+            Some(PhantomImm::HintLoadByKey)
+        ));
         assert!(PhantomImm::from_repr(4).is_none());
         assert!(PhantomImm::from_repr(255).is_none());
     }
@@ -1447,7 +1696,10 @@ mod tests {
         let word: u32 = 0b0000000_00101_00010_001_00000_0010011; // rd=0, shamt=5
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1457,7 +1709,10 @@ mod tests {
         let word: u32 = 0b0000000_00101_00010_101_00000_0010011; // rd=0
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 
@@ -1467,7 +1722,10 @@ mod tests {
         let word: u32 = 0b0100000_00101_00010_101_00000_0010011; // rd=0
         let elf = create_test_elf(vec![word]);
         let vm_exe = transpile_elf(elf).unwrap();
-        let inst = &vm_exe.program.instructions_and_debug_infos[0].as_ref().unwrap().0;
+        let inst = &vm_exe.program.instructions_and_debug_infos[0]
+            .as_ref()
+            .unwrap()
+            .0;
         assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode()); // NOP
     }
 }

@@ -28,6 +28,15 @@ lint:
     - taplo@0.10.0
     - trufflehog@3.91.2
     - yamllint@1.37.1
+  ignore:
+    - linters: [ALL]
+      paths:
+        # Test fixture for risc0 guest compilation - not part of main workspace
+        - tests/fixtures/**
+    - linters: [osv-scanner]
+      paths:
+        # Transitive dependency from rrs-lib - paste is unmaintained but not a security issue
+        - Cargo.lock
 actions:
   disabled:
     - trunk-announce

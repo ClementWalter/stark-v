@@ -108,7 +108,10 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let result = build_guest(temp_dir.path());
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BuilderError::MissingCargoToml(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            BuilderError::MissingCargoToml(_)
+        ));
     }
 
     #[test]
@@ -122,7 +125,10 @@ mod tests {
 
         let result = build_guest(temp_dir.path());
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BuilderError::ParseToml { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            BuilderError::ParseToml { .. }
+        ));
     }
 
     #[test]
@@ -136,7 +142,10 @@ mod tests {
 
         let result = build_guest(temp_dir.path());
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BuilderError::ParseToml { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            BuilderError::ParseToml { .. }
+        ));
     }
 
     #[test]
@@ -253,7 +262,10 @@ mod tests {
     fn test_verify_elf_exists_missing() {
         let result = verify_elf_exists(Path::new("/nonexistent/path/to/elf"));
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BuilderError::ExpectedGuestElf(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            BuilderError::ExpectedGuestElf(_)
+        ));
     }
 
     #[test]
