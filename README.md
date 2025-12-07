@@ -1,7 +1,7 @@
 # stark-v
 
-Lightweight tooling for compiling RISC-V guests and inspecting their
-transpiled `VmExe` metadata.
+Lightweight tooling for compiling RISC-V guests and inspecting their transpiled
+`VmExe` metadata.
 
 ## Build the sample guest
 
