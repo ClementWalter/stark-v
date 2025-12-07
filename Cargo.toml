@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/builder", "crates/cli", "crates/prover", "crates/runner"]
+members = ["crates/builder", "crates/cli", "crates/prover", "crates/transpiler"]
 exclude = ["guests/playground"]
 
 [workspace.dependencies]
@@ -16,4 +16,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { version = "2" }
 
 builder = { path = "crates/builder" }
-runner = { path = "crates/runner" }
+transpiler = { path = "crates/transpiler" }
