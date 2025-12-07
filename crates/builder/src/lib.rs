@@ -14,6 +14,7 @@ const GUEST_TARGET: &str = "riscv32im-risc0-zkvm-elf";
 const TOOLCHAIN: &str = "risc0";
 const PROFILE_DIR: &str = "release";
 const TEXT_START: u32 = 0x0020_0800;
+const RUNTIME_CFG_FLAG: &str = "--cfg starkv_runtime";
 
 #[derive(Debug)]
 pub struct BuildOutput {
@@ -47,10 +48,14 @@ pub fn build_guest(guest_dir: &Path) -> Result<BuildOutput> {
             source,
         })?;
 
-    let link_arg = format!("-Clink-arg=-Ttext=0x{TEXT_START:08x}");
+    let flag_segments = [
+        format!("-Clink-arg=-Ttext=0x{TEXT_START:08x}"),
+        RUNTIME_CFG_FLAG.to_string(),
+    ];
+    let new_flags = flag_segments.join(" ");
     let rustflags = env::var("RUSTFLAGS")
-        .map(|existing| format!("{existing} {link_arg}"))
-        .unwrap_or(link_arg);
+        .map(|existing| format!("{existing} {new_flags}"))
+        .unwrap_or(new_flags);
 
     let status = Command::new("cargo")
         .current_dir(guest_dir)

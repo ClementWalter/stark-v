@@ -1,23 +1,9 @@
 #![no_std]
 #![no_main]
 
-use core::{panic::PanicInfo, ptr};
+use core::ptr;
 
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
-
-#[no_mangle]
-/* trunk-ignore(clippy/missing_safety_doc) */
-pub unsafe extern "C" fn _start() -> ! {
-    // Call main
-    main();
-
-    // Halt after main returns
-    /* trunk-ignore(clippy/empty_loop) */
-    loop {}
-}
+stark_v::entry!(main);
 
 static mut FIB_OUTPUT: u32 = 0;
 
@@ -34,7 +20,6 @@ fn main() {
         i += 1;
     }
 
-    // Prevent the optimizer from deleting the computation.
     unsafe {
         let output = core::ptr::addr_of_mut!(FIB_OUTPUT);
         ptr::write_volatile(output, curr);
