@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

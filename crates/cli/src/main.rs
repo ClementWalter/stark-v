@@ -31,6 +31,32 @@ enum Commands {
     },
 }
 
+fn run_cli(cli: Cli) -> Result<()> {
+    match cli.command {
+        Commands::Build { guest_path } => {
+            let build = builder::build_guest(&guest_path)?;
+            println!("Guest built at {}", build.elf_path.display());
+            let exe = runner::load_vm_exe_from_elf(&build.elf_path)?;
+            println!(
+                "VmExe ready: {} instructions, pc_start=0x{:08x}, init_bytes={}",
+                exe.program.len(),
+                exe.pc_start,
+                exe.init_memory.len(),
+            );
+        }
+        Commands::RunElf { path } => {
+            let exe = runner::load_vm_exe_from_elf(&path)?;
+            println!(
+                "VmExe ready: {} instructions, pc_start=0x{:08x}, init_bytes={}",
+                exe.program.len(),
+                exe.pc_start,
+                exe.init_memory.len(),
+            );
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Initialize tracing subscriber
     fmt()
@@ -40,27 +66,5 @@ fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    match cli.command {
-        Commands::Build { guest_path } => {
-            let build = builder::build_guest(&guest_path)?;
-            tracing::info!("Guest built at {}", build.elf_path.display());
-            let exe = runner::load_vm_exe_from_elf(&build.elf_path)?;
-            tracing::info!(
-                "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
-                exe.program.len(),
-                exe.init_memory.len(),
-                pc = exe.pc_start
-            );
-        }
-        Commands::RunElf { path } => {
-            let exe = runner::load_vm_exe_from_elf(&path)?;
-            tracing::info!(
-                "VmExe ready: {} instructions, pc_start=0x{pc:08x}, init_bytes={}",
-                exe.program.len(),
-                exe.init_memory.len(),
-                pc = exe.pc_start
-            );
-        }
-    }
-    Ok(())
+    run_cli(cli)
 }

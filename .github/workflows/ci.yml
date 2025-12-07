@@ -46,5 +46,51 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install risc0 toolchain
+        run: |
+          curl -L https://risczero.com/install | bash
+          ~/.risc0/bin/rzup install
+
       - name: Run tests (release)
         run: cargo test --release
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage report
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+
+      - name: Check coverage threshold
+        run: |
+          # Extract total line coverage percentage
+          # Note: Integration tests requiring risc0 toolchain are skipped during
+          # coverage runs due to cross-compilation limitations. The uncovered
+          # lines (build success paths, main() entry points) are tested in the
+          # separate test job with risc0 toolchain.
+          COVERAGE=$(cargo llvm-cov --all-features --workspace --json | jq '.data[0].totals.lines.percent')
+          echo "Coverage: $COVERAGE%"
+          # Fail if coverage is below 98% (high threshold due to comprehensive tests)
+          if (( $(echo "$COVERAGE < 98" | bc -l) )); then
+            echo "Coverage $COVERAGE% is below 98% threshold"
+            exit 1
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

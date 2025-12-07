@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/builder", "crates/cli", "crates/prover", "crates/runner"]
-exclude = ["guests/playground"]
+exclude = ["guests/playground", "tests/fixtures/guest"]
 
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -14,6 +14,9 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { version = "2" }
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
 
 builder = { path = "crates/builder" }
 runner = { path = "crates/runner" }

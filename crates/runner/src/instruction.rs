@@ -346,3 +346,276 @@ pub enum Rv32Phantom {
     HintRandom = 0x22,
     HintLoadByKey = 0x23,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vm_opcode_from_usize() {
+        let opcode = VmOpcode::from_usize(0x200);
+        assert_eq!(opcode.0, 0x200);
+    }
+
+    #[test]
+    fn test_vm_opcode_as_usize() {
+        let opcode = VmOpcode(0x250);
+        assert_eq!(opcode.as_usize(), 0x250);
+    }
+
+    #[test]
+    fn test_vm_opcode_display() {
+        let opcode = VmOpcode(42);
+        assert_eq!(format!("{}", opcode), "42");
+    }
+
+    #[test]
+    fn test_vm_opcode_equality() {
+        let op1 = VmOpcode(100);
+        let op2 = VmOpcode(100);
+        let op3 = VmOpcode(200);
+        assert_eq!(op1, op2);
+        assert_ne!(op1, op3);
+    }
+
+    #[test]
+    fn test_vm_opcode_clone_copy() {
+        let op1 = VmOpcode(100);
+        let op2 = op1; // Copy
+        assert_eq!(op1, op2);
+    }
+
+    #[test]
+    fn test_phantom_discriminant_default() {
+        let pd = PhantomDiscriminant::default();
+        assert_eq!(pd.0, 0);
+    }
+
+    #[test]
+    fn test_phantom_discriminant_equality() {
+        let pd1 = PhantomDiscriminant(10);
+        let pd2 = PhantomDiscriminant(10);
+        let pd3 = PhantomDiscriminant(20);
+        assert_eq!(pd1, pd2);
+        assert_ne!(pd1, pd3);
+    }
+
+    #[test]
+    fn test_instruction_new() {
+        let inst = Instruction::new(VmOpcode(0x200), 1, 2, 3, 4, 5, 6, 7);
+        assert_eq!(inst.opcode.0, 0x200);
+        assert_eq!(inst.a, 1);
+        assert_eq!(inst.b, 2);
+        assert_eq!(inst.c, 3);
+        assert_eq!(inst.d, 4);
+        assert_eq!(inst.e, 5);
+        assert_eq!(inst.f, 6);
+        assert_eq!(inst.g, 7);
+    }
+
+    #[test]
+    fn test_instruction_from_isize() {
+        let inst = Instruction::from_isize(VmOpcode(0x201), 10, 20, 30, 40, 50);
+        assert_eq!(inst.opcode.0, 0x201);
+        assert_eq!(inst.a, 10);
+        assert_eq!(inst.b, 20);
+        assert_eq!(inst.c, 30);
+        assert_eq!(inst.d, 40);
+        assert_eq!(inst.e, 50);
+        assert_eq!(inst.f, 0);
+        assert_eq!(inst.g, 0);
+    }
+
+    #[test]
+    fn test_instruction_large_from_isize() {
+        let inst = Instruction::large_from_isize(VmOpcode(0x202), 1, 2, 3, 4, 5, 6, 7);
+        assert_eq!(inst.opcode.0, 0x202);
+        assert_eq!(inst.a, 1);
+        assert_eq!(inst.b, 2);
+        assert_eq!(inst.c, 3);
+        assert_eq!(inst.d, 4);
+        assert_eq!(inst.e, 5);
+        assert_eq!(inst.f, 6);
+        assert_eq!(inst.g, 7);
+    }
+
+    #[test]
+    fn test_instruction_phantom() {
+        let inst = Instruction::phantom(PhantomDiscriminant(0x20), 100, 200, 0x1234);
+        assert_eq!(inst.opcode, SystemOpcode::PHANTOM.opcode());
+        assert_eq!(inst.a, 100);
+        assert_eq!(inst.b, 200);
+        // c = discriminant | (c_upper << 16)
+        assert_eq!(inst.c, 0x20 | (0x1234i64 << 16));
+        assert_eq!(inst.d, 0);
+        assert_eq!(inst.e, 0);
+        assert_eq!(inst.f, 0);
+        assert_eq!(inst.g, 0);
+    }
+
+    #[test]
+    fn test_instruction_default() {
+        let inst = Instruction::default();
+        assert_eq!(inst.opcode, VmOpcode::from_usize(0));
+        assert_eq!(inst.a, 0);
+        assert_eq!(inst.b, 0);
+        assert_eq!(inst.c, 0);
+        assert_eq!(inst.d, 0);
+        assert_eq!(inst.e, 0);
+        assert_eq!(inst.f, 0);
+        assert_eq!(inst.g, 0);
+    }
+
+    #[test]
+    fn test_instruction_equality() {
+        let inst1 = Instruction::new(VmOpcode(100), 1, 2, 3, 4, 5, 6, 7);
+        let inst2 = Instruction::new(VmOpcode(100), 1, 2, 3, 4, 5, 6, 7);
+        let inst3 = Instruction::new(VmOpcode(100), 1, 2, 3, 4, 5, 6, 8);
+        assert_eq!(inst1, inst2);
+        assert_ne!(inst1, inst3);
+    }
+
+    #[test]
+    fn test_instruction_clone() {
+        let inst1 = Instruction::new(VmOpcode(200), 10, 20, 30, 40, 50, 60, 70);
+        let inst2 = inst1.clone();
+        assert_eq!(inst1, inst2);
+    }
+
+    #[test]
+    fn test_debug_info_default() {
+        let di = DebugInfo::default();
+        assert_eq!(di.dsl_instruction, "");
+    }
+
+    #[test]
+    fn test_debug_info_equality() {
+        let di1 = DebugInfo {
+            dsl_instruction: "ADD".to_string(),
+        };
+        let di2 = DebugInfo {
+            dsl_instruction: "ADD".to_string(),
+        };
+        let di3 = DebugInfo {
+            dsl_instruction: "SUB".to_string(),
+        };
+        assert_eq!(di1, di2);
+        assert_ne!(di1, di3);
+    }
+
+    // Test opcodes
+    #[test]
+    fn test_system_opcodes() {
+        assert_eq!(SystemOpcode::TERMINATE.opcode().0, 0x0);
+        assert_eq!(SystemOpcode::PHANTOM.opcode().0, 0x1);
+    }
+
+    #[test]
+    fn test_base_alu_opcodes() {
+        assert_eq!(BaseAluOpcode::ADD.opcode().0, 0x200);
+        assert_eq!(BaseAluOpcode::SUB.opcode().0, 0x201);
+        assert_eq!(BaseAluOpcode::XOR.opcode().0, 0x202);
+        assert_eq!(BaseAluOpcode::OR.opcode().0, 0x203);
+        assert_eq!(BaseAluOpcode::AND.opcode().0, 0x204);
+    }
+
+    #[test]
+    fn test_shift_opcodes() {
+        assert_eq!(ShiftOpcode::SLL.opcode().0, 0x205);
+        assert_eq!(ShiftOpcode::SRL.opcode().0, 0x206);
+        assert_eq!(ShiftOpcode::SRA.opcode().0, 0x207);
+    }
+
+    #[test]
+    fn test_less_than_opcodes() {
+        assert_eq!(LessThanOpcode::SLT.opcode().0, 0x208);
+        assert_eq!(LessThanOpcode::SLTU.opcode().0, 0x209);
+    }
+
+    #[test]
+    fn test_load_store_opcodes() {
+        assert_eq!(Rv32LoadStoreOpcode::LOADW.opcode().0, 0x210);
+        assert_eq!(Rv32LoadStoreOpcode::LOADBU.opcode().0, 0x211);
+        assert_eq!(Rv32LoadStoreOpcode::LOADHU.opcode().0, 0x212);
+        assert_eq!(Rv32LoadStoreOpcode::STOREW.opcode().0, 0x213);
+        assert_eq!(Rv32LoadStoreOpcode::STOREH.opcode().0, 0x214);
+        assert_eq!(Rv32LoadStoreOpcode::STOREB.opcode().0, 0x215);
+        assert_eq!(Rv32LoadStoreOpcode::LOADB.opcode().0, 0x216);
+        assert_eq!(Rv32LoadStoreOpcode::LOADH.opcode().0, 0x217);
+    }
+
+    #[test]
+    fn test_branch_equal_opcodes() {
+        assert_eq!(BranchEqualOpcode::BEQ.opcode().0, 0x220);
+        assert_eq!(BranchEqualOpcode::BNE.opcode().0, 0x221);
+    }
+
+    #[test]
+    fn test_branch_less_than_opcodes() {
+        assert_eq!(BranchLessThanOpcode::BLT.opcode().0, 0x225);
+        assert_eq!(BranchLessThanOpcode::BLTU.opcode().0, 0x226);
+        assert_eq!(BranchLessThanOpcode::BGE.opcode().0, 0x227);
+        assert_eq!(BranchLessThanOpcode::BGEU.opcode().0, 0x228);
+    }
+
+    #[test]
+    fn test_jal_lui_opcodes() {
+        assert_eq!(Rv32JalLuiOpcode::JAL.opcode().0, 0x230);
+        assert_eq!(Rv32JalLuiOpcode::LUI.opcode().0, 0x231);
+    }
+
+    #[test]
+    fn test_jalr_opcode() {
+        assert_eq!(Rv32JalrOpcode::JALR.opcode().0, 0x235);
+    }
+
+    #[test]
+    fn test_auipc_opcode() {
+        assert_eq!(Rv32AuipcOpcode::AUIPC.opcode().0, 0x240);
+    }
+
+    #[test]
+    fn test_mul_opcodes() {
+        assert_eq!(MulOpcode::MUL.opcode().0, 0x250);
+        assert_eq!(MulHOpcode::MULH.opcode().0, 0x251);
+        assert_eq!(MulHOpcode::MULHSU.opcode().0, 0x252);
+        assert_eq!(MulHOpcode::MULHU.opcode().0, 0x253);
+    }
+
+    #[test]
+    fn test_div_rem_opcodes() {
+        assert_eq!(DivRemOpcode::DIV.opcode().0, 0x254);
+        assert_eq!(DivRemOpcode::DIVU.opcode().0, 0x255);
+        assert_eq!(DivRemOpcode::REM.opcode().0, 0x256);
+        assert_eq!(DivRemOpcode::REMU.opcode().0, 0x257);
+    }
+
+    #[test]
+    fn test_hint_store_opcodes() {
+        assert_eq!(Rv32HintStoreOpcode::HINT_STOREW.opcode().0, 0x260);
+        assert_eq!(Rv32HintStoreOpcode::HINT_BUFFER.opcode().0, 0x261);
+    }
+
+    #[test]
+    fn test_rv32_phantom_values() {
+        assert_eq!(Rv32Phantom::HintInput as u16, 0x20);
+        assert_eq!(Rv32Phantom::PrintStr as u16, 0x21);
+        assert_eq!(Rv32Phantom::HintRandom as u16, 0x22);
+        assert_eq!(Rv32Phantom::HintLoadByKey as u16, 0x23);
+    }
+
+    #[test]
+    fn test_constants() {
+        assert_eq!(RV32_REGISTER_NUM_LIMBS, 4);
+        assert_eq!(RV32_MEMORY_AS, 2);
+    }
+
+    // Test opcode enum traits (Clone, Copy, Debug, PartialEq, Eq)
+    #[test]
+    fn test_opcode_enum_traits() {
+        let op1 = BaseAluOpcode::ADD;
+        let op2 = op1; // Copy
+        assert_eq!(op1, op2);
+        assert_eq!(format!("{:?}", op1), "ADD");
+    }
+}
