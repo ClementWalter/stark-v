@@ -14,9 +14,9 @@ use crate::error::{Result, RunnerError};
 /// See: https://riscv.org/technical/specifications/
 const WORD_SIZE: usize = 4;
 
-/// Minimal ELF decoder for RV32IM guests.
+/// ELF decoder for RV32IM guests.
 ///
-/// Implementation inspired by https://github.com/openvm-org/openvm/blob/main/crates/toolchain/transpiler/src/elf.rs
+/// Implementation inspired by https://github.com/openvm-org/openvm/blob/02d5a13556b167ccae0c3b817f612adf26d92fda/crates/toolchain/transpiler/src/elf.rs
 /// which is licensed under MIT/Apache-2.0.
 #[derive(Debug, Clone)]
 pub struct Elf {
@@ -48,6 +48,7 @@ impl Elf {
             return Err(RunnerError::InvalidElfType);
         }
 
+        // ELF entry point
         let entry: u32 =
             elf.ehdr
                 .e_entry
