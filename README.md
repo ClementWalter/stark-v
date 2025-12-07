@@ -1,32 +1,18 @@
 # stark-v
 
-Utilities and experiments that sit alongside [`openvm`](../openvm). The
-`run-elf` subcommand wires in a lightweight version of OpenVM’s ELF-to-`VmExe`
-pipeline without depending on the upstream repository.
+Lightweight tooling for compiling RISC-V guests and inspecting their
+transpiled `VmExe` metadata.
 
-## Building and transpiling the playground guest
+## Build the sample guest
 
-The `build` subcommand shells out to `cargo` with the `risc0` toolchain to
-compile an RV32IM guest package. Pass the path to the package directory (the
-default workflow uses `guests/playground`):
+The CLI ships with a single `build` subcommand. It shells out to `cargo` using
+the `risc0` toolchain to compile any RV32IM guest crate you point it at.
 
 ```bash
 cargo run -- build --guest-path guests/playground
 ```
 
-This invokes the lightweight builder crate (modeled after `openvm`’s
-`crates/toolchain/build` flow) which produces
-`guests/playground/target/riscv32im-risc0-zkvm-elf/release/playground` and then
-immediately feeds that ELF into the local `run-elf` pipeline to emit a `VmExe`
-summary.
-
-You can still point `run-elf` at any pre-built guest ELF:
-
-```bash
-cargo run -- run-elf \
-  --path guests/playground/target/riscv32im-risc0-zkvm-elf/release/playground
-```
-
-Behind the scenes the implementation mirrors OpenVM’s
-`crates/toolchain/transpiler` logic (`Elf::decode`, RV32IM transpiler helpers,
-and the `VmExe` layout) but is self-contained inside this repository.
+That command builds the `guests/playground` package and prints a short summary
+containing the ELF path plus the number of transpiled instructions and
+initialized bytes. Use `--guest-path` to target other guest crates in your
+workspace.
