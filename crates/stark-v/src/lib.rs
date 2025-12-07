@@ -96,5 +96,5 @@ pub fn terminate<const EXIT_CODE: u8>() -> ! {
 #[cfg(not(target_os = "zkvm"))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
-    unreachable!()
+    loop {}
 }
