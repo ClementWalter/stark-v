@@ -56,3 +56,6 @@ words:
   - worktrees
   - xori
   - zkvm
+  - Ttext
+  - RUSTFLAGS
+  - rustflags

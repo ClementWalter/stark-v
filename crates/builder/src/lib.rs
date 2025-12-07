@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -13,6 +13,7 @@ pub use error::{BuilderError, Result};
 const GUEST_TARGET: &str = "riscv32im-risc0-zkvm-elf";
 const TOOLCHAIN: &str = "risc0";
 const PROFILE_DIR: &str = "release";
+const TEXT_START: u32 = 0x0020_0800;
 
 #[derive(Debug)]
 pub struct BuildOutput {
@@ -46,9 +47,15 @@ pub fn build_guest(guest_dir: &Path) -> Result<BuildOutput> {
             source,
         })?;
 
+    let link_arg = format!("-Clink-arg=-Ttext=0x{TEXT_START:08x}");
+    let rustflags = env::var("RUSTFLAGS")
+        .map(|existing| format!("{existing} {link_arg}"))
+        .unwrap_or(link_arg);
+
     let status = Command::new("cargo")
         .current_dir(guest_dir)
         .env("RUSTUP_TOOLCHAIN", TOOLCHAIN)
+        .env("RUSTFLAGS", rustflags)
         .args(["build", "--release", "--target", GUEST_TARGET])
         .status()
         .map_err(|source| BuilderError::BuildGuest {
