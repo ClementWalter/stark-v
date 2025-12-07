@@ -2,6 +2,7 @@
 name = "stark-v-cli"
 version = "0.1.0"
 edition = "2024"
+default-run = "stark-v"
 
 [[bin]]
 name = "stark-v"
@@ -11,6 +12,6 @@ path = "src/main.rs"
 clap.workspace = true
 eyre.workspace = true
 builder.workspace = true
-runner.workspace = true
+transpiler.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

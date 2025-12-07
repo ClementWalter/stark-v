@@ -318,17 +318,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "runner"
-version = "0.1.0"
-dependencies = [
- "derive_more",
- "elf",
- "rrs-lib",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -389,9 +378,9 @@ dependencies = [
  "builder",
  "clap",
  "eyre",
- "runner",
  "tracing",
  "tracing-subscriber",
+ "transpiler",
 ]
 
 [[package]]
@@ -540,6 +529,17 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "transpiler"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "elf",
+ "rrs-lib",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]

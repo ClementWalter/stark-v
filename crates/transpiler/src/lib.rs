@@ -6,18 +6,9 @@ mod transpiler;
 mod vm_exe;
 
 pub use error::{Result, RunnerError};
-pub use instruction::{DebugInfo, Instruction};
+pub use instruction::Instruction;
 pub use program::Program;
 pub use vm_exe::{SparseMemoryImage, VmExe};
-
-use std::path::Path;
-
-/// Convenience function to load a VmExe from an ELF file.
-///
-/// This function is a wrapper around `VmExe::from_path` for backward compatibility.
-pub fn load_vm_exe_from_elf(path: &Path) -> Result<VmExe> {
-    VmExe::from_path(path)
-}
 
 #[cfg(test)]
 mod tests {
@@ -34,7 +25,7 @@ mod tests {
         if !elf_path.exists() {
             return Ok(());
         }
-        let exe = load_vm_exe_from_elf(&elf_path)?;
+        let exe = VmExe::from_path(&elf_path)?;
         assert!(!exe.program.is_empty());
         assert!(!exe.init_memory.is_empty());
         Ok(())

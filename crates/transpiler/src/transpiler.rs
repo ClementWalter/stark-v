@@ -1,3 +1,5 @@
+// The initial version of the transpiler was taken from https://github.com/openvm-org/openvm/blob/02d5a13556b167ccae0c3b817f612adf26d92fda/crates/toolchain/transpiler
+
 use std::collections::BTreeMap;
 
 use rrs_lib::{
