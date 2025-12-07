@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/builder",
-    "crates/cli",
-    "crates/prover",
-    "crates/stark-v",
-    "crates/transpiler",
+  "crates/builder",
+  "crates/cli",
+  "crates/prover",
+  "crates/stark-v",
+  "crates/transpiler",
 ]
 exclude = ["guests/playground"]
 
