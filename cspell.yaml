@@ -6,6 +6,7 @@ words:
   - auipc
   - bgeu
   - bltu
+  - cfgs
   - Clément
   - clippy
   - csrrw
@@ -16,6 +17,8 @@ words:
   - filesz
   - Fondeur
   - funct
+  - globl
+  - immediates
   - jalr
   - littleriscv
   - loadb
@@ -27,14 +30,19 @@ words:
   - mulh
   - mulhsu
   - mulhu
+  - norelax
+  - noreturn
   - objdump
   - openvm
+  - println
   - readelf
   - remu
   - repr
   - risc0
   - riscv
   - rustc
+  - rustflags
+  - RUSTFLAGS
   - rzup
   - serde
   - shamt
@@ -44,11 +52,14 @@ words:
   - sltui
   - srai
   - srli
+  - starkv
   - storeb
   - storeh
   - storew
+  - stwo
   - thiserror
   - transpiling
+  - Ttext
   - unimp
   - vaddr
   - vm
@@ -56,11 +67,3 @@ words:
   - worktrees
   - xori
   - zkvm
-  - Ttext
-  - RUSTFLAGS
-  - rustflags
-  - globl
-  - norelax
-  - cfgs
-  - starkv
-  - noreturn

@@ -14,7 +14,7 @@ const GUEST_TARGET: &str = "riscv32im-risc0-zkvm-elf";
 const TOOLCHAIN: &str = "risc0";
 const PROFILE_DIR: &str = "release";
 const TEXT_START: u32 = 0x0020_0800;
-const RUNTIME_CFG_FLAG: &str = "--cfg starkv_runtime";
+const RUNTIME_CFG_FLAG: &str = "--cfg stark_v_runtime";
 
 #[derive(Debug)]
 pub struct BuildOutput {

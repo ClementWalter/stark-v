@@ -93,7 +93,7 @@ pub fn terminate<const EXIT_CODE: u8>() -> ! {
 }
 
 // Trivial panic handler to satisfy compilers on non-guest targets
-#[cfg(not(target_os = "zkvm"))]
+#[cfg(all(not(target_os = "zkvm"), not(test)))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
