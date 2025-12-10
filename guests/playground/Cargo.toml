@@ -10,3 +10,4 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
+stark-v = { path = "../../crates/stark-v" }
