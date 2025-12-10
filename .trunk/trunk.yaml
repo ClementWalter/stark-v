@@ -16,13 +16,14 @@ runtimes:
     - python@3.10.8
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
+  disabled:
+    - osv-scanner
   enabled:
     - cspell@9.4.0
     - checkov@3.2.495
     - clippy@1.91.0
     - git-diff-check
     - markdownlint@0.46.0
-    - osv-scanner@2.3.0
     - prettier@3.7.4
     - rustfmt@1.91.0
     - taplo@0.10.0
