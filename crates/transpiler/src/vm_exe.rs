@@ -10,7 +10,7 @@ pub type SparseMemoryImage = BTreeMap<(u32, u32), u8>;
 
 const MAX_GUEST_MEMORY: u32 = 1 << 29;
 
-// Test change
+// Test comment (Testing Vibe Kanban)
 
 /// A custom representation of a RISC-V guest program that can be executed by the Stark-V VM.
 /// Initial version taken from https://github.com/openvm-org/openvm/blob/02d5a13556b167ccae0c3b817f612adf26d92fda/crates/toolchain/instructions/src/exe.rs
