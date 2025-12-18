@@ -524,7 +524,8 @@ All the segments are 0x1000 aligned (which is consistent with our paging)
 Proposed design is to remove .eh_frame and add memory segments for:
 - layout the .text section (program) (RO check + pc must be range-checked in this segment),
 - layout the .rodata in another block (RO check)
-- layout .data and .bss in a separate block (no constraints on access, just initialize .bss to 0)
+- layout .data in a separate block (no constraints on access)
+.bss would not be handled for now (would require 0 initialization).
 Maybe not all these checks are required (but a physical machine makes all these checks including the READ/EXECUTABLE check). To discuss as this will greatly impact the prover performance.
 
 We can tweak this as we want with a simple linker script (.ld):
@@ -589,6 +590,9 @@ access. This catches null pointer dereferences.
 
 Memory is implemented using demand-paged allocation with 4 KB pages:
 
+<!-- NOTE(antoine): let's use a simple BTreeMap<u32, (u32, u8)> (addr to (clock,byte) mapping) to easily track which are the used and unused addresses within a page (avoid emitting the whole 4KB in the prover memory).
+    The clock is passed to conveniently generate the memory witness (needs clock to use final memory cells). -->
+
 ```rust
 struct Memory {
     pages: BTreeMap<u32, Box<[u8; 4096]>>,
@@ -603,7 +607,7 @@ Address decomposition:
 Pages are allocated on first write. Reading from an unallocated page returns
 zero for all bytes.
 
-<!-- NOTE(antoine): this matters especially when writing to a previously unused cell (for stack and RAM sections), where the trace should have zeros as previous values. -->
+<!-- NOTE(antoine): reading from an unallocated address should not happen so we should return an error. -->
 
 #### 2.2.3 Access Operations
 
@@ -780,7 +784,7 @@ constraint requirements:
 Additionally, a unified `memory` trace records all load/store operations for the
 memory consistency AIR.
 
-<!-- NOTE(antoine): cycle should be a M31 and only take 1 column. Memory operations should not be stored in a `memory` trace but directly in the opcode witness buffers. When the register is a dst register, the previous value rd_prev_val(4) should be added to the trace. Same for the Store family, mem_prev_val(4) containing the value at memory emplacement before writting should be in the trace. This should be updated over the entire document.-->
+<!-- NOTE(antoine): cycle should be a M31 and only take 1 column. We could also restrict addresses to M31 as there is little chance for the full u32 to be used? Memory operations should not be stored in a `memory` trace but directly in the opcode witness buffers. When the register is a dst register, the previous value rd_prev_val(4) should be added to the trace. Same for the Store family, mem_prev_val(4) containing the value at memory emplacement before writting should be in the trace. This should be updated over the entire document.-->
 
 #### 2.4.4 Binary Format
 
@@ -1612,6 +1616,48 @@ This allows the same witness generation code to run on any Stwo backend.
 
 ### 3.4 Memory Witness Generation
 
+<!-- NOTE(antoine): the memory, merkle and clock update witnesses should be generated as so (full memory vm flow):
+1. BEFORE EXECUTION: Load memory from ELF (into BTreeMap<u32, (u32,u8)> (addr to (clock,byte) mapping)).
+Set initial_memory: BTreeMap<u32, (u8,u8)> (addr to (byte, multiplicity) mapping) from the memory bytes with multiplicity=0 (cells are by default considered as unused)
+2. DURING EXECUTION: iterate over instruction and for each memory access at addr:
+    - if memory contains addr (already used cell): mark it as used in the initial_memory (just set multiplicity to 1)
+    - if memory doesn't contain addr (first access): insert (addr, (val, 1))
+    - if the clock difference between the previous clock and the current one is greater than a given STEP, add (addr, prev_clk, u32) to the clock data witness gen buffer.
+3. AFTER EXECUTION: current memory is the final memory. Build the memory, merkle and clock update witnesses:
+ - memory witness: simply convert the BTreeMaps (initial_memory and memory) into a table like the one described in 3.4.2. setting multiplicity to -1 for the final memory (see see https://github.com/kkrt-labs/cairo-m repo at crates/prover/src/components/memory.rs)
+ - merkle witness: build a sparse merkle tree from the initial and final memories, here is the md doc for it (see https://github.com/kkrt-labs/cairo-m repo at crates/prover/src/components/merkle.rs):
+    //! Builds partial Merkle trees from memory for Poseidon2.
+    //!
+    //! # Columns
+    //!
+    //! - enabler
+    //! - index
+    //! - depth
+    //! - left_value
+    //! - right_value
+    //! - parent_value
+    //! - left_multiplicity
+    //! - right_multiplicity
+    //! - parent_multiplicity
+    //! - root
+    //!
+    //! # Constraints
+    //!
+    //! * enabler is a bool
+    //!   * `enabler * (1 - enabler)`
+    //! * use left node
+    //!   * `- [index, depth, left_value, root]` in `Memory` relation
+    //! * use right node
+    //!   * `- [index + 1, depth, right_value, root]` in `Memory` relation
+    //! * emit parent node
+    //!   * `+ [index / 2, depth - 1, parent_value, root]` in `Memory` relation
+    //! * poseidon2 hash computation
+    //!   * `+ [left_value, right_value]` in `Poseidon2` relation (emit hash input)
+    //!   * `- [parent_value]` in `Poseidon2` relation (use hash output)
+ - poseidon witness: build the complementary information to the merkle witness (see https://github.com/kkrt-labs/cairo-m repo at crates/prover/src/components/poseidon2.rs).
+ - clock update: collect the clock update buffer.
+-->
+
 Memory consistency requires additional witness structures beyond the per-opcode
 traces. The memory witness tracks the complete history of memory accesses,
 enabling verification that reads return the most recent write.
@@ -1660,7 +1706,13 @@ Where `RC20_LIMIT = 2^20 - 1`. If the actual gap exceeds this limit, the VM
 inserts intermediate "clock update" entries that bridge the gap in increments of
 `RC20_LIMIT`. This bounds the range check table size.
 
+<!-- NOTE(antoine): should also do:
+`- [addr, prev_clk, value]` in `Memory` relation
+`+ [addr, prev_clk + RC_20, value]` in `Memory` relation -->
+
 #### 3.4.4 Memory Root Witness (Merkle)
+
+<!-- NOTE(antoine): this is the memory component not merkle -->
 
 The Merkle component proves the root hash of memory state. Each memory value (4
 bytes) emits 4 Merkle lookups:
@@ -1671,6 +1723,9 @@ bytes) emits 4 Merkle lookups:
 +1(4 * addr + 2, TREE_HEIGHT, value[2], root)
 +1(4 * addr + 3, TREE_HEIGHT, value[3], root)
 ```
+
+<!-- NOTE(antoine): it also emits initial values (from the initial memory) and uses the final values (from the final memory):
+`+ or - [address, clock, value]` in `Memory` relation -->
 
 The Merkle component maintains 10 columns:
 
@@ -1683,6 +1738,8 @@ The Merkle component maintains 10 columns:
 | 7-9   | multiplicities | Left, right, parent lookups |
 
 ---
+
+<!-- NOTE(antoine): add a section for the merkle witness from the comment in the header -->
 
 ### 3.5 LogUp Relations
 
@@ -1708,8 +1765,9 @@ Protocol:
 2. **Each access**: `-1(addr, prev_clock, prev_value)` then
    `+1(addr, clock, value)`
 3. **Final state**: `-1(addr, final_clock, final_value)` to balance
-
-The sum of all LogUp contributions must equal zero, proving memory consistency.
+   <!-- NOTE(antoine): this is correct, use the initial and final memories mentioned above -->
+   The sum of all LogUp contributions must equal zero, proving memory
+   consistency.
 
 #### 3.5.2 Merkle Relation
 
@@ -1728,8 +1786,10 @@ Each instruction:
 - Reads rs1: `+1(cycle, rs1_idx, rs1_val, 0)`
 - Reads rs2: `+1(cycle, rs2_idx, rs2_val, 0)` (if applicable)
 - Writes rd: `-1(cycle, rd_idx, rd_val, 1)` (if rd ≠ 0)
+  <!-- NOTE(antoine): this should work as memory accesses (use previous register and emit new one), can be seen as a 32-long memory. -->
+  A separate register file component balances these lookups.
 
-A separate register file component balances these lookups.
+<!-- NOTE(antoine): should be balanced by PublicData (see https://github.com/kkrt-labs/cairo-m repo at crates/prover/src/public_data.rs) -->
 
 #### 3.5.4 Range Check Relation
 
