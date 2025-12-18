@@ -305,6 +305,9 @@ pub fn compute() -> u32 {
 
 #### guest-bin/src/main.rs
 
+<!-- NOTE(antoine): this doesn't build because of the __stack_top initialization in .bss (which is by definition for uninitialized variables). Replace `.bss.stack` by `.data.stack` -->
+<!-- NOTE(antoine): add initialized and uninitialized static globals so that this example generates a .bss and .data memory section (for maximum coverage). -->
+
 ```rust
 #![no_std]
 #![no_main]
@@ -419,6 +422,8 @@ struct Cpu {
 The `cycle` counter increments by one for each instruction executed, providing a
 global ordering for trace events.
 
+<!-- NOTE(antoine): cycle should directly be a M31 not an unsigned integer. -->
+
 #### 2.1.2 Fetch-Decode-Execute Loop
 
 Execution proceeds as follows:
@@ -427,9 +432,9 @@ Execution proceeds as follows:
    The PC must be 4-byte aligned; misaligned fetches produce an error.
 
 2. **Decode**: Extract the 7-bit opcode from bits [6:0]. Based on the opcode,
-   extract additional fields (funct3, funct7, register indices, immediates)
-   according to the RISC-V instruction format (R, I, S, B, U, or J type).
-
+extract additional fields (funct3, funct7, register indices, immediates)
+according to the RISC-V instruction format (R, I, S, B, U, or J type).
+<!-- NOTE(antoine): there should be a minimal transpilation step using rrs-lib before running (to avoid decoding at each step). -->
 3. **Execute**: Dispatch to the appropriate handler based on opcode. Each
    handler reads source operands, performs the operation, writes results, and
    computes the next PC.
@@ -510,6 +515,69 @@ The following memory layout is normative:
 | Data/BSS | `0x0010_0000` | `0x001F_FBFF` | ~1 MB - 1 KB | Read/Write           |
 | Stack    | `0x001F_FC00` | `0x0020_03FF` | 1 KB         | Read/Write           |
 
+<!-- NOTE(antoine): with the specification mentioned above for building this is not the layout obtained but rather (we only consider PT_LOAD segments):
+- #segment 1: READ (.rodata for read-only, .eh_frame for debugging), starts at 0x10000;
+- #segment 2: READ/EXECUTE (.text for code), starts on the next page (after segment 1) at address `last_segment_1_addr % alignment`;
+- #segment 3: READ/WRITE (.bss for uninitalized globals and .data for initialized globals), same principle as for segment 2.
+All the segments are 0x1000 aligned (which is consistent with our paging)
+
+Proposed design is to remove .eh_frame and add memory segments for:
+- layout the .text section (program) (RO check + pc must be range-checked in this segment),
+- layout the .rodata in another block (RO check)
+- layout .data and .bss in a separate block (no constraints on access, just initialize .bss to 0)
+Maybe not all these checks are required (but a physical machine makes all these checks including the READ/EXECUTABLE check). To discuss as this will greatly impact the prover performance.
+
+We can tweak this as we want with a simple linker script (.ld):
+```
+OUTPUT_ARCH(riscv)
+ENTRY(_start)
+
+MEMORY {
+    TEXT (rx)  : ORIGIN = 0x00000400, LENGTH = 0x00100000
+    RODATA (r) : ORIGIN = 0x00100000, LENGTH = 0x00100000
+    DATA  (rw) : ORIGIN = 0x00200000, LENGTH = 0x000FFC00
+}
+
+__stack_size = 0x00000400; /* 1 KiB */
+__stack_top = 0x00300000; /* 0x0010_0000 + 2 MiB */
+__stack_bottom = __stack_top - __stack_size;
+
+SECTIONS {
+    .text : ALIGN(4) {
+        KEEP(*(.text._start))
+        *(.text .text.*)
+        *(.gnu.linkonce.t.*)
+    } > TEXT
+
+    .rodata : ALIGN(4) {
+        *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+        *(.eh_frame*)
+    } > RODATA
+
+    .data : ALIGN(4) {
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+    } > DATA
+
+    .bss (NOLOAD) : ALIGN(4) {
+        __bss_start = .;
+        *(.sbss .sbss.*)
+        *(.bss .bss.*)
+        *(COMMON)
+        __bss_end = .;
+    } > DATA
+
+    PROVIDE(__global_pointer$ = ORIGIN(DATA) + 0x800);
+
+    /DISCARD/ : {
+        *(.comment)
+        *(.note.GNU-stack)
+    }
+}
+```
+ -->
+
 The stack pointer is initialized to `0x0020_0400`, which is the first address
 _above_ the stack region, consistent with Section 1.5. The stack grows downward
 toward `0x001F_FC00`.
@@ -535,6 +603,8 @@ Address decomposition:
 Pages are allocated on first write. Reading from an unallocated page returns
 zero for all bytes.
 
+<!-- NOTE(antoine): this matters especially when writing to a previously unused cell (for stack and RAM sections), where the trace should have zeros as previous values. -->
+
 #### 2.2.3 Access Operations
 
 The memory interface provides byte, halfword, and word operations:
@@ -553,10 +623,15 @@ recorded in the memory trace (see Section 2.4).
 
 - **Sparse allocation** avoids pre-allocating the full 4 GB address space.
   Typical guest programs use only a few pages.
+  <!-- NOTE(antoine): why 4GB? -->
 
 - **No hardware ROM/RAM distinction**: The code region is read-only by
   convention, not enforcement. Code immutability is verified by AIR constraints
   in the proving layer, not the interpreter.
+  <!-- NOTE(antoine): if the prover checks it, it will perform a range_check so it's easy to do for the runner and should be done:
+  - EXECUTABLE (RX): pc is in program range,
+  - READ ONLY (ROM): when writing, dst_addr should not be in read space.
+  Cf previous note.-->
 
 - **BTreeMap ordering**: Pages are stored in sorted order, enabling efficient
   serialization and deterministic iteration for trace generation.
@@ -668,6 +743,8 @@ fn u32_to_felts(v: u32) -> [M31; 4] {
 This representation enables efficient range checks: each column contains values
 in [0, 255], which can be verified with a single degree-256 constraint.
 
+<!-- NOTE(antoine): this is a prover optimization but we will use range_check_8_8 to range_check bytes in pairs. The preprocessed table will thus be of log_size 2**16 and will be the cartesian product of [O, 2**16[ with itself. -->
+
 #### 2.4.2 Per-Opcode Trace Trait
 
 Each opcode family implements a trait defining its trace schema:
@@ -702,6 +779,8 @@ constraint requirements:
 
 Additionally, a unified `memory` trace records all load/store operations for the
 memory consistency AIR.
+
+<!-- NOTE(antoine): cycle should be a M31 and only take 1 column. Memory operations should not be stored in a `memory` trace but directly in the opcode witness buffers. When the register is a dst register, the previous value rd_prev_val(4) should be added to the trace. Same for the Store family, mem_prev_val(4) containing the value at memory emplacement before writting should be in the trace. This should be updated over the entire document.-->
 
 #### 2.4.4 Binary Format
 
@@ -784,6 +863,8 @@ When the interpreter encounters an ECALL instruction (`opcode = 0b1110011`,
 
 This provides a clean termination mechanism for programs that use it.
 
+<!-- NOTE(antoine): let's leave this for further improvements. For now the execution is terminated if the next pc is the same as the current pc. -->
+
 #### 2.5.2 Infinite Loop Detection
 
 The interpreter detects trivial infinite loops where the next PC equals the
@@ -832,7 +913,7 @@ termination. This distinguishes intentional halts from resource exhaustion.
 
 ---
 
-End of Section 2.
+End of Section 2.6
 
 ---
 
@@ -858,6 +939,8 @@ generation.
 | **Total**   | **47** |                                                      |
 
 #### 2.7.2 Test Program Source
+
+<!-- NOTE(antoine): same issue as above with .bss.stack, doesn't compile. -->
 
 ```rust
 #![no_std]
@@ -1354,6 +1437,8 @@ Witness columns follow the exact order defined in Section 2.4.3 for each opcode
 family. No reordering or transformation occurs during witness generation beyond
 bit-reversal for circle domain placement.
 
+<!-- NOTE(antoine): cf modifications above. -->
+
 For the `alu_reg` family (31 columns):
 
 | Index | Field   | Bytes | Description                 |
@@ -1398,6 +1483,8 @@ already decomposes values to bytes, each column contains values in [0, 255].
 This enables efficient range checking via a single degree-256 constraint or
 lookup table.
 
+<!-- NOTE(antoine): again use RC8_8(limb0, limb1) and RC8_8(limb2, limb3) instead of 4 RC8. -->
+
 ---
 
 ### 3.2 Opcode Factorization
@@ -1420,6 +1507,8 @@ against table count.
 | `mul_div`   | MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU       | 35      | Extended result decomposition      |
 
 #### 3.2.2 Design Rationale
+
+<!-- NOTE(antoine): some opcodes might be too different even within a same family (take ADD and SLT). There might need to do sub-families. See AIR section. -->
 
 **Why 8 families instead of 47 individual tables?**
 
@@ -1607,6 +1696,8 @@ relations. Each relation defines a tuple format and multiplicity convention.
 - `mult` = multiplicity (typically 1)
 
 #### 3.5.1 Memory Relation
+
+<!-- NOTE(antoine): we need to handle the inplace writting operations (that were avoided with a temp var trick in the compiler for cairo-m) -->
 
 **Tuple size**: 6 **Format**:
 `± mult(address, clock, value[0], value[1], value[2], value[3])`
