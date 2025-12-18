@@ -72,7 +72,6 @@ fully specifiable and auditable.
 Guest programs are written in Rust and structured into two parts:
 
 1. **A logic library crate**
-
    - Does not declare `#![no_std]`
    - Does not rely on `std` by discipline
    - Can be tested normally on the host using `cargo test`
@@ -154,7 +153,6 @@ Because the bare-metal target provides no runtime, the zkVM supplies a minimal
 and explicit startup sequence consisting of:
 
 - a small assembly entry stub that:
-
   - defines `_start`,
   - initializes the global pointer (`gp`, x3),
   - initializes the stack pointer (`sp`, x2),
@@ -1358,18 +1356,18 @@ bit-reversal for circle domain placement.
 
 For the `alu_reg` family (31 columns):
 
-| Index | Field        | Bytes | Description                 |
-| ----- | ------------ | ----- | --------------------------- |
-| 0-3   | cycle        | 4     | Global instruction counter  |
-| 4-7   | pc           | 4     | Program counter             |
-| 8-11  | instr        | 4     | Raw 32-bit instruction word |
-| 12    | rs1_idx      | 1     | Source register 1 index     |
-| 13-16 | rs1_val      | 4     | Source register 1 value     |
-| 17    | rs2_idx      | 1     | Source register 2 index     |
-| 18-21 | rs2_val      | 4     | Source register 2 value     |
-| 22    | rd_idx       | 1     | Destination register index  |
-| 23-26 | rd_val       | 4     | Destination register value  |
-| 27-30 | result       | 4     | ALU computation result      |
+| Index | Field   | Bytes | Description                 |
+| ----- | ------- | ----- | --------------------------- |
+| 0-3   | cycle   | 4     | Global instruction counter  |
+| 4-7   | pc      | 4     | Program counter             |
+| 8-11  | instr   | 4     | Raw 32-bit instruction word |
+| 12    | rs1_idx | 1     | Source register 1 index     |
+| 13-16 | rs1_val | 4     | Source register 1 value     |
+| 17    | rs2_idx | 1     | Source register 2 index     |
+| 18-21 | rs2_val | 4     | Source register 2 value     |
+| 22    | rd_idx  | 1     | Destination register index  |
+| 23-26 | rd_val  | 4     | Destination register value  |
+| 27-30 | result  | 4     | ALU computation result      |
 
 Other families follow analogous schemas as defined in Section 2.4.3.
 
@@ -1551,14 +1549,14 @@ same address are properly ordered.
 
 The memory component uses 9 trace columns:
 
-| Index | Name         | Description                          |
-| ----- | ------------ | ------------------------------------ |
-| 0     | enabler      | 1 for real rows, 0 for padding       |
-| 1     | address      | Memory address (4 bytes decomposed)  |
-| 2     | clock        | Access timestamp                     |
-| 3-6   | value[0-3]   | Byte-decomposed value (4 × M31)      |
-| 7     | multiplicity | LogUp sign: +1 initial, -1 final     |
-| 8     | root         | Merkle tree root hash                |
+| Index | Name         | Description                         |
+| ----- | ------------ | ----------------------------------- |
+| 0     | enabler      | 1 for real rows, 0 for padding      |
+| 1     | address      | Memory address (4 bytes decomposed) |
+| 2     | clock        | Access timestamp                    |
+| 3-6   | value[0-3]   | Byte-decomposed value (4 × M31)     |
+| 7     | multiplicity | LogUp sign: +1 initial, -1 final    |
+| 8     | root         | Merkle tree root hash               |
 
 #### 3.4.3 Clock Gap Constraint
 
@@ -1575,8 +1573,8 @@ inserts intermediate "clock update" entries that bridge the gap in increments of
 
 #### 3.4.4 Memory Root Witness (Merkle)
 
-The Merkle component proves the root hash of memory state. Each memory value
-(4 bytes) emits 4 Merkle lookups:
+The Merkle component proves the root hash of memory state. Each memory value (4
+bytes) emits 4 Merkle lookups:
 
 ```
 +1(4 * addr + 0, TREE_HEIGHT, value[0], root)
@@ -1587,13 +1585,13 @@ The Merkle component proves the root hash of memory state. Each memory value
 
 The Merkle component maintains 10 columns:
 
-| Index | Name              | Description                   |
-| ----- | ----------------- | ----------------------------- |
-| 0     | enabler           | Boolean flag                  |
-| 1     | index             | Node index in tree            |
-| 2     | depth             | Tree depth/layer              |
-| 3-6   | node_data[0-3]    | Node value (4 × M31)          |
-| 7-9   | multiplicities    | Left, right, parent lookups   |
+| Index | Name           | Description                 |
+| ----- | -------------- | --------------------------- |
+| 0     | enabler        | Boolean flag                |
+| 1     | index          | Node index in tree          |
+| 2     | depth          | Tree depth/layer            |
+| 3-6   | node_data[0-3] | Node value (4 × M31)        |
+| 7-9   | multiplicities | Left, right, parent lookups |
 
 ---
 
@@ -1603,26 +1601,28 @@ Cross-component consistency is enforced via LogUp (logarithmic derivative)
 relations. Each relation defines a tuple format and multiplicity convention.
 
 **Notation**: `± mult(arg_0, arg_1, ..., arg_n)` denotes a LogUp entry where:
+
 - `+` = lookup (consuming from relation)
 - `-` = write (contributing to relation)
 - `mult` = multiplicity (typically 1)
 
 #### 3.5.1 Memory Relation
 
-**Tuple size**: 6
-**Format**: `± mult(address, clock, value[0], value[1], value[2], value[3])`
+**Tuple size**: 6 **Format**:
+`± mult(address, clock, value[0], value[1], value[2], value[3])`
 
 Protocol:
+
 1. **Initial state**: `+1(addr, 0, initial_value)` for all addresses
-2. **Each access**: `-1(addr, prev_clock, prev_value)` then `+1(addr, clock, value)`
+2. **Each access**: `-1(addr, prev_clock, prev_value)` then
+   `+1(addr, clock, value)`
 3. **Final state**: `-1(addr, final_clock, final_value)` to balance
 
 The sum of all LogUp contributions must equal zero, proving memory consistency.
 
 #### 3.5.2 Merkle Relation
 
-**Tuple size**: 4
-**Format**: `+1(index, layer, value, root)`
+**Tuple size**: 4 **Format**: `+1(index, layer, value, root)`
 
 Each memory entry emits 4 lookups (one per byte) to prove membership in the
 Merkle tree. The Merkle component provides matching entries with `-1`
@@ -1630,10 +1630,10 @@ multiplicity.
 
 #### 3.5.3 Register Relation
 
-**Tuple size**: 4
-**Format**: `± mult(cycle, reg_idx, value, is_write)`
+**Tuple size**: 4 **Format**: `± mult(cycle, reg_idx, value, is_write)`
 
 Each instruction:
+
 - Reads rs1: `+1(cycle, rs1_idx, rs1_val, 0)`
 - Reads rs2: `+1(cycle, rs2_idx, rs2_val, 0)` (if applicable)
 - Writes rd: `-1(cycle, rd_idx, rd_val, 1)` (if rd ≠ 0)
@@ -1642,10 +1642,10 @@ A separate register file component balances these lookups.
 
 #### 3.5.4 Range Check Relation
 
-**Tuple size**: 2
-**Format**: `+1(value_low, value_high)`
+**Tuple size**: 2 **Format**: `+1(value_low, value_high)`
 
 Used for:
+
 - ALU result/carry pairs
 - Clock gap verification (`clock - prev_clock`)
 - Any value requiring bounded range
@@ -1706,14 +1706,14 @@ bound = 3).
 
 Pairing decisions depend on the multiplicity degree:
 
-| Multiplicity Type   | Degree | Pairable?         |
-| ------------------- | ------ | ----------------- |
-| Hard-coded (±1)     | 0      | Yes, freely       |
-| Trace column        | 1      | Yes, with care    |
-| Product of columns  | 2      | No, cannot pair   |
+| Multiplicity Type  | Degree | Pairable?       |
+| ------------------ | ------ | --------------- |
+| Hard-coded (±1)    | 0      | Yes, freely     |
+| Trace column       | 1      | Yes, with care  |
+| Product of columns | 2      | No, cannot pair |
 
-**Pairing rule**: Check that `deg(m₀) + deg(d₁) + deg(m₁) + deg(d₀) ≤ 2` for
-the combined numerator.
+**Pairing rule**: Check that `deg(m₀) + deg(d₁) + deg(m₁) + deg(d₀) ≤ 2` for the
+combined numerator.
 
 #### 3.6.4 Column Count Formula
 
@@ -1776,16 +1776,16 @@ pub fn gen_interaction_trace<B: Backend>(
 
 #### 3.6.7 Interaction Column Layout per Family
 
-| Family      | Lookups/Row               | Pairs           | Interaction Cols | Base Cols |
-| ----------- | ------------------------- | --------------- | ---------------- | --------- |
-| `alu_reg`   | 3 (rs1, rs2, rd)          | 1 + 1 unpaired  | 2                | 8         |
-| `alu_imm`   | 2 (rs1, rd)               | 1               | 1                | 4         |
-| `load`      | 4 (rs1, rd, mem, range)   | 2               | 2                | 8         |
-| `store`     | 3 (rs1, rs2, mem)         | 1 + 1 unpaired  | 2                | 8         |
-| `branch`    | 2 (rs1, rs2)              | 1               | 1                | 4         |
-| `jump`      | 2 (rs1/-, rd)             | 1               | 1                | 4         |
-| `mul_div`   | 3 + range checks          | varies          | ~3               | 12        |
-| `memory`    | 1 mem + 4 merkle          | 2 + 1 unpaired  | 3                | 12        |
+| Family    | Lookups/Row             | Pairs          | Interaction Cols | Base Cols |
+| --------- | ----------------------- | -------------- | ---------------- | --------- |
+| `alu_reg` | 3 (rs1, rs2, rd)        | 1 + 1 unpaired | 2                | 8         |
+| `alu_imm` | 2 (rs1, rd)             | 1              | 1                | 4         |
+| `load`    | 4 (rs1, rd, mem, range) | 2              | 2                | 8         |
+| `store`   | 3 (rs1, rs2, mem)       | 1 + 1 unpaired | 2                | 8         |
+| `branch`  | 2 (rs1, rs2)            | 1              | 1                | 4         |
+| `jump`    | 2 (rs1/-, rd)           | 1              | 1                | 4         |
+| `mul_div` | 3 + range checks        | varies         | ~3               | 12        |
+| `memory`  | 1 mem + 4 merkle        | 2 + 1 unpaired | 3                | 12        |
 
 ---
 
@@ -2327,16 +2327,16 @@ mod tests {
 
 #### 3.9.5 Validation Criteria
 
-| Criterion                    | Validation Method                                |
-| ---------------------------- | ------------------------------------------------ |
-| All 47 instructions traced   | Trace file row counts > 0 for each family        |
-| Column counts match schema   | `columns.len() == expected_columns`              |
-| Power-of-2 padding           | `columns[0].len().is_power_of_two()`             |
-| Memory prev_clock ordering   | `entry.clock > entry.prev_clock` for all         |
-| LogUp relations balance      | `claimed_sum == QM31::zero()` after finalization |
-| Clock gaps bounded           | `clock - prev_clock <= RC20_LIMIT` everywhere    |
-| Interaction cols correct     | `4 × ceil(N_LOOKUPS / 2)` columns per component  |
-| Constraint degree ≤ 3        | `max(deg(denom) + 1, deg(mult)) ≤ 3`             |
+| Criterion                  | Validation Method                                |
+| -------------------------- | ------------------------------------------------ |
+| All 47 instructions traced | Trace file row counts > 0 for each family        |
+| Column counts match schema | `columns.len() == expected_columns`              |
+| Power-of-2 padding         | `columns[0].len().is_power_of_two()`             |
+| Memory prev_clock ordering | `entry.clock > entry.prev_clock` for all         |
+| LogUp relations balance    | `claimed_sum == QM31::zero()` after finalization |
+| Clock gaps bounded         | `clock - prev_clock <= RC20_LIMIT` everywhere    |
+| Interaction cols correct   | `4 × ceil(N_LOOKUPS / 2)` columns per component  |
+| Constraint degree ≤ 3      | `max(deg(denom) + 1, deg(mult)) ≤ 3`             |
 
 End of Section 3.
 
@@ -2355,13 +2355,13 @@ designed for integration with Stwo's STARK proving system.
 
 Throughout this section, the following notation is used:
 
-| Symbol | Meaning |
-|--------|---------|
-| `col[i]` | Value in column `col` at row `i` |
-| `·` | Field multiplication |
-| `+`, `-` | Field addition and subtraction |
-| `= 0` | Constraint that expression equals zero |
-| `∈ Table` | Lookup constraint (value exists in precomputed table) |
+| Symbol      | Meaning                                                |
+| ----------- | ------------------------------------------------------ |
+| `col[i]`    | Value in column `col` at row `i`                       |
+| `·`         | Field multiplication                                   |
+| `+`, `-`    | Field addition and subtraction                         |
+| `= 0`       | Constraint that expression equals zero                 |
+| `∈ Table`   | Lookup constraint (value exists in precomputed table)  |
 | `byte_k(x)` | The k-th byte of 32-bit value x: `(x >> (8·k)) & 0xFF` |
 
 #### 4.1.2 Relationship to Trace Columns
@@ -2428,17 +2428,20 @@ Range check tables contain all values in a given range. Each lookup verifies a
 witness value exists in the table.
 
 **RangeCheck8** (2⁸ = 256 rows):
+
 - **Use**: Verify byte decomposition columns throughout the trace
 - **Structure**: Single column containing values 0..255
 - **Lookup**: `byte ∈ RangeCheck8` verifies `byte < 256`
 
 **RangeCheck16** (2¹⁶ = 65,536 rows):
+
 - **Use**: Verify carry bounds in multi-limb arithmetic, halfword values
 - **Structure**: Single column containing values 0..65535
 - **Example**: Multiplication carries can reach ~1000; division remainders need
   16-bit bounds
 
 **RangeCheck20** (2²⁰ = 1,048,576 rows):
+
 - **Use**: Verify cycle differences (clock - prev_clock) for memory ordering
 - **Structure**: Single column containing values 0..2²⁰-1
 - **Rationale**: Maximum trace length bounded by 2²⁰ instructions
@@ -2448,14 +2451,15 @@ witness value exists in the table.
 Bitwise operations (XOR, OR, AND) on bytes are implemented via a single
 **stacked table** containing all three operations:
 
-| Column | Description |
-|--------|-------------|
-| `op_id` | Operation identifier: 0=AND, 1=OR, 2=XOR |
-| `input1` | First operand (0..255) |
-| `input2` | Second operand (0..255) |
-| `result` | Computed output for the operation |
+| Column   | Description                              |
+| -------- | ---------------------------------------- |
+| `op_id`  | Operation identifier: 0=AND, 1=OR, 2=XOR |
+| `input1` | First operand (0..255)                   |
+| `input2` | Second operand (0..255)                  |
+| `result` | Computed output for the operation        |
 
 **Table Structure**:
+
 - Total size: 3 × 256 × 256 = 196,608 rows (padded to 2¹⁸ = 262,144)
 - Index formula: `op_id × 65536 + (input1 << 8) + input2`
 - Operations stacked sequentially: rows [0..65536) = AND, [65536..131072) = OR,
@@ -2531,8 +2535,8 @@ matching multiplicity.
 
 - Define `RangeCheck8`, `RangeCheck16`, `RangeCheck20` components with
   single-column tables and multiplicity tracking
-- Define unified `Bitwise` component with 4-column stacked table (op_id,
-  input1, input2, result)
+- Define unified `Bitwise` component with 4-column stacked table (op_id, input1,
+  input2, result)
 - Use `AtomicU32` counters for parallel multiplicity accumulation during trace
   generation
 - Implement `LogupTraceGenerator` for interaction trace with `write_frac()`
@@ -2548,31 +2552,31 @@ same column layout but differ in the operation applied.
 
 #### 4.3.1 Common Columns
 
-| Column Range | Name | Description |
-|--------------|------|-------------|
-| 0-3 | `cycle` | Instruction cycle (4 bytes) |
-| 4-7 | `pc` | Program counter (4 bytes) |
-| 8-11 | `instr` | Instruction word (4 bytes) |
-| 12 | `rs1_idx` | Source register 1 index |
-| 13-16 | `rs1_val` | Source register 1 value (4 bytes) |
-| 17 | `rs2_idx` | Source register 2 index |
-| 18-21 | `rs2_val` | Source register 2 value (4 bytes) |
-| 22 | `rd_idx` | Destination register index |
-| 23-26 | `rd_val` | Destination register value (4 bytes) |
-| 27-30 | `result` | Computed result (4 bytes) |
+| Column Range | Name      | Description                          |
+| ------------ | --------- | ------------------------------------ |
+| 0-3          | `cycle`   | Instruction cycle (4 bytes)          |
+| 4-7          | `pc`      | Program counter (4 bytes)            |
+| 8-11         | `instr`   | Instruction word (4 bytes)           |
+| 12           | `rs1_idx` | Source register 1 index              |
+| 13-16        | `rs1_val` | Source register 1 value (4 bytes)    |
+| 17           | `rs2_idx` | Source register 2 index              |
+| 18-21        | `rs2_val` | Source register 2 value (4 bytes)    |
+| 22           | `rd_idx`  | Destination register index           |
+| 23-26        | `rd_val`  | Destination register value (4 bytes) |
+| 27-30        | `result`  | Computed result (4 bytes)            |
 
 #### 4.3.2 Auxiliary Witness Columns
 
 Beyond the common columns, R-type arithmetic requires auxiliary witness columns
 for intermediate values. These columns are instruction-specific:
 
-| Column | Type | Used By | Description |
-|--------|------|---------|-------------|
-| `carry_0`, `carry_1`, `carry_2` | Binary | ADD | Byte-level carry propagation |
-| `borrow_0`, `borrow_1`, `borrow_2` | Binary | SUB, SLT, SLTU | Byte-level borrow propagation |
-| `shift_amt` | 5-bit | SLL, SRL, SRA | Masked shift amount from rs2[4:0] |
-| `remainder` | Variable | SRL, SRA | Bits shifted out (range depends on shift_amt) |
-| `sign_rs1`, `sign_rs2` | Binary | SLT, SRA | MSB of operands for signed operations |
+| Column                             | Type     | Used By        | Description                                   |
+| ---------------------------------- | -------- | -------------- | --------------------------------------------- |
+| `carry_0`, `carry_1`, `carry_2`    | Binary   | ADD            | Byte-level carry propagation                  |
+| `borrow_0`, `borrow_1`, `borrow_2` | Binary   | SUB, SLT, SLTU | Byte-level borrow propagation                 |
+| `shift_amt`                        | 5-bit    | SLL, SRL, SRA  | Masked shift amount from rs2[4:0]             |
+| `remainder`                        | Variable | SRL, SRA       | Bits shifted out (range depends on shift_amt) |
+| `sign_rs1`, `sign_rs2`             | Binary   | SLT, SRA       | MSB of operands for signed operations         |
 
 Carry and borrow columns are constrained to be binary: `c · (1 - c) = 0`.
 
@@ -2619,8 +2623,9 @@ shift_amt ∈ RangeCheck5  # Verify 5-bit range
 # Result = rs1_val << shift_amt
 ```
 
-**Lookup approach**: Use precomputed table for all (value, amount, result) triples.
-This requires a 32-entry table per byte position with 2^8 × 32 = 8192 entries total.
+**Lookup approach**: Use precomputed table for all (value, amount, result)
+triples. This requires a 32-entry table per byte position with 2^8 × 32 = 8192
+entries total.
 
 ```
 (rs1_val, shift_amt, result) ∈ ShiftLeftTable
@@ -2765,16 +2770,16 @@ one register and a sign-extended 12-bit immediate.
 The I-type trace shares most columns with R-type but replaces the second source
 register with the sign-extended immediate:
 
-| Column Range | Name | Description | Shared with R-type |
-|--------------|------|-------------|-------------------|
-| 0-3 | `cycle` | Instruction cycle (4 bytes) | Yes |
-| 4-7 | `pc` | Program counter (4 bytes) | Yes |
-| 8-11 | `instr` | Instruction word (4 bytes) | Yes |
-| 12 | `rs1_idx` | Source register index | Yes |
-| 13-16 | `rs1_val` | Source register value (4 bytes) | Yes |
-| 17-20 | `imm` | Sign-extended immediate (4 bytes) | No (replaces rs2) |
-| 21 | `rd_idx` | Destination register index | Yes |
-| 22-25 | `rd_val` | Destination register value (4 bytes) | Yes |
+| Column Range | Name      | Description                          | Shared with R-type |
+| ------------ | --------- | ------------------------------------ | ------------------ |
+| 0-3          | `cycle`   | Instruction cycle (4 bytes)          | Yes                |
+| 4-7          | `pc`      | Program counter (4 bytes)            | Yes                |
+| 8-11         | `instr`   | Instruction word (4 bytes)           | Yes                |
+| 12           | `rs1_idx` | Source register index                | Yes                |
+| 13-16        | `rs1_val` | Source register value (4 bytes)      | Yes                |
+| 17-20        | `imm`     | Sign-extended immediate (4 bytes)    | No (replaces rs2)  |
+| 21           | `rd_idx`  | Destination register index           | Yes                |
+| 22-25        | `rd_val`  | Destination register value (4 bytes) | Yes                |
 
 This column sharing allows constraint logic reuse: arithmetic operations (ADDI,
 SLTI, etc.) use identical constraint equations to their R-type counterparts,
@@ -2782,7 +2787,8 @@ substituting `imm` for `rs2_val`.
 
 #### 4.4.2 Immediate Sign Extension
 
-The 12-bit immediate is extracted from instruction bits [31:20] and sign-extended:
+The 12-bit immediate is extracted from instruction bits [31:20] and
+sign-extended:
 
 ```
 # Extract sign bit from instruction MSB
@@ -2876,18 +2882,18 @@ careful carry tracking and range verification.
 
 **Multiplication (MUL, MULH, MULHSU, MULHU)** requires 32 witness columns:
 
-| Column Range | Name | Description |
-|--------------|------|-------------|
-| 0 | `enabler` | Row active flag |
-| 1-4 | `pc`, `fp`, `clock`, `inst_prev_clock` | Execution context |
-| 5-7 | `src0_off`, `src1_off`, `dst_off` | Operand offsets |
-| 8-11 | `op0_0..op0_3` | First operand (8-bit limbs) |
-| 12-13 | `op0_prev_clock_lo/hi` | Operand 0 memory clocks |
-| 14-17 | `op1_0..op1_3` | Second operand (8-bit limbs) |
-| 18-19 | `op1_prev_clock_lo/hi` | Operand 1 memory clocks |
-| 20-23 | `dst_prev_val_lo/hi`, `dst_prev_clock_lo/hi` | Destination state |
-| 24-27 | `res_0..res_3` | Result limbs (8-bit) |
-| 28-31 | `carry_0..carry_3` | Carry values |
+| Column Range | Name                                         | Description                  |
+| ------------ | -------------------------------------------- | ---------------------------- |
+| 0            | `enabler`                                    | Row active flag              |
+| 1-4          | `pc`, `fp`, `clock`, `inst_prev_clock`       | Execution context            |
+| 5-7          | `src0_off`, `src1_off`, `dst_off`            | Operand offsets              |
+| 8-11         | `op0_0..op0_3`                               | First operand (8-bit limbs)  |
+| 12-13        | `op0_prev_clock_lo/hi`                       | Operand 0 memory clocks      |
+| 14-17        | `op1_0..op1_3`                               | Second operand (8-bit limbs) |
+| 18-19        | `op1_prev_clock_lo/hi`                       | Operand 1 memory clocks      |
+| 20-23        | `dst_prev_val_lo/hi`, `dst_prev_clock_lo/hi` | Destination state            |
+| 24-27        | `res_0..res_3`                               | Result limbs (8-bit)         |
+| 28-31        | `carry_0..carry_3`                           | Carry values                 |
 
 **Division (DIV, DIVU, REM, REMU)** requires 54 witness columns, extending
 multiplication with quotient, remainder, and verification columns.
@@ -2941,30 +2947,35 @@ Each carry must be bounded to ensure the witness is unique. The bounds derive
 from the maximum value at each position:
 
 **Position 0**: Single product term
+
 ```
 max(p0) = 255 × 255 = 65,025
 carry_0 = p0 >> 8 ≤ 65,025 / 256 = 254
 ```
 
 **Position 1**: Two product terms plus incoming carry
+
 ```
 max(p1 + carry_0) = 2 × (255 × 255) + 254 = 130,304
 carry_1 ≤ 130,304 / 256 = 509
 ```
 
 **Position 2**: Three product terms plus incoming carry
+
 ```
 max(p2 + carry_1) = 3 × (255 × 255) + 509 = 195,584
 carry_2 ≤ 195,584 / 256 = 764
 ```
 
 **Position 3**: Four product terms (maximum) plus incoming carry
+
 ```
 max(p3 + carry_2) = 4 × (255 × 255) + 764 = 260,864
 carry_3 ≤ 260,864 / 256 = 1,019
 ```
 
 **Positions 4-6** (for 64-bit result): Term count decreases symmetrically
+
 ```
 carry_4 ≤ 765  (3 terms + carry_3 residual)
 carry_5 ≤ 510  (2 terms + carry_4 residual)
@@ -2972,21 +2983,24 @@ carry_6 ≤ 255  (1 term + carry_5 residual)
 ```
 
 **Range Check Integration**: Carries are verified via RangeCheck16:
+
 ```
 (MAX_CARRY_i - carry_i) ∈ RangeCheck16  for i in 0..6
 ```
 
-This checks `carry_i ≤ MAX_CARRY_i` since RangeCheck16 verifies values in
-[0, 65535], and `MAX_CARRY_i - carry_i` must be non-negative.
+This checks `carry_i ≤ MAX_CARRY_i` since RangeCheck16 verifies values in [0,
+65535], and `MAX_CARRY_i - carry_i` must be non-negative.
 
 #### 4.5.5 Multiplication Variants
 
 **MUL**: Returns low 32 bits of product
+
 ```
 rd_val = res_0 + res_1·2⁸ + res_2·2¹⁶ + res_3·2²⁴
 ```
 
 **MULH** (signed × signed → high 32 bits): Requires sign handling
+
 ```
 sign1 = op0_3 >> 7
 sign2 = op1_3 >> 7
@@ -3003,11 +3017,13 @@ rd_val = product[63:32]
 ```
 
 **MULHU** (unsigned × unsigned → high 32 bits):
+
 ```
 rd_val = res_4 + res_5·2⁸ + res_6·2¹⁶ + res_7·2²⁴
 ```
 
 **MULHSU** (signed × unsigned → high 32 bits):
+
 ```
 sign1 = op0_3 >> 7
 abs0 = sign1 ? twos_complement(op0) : op0
@@ -3030,6 +3046,7 @@ This decomposes into:
    multiplication (reusing constraints from 4.5.3)
 
 2. **Addition verification**: Prove `n = prod + r` where n is dividend
+
 ```
 n_lo = prod_0 + prod_1·2⁸ + r_lo - add_carry_0·2¹⁶
 n_hi = prod_2 + prod_3·2⁸ + r_hi + add_carry_0 - add_carry_1·2¹⁶
@@ -3063,12 +3080,12 @@ The constraint `sub_borrow_1 = 0` proves `d - r - 1 ≥ 0`, hence `r < d`.
 
 When divisor = 0, RISC-V specifies deterministic results:
 
-| Instruction | Result |
-|-------------|--------|
-| DIV | -1 (0xFFFFFFFF) |
-| DIVU | 2³²-1 (0xFFFFFFFF) |
-| REM | dividend |
-| REMU | dividend |
+| Instruction | Result             |
+| ----------- | ------------------ |
+| DIV         | -1 (0xFFFFFFFF)    |
+| DIVU        | 2³²-1 (0xFFFFFFFF) |
+| REM         | dividend           |
+| REMU        | dividend           |
 
 Detection: `is_zero = (d_0 = 0) ∧ (d_1 = 0) ∧ (d_2 = 0) ∧ (d_3 = 0)`
 
@@ -3080,12 +3097,13 @@ which is automatically satisfied when `q = -1` and `r = n`.
 For signed division, `-2³¹ / -1` cannot be represented in 32 bits. RISC-V
 specifies:
 
-| Instruction | Result |
-|-------------|--------|
-| DIV | -2³¹ (0x80000000) |
-| REM | 0 |
+| Instruction | Result            |
+| ----------- | ----------------- |
+| DIV         | -2³¹ (0x80000000) |
+| REM         | 0                 |
 
 Detection:
+
 ```
 is_overflow = (n = 0x80000000) ∧ (d = 0xFFFFFFFF)
 ```
@@ -3096,15 +3114,15 @@ wraparound arithmetic.
 
 #### 4.5.10 Range Check Summary
 
-| Value Type | Range Check | Count |
-|------------|-------------|-------|
-| Operand limbs (8-bit) | RangeCheck8 | 8 (op0) + 8 (op1) |
-| Result limbs (8-bit) | RangeCheck8 | 4 (MUL) or 8 (64-bit) |
-| Product limbs (8-bit) | RangeCheck8 | 8 |
-| Quotient limbs (8-bit) | RangeCheck8 | 4 |
-| Dividend/remainder (16-bit) | RangeCheck16 | 4 |
-| Carry bounds | RangeCheck16 | 4 (MUL) or 7 (DIV) |
-| Subtraction results | RangeCheck16 | 2 |
+| Value Type                  | Range Check  | Count                 |
+| --------------------------- | ------------ | --------------------- |
+| Operand limbs (8-bit)       | RangeCheck8  | 8 (op0) + 8 (op1)     |
+| Result limbs (8-bit)        | RangeCheck8  | 4 (MUL) or 8 (64-bit) |
+| Product limbs (8-bit)       | RangeCheck8  | 8                     |
+| Quotient limbs (8-bit)      | RangeCheck8  | 4                     |
+| Dividend/remainder (16-bit) | RangeCheck16 | 4                     |
+| Carry bounds                | RangeCheck16 | 4 (MUL) or 7 (DIV)    |
+| Subtraction results         | RangeCheck16 | 2                     |
 
 **Implementation Path**:
 
@@ -3148,13 +3166,14 @@ addr_i ∈ RangeCheck8  for i in 0..3
 
 Alignment is enforced via the low bits of `addr_0`:
 
-| Access Type | Alignment | Constraint |
-|-------------|-----------|------------|
-| LW, SW | 4-byte | `addr_0 & 0x3 = 0` |
-| LH, LHU, SH | 2-byte | `addr_0 & 0x1 = 0` |
-| LB, LBU, SB | 1-byte | (none) |
+| Access Type | Alignment | Constraint         |
+| ----------- | --------- | ------------------ |
+| LW, SW      | 4-byte    | `addr_0 & 0x3 = 0` |
+| LH, LHU, SH | 2-byte    | `addr_0 & 0x1 = 0` |
+| LB, LBU, SB | 1-byte    | (none)             |
 
 For word alignment, use auxiliary column `aligned`:
+
 ```
 aligned = (addr_0 - (addr_0 & 0x3)) / 4
 addr_0 = aligned · 4 + offset
@@ -3171,6 +3190,7 @@ MemoryTuple = (word_addr, clock, value_0, value_1, value_2, value_3)
 ```
 
 Where:
+
 - `word_addr = addr & ~0x3` (4-byte aligned address)
 - `clock` is the current instruction cycle
 - `value_0..3` are the four bytes of the 32-bit word (little-endian)
@@ -3184,6 +3204,7 @@ For sub-word loads, a multiplexer selects bytes from the memory word using
 auxiliary selector columns:
 
 **Byte selection (LB, LBU)**:
+
 ```
 # byte_offset = addr_0 & 0x3  (values: 0, 1, 2, 3)
 # Selector columns: sel_0, sel_1, sel_2, sel_3
@@ -3203,6 +3224,7 @@ byte = sel_0·mem_val_0 + sel_1·mem_val_1 + sel_2·mem_val_2 + sel_3·mem_val_3
 ```
 
 **Halfword selection (LH, LHU)**:
+
 ```
 # half_sel = (addr_0 >> 1) & 0x1  (values: 0 or 1)
 half_sel · (half_sel - 1) = 0
@@ -3216,6 +3238,7 @@ halfword_1 = (1 - half_sel)·mem_val_1 + half_sel·mem_val_3
 After byte/halfword extraction, extend to 32 bits:
 
 **Sign extension (LB, LH)**:
+
 ```
 # Extract sign bit
 sign = extracted_msb >> 7
@@ -3232,6 +3255,7 @@ rd_val_3 = sign · 255
 ```
 
 **Zero extension (LBU, LHU)**:
+
 ```
 rd_val_0 = extracted_byte_0
 rd_val_1 = (is_byte_load) ? 0 : extracted_byte_1
@@ -3247,6 +3271,7 @@ Sub-word stores (SB, SH) require reading the existing word, modifying the
 targeted bytes, and writing the result:
 
 **Store Byte (SB)**:
+
 ```
 # Read current word
 (word_addr, prev_clock, old_val) ∈ MemoryRead
@@ -3262,6 +3287,7 @@ new_val_3 = sel_3·rs2_val_0 + (1-sel_3)·old_val_3
 ```
 
 **Store Halfword (SH)**:
+
 ```
 new_val_0 = (1-half_sel)·rs2_val_0 + half_sel·old_val_0
 new_val_1 = (1-half_sel)·rs2_val_1 + half_sel·old_val_1
@@ -3270,6 +3296,7 @@ new_val_3 = half_sel·rs2_val_1 + (1-half_sel)·old_val_3
 ```
 
 **Store Word (SW)**: Direct write without read-modify-write:
+
 ```
 (word_addr, clock, rs2_val) ∈ MemoryWrite
 ```
@@ -3298,32 +3325,35 @@ Each memory access is represented as a 6-element tuple:
 MemoryTuple = (address, clock, value_0, value_1, value_2, value_3)
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `address` | M31 | Word-aligned memory address (4-byte aligned) |
-| `clock` | M31 | Monotonic timestamp (instruction cycle) |
-| `value_0..3` | M31 | 32-bit value decomposed into 4 bytes |
+| Field        | Type | Description                                  |
+| ------------ | ---- | -------------------------------------------- |
+| `address`    | M31  | Word-aligned memory address (4-byte aligned) |
+| `clock`      | M31  | Monotonic timestamp (instruction cycle)      |
+| `value_0..3` | M31  | 32-bit value decomposed into 4 bytes         |
 
 The Memory relation is defined with arity 6:
+
 ```rust
 relation!(Memory, 6);  // (addr, clock, v0, v1, v2, v3)
 ```
 
 #### 4.7.2 Logup Permutation Argument
 
-The logup protocol enforces that reads and writes balance across the trace.
-Each memory operation contributes a term to a cumulative sum:
+The logup protocol enforces that reads and writes balance across the trace. Each
+memory operation contributes a term to a cumulative sum:
 
 ```
 Σ (multiplicity_i / (z - combined_tuple_i)) = 0
 ```
 
 Where the combined tuple uses verifier challenges `(z, α)`:
+
 ```
 combined_tuple = addr + α·clock + α²·v0 + α³·v1 + α⁴·v2 + α⁵·v3
 ```
 
 **Multiplicity semantics**:
+
 - Store operations: `multiplicity = +1` (emit/produce tuple)
 - Load operations: `multiplicity = -1` (consume tuple)
 
@@ -3338,6 +3368,7 @@ The clock field establishes temporal ordering of memory accesses:
 - **Clock 1+**: Execution begins; clock increments with each instruction
 
 For a load at `(addr, clock_read)` to return value `V`:
+
 1. A store `(addr, clock_write, V)` must exist with `clock_write < clock_read`
 2. No intervening store to `addr` between `clock_write` and `clock_read`
 
@@ -3355,6 +3386,7 @@ Program code and input data are loaded into memory at clock 0:
 ```
 
 When the first instruction reads from address `A`:
+
 1. Consume initial tuple: `(A, 0, V)` with multiplicity `-1`
 2. Emit current tuple: `(A, clock, V)` with multiplicity `+1`
 
@@ -3368,13 +3400,13 @@ memory contents, committed for verification.
 
 The unified memory component collects all memory operations:
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 0 | `enabler` | 1 for valid row, 0 for padding |
-| 1-4 | `address` | Word address (4 bytes) |
-| 5-8 | `clock` | Access timestamp (4 bytes) |
-| 9-12 | `value` | Memory value (4 bytes) |
-| 13 | `multiplicity` | +1 for write, -1 for read |
+| Column | Name           | Description                    |
+| ------ | -------------- | ------------------------------ |
+| 0      | `enabler`      | 1 for valid row, 0 for padding |
+| 1-4    | `address`      | Word address (4 bytes)         |
+| 5-8    | `clock`        | Access timestamp (4 bytes)     |
+| 9-12   | `value`        | Memory value (4 bytes)         |
+| 13     | `multiplicity` | +1 for write, -1 for read      |
 
 #### 4.7.6 Logup Cumulative Sum
 
@@ -3444,18 +3476,18 @@ conditionally update the PC.
 
 #### 4.8.1 Trace Columns
 
-| Column Range | Name | Description |
-|--------------|------|-------------|
-| 0-3 | `cycle` | Instruction cycle (4 bytes) |
-| 4-7 | `pc` | Program counter (4 bytes) |
-| 8-11 | `instr` | Instruction word (4 bytes) |
-| 12 | `rs1_idx` | Source register 1 index |
-| 13-16 | `rs1_val` | Source register 1 value (4 bytes) |
-| 17 | `rs2_idx` | Source register 2 index |
-| 18-21 | `rs2_val` | Source register 2 value (4 bytes) |
-| 22-25 | `imm` | Sign-extended B-type immediate (4 bytes) |
-| 26 | `taken` | Branch taken flag (0 or 1) |
-| 27-30 | `pc_next` | Next program counter (4 bytes) |
+| Column Range | Name      | Description                              |
+| ------------ | --------- | ---------------------------------------- |
+| 0-3          | `cycle`   | Instruction cycle (4 bytes)              |
+| 4-7          | `pc`      | Program counter (4 bytes)                |
+| 8-11         | `instr`   | Instruction word (4 bytes)               |
+| 12           | `rs1_idx` | Source register 1 index                  |
+| 13-16        | `rs1_val` | Source register 1 value (4 bytes)        |
+| 17           | `rs2_idx` | Source register 2 index                  |
+| 18-21        | `rs2_val` | Source register 2 value (4 bytes)        |
+| 22-25        | `imm`     | Sign-extended B-type immediate (4 bytes) |
+| 26           | `taken`   | Branch taken flag (0 or 1)               |
+| 27-30        | `pc_next` | Next program counter (4 bytes)           |
 
 #### 4.8.2 Inverse Trick for Zero Detection
 
@@ -3473,8 +3505,10 @@ is_zero · diff = 0
 ```
 
 These two constraints together enforce:
+
 - If `diff = 0`: first constraint gives `0 = 1 - is_zero`, so `is_zero = 1`
-- If `diff ≠ 0`: second constraint is satisfied; first requires `diff_inv = diff⁻¹`
+- If `diff ≠ 0`: second constraint is satisfied; first requires
+  `diff_inv = diff⁻¹`
 
 #### 4.8.3 BEQ/BNE (Equality Comparison)
 
@@ -3789,9 +3823,10 @@ execution data into per-opcode files. **Witness** loads traces and populates
 Stwo column matrices. **Prove** commits to polynomials and generates the FRI
 proof. **Verify** checks the proof against public inputs.
 
-The pipeline produces **reproducible** execution traces; the final proof includes a proof-of-work nonce that may vary between runs.
-Each stage is independently testable and produces artifacts that can be
-inspected for debugging.
+The pipeline produces **reproducible** execution traces; the final proof
+includes a proof-of-work nonce that may vary between runs. Each stage is
+independently testable and produces artifacts that can be inspected for
+debugging.
 
 ---
 
@@ -3818,7 +3853,8 @@ The Load stage parses the guest ELF binary and initializes VM state.
 
 Use an existing ELF parsing library (e.g., `goblin` or `elf`). Memory is
 represented as a sparse map from addresses to bytes. No cryptographic commitment
-is computed at load time; memory consistency is verified via LogUp during proving.
+is computed at load time; memory consistency is verified via LogUp during
+proving.
 
 ---
 
@@ -3835,9 +3871,11 @@ not degrade execution throughput.
 1. Fetch the instruction at `pc`.
 2. Decode the instruction into its opcode and operands.
 3. Execute the instruction per Section 2 semantics.
-4. Record the **trace row**: `(pc, opcode, rs1, rs2, rd, imm, mem_addr, mem_value, ...)`.
+4. Record the **trace row**:
+   `(pc, opcode, rs1, rs2, rd, imm, mem_addr, mem_value, ...)`.
 5. Update `pc` and registers.
-6. Repeat until a termination condition (halt instruction, cycle limit, or trap).
+6. Repeat until a termination condition (halt instruction, cycle limit, or
+   trap).
 
 **Output:** Complete execution trace as an in-memory structure, plus final
 `VmState`.
@@ -3876,13 +3914,13 @@ drains it asynchronously (see Section 5.2.3).
 
 **Cache Hierarchy Separation:**
 
-| Data Structure     | Target Cache | Size Budget        |
-|--------------------|-------------|--------------------|
-| Register file      | L1 (hot)    | 128 bytes (32×4)   |
-| PC, flags, cursors | L1 (hot)    | 64 bytes           |
-| Decode cache       | L1/L2       | 64 KB (optional)   |
-| Trace ring buffer  | L2/L3       | 1-16 MB            |
-| VM memory          | L3/DRAM     | up to 4 GB         |
+| Data Structure     | Target Cache | Size Budget      |
+| ------------------ | ------------ | ---------------- |
+| Register file      | L1 (hot)     | 128 bytes (32×4) |
+| PC, flags, cursors | L1 (hot)     | 64 bytes         |
+| Decode cache       | L1/L2        | 64 KB (optional) |
+| Trace ring buffer  | L2/L3        | 1-16 MB          |
+| VM memory          | L3/DRAM      | up to 4 GB       |
 
 The interpreter state struct is cache-line aligned to prevent false sharing:
 
@@ -4065,8 +4103,8 @@ Cycle   Executor           Writer           Disk I/O
 3M      swap to B          flush B, claim A pages B queued
 ```
 
-The executor never blocks on I/O. Disk writes happen in parallel with
-continued execution.
+The executor never blocks on I/O. Disk writes happen in parallel with continued
+execution.
 
 **Implementation Path:**
 
@@ -4180,23 +4218,24 @@ composed into a unified AIR through shared interaction columns.
 
 Eight opcode family components, each implementing `FrameworkEval` (Section 4.2):
 
-| Component      | Column Count | Instructions                           |
-|----------------|--------------|----------------------------------------|
-| `AluRegEval`   | 31           | ADD, SUB, SLL, SLT, SLTU, XOR, ...     |
-| `AluImmEval`   | 26           | ADDI, SLTI, SLTIU, XORI, ORI, ...      |
-| `UpperImmEval` | 21           | LUI, AUIPC                             |
-| `BranchEval`   | 31           | BEQ, BNE, BLT, BGE, BLTU, BGEU         |
-| `LoadEval`     | 30           | LB, LH, LW, LBU, LHU                   |
-| `StoreEval`    | 29           | SB, SH, SW                             |
-| `JumpEval`     | 26           | JAL, JALR                              |
-| `MulDivEval`   | 35           | MUL, MULH, MULHSU, MULHU, DIV, ...     |
+| Component      | Column Count | Instructions                       |
+| -------------- | ------------ | ---------------------------------- |
+| `AluRegEval`   | 31           | ADD, SUB, SLL, SLT, SLTU, XOR, ... |
+| `AluImmEval`   | 26           | ADDI, SLTI, SLTIU, XORI, ORI, ...  |
+| `UpperImmEval` | 21           | LUI, AUIPC                         |
+| `BranchEval`   | 31           | BEQ, BNE, BLT, BGE, BLTU, BGEU     |
+| `LoadEval`     | 30           | LB, LH, LW, LBU, LHU               |
+| `StoreEval`    | 29           | SB, SH, SW                         |
+| `JumpEval`     | 26           | JAL, JALR                          |
+| `MulDivEval`   | 35           | MUL, MULH, MULHSU, MULHU, DIV, ... |
 
 Each defines column layout, AIR constraints, and interaction contributions.
 
 **Interaction components:**
 
-- **Memory bus:** Enforces read/write consistency via LogUp permutation argument.
-  All memory operations across opcodes contribute to a shared accumulator.
+- **Memory bus:** Enforces read/write consistency via LogUp permutation
+  argument. All memory operations across opcodes contribute to a shared
+  accumulator.
 - **Program counter bus:** Verifies sequential PC transitions or valid jumps.
 - **Precomputed lookup tables** (Section 4.3):
   - `RangeCheck8`: 2⁸ rows for byte-range validation
@@ -4238,7 +4277,8 @@ aggregates constraints via the composition polynomial.
 **Parallelization opportunities:**
 
 1. **Trace partitioning:** Per-opcode files enable parallel witness generation.
-2. **Column commitment:** Merkle trees for independent columns build in parallel.
+2. **Column commitment:** Merkle trees for independent columns build in
+   parallel.
 3. **FRI layers:** Some FRI computations parallelize across cosets.
 
 **Memory usage:**
@@ -4250,10 +4290,10 @@ aggregates constraints via the composition polynomial.
 **Trace size vs. proof time trade-offs:**
 
 | Trace rows | Approx. proof time | Proof size |
-|------------|-------------------|------------|
-| 2¹⁶        | ~2 seconds        | ~50 KB     |
-| 2²⁰        | ~30 seconds       | ~100 KB    |
-| 2²⁴        | ~8 minutes        | ~150 KB    |
+| ---------- | ------------------ | ---------- |
+| 2¹⁶        | ~2 seconds         | ~50 KB     |
+| 2²⁰        | ~30 seconds        | ~100 KB    |
+| 2²⁴        | ~8 minutes         | ~150 KB    |
 
 Proof size grows logarithmically with trace length due to FRI's structure.
 Proving time grows quasi-linearly.
