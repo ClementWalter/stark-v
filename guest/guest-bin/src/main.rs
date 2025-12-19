@@ -54,6 +54,7 @@ fn main() -> ! {
         let sum_with_page = value.wrapping_add(ZERO_PAGE[0] as u32);
         ZERO_PAGE[1] = ZERO_PAGE[1].wrapping_add(sum_with_page as u8);
     }
+    /* trunk-ignore(clippy/empty_loop) */
     loop {}
 }
 
