@@ -8,7 +8,7 @@ MEMORY {
 }
 
 __stack_size = 0x00000400; /* 1 KiB */
-__stack_top = 0x00300000; /* 0x0010_0000 + 2 MiB */
+__stack_top = 0x00300000; /* 0x00100000 + 2 MiB */
 __stack_bottom = __stack_top - __stack_size;
 
 SECTIONS {

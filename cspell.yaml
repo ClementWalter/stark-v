@@ -13,6 +13,8 @@ words:
   - divu
   - doctest
   - dtolnay
+  - EBREAK
+  - ECALL
   - ehdr
   - filesz
   - Fondeur
@@ -36,10 +38,12 @@ words:
   - openvm
   - println
   - readelf
+  - regs
   - remu
   - repr
   - risc0
   - riscv
+  - rodata
   - rustc
   - rustflags
   - RUSTFLAGS

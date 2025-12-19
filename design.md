@@ -278,7 +278,7 @@ is visible and auditable.
 #### 2.1.4 Design Rationale
 
 Match-based dispatch is chosen over table-driven approaches (jump tables,
-computed gotos) for the following reasons:
+computed `goto`s) for the following reasons:
 
 - **Auditability**: Each instruction handler is explicit in the source code.
   Reviewers can trace exactly which code path executes for any opcode.
@@ -319,9 +319,9 @@ The following memory layout is normative:
 | .data   | `0x0020_0000` | `0x002F_FC00` | 1 MB - 1 KB | Read and Write   |
 | stack   | `0x002F_FC00` | `0x0030_0000` | 1 KB        | Read and Write   |
 
-The stack pointer is initialized to `0x0020_0400`, which is the first address
+The stack pointer is initialized to `0x0030_0000`, which is the first address
 _above_ the stack region, consistent with Section 1.5. The stack grows downward
-toward `0x001F_FC00`.
+toward `0x002F_FC00`.
 
 Address `0x0000_0000` through `0x0000_03FF` are reserved and produce an error on
 access. This catches null pointer dereferences.
