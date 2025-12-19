@@ -1,6 +1,10 @@
-[package]
-name = "stark-v"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "2"
+members = ["guest/guest-lib"]
+exclude = ["guest/guest-bin"]
 
-[dependencies]
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

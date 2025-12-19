@@ -43,7 +43,7 @@ Out of scope for this document are:
 
 Guest programs target the standard Rust bare-metal RISC-V target:
 
-```
+```text
 riscv32im-unknown-none-elf
 ```
 
@@ -130,7 +130,7 @@ features, rather than inherited implicitly from the compiler toolchain.
 
 The sole architectural entrypoint of a guest program is the ELF symbol:
 
-```
+```text
 
 \_start
 
