@@ -3,7 +3,7 @@
 
 use core::arch::global_asm;
 use core::panic::PanicInfo;
-use guest_lib::compute;
+use guest_lib::main;
 
 // -----------------------------------------------------------------------------
 // Startup assembly (ELF entrypoint)
@@ -39,15 +39,8 @@ static mut ZERO_PAGE: [u8; 128] = [0; 128];
 
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
-    main();
-}
-
-// -----------------------------------------------------------------------------
-// Program logic
-// -----------------------------------------------------------------------------
-
-fn main() -> ! {
-    let value = compute();
+    let value = main();
+    // Put return value in a dedicated memory location
     unsafe {
         INITIALIZED_COUNT = INITIALIZED_COUNT.wrapping_add(value);
         ZERO_PAGE[0] = ZERO_PAGE[0].wrapping_add((INITIALIZED_COUNT & 0xFF) as u8);

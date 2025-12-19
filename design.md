@@ -43,7 +43,7 @@ Out of scope for this document are:
 
 Guest programs target the standard Rust bare-metal RISC-V target:
 
-```
+```text
 riscv32im-unknown-none-elf
 ```
 

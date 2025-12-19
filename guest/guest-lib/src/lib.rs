@@ -4,6 +4,10 @@ pub fn compute() -> u32 {
     42
 }
 
+pub fn main() -> u32 {
+    compute()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
