@@ -130,7 +130,7 @@ features, rather than inherited implicitly from the compiler toolchain.
 
 The sole architectural entrypoint of a guest program is the ELF symbol:
 
-```
+```text
 
 \_start
 
