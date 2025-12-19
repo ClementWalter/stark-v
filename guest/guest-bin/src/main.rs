@@ -27,12 +27,11 @@ _start:
 );
 
 // -----------------------------------------------------------------------------
-// Stack definition
+// Global variables
 // -----------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".data.stack")]
-static __stack_top: u32 = 0x0020_0400;
+static mut INITIALIZED_COUNT: u32 = 42;
+static mut ZERO_PAGE: [u8; 128] = [0; 128];
 
 // -----------------------------------------------------------------------------
 // Rust entry shim
@@ -48,7 +47,13 @@ pub extern "C" fn __zkvm_start() -> ! {
 // -----------------------------------------------------------------------------
 
 fn main() -> ! {
-    let _value = compute();
+    let value = compute();
+    unsafe {
+        INITIALIZED_COUNT = INITIALIZED_COUNT.wrapping_add(value);
+        ZERO_PAGE[0] = ZERO_PAGE[0].wrapping_add((INITIALIZED_COUNT & 0xFF) as u8);
+        let sum_with_page = value.wrapping_add(ZERO_PAGE[0] as u32);
+        ZERO_PAGE[1] = ZERO_PAGE[1].wrapping_add(sum_with_page as u8);
+    }
     loop {}
 }
 
