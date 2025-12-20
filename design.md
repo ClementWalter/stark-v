@@ -613,113 +613,38 @@ except for x0.
 
 ---
 
-### 3.4 Trace Generation
+### 3.4 Opcodes
 
 The interpreter generates execution traces suitable for STARK proof generation
 using Stwo. Traces are organized by opcode family.
 
-#### 2.4.1 Per-Opcode Trace Trait
-
-Each opcode family implements a trait defining its trace schema:
-
-```rust
-trait OpcodeBaseTrace {
-    const N_COLUMNS: usize;
-    const COLUMN_NAMES: &'static [&'static str];
-
-    fn trace_row(&self, state: &CpuState) -> [M31; Self::N_COLUMNS];
-}
-```
-
-This allows each opcode to specify exactly which values it records and in what
-order, providing flexibility while ensuring type-safe column counts.
-
-#### 2.4.3 Opcode Families
+#### 2.4.1 Opcode Families
 
 Instructions are grouped into 8 families based on their operand patterns and
 constraint requirements:
 
-| Family      | Opcodes                                              | N_COLUMNS | Schema (field sizes in bytes)                                                                                               |
-| ----------- | ---------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `alu_reg`   | ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND     | 31        | cycle(4), pc(4), instr(4), rs1_idx(1), rs1_val(4), rs2_idx(1), rs2_val(4), rd_idx(1), rd_val(4), result(4)                  |
-| `alu_imm`   | ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI | 26        | cycle(4), pc(4), instr(4), rs1_idx(1), rs1_val(4), imm(4), rd_idx(1), rd_val(4)                                             |
-| `upper_imm` | LUI, AUIPC                                           | 21        | cycle(4), pc(4), instr(4), imm(4), rd_idx(1), rd_val(4)                                                                     |
-| `branch`    | BEQ, BNE, BLT, BGE, BLTU, BGEU                       | 31        | cycle(4), pc(4), instr(4), rs1_idx(1), rs1_val(4), rs2_idx(1), rs2_val(4), imm(4), taken(1), pc_next(4)                     |
-| `load`      | LB, LH, LW, LBU, LHU                                 | 30        | cycle(4), pc(4), instr(4), rs1_idx(1), rs1_val(4), imm(4), addr(4), mem_val(4), rd_idx(1)                                   |
-| `store`     | SB, SH, SW                                           | 29        | cycle(4), pc(4), instr(4), rs1_idx(1), rs1_val(4), rs2_idx(1), rs2_val(4), imm(4), addr(4)                                  |
-| `jump`      | JAL, JALR                                            | 26        | cycle(4), pc(4), instr(4), rs1_val(4), imm(4), rd_idx(1), rd_val(4), pc_next(4)                                             |
-| `mul_div`   | MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU       | 35        | cycle(4), pc(4), instr(4), rs1_idx(1), rs1_val(4), rs2_idx(1), rs2_val(4), rd_idx(1), rd_val(4), result_lo(4), result_hi(4) |
+| Family      | Opcodes                                              | N_COLUMNS | Schema (field sizes in bytes)                                                                                                                                                             |
+| ----------- | ---------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alu_reg`   | ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND     | 24        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                             |
+| `alu_imm`   | ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI | 22        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                                                                |
+| `upper_imm` | LUI, AUIPC                                           | 16        | cycle(1), pc(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                                                                                                           |
+| `branch`    | BEQ, BNE, BLT, BGE, BLTU, BGEU                       | 23        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), imm(4), taken(1), pc_next(4)                                                       |
+| `load`      | LB, LH, LW, LBU, LHU                                 | 21        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), addr(4), mem_val(4), rd_idx(1)                                                                                        |
+| `store`     | SB, SH, SW                                           | 22        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), imm(4), addr(4)                                                                    |
+| `jump`      | JAL, JALR                                            | 25        | cycle(1), pc(1), rs1_val(4), rs1_prev_clock(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1), pc_next(4)                                                                |
+| `mul_div`   | MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU       | 32        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1), result_lo(4), result_hi(4) |
 
-<!-- NOTE(antoine):
-- cycle should be a M31, not program will run more than 1 billion cycles;
-- pc can be a M31 (no bytecode will be more than 1 billion instructions);
-- addr can be a M31 (memory space shouldn't exceed M31);
-- imm can also be M31 when it is used to address the memory (load and store);
-Memory operations should not be stored in a `memory` trace but directly in the opcode witness buffers. When the register is a dst register, the previous value rd_prev_val(4) should be added to the trace. Same for the Store family, mem_prev_val(4) containing the value at memory emplacement before writting should be in the trace. This should be updated over the entire document.-->
+### 2.4.2 Trace recording
 
-#### 2.4.4 Binary Format
+As explain in 3.1.2, a VM cycle fetches an instruction, executes it and records
+it into the trace. Every opcode execute function (one per opcode_id) collects
+the required information:
 
-Each trace file uses column-major layout for direct compatibility with Stwo's
-`ComponentTrace<N>` format.
-
-**Header (32 bytes)**:
-
-| Offset | Size | Field     | Description                   |
-| ------ | ---- | --------- | ----------------------------- |
-| 0      | 4    | magic     | `0x54524143` ("TRAC")         |
-| 4      | 4    | version   | Format version (currently 1)  |
-| 8      | 4    | family_id | Opcode family identifier      |
-| 12     | 4    | n_columns | Number of columns             |
-| 16     | 8    | n_rows    | Number of rows (instructions) |
-| 24     | 8    | reserved  | Must be zero                  |
-
-**Column Data** (after header):
-
-Columns are written sequentially. Each column contains `n_rows` M31 values (4
-bytes each, little-endian):
-
-```
-Column 0: [row_0, row_1, ..., row_{n-1}]
-Column 1: [row_0, row_1, ..., row_{n-1}]
-...
-Column N-1: [row_0, row_1, ..., row_{n-1}]
-```
-
-Total file size: `32 + (n_columns × n_rows × 4)` bytes.
-
-#### 2.4.5 Collection and Dump Strategy
-
-During execution, rows are appended to per-family collectors:
-
-```rust
-struct TraceCollector<const N: usize> {
-    rows: Vec<[M31; N]>,
-}
-```
-
-On termination, each collector is transposed to column-major format and written:
-
-```rust
-fn dump_trace<const N: usize>(rows: &[[M31; N]], path: &Path) -> io::Result<()> {
-    let n_rows = rows.len();
-    // Write header...
-    for col in 0..N {
-        for row in 0..n_rows {
-            write_m31(rows[row][col])?;
-        }
-    }
-    Ok(())
-}
-```
-
-**Implementation Path**:
-
-- Define trace collector structs per opcode family
-- Implement `OpcodeBaseTrace` trait for each instruction
-- Append rows during `execute_*` methods
-- On halt, transpose and write binary files
-
----
+- directly accessible from the instruction: opcode_id, rs1_idx, rs2_idx, rd_idx,
+  imm.
+- from memory getters/setters: mem_val, mem_prev_val, mem_prev_clock
+- from register getters/setters: rs1_val, rs2_val, rd_val, rd_prev_val,
+  rd_prev_clock
 
 ### 3.5 Termination
 
