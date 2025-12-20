@@ -276,7 +276,7 @@ The interpreter maintains the following state:
 
 ```rust
 struct Cpu {
-    regs: [u32; 32],    // General-purpose registers x0-x31
+    regs: Registers,    // General-purpose registers x0-x31
     pc: u32,            // Program counter
     program: Program    // Program segment
     memory: Memory,     // Read Write memory (see 3.2)
@@ -315,7 +315,12 @@ Execution proceeds as follows:
 The interpreter uses match-based dispatch on the opcode_id defined in section
 2.1.
 
-#### 3.1.4 Design Rationale
+#### 3.1.4 Finalization
+
+Once termination is detected and the program halted, finalize the trace
+execution (see section 3.2.4 for memory finalization)
+
+#### 3.1.5 Design Rationale
 
 **Implementation Path**:
 
@@ -413,7 +418,7 @@ fn fetch_instr(&mut self, pc) -> Result<[u32;4], Error> {
     Ok([c.0, c.1, c.2, c.3])
 }
 
-fn load_byte(&mut self, addr: u32, clock: u32) -> Result<(u8, u32), Error> {
+fn load_byte(&mut self, addr: u32, clock: u32) -> Result<ReadWriteCell, Error> {
     let (prev_value, prev_clock) = self.memory.get_mut(&addr).ok_or(Error::UninitializedAddress)?;
     let old_clock = *prev_clock;
 
@@ -425,7 +430,7 @@ fn load_byte(&mut self, addr: u32, clock: u32) -> Result<(u8, u32), Error> {
     Ok((*prev_value, old_clock))
 }
 
-fn store_byte(&mut self, addr: u32, clock: u32, value: u8) -> Result<(u8, u32), Error> {
+fn store_byte(&mut self, addr: u32, clock: u32, value: u8) -> Result<ReadWriteCell, Error> {
     if !self.memory.contains_key(&addr) {
         self.memory_trace.push((addr, 0, 0, 1));
         self.memory.insert(addr, (0, 0));
@@ -474,6 +479,10 @@ The CPU also calls `program.finalize()`:
 - Computes a merkle tree for the `program_trace` as for `final_memory_trace` and
   `initial_memory_trace`.
 
+Merkle trees components use the Poseidon component so a trace for this component
+must also be generated. Once more, this can be taken from :
+https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/adapter/mod.rs
+
 #### 3.2.5 Design Rationale
 
 **Implementation Path**:
@@ -484,6 +493,7 @@ The CPU also calls `program.finalize()`:
 - Implement `Program::fetch_instr`
 - Implement Merkle trace constructors.
 - Implement `Memory::finalize()` and `Program::finalize()`
+- Implement the Poseidon trace builder
 
 ---
 
@@ -503,15 +513,54 @@ x31) plus a separate program counter.
 - **PC**: Stored separately from the general-purpose registers. Always contains
   a 4-byte-aligned address.
 
-#### 2.3.2 Access Interface
+#### 2.3.2 Register Representation
 
 ```rust
-fn reg(&self, idx: usize) -> u32 {
-    if idx == 0 { 0 } else { self.regs[idx] }
+type RegisterEntry = (u32, u32) // register and previous clock
+
+struct Registers {
+    // Registers
+    regs: [RegisterEntry; 32]
+
+    // Traces
+    reg_clock_update_trace: Vec<[u32;3]>
+}
+```
+
+#### 2.3.3 Access Interface
+
+```rust
+fn get_reg(&mut self, idx: u32, clock: u32) -> Result<RegisterEntry, Error> {
+    if idx == 0 {
+        return Err(Error::ReservedRegister);
+    }
+
+    let (prev_value, prev_clock) = &mut self.regs[idx as usize];
+    let old_clock = *prev_clock;
+
+    let delta = clock.saturating_sub(*prev_clock);
+    for i in 0..delta / RC20_LIMIT {
+        self.reg_clock_update_trace.push((idx, *prev_clock + i * RC20_LIMIT, *prev_value));
+    }
+    *prev_clock = clock;
+    Ok((*prev_value, old_clock))
 }
 
-fn set_reg(&mut self, idx: usize, val: u32) {
-    if idx != 0 { self.regs[idx] = val; }
+fn set_reg(&mut self, idx: u32, clock: u32, value: u32) -> Result<RegisterEntry, Error> {
+    if idx == 0 {
+        return Err(Error::ReservedRegister);
+    }
+
+    let (prev_value, prev_clock) = &mut self.regs[idx as usize];
+    let (old_value, old_clock) = (*prev_value, *prev_clock);
+
+    let delta = clock.saturating_sub(*prev_clock);
+    for i in 0..delta / RC20_LIMIT {
+        self.reg_clock_update_trace.push((idx, *prev_clock + i * RC20_LIMIT, *prev_value));
+    }
+    *prev_clock = clock;
+    *prev_value = value;
+    Ok((old_value, old_clock))
 }
 ```
 
@@ -530,7 +579,11 @@ At program entry (per Section 1.6):
 | x0         | 0 (hardwired)                         |
 | x1, x4-x31 | Unspecified (implementation may zero) |
 
-#### 2.3.4 ABI Register Names
+#### 2.3.4 Finalization
+
+Return `reg_clock_update_trace` as is.
+
+#### 2.3.5 ABI Register Names
 
 For reference, the RISC-V calling convention assigns the following roles:
 
@@ -560,7 +613,7 @@ except for x0.
 
 ---
 
-### 2.4 Trace Generation
+### 3.4 Trace Generation
 
 The interpreter generates execution traces suitable for STARK proof generation
 using Stwo. Traces are organized by opcode family.
@@ -668,7 +721,7 @@ fn dump_trace<const N: usize>(rows: &[[M31; N]], path: &Path) -> io::Result<()> 
 
 ---
 
-### 2.5 Termination
+### 3.5 Termination
 
 Execution terminates when the interpreter detects an infinite loop.
 
@@ -693,7 +746,7 @@ self-jump, as shown in Section 1.7.
 - On clean termination, dump all trace collectors: no by default (but possible
   if wanted by user)
 
-### 2.7 Comprehensive RV32IM Test Program (All Opcodes)
+### 3.6 Comprehensive RV32IM Test Program (All Opcodes)
 
 This appendix provides a complete guest program that exercises **all 47 RV32IM
 instructions**. Use this program to validate end-to-end execution and trace
@@ -1207,7 +1260,7 @@ behavior:
 
 ---
 
-## 3. Trace Format and Stwo Integration
+## 4. Trace Format and Stwo Integration
 
 This section specifies how execution traces from Section 2 map to Stwo's witness
 generation system. The goal is a nearly 1:1 correspondence between trace rows
@@ -4349,5 +4402,13 @@ The following external resources inform the design:
 - **Rookie Numbers** (prior work):
   https://github.com/ClementWalter/rookie-numbers/
 - **Cairo-M** (Kakarot zkEVM): https://github.com/kkrt-labs/cairo-m
+
+---
+
+---
+
+---
+
+---
 
 ---
