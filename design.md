@@ -197,37 +197,50 @@ calling conventions apply.
 
 ## 2. Transpiler
 
-The program (in the .text section of the ELF) is decoded prior to the execution.
-From each instruction is extracted 4 M31s containing different type of
-information. The .text section still works by chunks of 4 cells (i.e. default PC
-update is PC += 4) but cells are no longer bytes after transpilation but rather
-M31s containing the decoded instructions opcode id, operands and immediates.
-However there is a 1-to-1 mapping of addresses between the byte and the M31
-representations.
+The transpiler consumes the ELF before witness generation. It decodes every
+instruction in the `.text` section into a canonical four-word representation,
+loads the remaining PT_LOAD segments into byte-addressable memory, and surfaces
+the VM-visible entry state as a `VmExe`. The following invariants are enforced:
+
+- program addresses remain 4-byte aligned and identical to the ELF virtual
+  addresses; the interpreter therefore advances `pc += 4` for straight-line
+  execution exactly as on bare metal;
+- every decoded instruction produces four M31 field elements encoded as `u32`
+  for host code, capturing opcode, register indices, and immediates;
+- any malformed instruction encoding, unknown opcode, or address that violates
+  the fixed memory map causes transpilation to fail rather than deferring the
+  failure to runtime.
 
 ### 2.1 Instruction representation
 
-The original u32 instructions are decoded using `rrs-lib`. Each opcode (defined
-by a unique combination of the 7 first bits of the instruction, funct3 and
-funct7) is mapped to a unique opcode_id (M31). For each instruction variant we
-build the M31s as so:
+All instructions are decoded with `rrs-lib` using the official RV32IM tables.
+Each unique tuple `(opcode[6:0], funct3, funct7)` is deterministically mapped to
+an `opcode_id` in the M31 field. The four exported words per instruction are:
 
-- R-Type (including mul/div from "M" extension): (opcode_id, rd, rs1, rs2)
-- I-Type: (opcode_id, rd, rs1, imm)
-- S-Type: (opcode_id, rs1, rs2, imm)
-- B-Type: (opcode_id, rs1, rs2, imm)
-- U-Type: (opcode_id, rd, imm, 0)
-- J-Type: (opcode_id, rd, imm, 0)
+- **R-Type** (including the `M` extension): `(opcode_id, rd, rs1, rs2)`.
+- **I-Type** (ALU immediates and loads): `(opcode_id, rd, rs1, imm)` where `imm`
+  is the sign-extended 32-bit offset.
+- **S-Type** (stores): `(opcode_id, rs1, rs2, imm)` with `imm` the sign-extended
+  store offset in bytes.
+- **B-Type** (branches): `(opcode_id, rs1, rs2, imm)` where `imm` is a signed
+  byte offset already multiplied by 2 according to the ISA and ready to add to
+  the PC.
+- **U-Type** (`LUI`, `AUIPC`): `(opcode_id, rd, imm, 0)` where `imm` equals the
+  upper 20 bits shifted left by 12.
+- **J-Type** (`JAL`): `(opcode_id, rd, imm, 0)` with `imm` the sign-extended
+  21-bit byte offset.
 
-For the interpreter, it's easier to have the instructions
-ids/operands/immediates as u32 for better interaction with other values
-(registers, addresses, etc.)
+Register indices use their architectural numbers (0–31). All `imm` slots are the
+final <= 20-bit quantity required by the interpreter, eliminating the need for
+additional decoding logic. Although the native representation is M31, the
+transpiler stores these four words as `u32` to minimize conversions when the
+interpreter interacts with other `u32` state such as addresses and register
+values.
 
 ### 2.2 Transpiler Architecture
 
-The transpiler takes an ELF and converts it into a VmExe struct with the decoded
-instructions. `program` contains the .text section transpiled of the ELF and
-memory contains the rest of the PT_LOAD sections.
+The transpiler converts an ELF into a `VmExe` struct that captures the exact VM
+entry state. The struct layout is:
 
 ```rust
 struct VmExe{
@@ -238,8 +251,15 @@ struct VmExe{
 }
 ```
 
-The transpiler also loads the `initial_pc`, initial `regs` and initial `memory`
-from the ELF. The following memory layout is normative:
+- `initial_pc` equals the ELF entry symbol (`_start`).
+- `regs` is initialized according to Section 1.6 (x2/x3 populated, x0 hardwired
+  to 0, others zeroed for determinism).
+- `program` stores every 4-byte-aligned address in `.text` mapped to the four
+  decoded words; unknown or sparse addresses are rejected at transpile time.
+- `memory` stores byte values for all remaining PT_LOAD segments (initialized
+  `.rodata`, `.data`, and zeroed `.bss`). Each key is a byte address.
+
+A canonical memory map is enforced while reading the ELF:
 
 | Region  | Start Address | End Address   | Size        | Access           |
 | ------- | ------------- | ------------- | ----------- | ---------------- |
@@ -253,7 +273,9 @@ _above_ the stack region, consistent with Section 1.5. The stack grows downward
 toward `0x002F_FC00`.
 
 Address `0x0000_0000` through `0x0000_03FF` are reserved and produce an error on
-access. This catches null pointer dereferences.
+access. This catches null pointer dereferences. Attempts to map ELF segments
+outside the table above are rejected during transpilation. The stack region is
+not backed by ELF bytes; it is zero-initialized by the transpiler.
 
 ## 3. VM Emulator and Execution Model
 
@@ -290,10 +312,12 @@ global ordering for trace events.
 
 #### 3.1.2 Initialization
 
-The `Cpu` is initialized using the `VmExe` setting `cycle` to 0 and halted to
-`false`.
+`Cpu::new(vm_exe: VmExe)` copies `vm_exe.regs` into the mutable register file,
+sets `pc = vm_exe.initial_pc`, `program = vm_exe.program`,
+`memory = Memory::from(vm_exe.memory)`, `cycle = 0`, and `halted = false`. No
+implicit state is derived beyond what the transpiler serialized.
 
-#### 3.1.2 Fetch-Decode-Execute Loop
+#### 3.1.3 Fetch-Decode-Execute Loop
 
 Execution proceeds as follows:
 
@@ -310,17 +334,17 @@ Execution proceeds as follows:
 
 4. **Advance**: Update PC to the computed next address. Increment cycle counter.
 
-#### 3.1.3 Instruction Dispatch
+#### 3.1.4 Instruction Dispatch
 
 The interpreter uses match-based dispatch on the opcode_id defined in section
 2.1.
 
-#### 3.1.4 Finalization
+#### 3.1.5 Finalization
 
 Once termination is detected and the program halted, finalize the trace
 execution (see section 3.2.4 for memory finalization)
 
-#### 3.1.5 Design Rationale
+#### 3.1.6 Design Rationale
 
 **Implementation Path**:
 
@@ -362,10 +386,15 @@ struct Memory {
     memory: BTreeMap<u32, ReadWriteCell>,
 
     // Traces
-    memory_trace: Vec<([u32;4])> // address, clock, value, multiplicity
-    clock_update_trace: Vec<([u32;3])> // address, prev_clock, value
+    memory_trace: Vec<[u32;4]>,        // address, clock, value, multiplicity
+    clock_update_trace: Vec<[u32;3]>,  // address, prev_clock, value
 }
 ```
+
+Clock gaps are bounded by `RC20_LIMIT = 2^20 - 1` to match the range-check table
+used in the AIR. Whenever the real interval between two accesses exceeds this
+bound, the helper traces are populated with intermediate rows so that each row
+respects the limit.
 
 #### 3.2.2 Initialization
 
@@ -374,7 +403,7 @@ When loading the VmExe:
 Program:
 
 - `Program` is initialized with addresses and values from `VmExe::program` and
-  multiplicity set to 0. Addresses in `Memory::program` are multiples of 4.
+  multiplicity set to 0. Addresses in `Program::program` are multiples of 4.
 
 Memory:
 
@@ -407,13 +436,25 @@ The program interface provides a single word operation:
 - `fetch_instr(pc) -> Instruction`: Requires 4-byte alignment (`addr & 3 == 0`).
 
 Misaligned accesses produce an `AlignmentError`. All memory operations are
-recorded in the memory trace (see Section 2.4).
+recorded in the memory trace (see Section 3.2.4).
 
-Also `word` and `halfword` methods call the `byte` methods.
+`load_*` calls fail on unmapped addresses. `store_*` lazily allocates new cells
+by inserting `(value=0, clock=0)` before applying the write so that traces show
+an explicit initialization event.
+
+Halfword and word helpers are thin wrappers over the byte primitives:
+
+- `load_halfword` / `store_halfword` invoke the byte versions twice, combining
+  or splitting values in little-endian order.
+- `load_word` / `store_word` invoke the byte versions four times, again in
+  little-endian order.
+
+This guarantees that every multi-byte access is reduced to the primitive
+byte-level witness updates.
 
 ```rust
-fn fetch_instr(&mut self, pc) -> Result<[u32;4], Error> {
-    let c = self.program.get_mut(&addr).ok_or(Error::UninitializedAddress)?;
+fn fetch_instr(&mut self, pc: u32) -> Result<[u32;4], Error> {
+    let c = self.program.get_mut(&pc).ok_or(Error::UninitializedAddress)?;
     c.4 += 1;
     Ok([c.0, c.1, c.2, c.3])
 }
@@ -502,7 +543,7 @@ https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/adapter/mod.rs
 The register file consists of 32 general-purpose 32-bit registers (x0 through
 x31) plus a separate program counter.
 
-#### 2.3.1 Register Semantics
+#### 3.3.1 Register Semantics
 
 - **x0 (zero)**: Hardwired to zero. Reads always return 0. Writes are silently
   discarded.
@@ -513,10 +554,10 @@ x31) plus a separate program counter.
 - **PC**: Stored separately from the general-purpose registers. Always contains
   a 4-byte-aligned address.
 
-#### 2.3.2 Register Representation
+#### 3.3.2 Register Representation
 
 ```rust
-type RegisterEntry = (u32, u32) // register and previous clock
+type RegisterEntry = (u32, u32); // (value, previous clock)
 
 struct Registers {
     // Registers
@@ -527,12 +568,12 @@ struct Registers {
 }
 ```
 
-#### 2.3.3 Access Interface
+#### 3.3.3 Access Interface
 
 ```rust
 fn get_reg(&mut self, idx: u32, clock: u32) -> Result<RegisterEntry, Error> {
     if idx == 0 {
-        return Err(Error::ReservedRegister);
+        return Ok((0, 0));
     }
 
     let (prev_value, prev_clock) = &mut self.regs[idx as usize];
@@ -548,7 +589,7 @@ fn get_reg(&mut self, idx: u32, clock: u32) -> Result<RegisterEntry, Error> {
 
 fn set_reg(&mut self, idx: u32, clock: u32, value: u32) -> Result<RegisterEntry, Error> {
     if idx == 0 {
-        return Err(Error::ReservedRegister);
+        return Ok((0, clock));
     }
 
     let (prev_value, prev_clock) = &mut self.regs[idx as usize];
@@ -565,9 +606,12 @@ fn set_reg(&mut self, idx: u32, clock: u32, value: u32) -> Result<RegisterEntry,
 ```
 
 The explicit check for `idx == 0` ensures the x0 invariant is maintained
-regardless of what instruction encoding attempts.
+regardless of what instruction encoding attempts. Reads of x0 always return
+`(0, 0)` and never touch `reg_clock_update_trace`; writes to x0 are acknowledged
+but ignored so that callers can keep uniform code paths without conditional
+branches.
 
-#### 2.3.3 Initialization
+#### 3.3.4 Initialization
 
 At program entry (per Section 1.6):
 
@@ -579,11 +623,11 @@ At program entry (per Section 1.6):
 | x0         | 0 (hardwired)                         |
 | x1, x4-x31 | Unspecified (implementation may zero) |
 
-#### 2.3.4 Finalization
+#### 3.3.5 Finalization
 
 Return `reg_clock_update_trace` as is.
 
-#### 2.3.5 ABI Register Names
+#### 3.3.6 ABI Register Names
 
 For reference, the RISC-V calling convention assigns the following roles:
 
@@ -618,33 +662,145 @@ except for x0.
 The interpreter generates execution traces suitable for STARK proof generation
 using Stwo. Traces are organized by opcode family.
 
-#### 2.4.1 Opcode Families
+#### 3.4.1 Opcode Families
 
 Instructions are grouped into 8 families based on their operand patterns and
 constraint requirements:
 
-| Family      | Opcodes                                              | N_COLUMNS | Schema (field sizes in bytes)                                                                                                                                                             |
-| ----------- | ---------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `alu_reg`   | ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND     | 24        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                             |
-| `alu_imm`   | ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI | 22        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                                                                |
-| `upper_imm` | LUI, AUIPC                                           | 16        | cycle(1), pc(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                                                                                                           |
-| `branch`    | BEQ, BNE, BLT, BGE, BLTU, BGEU                       | 23        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), imm(4), taken(1), pc_next(4)                                                       |
-| `load`      | LB, LH, LW, LBU, LHU                                 | 21        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), addr(4), mem_val(4), rd_idx(1)                                                                                        |
-| `store`     | SB, SH, SW                                           | 22        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), imm(4), addr(4)                                                                    |
-| `jump`      | JAL, JALR                                            | 25        | cycle(1), pc(1), rs1_val(4), rs1_prev_clock(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1), pc_next(4)                                                                |
-| `mul_div`   | MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU       | 32        | cycle(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1), result_lo(4), result_hi(4) |
+| Family      | Opcodes                                              | N_COLUMNS | Schema (field sizes in bytes)                                                                                                                                                                           |
+| ----------- | ---------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alu_reg`   | ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND     | 25        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                             |
+| `alu_imm`   | ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI | 23        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                                                                |
+| `upper_imm` | LUI, AUIPC                                           | 17        | cycle(1), opcode_id(1), pc(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)                                                                                                           |
+| `branch`    | BEQ, BNE, BLT, BGE, BLTU, BGEU                       | 24        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), imm(4), taken(1), pc_next(4)                                                       |
+| `load`      | LB, LH, LW, LBU, LHU                                 | 33        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), addr(4), mem_width(1), mem_val(4), mem_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1)          |
+| `store`     | SB, SH, SW                                           | 29        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), imm(4), addr(4), mem_width(1), mem_prev_val(4), mem_prev_clock(1)                  |
+| `jump`      | JAL, JALR                                            | 27        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), imm(4), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1), pc_next(4)                                                    |
+| `mul_div`   | MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU       | 33        | cycle(1), opcode_id(1), pc(1), rs1_idx(1), rs1_val(4), rs1_prev_clock(1), rs2_idx(1), rs2_val(4), rs2_prev_clock(1), rd_idx(1), rd_val(4), rd_prev_val(4), rd_prev_clock(1), result_lo(4), result_hi(4) |
 
-### 2.4.2 Trace recording
+#### 3.4.2 Trace recording
 
-As explain in 3.1.2, a VM cycle fetches an instruction, executes it and records
-it into the trace. Every opcode execute function (one per opcode_id) collects
-the required information:
+As explained in Section 3.1.3, a VM cycle fetches an instruction, executes it,
+and records a row. Every opcode handler (exactly one per `opcode_id`) gathers:
 
-- directly accessible from the instruction: opcode_id, rs1_idx, rs2_idx, rd_idx,
-  imm.
-- from memory getters/setters: mem_val, mem_prev_val, mem_prev_clock
-- from register getters/setters: rs1_val, rs2_val, rd_val, rd_prev_val,
-  rd_prev_clock
+- static fields from the decoded instruction (`opcode_id`, register indices,
+  `imm`);
+- dynamic register data via `Registers::get_reg` / `set_reg` (`rs*_val`,
+  `rs*_prev_clock`, `rd_prev_val`, `rd_prev_clock`);
+- dynamic memory data via `Memory::{load_*,store_*}` (`mem_val` or
+  `mem_prev_val`, `mem_prev_clock`, `addr`);
+- control-flow outcomes such as `pc_next`, `taken`, and `result_hi/lo`.
+
+Every handler must populate the schema listed in Table 3.4.1 before advancing
+the cycle counter.
+
+#### 3.4.3 Instruction semantics
+
+Opcode handlers execute the ISA semantics byte-for-byte. Unless stated
+otherwise, the next PC equals `pc + 4` and arithmetic uses wraparound
+(`u32::wrapping_*`). Writing to `rd = x0` is permitted but has no effect.
+
+**`alu_reg` (R-type ALU)**
+
+- `ADD`: `rd = rs1 + rs2`.
+- `SUB`: `rd = rs1 - rs2`.
+- `SLL`: `rd = rs1 << (rs2 & 0x1F)`.
+- `SLT`: `rd = 1` if `(rs1 as i32) < (rs2 as i32)` else `0`.
+- `SLTU`: `rd = 1` if `rs1 < rs2` (unsigned) else `0`.
+- `XOR`: `rd = rs1 ^ rs2`.
+- `SRL`: `rd = rs1 >> (rs2 & 0x1F)` (logical).
+- `SRA`: arithmetic right shift by `rs2 & 0x1F`.
+- `OR`: bitwise `rs1 | rs2`.
+- `AND`: bitwise `rs1 & rs2`.
+
+**`alu_imm` (I-type ALU)**
+
+- `ADDI`: `rd = rs1 + imm`.
+- `SLTI`: signed comparison with `imm`.
+- `SLTIU`: unsigned comparison with `imm`.
+- `XORI`: `rd = rs1 ^ imm`.
+- `ORI`: `rd = rs1 | imm`.
+- `ANDI`: `rd = rs1 & imm`.
+- `SLLI`: `rd = rs1 << (imm & 0x1F)`.
+- `SRLI`: logical right shift by `imm & 0x1F`.
+- `SRAI`: arithmetic right shift by `imm & 0x1F`.
+
+**`upper_imm` (U-type)**
+
+- `LUI`: `rd = imm` (already shifted left by 12).
+- `AUIPC`: `rd = pc + imm`.
+
+**`branch` (B-type)**
+
+`addr = pc.wrapping_add(imm)` produces the branch target. `taken` equals:
+
+- `BEQ`: `rs1 == rs2`.
+- `BNE`: `rs1 != rs2`.
+- `BLT`: `(rs1 as i32) < (rs2 as i32)`.
+- `BGE`: `(rs1 as i32) ≥ (rs2 as i32)`.
+- `BLTU`: `rs1 < rs2` (unsigned).
+- `BGEU`: `rs1 ≥ rs2` (unsigned).
+
+`pc_next = addr` when `taken`, otherwise `pc + 4`. `pc_next` must satisfy
+`pc_next & 0x3 == 0`, otherwise an `AlignmentError` is raised.
+
+**`load` (I-type loads)**
+
+`addr = rs1_val.wrapping_add(imm)` and `mem_width ∈ {1,2,4}` encodes the access
+size. Alignment is enforced per Section 3.2.3. The value placed in `rd` is:
+
+- `LB`: sign-extend the loaded byte.
+- `LH`: sign-extend the loaded halfword.
+- `LW`: load the full word.
+- `LBU`: zero-extend the loaded byte.
+- `LHU`: zero-extend the loaded halfword.
+
+`mem_val` stores the zero-extended raw value read; `rd_val` stores the
+sign-extended value when required. Loads never mutate memory, so the trace only
+records `mem_val` plus the `mem_prev_clock` returned by `Memory::load_*`.
+
+**`store` (S-type stores)**
+
+`addr = rs1_val.wrapping_add(imm)` with the same alignment rules as loads.
+`rs2_val` supplies the data:
+
+- `SB`: write the low 8 bits.
+- `SH`: write the low 16 bits (little-endian).
+- `SW`: write the full 32 bits.
+
+`mem_prev_val` / `mem_prev_clock` capture the overwritten byte/halfword/word and
+its last write clock before the store. After the store succeeds the new value is
+visible to future loads.
+
+**`jump` (J-type)**
+
+- `JAL`: `rd = pc + 4`, `pc_next = pc + imm`.
+- `JALR`: `target = (rs1_val + imm) & !1`, `rd = pc + 4`, `pc_next = target`.
+
+Targets must be 4-byte aligned; otherwise `AlignmentError` is raised.
+
+**`mul_div` (M extension)**
+
+All products are computed using 64-bit intermediates (`i64` or `u64` as
+appropriate):
+
+- `MUL`: `rd = low_32(rs1 * rs2)`, while `result_lo/hi` capture the full
+  product.
+- `MULH`: `rd = high_32((rs1 as i64) * (rs2 as i64))`.
+- `MULHSU`: `rd = high_32((rs1 as i64) * (rs2 as u64))`.
+- `MULHU`: `rd = high_32((rs1 as u64) * (rs2 as u64))`.
+- `DIV`: `rd = signed_quotient(rs1, rs2)` with truncation toward zero;
+  divide-by-zero yields `0xFFFF_FFFF`, overflow (`INT_MIN / -1`) yields
+  `INT_MIN`.
+- `DIVU`: `rd = unsigned_quotient(rs1, rs2)`; divide-by-zero yields
+  `0xFFFF_FFFF`.
+- `REM`: `rd = signed_remainder(rs1, rs2)`; divide-by-zero yields `rs1`.
+- `REMU`: `rd = unsigned_remainder(rs1, rs2)`; divide-by-zero yields `rs1`.
+
+For `MULH*` instructions, `result_lo` stores the low 32 bits even though `rd`
+receives the high part, keeping the trace arithmetically constrained. Division
+operations set `result_lo = quotient` and `result_hi = remainder` for the same
+reason.
 
 ### 3.5 Termination
 
@@ -677,7 +833,7 @@ This appendix provides a complete guest program that exercises **all 47 RV32IM
 instructions**. Use this program to validate end-to-end execution and trace
 generation.
 
-#### 2.7.1 RV32IM Instruction Checklist
+#### 3.6.1 RV32IM Instruction Checklist
 
 | Family      | Count  | Instructions                                         |
 | ----------- | ------ | ---------------------------------------------------- |
@@ -692,9 +848,7 @@ generation.
 | System      | 2      | ECALL, EBREAK                                        |
 | **Total**   | **47** |                                                      |
 
-#### 2.7.2 Test Program Source
-
-<!-- NOTE(antoine): same issue as above with .bss.stack, doesn't compile. -->
+#### 3.6.2 Test Program Source
 
 ```rust
 #![no_std]
@@ -1144,7 +1298,7 @@ fn panic(_: &PanicInfo) -> ! {
 }
 ```
 
-#### 2.7.3 Build Instructions
+#### 3.6.3 Build Instructions
 
 ```bash
 cargo build \
@@ -1153,7 +1307,7 @@ cargo build \
   --target riscv32im-unknown-none-elf
 ```
 
-#### 2.7.4 End-to-End Validation
+#### 3.6.4 End-to-End Validation
 
 When implementing Section 2, the following validation steps confirm correct
 behavior:
@@ -1173,7 +1327,7 @@ behavior:
    - `trace_mul_div.bin` (MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU)
    - `trace_memory.bin` (unified load/store log)
 
-#### 2.7.5 Success Criteria
+#### 3.6.5 Success Criteria
 
 | Criterion                    | Validation Method                         |
 | ---------------------------- | ----------------------------------------- |
@@ -2272,11 +2426,11 @@ mod tests {
 | Interaction cols correct   | `4 × ceil(N_LOOKUPS / 2)` columns per component  |
 | Constraint degree ≤ 3      | `max(deg(denom) + 1, deg(mult)) ≤ 3`             |
 
-End of Section 3.
+End of Section 4.
 
 ---
 
-## 4. AIR Constraints by Opcode Family
+## 5. AIR Constraints by Opcode Family
 
 This section defines the Algebraic Intermediate Representation (AIR) constraints
 for each RV32IM instruction. Constraints enforce that trace columns (defined in
@@ -3729,7 +3883,7 @@ End of Section 4.
 
 ---
 
-## 5. Proving Pipeline
+## 6. Proving Pipeline
 
 This section specifies the end-to-end proving pipeline that transforms a guest
 ELF binary into a cryptographic proof of correct execution. The pipeline
