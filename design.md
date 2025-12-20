@@ -357,8 +357,8 @@ struct Memory {
     memory: BTreeMap<u32, ReadWriteCell>,
 
     // Traces
-    memory_trace: Vec<(u32, u32, u8, u8)> // address, clock, value, multiplicity
-    clock_update_trace: Vec<(u32, u32, u8)> // address, prev_clock, value
+    memory_trace: Vec<([u32;4])> // address, clock, value, multiplicity
+    clock_update_trace: Vec<([u32;3])> // address, prev_clock, value
 }
 ```
 
@@ -451,15 +451,28 @@ the previous clock. These are needed for opcode trace generation.
 Once the execution is over the CPU calls `memory.finalize()` to get the final
 traces:
 
-- Pushes all cells of `Memory::memory` into `read_write_trace` with multiplicity
-  -1;
 - Returns `clock_update_trace` as is;
-- Creates a trace for the Merkle and Poseidon components.
+- Creates a trace for the Merkle component:
+  - builds `initial_merkle_trace` typed as `Vec<([u32;9])>` inspired by the
+    merkle trace built in
+    https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/adapter/merkle.rs
+    for the component in
+    https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/components/merkle.rs.
+    It should contain the witness to build the tree for the initial memory
+    (leaves are M31s, one for each address). To do so it uses the
+    `Memory::memory_trace`.
+  - converts `Memory::memory` into `final_memory_trace` with multiplicity set to
+    -1;
+  - uses `final_memory_trace` to build `final_merkle_trace` (the same way as the
+    initial one).
+- Extends `memory_trace` with `final_merkle_trace`.
 
 The CPU also calls `program.finalize()`:
 
-- Creates a trace `program_trace` typed as `Vec<(u32, u32, u32, u32, u32, u32)>`
-  (addr, 4 M31s as u32s and the multiplicity) from `Program::program`.
+- Creates a trace `program_trace` typed as `Vec<([u32; 6])>` (addr, 4 M31s as
+  u32s and the multiplicity) from `Program::program`.
+- Computes a merkle tree for the `program_trace` as for `final_memory_trace` and
+  `initial_memory_trace`.
 
 #### 3.2.5 Design Rationale
 
@@ -469,6 +482,7 @@ The CPU also calls `program.finalize()`:
 - Implement the initialization of the `Memory` and `Program`
 - Implement `Memory::load_*` and `Memory::store_*` methods with alignment checks
 - Implement `Program::fetch_instr`
+- Implement Merkle trace constructors.
 - Implement `Memory::finalize()` and `Program::finalize()`
 
 ---

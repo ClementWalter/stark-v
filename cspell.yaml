@@ -20,6 +20,7 @@ words:
   - Fondeur
   - funct
   - globl
+  - halfword
   - immediates
   - jalr
   - littleriscv
@@ -29,6 +30,7 @@ words:
   - loadhu
   - loadw
   - memsz
+  - merkle
   - mulh
   - mulhsu
   - mulhu
