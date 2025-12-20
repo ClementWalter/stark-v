@@ -195,126 +195,55 @@ The return address register (`ra`, x1) is not initialized at entry and becomes
 defined when the first `call` instruction is executed, after which normal ABI
 calling conventions apply.
 
-## 2. VM Emulator and Execution Model
+## 2. Transpiler
 
-This section specifies the interpreter architecture, memory model, register
-file, trace generation strategy, and termination semantics for the zkVM
-execution engine. Given a compiled ELF binary (as produced by the toolchain
-described in Section 1), this section defines precisely how the VM executes it
-and produces execution traces suitable for proof generation.
+The program (in the .text section of the ELF) is decoded prior to the execution.
+From each instruction is extracted 4 M31s containing different type of
+information. The .text section still works by chunks of 4 cells (i.e. default PC
+update is PC += 4) but cells are no longer bytes after transpilation but rather
+M31s containing the decoded instructions opcode id, operands and immediates.
+However there is a 1-to-1 mapping of addresses between the byte and the M31
+representations.
 
-### 2.1 Interpreter Architecture
+### 2.1 Instruction representation
 
-The VM implements a single-threaded, synchronous fetch-decode-execute loop. Each
-instruction is processed atomically: fetch the 32-bit word at the program
-counter, decode using fixed-width field extraction, execute via nested match
-dispatch, and advance machine state.
+The original u32 instructions are decoded using `rrs-lib`. Each opcode (defined
+by a unique combination of the 7 first bits of the instruction, funct3 and
+funct7) is mapped to a unique opcode_id (M31). For each instruction variant we
+build the M31s as so:
 
-#### 2.1.1 State Representation
+- R-Type (including mul/div from "M" extension): (opcode_id, rd, rs1, rs2)
+- I-Type: (opcode_id, rd, rs1, imm)
+- S-Type: (opcode_id, rs1, rs2, imm)
+- B-Type: (opcode_id, rs1, rs2, imm)
+- U-Type: (opcode_id, rd, imm, 0)
+- J-Type: (opcode_id, rd, imm, 0)
 
-The interpreter maintains the following state:
+For the interpreter, it's easier to have the instructions
+ids/operands/immediates as u32 for better interaction with other values
+(registers, addresses, etc.)
+
+### 2.2 Transpiler Architecture
+
+The transpiler takes an ELF and converts it into a VmExe struct with the decoded
+instructions. `program` contains the .text section transpiled of the ELF and
+memory contains the rest of the PT_LOAD sections.
 
 ```rust
-struct Cpu {
-    regs: [u32; 32],    // General-purpose registers x0-x31
-    pc: u32,            // Program counter
-    memory: Memory,     // Address space (see Section 2.2)
-    cycle: u64,         // Instruction count
-    halted: bool,       // Termination flag
+struct VmExe{
+    initial_pc: u32,
+    regs: [u32; 32],
+    program: BTreeMap<u32, [u32;4]>,
+    memory: BTreeMap<u32, u8>
 }
 ```
 
-The `cycle` counter increments by one for each instruction executed, providing a
-global ordering for trace events.
-
-#### 2.1.2 Fetch-Decode-Execute Loop
-
-Execution proceeds as follows:
-
-1. **Fetch**: Load the 32-bit instruction word from memory at the current PC.
-   The PC must be 4-byte aligned; misaligned fetches produce an error.
-
-2. **Decode**: Extract the 7-bit opcode from bits [6:0]. Based on the opcode,
-   extract additional fields (funct3, funct7, register indices, immediates)
-   according to the RISC-V instruction format (R, I, S, B, U, or J type).
-
-3. **Execute**: Dispatch to the appropriate handler based on opcode. Each
-   handler reads source operands, performs the operation, writes results, and
-   computes the next PC.
-
-4. **Trace**: Append a trace row to the appropriate opcode family collector (see
-   Section 2.4).
-
-5. **Advance**: Update PC to the computed next address. Increment cycle counter.
-
-#### 2.1.3 Instruction Dispatch
-
-The interpreter uses match-based dispatch on the opcode field:
-
-```rust
-fn step(&mut self) -> Result<()> {
-    let word = self.memory.load_word(self.pc)?;
-    let opcode = word & 0x7F;
-    match opcode {
-        0b0110011 => self.execute_alu_reg(word),   // R-type: ADD, SUB, ...
-        0b0010011 => self.execute_alu_imm(word),   // I-type: ADDI, SLTI, ...
-        0b0000011 => self.execute_load(word),      // I-type: LB, LH, LW, ...
-        0b0100011 => self.execute_store(word),     // S-type: SB, SH, SW
-        0b1100011 => self.execute_branch(word),    // B-type: BEQ, BNE, ...
-        0b1101111 => self.execute_jal(word),       // J-type: JAL
-        0b1100111 => self.execute_jalr(word),      // I-type: JALR
-        0b0110111 => self.execute_lui(word),       // U-type: LUI
-        0b0010111 => self.execute_auipc(word),     // U-type: AUIPC
-        0b1110011 => self.execute_system(word),    // I-type: ECALL, EBREAK
-        _ => Err(InvalidOpcode(opcode)),
-    }
-}
-```
-
-Within each handler, further dispatch on `funct3` and `funct7` selects the
-specific operation. This explicit match structure ensures every instruction path
-is visible and auditable.
-
-#### 2.1.4 Design Rationale
-
-Match-based dispatch is chosen over table-driven approaches (jump tables,
-computed `goto`s) for the following reasons:
-
-- **Auditability**: Each instruction handler is explicit in the source code.
-  Reviewers can trace exactly which code path executes for any opcode.
-
-- **Correctness**: The Rust compiler verifies exhaustiveness. Missing cases
-  produce compile-time errors rather than silent misbehavior.
-
-- **Simplicity**: No auxiliary data structures or indirection. The control flow
-  is directly readable from the match arms.
-
-- **Performance**: Modern compilers optimize dense matches into efficient jump
-  tables when beneficial, so explicit tables provide no advantage.
-
-**Implementation Path**:
-
-- Define `Cpu` struct with state fields as shown above
-- Implement `step()` with opcode-level match dispatch
-- Use `rrs_lib` crate for instruction format decoding (IType, RType, SType,
-  BType, UType, JType extractors)
-- Each `execute_*` method appends to per-opcode trace collectors
-
----
-
-### 2.2 Memory Model
-
-The VM provides a single flat 32-bit address space implemented as a sparse page
-table. Memory is byte-addressable with explicit alignment requirements for
-multi-byte accesses.
-
-#### 2.2.1 Address Space Layout
-
-The following memory layout is normative:
+The transpiler also loads the `initial_pc`, initial `regs` and initial `memory`
+from the ELF. The following memory layout is normative:
 
 | Region  | Start Address | End Address   | Size        | Access           |
 | ------- | ------------- | ------------- | ----------- | ---------------- |
-| .text   | `0x0000_0400` | `0x000F_FFFF` | 1 MB        | Read and Execute |
+| .text   | `0x0000_0400` | `0x000F_FFFF` | ~ 1 MB      | Read and Execute |
 | .rodata | `0x0010_0000` | `0x001F_FFFF` | 1 MB        | Read             |
 | .data   | `0x0020_0000` | `0x002F_FC00` | 1 MB - 1 KB | Read and Write   |
 | stack   | `0x002F_FC00` | `0x0030_0000` | 1 KB        | Read and Write   |
@@ -326,38 +255,137 @@ toward `0x002F_FC00`.
 Address `0x0000_0000` through `0x0000_03FF` are reserved and produce an error on
 access. This catches null pointer dereferences.
 
-#### 2.2.2 Sparse Page Implementation
+## 3. VM Emulator and Execution Model
 
-Memory is implemented using a binary tree mapping addresses to a tuple
-containing:
+This section specifies the interpreter architecture, memory model, register
+file, trace generation strategy, and termination semantics for the zkVM
+execution engine. Given a compiled ELF binary (as produced by the toolchain
+described in Section 1), this section defines precisely how the VM executes it
+and produces execution traces suitable for proof generation.
 
-- the value stored at that address;
-- the clock cycle at which this address was last accessed;
-- a flag marking the used memory; This has the VM memory mirroring the prover's
-  representation of the memory. It also makes the memory witness generation
-  simple.
+### 3.1 Interpreter Architecture
 
-The `initial_memory` field tracks the initial memory from the prover's point of
-view i.e. the initial VM memory (loaded from the ELF) plus all the addresses
-used by the program that are not loaded from the ELF (e.g stack).
+The VM implements a single-threaded, synchronous fetch-decode-execute loop. Each
+instruction is processed atomically: fetch the 32-bit word at the program
+counter, decode using fixed-width field extraction, execute via nested match
+dispatch, and advance machine state.
+
+#### 3.1.1 State Representation
+
+The interpreter maintains the following state:
 
 ```rust
-type Cell = (u32, u8, u8)
-
-struct Memory {
-    memory: BTreeMap<u32, Cell>,
-    initial_memory: BTreeMap<u32, Cell>
-    clock_update: Vec<(u32, u32, u8)>
+struct Cpu {
+    regs: [u32; 32],    // General-purpose registers x0-x31
+    pc: u32,            // Program counter
+    program: Program    // Program segment
+    memory: Memory,     // Read Write memory (see 3.2)
+    cycle: u64,         // Instruction count
+    halted: bool,       // Termination flag
 }
 ```
 
-#### 2.2.3 Initialization
+The `cycle` counter increments by one for each instruction executed, providing a
+global ordering for trace events.
 
-When loading an ELF, the memory is loaded with the parsed bytes and addresses.
-Clock is always set to 0 (preloaded values); Usage flag is also set to 0
-(unused) by default. The initial memory is a clone of the memory.
+#### 3.1.2 Initialization
 
-#### 2.2.4 Access Operations
+The `Cpu` is initialized using the `VmExe` setting `cycle` to 0 and halted to
+`false`.
+
+#### 3.1.2 Fetch-Decode-Execute Loop
+
+Execution proceeds as follows:
+
+1. **Fetch**: Load the decoded instruction word from the `Program` in memory for
+   the current PC. The PC must be 4-u32 aligned; misaligned fetches produce an
+   error.
+
+2. **Execute**: Dispatch to the appropriate handler based on the `opcode_id`
+   (defined in 2.1). Each handler reads operands and immediates, performs the
+   operation, writes results, and computes the next PC.
+
+3. **Trace**: Append a trace row to the appropriate opcode family collector (see
+   Section 3.4).
+
+4. **Advance**: Update PC to the computed next address. Increment cycle counter.
+
+#### 3.1.3 Instruction Dispatch
+
+The interpreter uses match-based dispatch on the opcode_id defined in section
+2.1.
+
+#### 3.1.4 Design Rationale
+
+**Implementation Path**:
+
+- Define `Cpu` struct with state fields as shown above
+- Implement `step()` with opcode-level match dispatch
+- Each `execute_*` method appends to per-opcode trace collectors
+
+---
+
+### 3.2 Memory Model
+
+The VM provides two memory segments: a program segment for instructions and a
+read-write segment for the rest. Both segments are aligned on 4 cells.
+
+#### 3.2.1 Interpreter Representation Implementation
+
+The `Program` struct contains the program and keeps track of the number of
+accesses for each instruction. The `Memory` struct contains the data for witness
+generation of the memory and clock_update components.
+
+```rust
+
+// Type representing a program cell.
+// - 4 first u32: 4 M31s stored as u32s for the decoded instruction
+// - u32: multiplicity
+type ProgramCell = (u32, u32, u32, u32, u32)
+
+struct Program {
+    program: BTreeMap<u32, ProgramCell>,
+}
+
+// Type representing a RW memory cell.
+// - u8: value
+// - u32: previous clock
+type ReadWriteCell = (u8, u32)
+
+struct Memory {
+    // Memory
+    memory: BTreeMap<u32, ReadWriteCell>,
+
+    // Traces
+    memory_trace: Vec<(u32, u32, u8, u8)> // address, clock, value, multiplicity
+    clock_update_trace: Vec<(u32, u32, u8)> // address, prev_clock, value
+}
+```
+
+#### 3.2.2 Initialization
+
+When loading the VmExe:
+
+Program:
+
+- `Program` is initialized with addresses and values from `VmExe::program` and
+  multiplicity set to 0. Addresses in `Memory::program` are multiples of 4.
+
+Memory:
+
+- `Memory::memory` is initialized with addresses and values from `VmExe::memory`
+  and with clock set to 0;
+- all cells of `Memory::memory` are pushed to `Memory::memory_trace` with the
+  same addresses, values and clocks, and set multiplicity to 1.
+- `Memory::clock_update_trace` is initialized empty.
+
+#### 3.2.3 Access Operations
+
+The memory must continually update the 2 segments as so:
+
+- `program`: when a cell from this segment is accessed, multiplicity is
+  increased by one.
+- `memory`: updates the clock with the current one for each access.
 
 The memory interface provides byte and word operations:
 
@@ -369,89 +397,83 @@ The memory interface provides byte and word operations:
 - `store_halfword(addr, clock, value)`: Requires 2-byte alignment.
 - `store_word(addr, clock, value)`: Requires 4-byte alignment.
 
-`word` and `halfword` methods call the `byte` methods. And:
+The program interface provides a single word operation:
 
-```rust
-fn load_byte(&mut self, addr: u32, clock: u32) -> u8 {
-    self.push(addr, clock, 0) // value not used for loading
-}
-```
-
-```rust
-fn store_byte(&mut self, addr: u32, clock: u32, value: u8){
-    self.push(addr, clock, value);
-}
-```
-
-```rust
-fn push(&mut self, addr: u32, clock: u32, value: u8) -> u8{
-    match self.memory.get_mut(&addr) {
-        // already used cell
-        Some((prev_clock, prev_value, used)) => {
-            // clock update
-            let delta = clock.saturating_sub(*prev_clock)
-            if delta > RC20_LIMIT {
-                for i in 0..delta/RC20_LIMIT{
-                    self.clock_update.push((addr, *prev_clock + i*RC20_LIMIT, *prev_value));
-                }
-            }
-
-            // initial_memory
-            if let Some((_, _, initial_used)) = self.initial_memory.get_mut(&addr) {
-                *initial_used = 1;
-            } else {
-                // throw an error as this shouldn't happen
-            }
-
-            // memory
-            *prev_clock = clock;
-
-            *prev_value
-        }
-
-        // first access
-        None => {
-            // clock update
-            if clock > RC20_LIMIT {
-                for i in 0..clock/RC20_LIMIT{
-                    self.clock_update.push((addr, i*RC20_LIMIT, value));
-                }
-            }
-
-            // initial memory
-            self.initial_memory.insert(addr, (0, value, 1));
-
-            // memory
-            self.memory.insert(addr, (clock, value, 1));
-
-            value
-        }
-    }
-}
-```
+- `fetch_instr(pc) -> Instruction`: Requires 4-byte alignment (`addr & 3 == 0`).
 
 Misaligned accesses produce an `AlignmentError`. All memory operations are
 recorded in the memory trace (see Section 2.4).
 
-#### 2.2.4 Design Rationale
+Also `word` and `halfword` methods call the `byte` methods.
 
-**No hardware ROM/RAM distinction**: The code region is read-only by convention,
-not enforcement. Code immutability is verified by AIR constraints in the proving
-layer, not the interpreter.
+```rust
+fn fetch_instr(&mut self, pc) -> Result<[u32;4], Error> {
+    let c = self.program.get_mut(&addr).ok_or(Error::UninitializedAddress)?;
+    c.4 += 1;
+    Ok([c.0, c.1, c.2, c.3])
+}
 
-  <!-- NOTE(antoine): if the prover checks it, it will perform a range_check so it's easy to do for the runner and should be done:
-  - EXECUTABLE (RX): pc is in program range,
-  - READ ONLY (ROM): when writing, dst_addr should not be in read space-->
+fn load_byte(&mut self, addr: u32, clock: u32) -> Result<(u8, u32), Error> {
+    let (prev_value, prev_clock) = self.memory.get_mut(&addr).ok_or(Error::UninitializedAddress)?;
+    let old_clock = *prev_clock;
+
+    let delta = clock.saturating_sub(*prev_clock);
+    for i in 0..delta / RC20_LIMIT {
+        self.clock_update_trace.push((addr, *prev_clock + i * RC20_LIMIT, *prev_value));
+    }
+    *prev_clock = clock;
+    Ok((*prev_value, old_clock))
+}
+
+fn store_byte(&mut self, addr: u32, clock: u32, value: u8) -> Result<(u8, u32), Error> {
+    if !self.memory.contains_key(&addr) {
+        self.memory_trace.push((addr, 0, 0, 1));
+        self.memory.insert(addr, (0, 0));
+    }
+    let (prev_value, prev_clock) = self.memory.get_mut(&addr).unwrap();
+    let (old_value, old_clock) = (*prev_value, *prev_clock);
+
+    let delta = clock.saturating_sub(*prev_clock);
+    for i in 0..delta / RC20_LIMIT {
+        self.clock_update_trace.push((addr, *prev_clock + i * RC20_LIMIT, *prev_value));
+    }
+    *prev_clock = clock;
+    *prev_value = value;
+    Ok((old_value, old_clock))
+}
+```
+
+The `load_byte` and `store_byte` functions both return the previous value and
+the previous clock. These are needed for opcode trace generation.
+
+#### 3.2.4 Finalization
+
+Once the execution is over the CPU calls `memory.finalize()` to get the final
+traces:
+
+- Pushes all cells of `Memory::memory` into `read_write_trace` with multiplicity
+  -1;
+- Returns `clock_update_trace` as is;
+- Creates a trace for the Merkle and Poseidon components.
+
+The CPU also calls `program.finalize()`:
+
+- Creates a trace `program_trace` typed as `Vec<(u32, u32, u32, u32, u32, u32)>`
+  (addr, 4 M31s as u32s and the multiplicity) from `Program::program`.
+
+#### 3.2.5 Design Rationale
 
 **Implementation Path**:
 
-- Define `Memory` struct
-- Implement `load_*` and `store_*` methods with alignment checks
-- Implement the `push` method
+- Define `Memory` and `Program` structs
+- Implement the initialization of the `Memory` and `Program`
+- Implement `Memory::load_*` and `Memory::store_*` methods with alignment checks
+- Implement `Program::fetch_instr`
+- Implement `Memory::finalize()` and `Program::finalize()`
 
 ---
 
-### 2.3 Register File
+### 3.3 Register File
 
 The register file consists of 32 general-purpose 32-bit registers (x0 through
 x31) plus a separate program counter.
