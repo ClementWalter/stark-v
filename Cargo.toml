@@ -1,26 +1,10 @@
 [workspace]
-resolver = "3"
-members = [
-  "crates/builder",
-  "crates/cli",
-  "crates/prover",
-  "crates/stark-v",
-  "crates/transpiler",
-]
-exclude = ["guests/playground"]
+resolver = "2"
+members = ["guest/guest-lib"]
+exclude = ["guest/guest-bin"]
 
-[workspace.dependencies]
-clap = { version = "4", features = ["derive"] }
-derive_more = { version = "1.0", features = ["display"] }
-elf = "0.7.4"
-eyre = "0.6"
-rrs-lib = "0.1.0"
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-thiserror = { version = "2" }
+[profile.dev]
+panic = "abort"
 
-builder = { path = "crates/builder" }
-transpiler = { path = "crates/transpiler" }
-stark-v = { path = "crates/stark-v" }
+[profile.release]
+panic = "abort"
