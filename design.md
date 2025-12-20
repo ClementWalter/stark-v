@@ -498,31 +498,62 @@ Once the execution is over the CPU calls `memory.finalize()` to get the final
 traces:
 
 - Returns `clock_update_trace` as is;
-- Creates a trace for the Merkle component:
-  - builds `initial_merkle_trace` typed as `Vec<([u32;9])>` inspired by the
-    merkle trace built in
+- Creates explicit Merkle traces for the memory commitments, matching the exact
+  format consumed by `crates/prover/src/components/merkle.rs` in
+  https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/components/merkle.rs:
+  - `initial_merkle_trace: Vec<[u32;9]>` is produced by rerunning the
+    `build_partial_merkle_tree` algorithm from
     https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/adapter/merkle.rs
-    for the component in
-    https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/components/merkle.rs.
-    It should contain the witness to build the tree for the initial memory
-    (leaves are M31s, one for each address). To do so it uses the
-    `Memory::memory_trace`.
-  - converts `Memory::memory` into `final_memory_trace` with multiplicity set to
-    -1;
-  - uses `final_memory_trace` to build `final_merkle_trace` (the same way as the
-    initial one).
-- Extends `memory_trace` with `final_merkle_trace`.
+    directly on `Memory::memory_trace` (which, immediately after execution,
+    still reflects the initial memory). The exact procedure is:
+    1. Treat every recorded byte address as a distinct leaf; convert `(addr,
+       clock, value, multiplicity)` into a leaf `(index = addr, depth = 30,
+       value = M31::from(value), multiplicity = multiplicity)`.
+    2. For each depth from 30 down to 1, pair neighboring children `(index,
+       index ^ 1)`, fill any missing child with the default Poseidon hash for
+       that depth, compute the parent using `Poseidon2Hash::hash(left, right)`,
+       and propagate multiplicity as `left_mult + right_mult`.
+    3. Emit one row per node with schema
+       `[index, depth, left_value, right_value, parent_value, left_mult,
+         right_mult, parent_mult, root]`, where `root` is the final Merkle root
+       produced by the same run of the algorithm. Depth ordering is irrelevant;
+       rows can be appended as nodes are produced.
+  - To create the final memory witness, take the post-execution map stored in
+    `Memory::memory`, convert it into the same tuple representation as
+    `memory_trace` but set every multiplicity to `-1`, and append this data to
+    `memory_trace`. Running the tree-building procedure above on this augmented
+    trace yields `final_merkle_trace`, and the resulting rows should be appended
+    as well.
+  - A third invocation of the same tree builder runs on `program_trace` so that
+    the `.text` segment has its own Merkle witness. Every instruction byte
+    becomes a leaf with multiplicity `1`, and the rows follow the same
+    `[index, depth, …, root]` schema.
+- Extend `memory_trace` with both the final-memory rows (multiplicity `-1`) and
+  the derived Merkle rows so that continuation proofs have the per-access log
+  plus both boundary commitments.
 
 The CPU also calls `program.finalize()`:
 
 - Creates a trace `program_trace` typed as `Vec<([u32; 6])>` (addr, 4 M31s as
-  u32s and the multiplicity) from `Program::program`.
-- Computes a merkle tree for the `program_trace` as for `final_memory_trace` and
-  `initial_memory_trace`.
+  u32s and the multiplicity) from `Program::program`. The Merkle tree described
+  above is built directly from this byte-precise data—no QM31 decoding or
+  regrouping beyond the four decoded words per instruction is needed.
 
-Merkle trees components use the Poseidon component so a trace for this component
-must also be generated. Once more, this can be taken from :
-https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/adapter/mod.rs
+Merkle tree hashing uses the Poseidon2 permutation, so a Poseidon trace must be
+generated alongside the Merkle rows. Follow the same pattern as
+https://github.com/kkrt-labs/cairo-m/blob/main/crates/prover/src/adapter/mod.rs:
+
+1. For every node emitted in any of the three trees, call `Poseidon2Hash::hash`
+   with the two child values. Record the input tuple `[left_value, right_value]`
+   in the Poseidon trace and store the resulting `parent_value`.
+2. Immediately after obtaining the hash output, push a second tuple
+   `[parent_value, 0]` so the Poseidon component observes both the input and the
+   resulting digest (the second lane is zero because the Cairo-M Poseidon2
+   component uses a rate-2 sponge).
+
+These two entries per node mirror the lookup structure in
+`LookupData::poseidon2` and ensure every Merkle edge is backed by an explicit
+Poseidon witness.
 
 #### 3.2.5 Design Rationale
 
