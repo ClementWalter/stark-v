@@ -566,7 +566,7 @@ constraint requirements:
 - pc can be a M31 (no bytecode will be more than 1 billion instructions);
 - addr can be a M31 (memory space shouldn't exceed M31);
 - imm can also be M31 when it is used to address the memory (load and store);
-Memory operations should not be stored in a `memory` trace but directly in the opcode witness buffers. When the register is a dst register, the previous value rd_prev_val(4) should be added to the trace. Same for the Store family, mem_prev_val(4) containing the value at memory emplacement before writting should be in the trace. This should be updated over the entire document.-->
+Memory operations should not be stored in a `memory` trace but directly in the opcode witness buffers. When the register is a dst register, the previous value rd_prev_val(4) should be added to the trace. Same for the Store family, mem_prev_val(4) containing the value at memory emplacement before writing should be in the trace. This should be updated over the entire document.-->
 
 #### 2.4.4 Binary Format
 
@@ -589,7 +589,7 @@ Each trace file uses column-major layout for direct compatibility with Stwo's
 Columns are written sequentially. Each column contains `n_rows` M31 values (4
 bytes each, little-endian):
 
-```
+```text
 Column 0: [row_0, row_1, ..., row_{n-1}]
 Column 1: [row_0, row_1, ..., row_{n-1}]
 ...
@@ -1455,7 +1455,7 @@ The memory component uses 9 trace columns:
 For consecutive accesses to the same address, the clock difference must be
 range-checked:
 
-```
+```text
 clock - prev_clock ∈ [1, RC20_LIMIT]
 ```
 
@@ -1474,7 +1474,7 @@ inserts intermediate "clock update" entries that bridge the gap in increments of
 The Merkle component proves the root hash of memory state. Each memory value (4
 bytes) emits 4 Merkle lookups:
 
-```
+```text
 +1(4 * addr + 0, TREE_HEIGHT, value[0], root)
 +1(4 * addr + 1, TREE_HEIGHT, value[1], root)
 +1(4 * addr + 2, TREE_HEIGHT, value[2], root)
@@ -1511,7 +1511,7 @@ relations. Each relation defines a tuple format and multiplicity convention.
 
 #### 3.5.1 Memory Relation
 
-<!-- NOTE(antoine): we need to handle the inplace writting operations (that were avoided with a temp var trick in the compiler for cairo-m) -->
+<!-- NOTE(antoine): we need to handle the inplace writing operations (that were avoided with a temp var trick in the compiler for cairo-m) -->
 
 **Tuple size**: 6 **Format**:
 `± mult(address, clock, value[0], value[1], value[2], value[3])`
@@ -1575,7 +1575,7 @@ extension field coordinates).
 
 Each LogUp term is committed and constrained as:
 
-```
+```text
 committed_value · denominator - multiplicity = 0
 ```
 
@@ -1588,7 +1588,7 @@ Where:
 
 The constraint degree is:
 
-```
+```text
 max(degree(denominator) + 1, degree(multiplicity))
 ```
 
@@ -1599,7 +1599,7 @@ This must be ≤ the maximum constraint degree bound (3 for this zkVM).
 Two LogUp fractions can be pre-summed when the combined degree stays within
 bounds:
 
-```
+```text
 a/b + c/d = (a·d + c·b) / (b·d)
 ```
 
@@ -1627,7 +1627,7 @@ combined numerator.
 
 #### 3.6.4 Column Count Formula
 
-```
+```text
 SECURE_EXTENSION_DEGREE = 4  (QM31 has 4 M31 coordinates)
 
 N_INTERACTION_COLUMNS = SECURE_EXTENSION_DEGREE × ceil(N_LOOKUPS / 2)
@@ -1706,7 +1706,7 @@ columns:
 
 <!-- NOTE(antoine): files are used for rare occasions but the overwhelmingly majority of times the traces are directly passed to prover without dumping them into a file (which will greatly slow down the flow). -->
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │           Section 2 Trace Files (column-major)              │
 │   trace_alu_reg.bin, trace_load.bin, trace_memory.bin, ...  │
@@ -1842,7 +1842,7 @@ with end-to-end validation against the Section 2.7 test program.
 
 #### 3.9.1 Opcode Trace Witness Generator
 
-<!-- NOTE(antoine): as mentioned above, default behaviour for generating witness is to use the rust objects rather than the files (which are an optional for now feature). -->
+<!-- NOTE(antoine): as mentioned above, default behavior for generating witness is to use the rust objects rather than the files (which are an optional for now feature). -->
 
 ```rust
 use std::fs::File;
@@ -2290,7 +2290,7 @@ Each constraint operates on columns from the trace families defined in Section
 2.4. Values in the trace are already byte-decomposed into M31 field elements.
 For a 32-bit value `v`, the trace stores four columns:
 
-```
+```text
 v_0 = byte_0(v)   # LSB
 v_1 = byte_1(v)
 v_2 = byte_2(v)
@@ -2327,7 +2327,7 @@ impl FrameworkEval for OpcodeEval {
 All lookup arguments use the logup protocol. Each lookup contributes a term to a
 cumulative sum that must equal zero across the entire trace:
 
-```
+```text
 Σ (multiplicity / (α - tuple)) = 0
 ```
 
@@ -2444,7 +2444,7 @@ eval.add_to_relation(RelationEntry::new(
 
 The final cumulative sum must equal zero:
 
-```
+```text
 Σ (provider_mult / denom) + Σ (-consumer_mult / denom) = 0
 ```
 
@@ -2502,7 +2502,7 @@ Carry and borrow columns are constrained to be binary: `c · (1 - c) = 0`.
 
 #### 4.3.3 ADD Constraints
 
-```
+```text
 # Result = rs1_val + rs2_val (with carry propagation)
 result_0 + carry_0·256 = rs1_val_0 + rs2_val_0
 result_1 + carry_1·256 = rs1_val_1 + rs2_val_1 + carry_0
@@ -2519,7 +2519,7 @@ rd_val_i = result_i     for i in 0..3
 
 #### 4.3.4 SUB Constraints
 
-```
+```text
 # Result = rs1_val - rs2_val (with borrow propagation)
 rs1_val_0 = result_0 + rs2_val_0 - borrow_0·256
 rs1_val_1 = result_1 + rs2_val_1 + borrow_0 - borrow_1·256
@@ -2535,7 +2535,7 @@ borrow_i ∈ {0, 1}       for i in 0..2
 
 Shift amount is masked to 5 bits (values 0-31):
 
-```
+```text
 # shift_amt = rs2_val[4:0] (only low 5 bits)
 shift_amt = rs2_val_0 & 0x1F
 shift_amt ∈ RangeCheck5  # Verify 5-bit range
@@ -2547,13 +2547,13 @@ shift_amt ∈ RangeCheck5  # Verify 5-bit range
 triples. This requires a 32-entry table per byte position with 2^8 × 32 = 8192
 entries total.
 
-```
+```text
 (rs1_val, shift_amt, result) ∈ ShiftLeftTable
 ```
 
 **Decomposed approach**: Express left shift as multiplication by power of 2:
 
-```
+```text
 result = rs1_val · 2^shift_amt  (mod 2^32)
 # Witness provides 2^shift_amt value; verify via lookup
 power_of_2 ∈ PowersOfTwo  # Table of {1, 2, 4, ..., 2^31}
@@ -2564,7 +2564,7 @@ The decomposed approach is preferred for its smaller lookup table.
 
 #### 4.3.6 Shift Right Logical (SRL) Constraints
 
-```
+```text
 # shift_amt = rs2_val[4:0]
 shift_amt = rs2_val_0 & 0x1F
 
@@ -2580,7 +2580,7 @@ remainder ∈ RangeCheck{shift_amt}        # Upper bound implicit
 
 #### 4.3.7 Shift Right Arithmetic (SRA) Constraints
 
-```
+```text
 # shift_amt = rs2_val[4:0]
 shift_amt = rs2_val_0 & 0x1F
 
@@ -2606,7 +2606,7 @@ result = unsigned_result + sign_rs1 · sign_mask
 
 Signed comparison requires extracting sign bits and handling two cases:
 
-```
+```text
 # Extract sign bits from MSB of each operand
 sign_rs1 = rs1_val_3 >> 7
 sign_rs2 = rs2_val_3 >> 7
@@ -2634,7 +2634,7 @@ result ∈ {0, 1}
 
 Unsigned comparison uses borrow propagation from subtraction:
 
-```
+```text
 # Compute rs1 - rs2 with borrow chain
 # borrow_out = 1 means rs1 < rs2 (unsigned)
 
@@ -2652,20 +2652,20 @@ result ∈ {0, 1}
 
 #### 4.3.10 Bitwise XOR Constraints
 
-```
+```text
 # Result = rs1_val XOR rs2_val (byte by byte)
 (rs1_val_i, rs2_val_i, result_i) ∈ BitwiseXor8  for i in 0..3
 ```
 
 #### 4.3.11 Bitwise OR Constraints
 
-```
+```text
 (rs1_val_i, rs2_val_i, result_i) ∈ BitwiseOr8  for i in 0..3
 ```
 
 #### 4.3.12 Bitwise AND Constraints
 
-```
+```text
 (rs1_val_i, rs2_val_i, result_i) ∈ BitwiseAnd8  for i in 0..3
 ```
 
@@ -2710,7 +2710,7 @@ substituting `imm` for `rs2_val`.
 The 12-bit immediate is extracted from instruction bits [31:20] and
 sign-extended:
 
-```
+```text
 # Extract sign bit from instruction MSB
 sign = instr_3 >> 7
 sign · (1 - sign) = 0  # Constrain to binary
@@ -2734,7 +2734,7 @@ imm_i ∈ RangeCheck8  for i in 0..3
 
 These reuse R-type constraint patterns with `imm` substituted for `rs2_val`:
 
-```
+```text
 # ADDI: rd = rs1 + sign_ext(imm)
 # Uses ADD constraints from Section 4.3.3 with imm_i replacing rs2_val_i
 result_0 + carry_0·256 = rs1_val_0 + imm_0
@@ -2747,7 +2747,7 @@ result_3              = rs1_val_3 + imm_3 + carry_2  (mod 256)
 
 #### 4.4.4 Bitwise Immediates (XORI, ORI, ANDI)
 
-```
+```text
 # Byte-wise operations with sign-extended immediate
 (rs1_val_i, imm_i, result_i) ∈ BitwiseXor8  for XORI
 (rs1_val_i, imm_i, result_i) ∈ BitwiseOr8   for ORI
@@ -2758,7 +2758,7 @@ result_3              = rs1_val_3 + imm_3 + carry_2  (mod 256)
 
 Shift immediate instructions encode the shift amount in bits [24:20] (shamt):
 
-```
+```text
 # Extract shamt from instruction (5 bits)
 shamt = instr_2 >> 4  # Bits [24:20]
 shamt ∈ RangeCheck5   # Verify 0 ≤ shamt ≤ 31
@@ -2822,7 +2822,7 @@ multiplication with quotient, remainder, and verification columns.
 
 Operands are decomposed into 8-bit limbs for schoolbook multiplication:
 
-```
+```text
 op0 = op0_0 + op0_1·2⁸ + op0_2·2¹⁶ + op0_3·2²⁴
 op1 = op1_0 + op1_1·2⁸ + op1_2·2¹⁶ + op1_3·2²⁴
 ```
@@ -2837,7 +2837,7 @@ during constraint evaluation.
 
 The 64-bit product is computed via positional partial sums:
 
-```
+```text
 # Partial products at each byte position
 p0 = op0_0·op1_0
 p1 = op0_0·op1_1 + op0_1·op1_0
@@ -2850,7 +2850,7 @@ p6 = op0_3·op1_3
 
 Result bytes with carry propagation:
 
-```
+```text
 res_0 + carry_0·2⁸ = p0
 res_1 + carry_1·2⁸ = p1 + carry_0
 res_2 + carry_2·2⁸ = p2 + carry_1
@@ -2868,35 +2868,35 @@ from the maximum value at each position:
 
 **Position 0**: Single product term
 
-```
+```text
 max(p0) = 255 × 255 = 65,025
 carry_0 = p0 >> 8 ≤ 65,025 / 256 = 254
 ```
 
 **Position 1**: Two product terms plus incoming carry
 
-```
+```text
 max(p1 + carry_0) = 2 × (255 × 255) + 254 = 130,304
 carry_1 ≤ 130,304 / 256 = 509
 ```
 
 **Position 2**: Three product terms plus incoming carry
 
-```
+```text
 max(p2 + carry_1) = 3 × (255 × 255) + 509 = 195,584
 carry_2 ≤ 195,584 / 256 = 764
 ```
 
 **Position 3**: Four product terms (maximum) plus incoming carry
 
-```
+```text
 max(p3 + carry_2) = 4 × (255 × 255) + 764 = 260,864
 carry_3 ≤ 260,864 / 256 = 1,019
 ```
 
 **Positions 4-6** (for 64-bit result): Term count decreases symmetrically
 
-```
+```text
 carry_4 ≤ 765  (3 terms + carry_3 residual)
 carry_5 ≤ 510  (2 terms + carry_4 residual)
 carry_6 ≤ 255  (1 term + carry_5 residual)
@@ -2904,7 +2904,7 @@ carry_6 ≤ 255  (1 term + carry_5 residual)
 
 **Range Check Integration**: Carries are verified via RangeCheck16:
 
-```
+```text
 (MAX_CARRY_i - carry_i) ∈ RangeCheck16  for i in 0..6
 ```
 
@@ -2915,13 +2915,13 @@ This checks `carry_i ≤ MAX_CARRY_i` since RangeCheck16 verifies values in [0,
 
 **MUL**: Returns low 32 bits of product
 
-```
+```text
 rd_val = res_0 + res_1·2⁸ + res_2·2¹⁶ + res_3·2²⁴
 ```
 
 **MULH** (signed × signed → high 32 bits): Requires sign handling
 
-```
+```text
 sign1 = op0_3 >> 7
 sign2 = op1_3 >> 7
 result_sign = sign1 XOR sign2
@@ -2938,13 +2938,13 @@ rd_val = product[63:32]
 
 **MULHU** (unsigned × unsigned → high 32 bits):
 
-```
+```text
 rd_val = res_4 + res_5·2⁸ + res_6·2¹⁶ + res_7·2²⁴
 ```
 
 **MULHSU** (signed × unsigned → high 32 bits):
 
-```
+```text
 sign1 = op0_3 >> 7
 abs0 = sign1 ? twos_complement(op0) : op0
 abs_product = abs0 × op1  (op1 treated as unsigned)
@@ -2956,7 +2956,7 @@ rd_val = product[63:32]
 
 Division is verified through the fundamental identity:
 
-```
+```text
 dividend = quotient × divisor + remainder
 ```
 
@@ -2967,7 +2967,7 @@ This decomposes into:
 
 2. **Addition verification**: Prove `n = prod + r` where n is dividend
 
-```
+```text
 n_lo = prod_0 + prod_1·2⁸ + r_lo - add_carry_0·2¹⁶
 n_hi = prod_2 + prod_3·2⁸ + r_hi + add_carry_0 - add_carry_1·2¹⁶
 0    = prod_4 + prod_5·2⁸ + add_carry_1 - add_carry_2·2¹⁶
@@ -2982,7 +2982,7 @@ The final constraint `add_carry_3 = 0` ensures no overflow beyond 32 bits.
 The remainder must satisfy `0 ≤ r < |d|`. This is proven by showing the
 subtraction `d - r - 1` does not underflow:
 
-```
+```text
 sub_lo = d_0 + d_1·2⁸ + sub_borrow_0·2¹⁶ - r_lo - 1
 sub_hi = d_2 + d_3·2⁸ + sub_borrow_1·2¹⁶ - r_hi - sub_borrow_0
 
@@ -3024,7 +3024,7 @@ specifies:
 
 Detection:
 
-```
+```text
 is_overflow = (n = 0x80000000) ∧ (d = 0xFFFFFFFF)
 ```
 
@@ -3070,7 +3070,7 @@ accessed word.
 Both loads and stores compute the effective address from a base register and
 sign-extended 12-bit immediate:
 
-```
+```text
 # addr = rs1_val + sign_ext(imm)
 addr_0 + carry_0·256 = rs1_val_0 + imm_0
 addr_1 + carry_1·256 = rs1_val_1 + imm_1 + carry_0
@@ -3094,7 +3094,7 @@ Alignment is enforced via the low bits of `addr_0`:
 
 For word alignment, use auxiliary column `aligned`:
 
-```
+```text
 aligned = (addr_0 - (addr_0 & 0x3)) / 4
 addr_0 = aligned · 4 + offset
 offset ∈ {0}  (for LW/SW)
@@ -3105,7 +3105,7 @@ offset ∈ {0}  (for LW/SW)
 All memory operations emit lookups to the Memory relation using a 6-element
 tuple:
 
-```
+```text
 MemoryTuple = (word_addr, clock, value_0, value_1, value_2, value_3)
 ```
 
@@ -3125,7 +3125,7 @@ auxiliary selector columns:
 
 **Byte selection (LB, LBU)**:
 
-```
+```text
 # byte_offset = addr_0 & 0x3  (values: 0, 1, 2, 3)
 # Selector columns: sel_0, sel_1, sel_2, sel_3
 
@@ -3145,7 +3145,7 @@ byte = sel_0·mem_val_0 + sel_1·mem_val_1 + sel_2·mem_val_2 + sel_3·mem_val_3
 
 **Halfword selection (LH, LHU)**:
 
-```
+```text
 # half_sel = (addr_0 >> 1) & 0x1  (values: 0 or 1)
 half_sel · (half_sel - 1) = 0
 
@@ -3159,7 +3159,7 @@ After byte/halfword extraction, extend to 32 bits:
 
 **Sign extension (LB, LH)**:
 
-```
+```text
 # Extract sign bit
 sign = extracted_msb >> 7
 sign · (sign - 1) = 0  # sign ∈ {0, 1}
@@ -3176,7 +3176,7 @@ rd_val_3 = sign · 255
 
 **Zero extension (LBU, LHU)**:
 
-```
+```text
 rd_val_0 = extracted_byte_0
 rd_val_1 = (is_byte_load) ? 0 : extracted_byte_1
 rd_val_2 = 0
@@ -3192,7 +3192,7 @@ targeted bytes, and writing the result:
 
 **Store Byte (SB)**:
 
-```
+```text
 # Read current word
 (word_addr, prev_clock, old_val) ∈ MemoryRead
 
@@ -3208,7 +3208,7 @@ new_val_3 = sel_3·rs2_val_0 + (1-sel_3)·old_val_3
 
 **Store Halfword (SH)**:
 
-```
+```text
 new_val_0 = (1-half_sel)·rs2_val_0 + half_sel·old_val_0
 new_val_1 = (1-half_sel)·rs2_val_1 + half_sel·old_val_1
 new_val_2 = half_sel·rs2_val_0 + (1-half_sel)·old_val_2
@@ -3217,7 +3217,7 @@ new_val_3 = half_sel·rs2_val_1 + (1-half_sel)·old_val_3
 
 **Store Word (SW)**: Direct write without read-modify-write:
 
-```
+```text
 (word_addr, clock, rs2_val) ∈ MemoryWrite
 ```
 
@@ -3241,7 +3241,7 @@ argument linking all memory operations across the execution trace.
 
 Each memory access is represented as a 6-element tuple:
 
-```
+```text
 MemoryTuple = (address, clock, value_0, value_1, value_2, value_3)
 ```
 
@@ -3262,13 +3262,13 @@ relation!(Memory, 6);  // (addr, clock, v0, v1, v2, v3)
 The logup protocol enforces that reads and writes balance across the trace. Each
 memory operation contributes a term to a cumulative sum:
 
-```
+```text
 Σ (multiplicity_i / (z - combined_tuple_i)) = 0
 ```
 
 Where the combined tuple uses verifier challenges `(z, α)`:
 
-```
+```text
 combined_tuple = addr + α·clock + α²·v0 + α³·v1 + α⁴·v2 + α⁵·v3
 ```
 
@@ -3300,7 +3300,7 @@ pair correctly. A load at clock `T` with value `V` must consume a tuple
 
 Program code and input data are loaded into memory at clock 0:
 
-```
+```text
 # For each initial memory word at address A with value V:
 (A, 0, V_0, V_1, V_2, V_3) emitted with multiplicity +1
 ```
@@ -3414,7 +3414,7 @@ conditionally update the PC.
 To determine if a value equals zero without bit-by-bit checking, we use the
 **inverse trick** (as in Cairo-M's jnz_fp_imm):
 
-```
+```text
 # For a difference diff = rs1_val - rs2_val:
 diff · diff_inv = 1 - is_zero
 is_zero · diff = 0
@@ -3432,7 +3432,7 @@ These two constraints together enforce:
 
 #### 4.8.3 BEQ/BNE (Equality Comparison)
 
-```
+```text
 # Compute difference
 diff = rs1_val - rs2_val  (using SUB constraints from 4.3.3)
 
@@ -3446,7 +3446,7 @@ is_zero · diff = 0
 
 #### 4.8.4 BLT/BGE (Signed Comparison)
 
-```
+```text
 # Sign bits
 sign1 = rs1_val_3 >> 7
 sign2 = rs2_val_3 >> 7
@@ -3465,7 +3465,7 @@ is_less = (sign1 · (1 - sign2)) + ((1 - (sign1 XOR sign2)) · diff_sign)
 
 #### 4.8.5 BLTU/BGEU (Unsigned Comparison)
 
-```
+```text
 # Subtract with borrow tracking (from SLTU pattern in 4.3.8)
 rs1_val - rs2_val = diff + borrow_out · 2³²
 
@@ -3481,7 +3481,7 @@ is_less_unsigned = borrow_out
 The B-type immediate is a 13-bit signed value (bit 0 always 0) encoded across
 instruction fields. After extraction and sign extension:
 
-```
+```text
 # target = pc + sign_ext(imm)
 target_0 + carry_0·256 = pc_0 + imm_0
 target_1 + carry_1·256 = pc_1 + imm_1 + carry_0
@@ -3497,7 +3497,7 @@ target_i ∈ RangeCheck8  for i in 0..3
 
 Following the Cairo-M pattern, the conditional update is expressed as:
 
-```
+```text
 # Constraint form (avoids branching):
 pc_next = pc + 4 + taken · (target - pc - 4)
 
@@ -3529,7 +3529,7 @@ columns).
 JAL performs a PC-relative unconditional jump and stores the return address.
 Following Cairo-M's jmp_imm pattern:
 
-```
+```text
 # Return address: rd = pc + 4
 rd_val_0 + carry_0·256 = pc_0 + 4
 rd_val_1 + carry_1·256 = pc_1 + carry_0
@@ -3552,7 +3552,7 @@ carry_i, tc_i ∈ {0, 1}
 JALR performs an indirect jump through a register, clearing bit 0 of the target
 for alignment:
 
-```
+```text
 # Return address: rd = pc + 4  (same as JAL)
 
 # Compute raw target: target = rs1_val + sign_ext(imm)
@@ -3577,7 +3577,7 @@ bit0 · (1 - bit0) = 0  # bit0 ∈ {0, 1}
 LUI loads a 20-bit immediate into the upper 20 bits of the destination register,
 zeroing the lower 12 bits:
 
-```
+```text
 # rd = imm << 12
 # The U-type immediate is bits [31:12] of instruction
 
@@ -3598,7 +3598,7 @@ pc_next = pc + 4
 
 AUIPC adds the upper immediate (shifted left by 12) to the current PC:
 
-```
+```text
 # rd = pc + (imm << 12)
 shifted_imm = imm · 4096
 
@@ -3633,7 +3633,7 @@ ensuring execution flow integrity from initialization through termination.
 For non-control-flow instructions (ALU, load, store, upper immediate), the PC
 advances by 4 bytes:
 
-```
+```text
 # Default: pc_next = pc + 4
 pc_next_0 + carry_0·256 = pc_0 + 4
 pc_next_1 + carry_1·256 = pc_1 + carry_0
@@ -3652,7 +3652,7 @@ increment of 4 produces at most one carry at byte 0 (when `pc_0 ≥ 252`).
 The first instruction must execute at the ELF entry point, provided as a public
 input:
 
-```
+```text
 # Using indicator function for cycle = 0
 is_first = (cycle = 0) ? 1 : 0
 
@@ -3669,7 +3669,7 @@ inputs mixed into the Fiat-Shamir transcript.
 RISC-V requires 4-byte instruction alignment. This is enforced on every
 instruction:
 
-```
+```text
 # Low 2 bits of PC must be zero
 pc_0 & 0x03 = 0
 
@@ -3687,7 +3687,7 @@ fail.
 Program termination via ECALL is handled as a special instruction that produces
 no successor state:
 
-```
+```text
 # ECALL detection (opcode = 0x73, funct3 = 0, imm = 0)
 is_ecall = (opcode = 0b1110011) · (funct3 = 0) · (imm = 0)
 
@@ -4309,9 +4309,8 @@ End of Section 5.
 
 The following external resources inform the design:
 
-- **Stwo prover**: https://github.com/starkware-libs/stwo/
-- **Rookie Numbers** (prior work):
-  https://github.com/ClementWalter/rookie-numbers/
-- **Cairo-M** (Kakarot zkEVM): https://github.com/kkrt-labs/cairo-m
+- [**Stwo prover**](https://github.com/starkware-libs/stwo/)
+- [**Rookie Numbers**](https://github.com/ClementWalter/rookie-numbers/)
+- [**Cairo-M**](https://github.com/kkrt-labs/cairo-m)
 
 ---

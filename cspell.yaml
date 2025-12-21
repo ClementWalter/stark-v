@@ -5,10 +5,12 @@ words:
   - andi
   - auipc
   - bgeu
+  - bitmask
   - bltu
   - cfgs
   - Clément
   - clippy
+  - condvar
   - csrrw
   - divu
   - doctest
@@ -19,23 +21,38 @@ words:
   - filesz
   - Fondeur
   - funct
+  - futex
   - globl
+  - halfword
   - immediates
+  - inplace
+  - insn
   - jalr
+  - kakarot
   - littleriscv
   - loadb
   - loadbu
   - loadh
   - loadhu
   - loadw
+  - logup
+  - madv
+  - madvise
   - memsz
+  - merkle
+  - mersenne
+  - mispredictions
+  - mmap
   - mulh
   - mulhsu
   - mulhu
+  - mult
+  - mults
   - norelax
   - noreturn
   - objdump
   - openvm
+  - pairable
   - println
   - readelf
   - regs
@@ -49,13 +66,16 @@ words:
   - RUSTFLAGS
   - rzup
   - serde
+  - shamir
   - shamt
   - slli
   - slti
+  - sltiu
   - sltu
   - sltui
   - srai
   - srli
+  - starknet
   - starkv
   - storeb
   - storeh
@@ -63,12 +83,16 @@ words:
   - stwo
   - syscalls
   - thiserror
+  - trac
   - transpiling
   - Ttext
+  - underflowed
   - unimp
+  - usize
   - vaddr
   - vm
   - worktree
   - worktrees
+  - writeback
   - xori
   - zkvm
