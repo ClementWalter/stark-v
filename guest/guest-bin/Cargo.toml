@@ -1,6 +1,7 @@
 [package]
-name = "stark-v"
+name = "guest-bin"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+guest-lib = { path = "../guest-lib" }

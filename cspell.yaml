@@ -5,65 +5,94 @@ words:
   - andi
   - auipc
   - bgeu
+  - bitmask
   - bltu
   - cfgs
   - Clément
   - clippy
+  - condvar
   - csrrw
   - divu
   - doctest
   - dtolnay
+  - EBREAK
+  - ECALL
   - ehdr
   - filesz
   - Fondeur
   - funct
+  - futex
   - globl
+  - halfword
   - immediates
+  - inplace
+  - insn
   - jalr
+  - kakarot
   - littleriscv
   - loadb
   - loadbu
   - loadh
   - loadhu
   - loadw
+  - logup
+  - madv
+  - madvise
   - memsz
+  - merkle
+  - mersenne
+  - mispredictions
+  - mmap
   - mulh
   - mulhsu
   - mulhu
+  - mult
+  - mults
   - norelax
   - noreturn
   - objdump
   - openvm
+  - pairable
   - println
   - readelf
+  - regs
   - remu
   - repr
   - risc0
   - riscv
+  - rodata
   - rustc
   - rustflags
   - RUSTFLAGS
   - rzup
   - serde
+  - shamir
   - shamt
   - slli
   - slti
+  - sltiu
   - sltu
   - sltui
   - srai
   - srli
+  - starknet
   - starkv
   - storeb
   - storeh
   - storew
   - stwo
+  - syscalls
   - thiserror
+  - trac
   - transpiling
   - Ttext
+  - underflowed
   - unimp
+  - usize
   - vaddr
   - vm
   - worktree
   - worktrees
+  - writeback
   - xori
   - zkvm
