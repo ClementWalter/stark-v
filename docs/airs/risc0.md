@@ -2,15 +2,23 @@
 
 The relations below reference helper arguments shared across the rv32im circuit:
 
-- `CpuState(cycle, pc, mode, iCacheCycle)` orders instruction execution and carries the program counter and privilege mode.
-- `Decode(pc, next_pc, rs1, rs2, rd, imm_low, imm_high, options)` links each instruction row to its decoded opcode and immediate encoding.
-- `RegRead/RegWrite(idx, mode, word_addr, prev_cycle, low, high)` connect the logical register file to the physical memory bus, honoring the user/machine banks.
-- `Unit(options, a, b, out0_low, out0_high, out1_low, out1_high)` invokes the memoized ALU units (add/sub, bitwise, compare, multiply, divide, shift).
-- `AddU32`, `AddrSplit`, and `AddrCheck` enforce 32-bit additions and address legality checks.
+- `CpuState(cycle, pc, mode, iCacheCycle)` orders instruction execution and
+  carries the program counter and privilege mode.
+- `Decode(pc, next_pc, rs1, rs2, rd, imm_low, imm_high, options)` links each
+  instruction row to its decoded opcode and immediate encoding.
+- `RegRead/RegWrite(idx, mode, word_addr, prev_cycle, low, high)` connect the
+  logical register file to the physical memory bus, honoring the user/machine
+  banks.
+- `Unit(options, a, b, out0_low, out0_high, out1_low, out1_high)` invokes the
+  memoized ALU units (add/sub, bitwise, compare, multiply, divide, shift).
+- `AddU32`, `AddrSplit`, and `AddrCheck` enforce 32-bit additions and address
+  legality checks.
 - `VirtLoad`/`VirtStore` move data through the paged memory argument.
 - `PhysMemRead/PhysMemWrite` touch CSRs and other machine-mode state.
-- `IsZero` exposes a boolean flag proving that a 32-bit value is zero without leaking witnesses.
-- One-hot selectors such as `opt_*` ensure that only the lane corresponding to the chosen opcode variant is enabled.
+- `IsZero` exposes a boolean flag proving that a 32-bit value is zero without
+  leaking witnesses.
+- One-hot selectors such as `opt_*` ensure that only the lane corresponding to
+  the chosen opcode variant is enabled.
 
 ## 1. add
 
@@ -50,7 +58,6 @@ The relations below reference helper arguments shared across the rv32im circuit:
 - unit_out1_low
 - unit_out1_high
 
-
 ### 1.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -66,24 +73,31 @@ The relations below reference helper arguments shared across the rv32im circuit:
 ### 1.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_ADDSUB, AS_ADD))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_ADDSUB, AS_ADD), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 2. sub
 
@@ -123,7 +137,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 2.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -139,24 +152,31 @@ address remapping
 ### 2.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_ADDSUB, AS_SUB))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_ADDSUB, AS_SUB), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 3. xor
 
@@ -196,7 +216,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 3.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -212,24 +231,31 @@ address remapping
 ### 3.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_BIT, BIT_XOR))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_BIT, BIT_XOR), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 4. or
 
@@ -269,7 +295,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 4.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -285,24 +310,31 @@ address remapping
 ### 4.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_BIT, BIT_OR))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_BIT, BIT_OR), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 5. and
 
@@ -342,7 +374,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 5.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -358,24 +389,31 @@ address remapping
 ### 5.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_BIT, BIT_AND))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_BIT, BIT_AND), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 6. sll
 
@@ -415,7 +453,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 6.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -431,24 +468,31 @@ address remapping
 ### 6.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_SHIFT, SHIFT_LL))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_SHIFT, SHIFT_LL), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 7. srl
 
@@ -488,7 +532,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 7.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -504,24 +547,31 @@ address remapping
 ### 7.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_SHIFT, SHIFT_RL))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_SHIFT, SHIFT_RL), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 8. sra
 
@@ -561,7 +611,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 8.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -577,24 +626,31 @@ address remapping
 ### 8.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_SHIFT, SHIFT_RA))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_SHIFT, SHIFT_RA), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 9. slt
 
@@ -634,7 +690,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 9.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -650,24 +705,31 @@ address remapping
 ### 9.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 10. sltu
 
@@ -707,7 +769,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 10.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -723,24 +784,31 @@ address remapping
 ### 10.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_1, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 11. addi
 
@@ -777,7 +845,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 11.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -794,22 +861,29 @@ address remapping
 ### 11.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_ADDSUB, AS_ADD))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_ADDSUB, AS_ADD), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 12. xori
 
@@ -846,7 +920,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 12.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -863,22 +936,29 @@ address remapping
 ### 12.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_BIT, BIT_XOR))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_BIT, BIT_XOR), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 13. ori
 
@@ -915,7 +995,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 13.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -932,22 +1011,29 @@ address remapping
 ### 13.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_BIT, BIT_OR))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_BIT, BIT_OR), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 14. andi
 
@@ -984,7 +1070,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 14.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1001,22 +1086,29 @@ address remapping
 ### 14.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_BIT, BIT_AND))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_BIT, BIT_AND), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 15. slli
 
@@ -1053,7 +1145,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 15.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1070,22 +1161,29 @@ address remapping
 ### 15.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_SHIFT, SHIFT_LL))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_SHIFT, SHIFT_LL), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 16. srli
 
@@ -1122,7 +1220,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 16.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1139,22 +1236,29 @@ address remapping
 ### 16.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_SHIFT, SHIFT_RL))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_SHIFT, SHIFT_RL), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 17. srai
 
@@ -1191,7 +1295,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 17.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1208,22 +1311,29 @@ address remapping
 ### 17.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_SHIFT, SHIFT_RA))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_SHIFT, SHIFT_RA), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 18. slti
 
@@ -1260,7 +1370,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 18.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1277,22 +1386,29 @@ address remapping
 ### 18.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_0, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 19. sltiu
 
@@ -1329,7 +1445,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 19.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1346,22 +1461,29 @@ address remapping
 ### 19.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_IMM, OUT_1, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, imm, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 20. lb
 
@@ -1417,7 +1539,6 @@ address remapping
 - sign_probe
 - sign_bit
 
-
 ### 20.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1434,32 +1555,42 @@ address remapping
 ### 20.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_LOAD, LOAD_LB))`
 - `opt_lb + opt_lh + opt_lw + opt_lbu + opt_lhu = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
-- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches the paged address data.
+
+- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches
+  the paged address data.
 
 byte/half selection
-- `pick_short` selects the upper or lower half-word of the fetched word using `addr_low1`
+
+- `pick_short` selects the upper or lower half-word of the fetched word using
+  `addr_low1`
 - `pick_byte` selects the target byte using `addr_low0`
 - `sign_bit` reproduces the sign extension input for LB/LH
 
 writeback
-- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
+
+- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign
+  bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
 
 ## 21. lh
 
@@ -1515,7 +1646,6 @@ writeback
 - sign_probe
 - sign_bit
 
-
 ### 21.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1532,32 +1662,42 @@ writeback
 ### 21.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_LOAD, LOAD_LH))`
 - `opt_lb + opt_lh + opt_lw + opt_lbu + opt_lhu = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
-- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches the paged address data.
+
+- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches
+  the paged address data.
 
 byte/half selection
-- `pick_short` selects the upper or lower half-word of the fetched word using `addr_low1`
+
+- `pick_short` selects the upper or lower half-word of the fetched word using
+  `addr_low1`
 - `pick_byte` selects the target byte using `addr_low0`
 - `sign_bit` reproduces the sign extension input for LB/LH
 
 writeback
-- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
+
+- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign
+  bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
 
 ## 22. lw
 
@@ -1613,7 +1753,6 @@ writeback
 - sign_probe
 - sign_bit
 
-
 ### 22.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1630,32 +1769,42 @@ writeback
 ### 22.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_LOAD, LOAD_LW))`
 - `opt_lb + opt_lh + opt_lw + opt_lbu + opt_lhu = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
-- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches the paged address data.
+
+- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches
+  the paged address data.
 
 byte/half selection
-- `pick_short` selects the upper or lower half-word of the fetched word using `addr_low1`
+
+- `pick_short` selects the upper or lower half-word of the fetched word using
+  `addr_low1`
 - `pick_byte` selects the target byte using `addr_low0`
 - `sign_bit` reproduces the sign extension input for LB/LH
 
 writeback
-- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
+
+- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign
+  bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
 
 ## 23. lbu
 
@@ -1711,7 +1860,6 @@ writeback
 - sign_probe
 - sign_bit
 
-
 ### 23.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1728,32 +1876,42 @@ writeback
 ### 23.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_LOAD, LOAD_LBU))`
 - `opt_lb + opt_lh + opt_lw + opt_lbu + opt_lhu = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
-- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches the paged address data.
+
+- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches
+  the paged address data.
 
 byte/half selection
-- `pick_short` selects the upper or lower half-word of the fetched word using `addr_low1`
+
+- `pick_short` selects the upper or lower half-word of the fetched word using
+  `addr_low1`
 - `pick_byte` selects the target byte using `addr_low0`
 - `sign_bit` reproduces the sign extension input for LB/LH
 
 writeback
-- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
+
+- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign
+  bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
 
 ## 24. lhu
 
@@ -1809,7 +1967,6 @@ writeback
 - sign_probe
 - sign_bit
 
-
 ### 24.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1826,32 +1983,42 @@ writeback
 ### 24.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_LOAD, LOAD_LHU))`
 - `opt_lb + opt_lh + opt_lw + opt_lbu + opt_lhu = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
-- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches the paged address data.
+
+- `VirtLoad(addr_word, virt_prev_cycle, virt_data_low, virt_data_high)` matches
+  the paged address data.
 
 byte/half selection
-- `pick_short` selects the upper or lower half-word of the fetched word using `addr_low1`
+
+- `pick_short` selects the upper or lower half-word of the fetched word using
+  `addr_low1`
 - `pick_byte` selects the target byte using `addr_low0`
 - `sign_bit` reproduces the sign extension input for LB/LH
 
 writeback
-- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
+
+- `rd` receives the byte/half/word selected by `opt`; LBU/LHU clear the sign
+  bits while LB/LH reuse `sign_bit`; LW forwards the entire word.
 
 ## 25. sb
 
@@ -1906,7 +2073,6 @@ writeback
 - rs2_byte1
 - merged_short
 
-
 ### 25.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -1923,28 +2089,35 @@ writeback
 ### 25.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rd_field, rs2_idx, imm_low, imm_high, EncodeOptions(INST_STORE, STORE_SB))`
 - `opt_sb + opt_sh + opt_sw = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
+
 - `VirtStore(addr_word, virt_prev_cycle, virt_prev_data_low, virt_prev_data_high, virt_data_low, virt_data_high)`
 
 byte/half merge
+
 - `pick_short` selects the half-word that is being overwritten
-- `merged_short` flips the correct byte(s) from `data` into the touched half-word depending on `addr_low0`
+- `merged_short` flips the correct byte(s) from `data` into the touched
+  half-word depending on `addr_low0`
 - complete words forward the `rs2` value
 - untouched bytes are kept via the previous data witnesses
 
@@ -2001,7 +2174,6 @@ byte/half merge
 - rs2_byte1
 - merged_short
 
-
 ### 26.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2018,28 +2190,35 @@ byte/half merge
 ### 26.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rd_field, rs2_idx, imm_low, imm_high, EncodeOptions(INST_STORE, STORE_SH))`
 - `opt_sb + opt_sh + opt_sw = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
+
 - `VirtStore(addr_word, virt_prev_cycle, virt_prev_data_low, virt_prev_data_high, virt_data_low, virt_data_high)`
 
 byte/half merge
+
 - `pick_short` selects the half-word that is being overwritten
-- `merged_short` flips the correct byte(s) from `data` into the touched half-word depending on `addr_low0`
+- `merged_short` flips the correct byte(s) from `data` into the touched
+  half-word depending on `addr_low0`
 - complete words forward the `rs2` value
 - untouched bytes are kept via the previous data witnesses
 
@@ -2096,7 +2275,6 @@ byte/half merge
 - rs2_byte1
 - merged_short
 
-
 ### 27.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2113,28 +2291,35 @@ byte/half merge
 ### 27.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rd_field, rs2_idx, imm_low, imm_high, EncodeOptions(INST_STORE, STORE_SW))`
 - `opt_sb + opt_sh + opt_sw = 1`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 address computation
+
 - `AddU32(rs1, imm, addr_sum_low, addr_sum_high)`
 - `AddrSplit(addr_sum_low, addr_sum_high, addr_word, addr_low0, addr_low1)`
 - `AddrCheck(addr_sum_low, addr_sum_high, mode) = addr_check_high`
 
 memory channel
+
 - `VirtStore(addr_word, virt_prev_cycle, virt_prev_data_low, virt_prev_data_high, virt_data_low, virt_data_high)`
 
 byte/half merge
+
 - `pick_short` selects the half-word that is being overwritten
-- `merged_short` flips the correct byte(s) from `data` into the touched half-word depending on `addr_low0`
+- `merged_short` flips the correct byte(s) from `data` into the touched
+  half-word depending on `addr_low0`
 - complete words forward the `rs2` value
 - untouched bytes are kept via the previous data witnesses
 
@@ -2177,7 +2362,6 @@ byte/half merge
 - new_pc_low
 - new_pc_high
 
-
 ### 28.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2195,24 +2379,30 @@ byte/half merge
 ### 28.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, new_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_field, imm_low, imm_high, EncodeOptions(INST_BRANCH, BR_Z, OUT_0, UNIT_ADDSUB, AS_SUB))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_ADDSUB, AS_SUB), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
 - `branch_operand = (1 - unit_out_select) * unit_out0 + unit_out_select * unit_out1`
 - `is_out_zero` proves whether `branch_operand` equals zero
 
 branch target
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
-- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the `branch_on_nz` bit flips the condition between zero and non-zero.
+- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the
+  `branch_on_nz` bit flips the condition between zero and non-zero.
 
 ## 29. bne
 
@@ -2253,7 +2443,6 @@ branch target
 - new_pc_low
 - new_pc_high
 
-
 ### 29.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2271,24 +2460,30 @@ branch target
 ### 29.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, new_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_field, imm_low, imm_high, EncodeOptions(INST_BRANCH, BR_NZ, OUT_0, UNIT_ADDSUB, AS_SUB))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_ADDSUB, AS_SUB), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
 - `branch_operand = (1 - unit_out_select) * unit_out0 + unit_out_select * unit_out1`
 - `is_out_zero` proves whether `branch_operand` equals zero
 
 branch target
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
-- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the `branch_on_nz` bit flips the condition between zero and non-zero.
+- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the
+  `branch_on_nz` bit flips the condition between zero and non-zero.
 
 ## 30. blt
 
@@ -2329,7 +2524,6 @@ branch target
 - new_pc_low
 - new_pc_high
 
-
 ### 30.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2347,24 +2541,30 @@ branch target
 ### 30.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, new_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_field, imm_low, imm_high, EncodeOptions(INST_BRANCH, BR_NZ, OUT_0, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
 - `branch_operand = (1 - unit_out_select) * unit_out0 + unit_out_select * unit_out1`
 - `is_out_zero` proves whether `branch_operand` equals zero
 
 branch target
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
-- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the `branch_on_nz` bit flips the condition between zero and non-zero.
+- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the
+  `branch_on_nz` bit flips the condition between zero and non-zero.
 
 ## 31. bge
 
@@ -2405,7 +2605,6 @@ branch target
 - new_pc_low
 - new_pc_high
 
-
 ### 31.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2423,24 +2622,30 @@ branch target
 ### 31.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, new_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_field, imm_low, imm_high, EncodeOptions(INST_BRANCH, BR_Z, OUT_0, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
 - `branch_operand = (1 - unit_out_select) * unit_out0 + unit_out_select * unit_out1`
 - `is_out_zero` proves whether `branch_operand` equals zero
 
 branch target
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
-- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the `branch_on_nz` bit flips the condition between zero and non-zero.
+- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the
+  `branch_on_nz` bit flips the condition between zero and non-zero.
 
 ## 32. bltu
 
@@ -2481,7 +2686,6 @@ branch target
 - new_pc_low
 - new_pc_high
 
-
 ### 32.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2499,24 +2703,30 @@ branch target
 ### 32.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, new_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_field, imm_low, imm_high, EncodeOptions(INST_BRANCH, BR_NZ, OUT_1, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
 - `branch_operand = (1 - unit_out_select) * unit_out0 + unit_out_select * unit_out1`
 - `is_out_zero` proves whether `branch_operand` equals zero
 
 branch target
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
-- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the `branch_on_nz` bit flips the condition between zero and non-zero.
+- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the
+  `branch_on_nz` bit flips the condition between zero and non-zero.
 
 ## 33. bgeu
 
@@ -2557,7 +2767,6 @@ branch target
 - new_pc_low
 - new_pc_high
 
-
 ### 33.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2575,24 +2784,30 @@ branch target
 ### 33.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, new_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_field, imm_low, imm_high, EncodeOptions(INST_BRANCH, BR_Z, OUT_1, UNIT_LT))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_LT), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
 - `branch_operand = (1 - unit_out_select) * unit_out0 + unit_out_select * unit_out1`
 - `is_out_zero` proves whether `branch_operand` equals zero
 
 branch target
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
-- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the `branch_on_nz` bit flips the condition between zero and non-zero.
+- `new_pc` equals `sum_pc` when the branch fires and `next_pc` otherwise; the
+  `branch_on_nz` bit flips the condition between zero and non-zero.
 
 ## 34. jal
 
@@ -2621,7 +2836,6 @@ branch target
 - sum_pc_low
 - sum_pc_high
 
-
 ### 34.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2635,13 +2849,16 @@ branch target
 ### 34.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, sum_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_field, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_JAL))`
 
 writeback
+
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rd_low + 2^16 * rd_high = next_pc`
 - `sum_pc` uses `AddU32(pc, imm)` for the jump target
@@ -2677,7 +2894,6 @@ writeback
 - sum_pc_low
 - sum_pc_high
 
-
 ### 35.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2692,17 +2908,21 @@ writeback
 ### 35.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, sum_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_JALR))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
 jump target
+
 - `AddU32(rs1, imm, sum_pc_low, sum_pc_high)` forms the indirect target
 - `rd_low + 2^16 * rd_high = next_pc`
 
@@ -2729,7 +2949,6 @@ jump target
 - rd_idx
 - rd_is_zero
 
-
 ### 36.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2741,13 +2960,16 @@ jump target
 ### 36.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_field, rs2_field, rd_idx, rd_low, rd_high, EncodeOptions(INST_LUI))`
 
 writeback
+
 - `rd` writes the literal provided by the decoder (upper immediate)
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 
@@ -2778,7 +3000,6 @@ writeback
 - sum_pc_low
 - sum_pc_high
 
-
 ### 37.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2792,13 +3013,16 @@ writeback
 ### 37.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_field, rs2_field, rd_idx, imm_low, imm_high, EncodeOptions(INST_AUIPC))`
 
 writeback
+
 - `AddU32(pc, imm, sum_pc_low, sum_pc_high)`
 - `rd` stores `sum_pc`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
@@ -2841,7 +3065,6 @@ writeback
 - unit_out1_low
 - unit_out1_high
 
-
 ### 38.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2857,24 +3080,31 @@ writeback
 ### 38.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_MUL, MUL_SS))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_MUL, MUL_SS), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 39. mulh
 
@@ -2914,7 +3144,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 39.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -2930,24 +3159,31 @@ address remapping
 ### 39.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_1, UNIT_MUL, MUL_SS))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_MUL, MUL_SS), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 40. mulhsu
 
@@ -2987,7 +3223,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 40.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3003,24 +3238,31 @@ address remapping
 ### 40.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_1, UNIT_MUL, MUL_SU))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_MUL, MUL_SU), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 41. mulhu
 
@@ -3060,7 +3302,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 41.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3076,24 +3317,31 @@ address remapping
 ### 41.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_1, UNIT_MUL, MUL_UU))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_MUL, MUL_UU), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 42. div
 
@@ -3133,7 +3381,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 42.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3149,24 +3396,31 @@ address remapping
 ### 42.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_DIV, DIV_S))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_DIV, DIV_S), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 43. divu
 
@@ -3206,7 +3460,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 43.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3222,24 +3475,31 @@ address remapping
 ### 43.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_0, UNIT_DIV, DIV_U))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_DIV, DIV_U), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 44. rem
 
@@ -3279,7 +3539,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 44.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3295,24 +3554,31 @@ address remapping
 ### 44.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_1, UNIT_DIV, DIV_S))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_DIV, DIV_S), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 45. remu
 
@@ -3352,7 +3618,6 @@ address remapping
 - unit_out1_low
 - unit_out1_high
 
-
 ### 45.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3368,24 +3633,31 @@ address remapping
 ### 45.3 Constraints
 
 program order
+
 - `- CpuState(cycle, pc, mode, i_cache_cycle)`
 - `+ CpuState(cycle + 1, next_pc, mode, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, rs1_idx, rs2_idx, rd_idx, 0, 0, EncodeOptions(INST_REG, OUT_1, UNIT_DIV, DIV_U))`
 
 register accesses
+
 - `- RegRead(rs1_idx, mode, rs1_word_addr, rs1_prev_cycle, rs1_low, rs1_high)`
 - `- RegRead(rs2_idx, mode, rs2_word_addr, rs2_prev_cycle, rs2_low, rs2_high)`
 - `- RegWrite(rd_idx, mode, rd_word_addr, rd_prev_cycle, rd_prev_low, rd_prev_high, rd_low, rd_high)`
 - `rs2_same_reg * (rs1_idx - rs2_idx) = 0` (single-read fast path flag)
 
 unit wiring
+
 - `- Unit(EncodeOptions(UNIT_DIV, DIV_U), rs1, rs2, unit_out0_low, unit_out0_high, unit_out1_low, unit_out1_high)`
-- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` + `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
+- `rd_low + 2^16 * rd_high = (1 - unit_out_select) * (unit_out0_low + 2^16 * unit_out0_high)` +
+  `unit_out_select * (unit_out1_low + 2^16 * unit_out1_high)`
 
 address remapping
-- `SourceReg`/`DestReg` tie logical indices to physical word addresses and redirect x0 writes via `rd_is_zero`.
+
+- `SourceReg`/`DestReg` tie logical indices to physical word addresses and
+  redirect x0 writes via `rd_is_zero`.
 
 ## 46. ecall
 
@@ -3410,7 +3682,6 @@ address remapping
 - dispatch_low
 - dispatch_high
 
-
 ### 46.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3422,13 +3693,16 @@ address remapping
 ### 46.3 Constraints
 
 control transfer
+
 - `- CpuState(cycle, pc, MODE_USER, i_cache_cycle)`
 - `+ CpuState(cycle + 1, dispatch, MODE_MACHINE, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, 0, 0, 0, 0, 0, EncodeOptions(INST_ECALL))`
 
 csr wiring
+
 - `PhysMemWrite` stores `pc` into `MEPC`
 - `PhysMemRead` fetches the ecall dispatch pointer (`MTVEC` equivalent)`
 - CSR addresses depend on the global `v2Compat` flag
@@ -3453,7 +3727,6 @@ csr wiring
 - sum_pc_low
 - sum_pc_high
 
-
 ### 47.2 Variables
 
 - `pc = pc_low + 2^16 * pc_high`
@@ -3465,13 +3738,16 @@ csr wiring
 ### 47.3 Constraints
 
 control transfer
+
 - `- CpuState(cycle, pc, MODE_MACHINE, i_cache_cycle)`
 - `+ CpuState(cycle + 1, sum_pc, MODE_USER, i_cache_cycle)`
 
 decoding
+
 - `- Decode(pc, next_pc, 0, 2, 0, 770, 0, EncodeOptions(INST_MRET))`
 
 csr wiring
+
 - `PhysMemRead` loads `MEPC`
 - `to_add` injects the compatibility offset (`4` when `v2Compat` is set)`
 - `AddU32(saved_pc, to_add, sum_pc_low, sum_pc_high)` provides the resumed PC

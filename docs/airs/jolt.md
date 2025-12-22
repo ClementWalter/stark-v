@@ -1,9 +1,9 @@
 # AIRS
 
 The constraints below describe the per-cycle AIR used by Jolt's CPU when proving
-RV32IM execution traces.  Each section follows the same format as the reference
+RV32IM execution traces. Each section follows the same format as the reference
 `../stark-v/airs.md` document: we first list the columns that appear in the row,
-then the derived variables, and finally the constraints that must vanish.  The
+then the derived variables, and finally the constraints that must vanish. The
 column names all refer to the virtual polynomials introduced in
 `jolt-core/src/zkvm/r1cs/inputs.rs`:
 
@@ -22,7 +22,8 @@ column names all refer to the virtual polynomials introduced in
 
 We freely use helper gadgets that come from other components:
 
-- `RegsRead(rs, val)` ensures that the register file exposes `val` at index `rs`.
+- `RegsRead(rs, val)` ensures that the register file exposes `val` at index
+  `rs`.
 - `RegsWrite(rd, prev, next)` enforces the write to `rd` and is enabled only
   when `rd ≠ 0`.
 - `RamLoad(addr, val)` / `RamStore(addr, pre, post)` are enforced by the Twist
@@ -341,7 +342,8 @@ Identical to `andi`, but `LookupOutput = XorTable(rs1_val, Imm)`.
 Same columns as `and`.
 
 - Variables: `result = rs1_val & !rs2_val`.
-- Constraints use the dedicated `AndTable` with negated operand implemented in the tracer, so `LookupOutput = AndTable(rs1_val, !rs2_val)`.
+- Constraints use the dedicated `AndTable` with negated operand implemented in
+  the tracer, so `LookupOutput = AndTable(rs1_val, !rs2_val)`.
 
 ## 18. add
 
@@ -574,8 +576,7 @@ Same behavior as `virtual_shift_right_bitmask`, but the shift amount comes from
 
 ### 36.2 Variables
 
-- `mask` is produced by the preceding `virtual_shift_right_bitmask`
-  instruction.
+- `mask` is produced by the preceding `virtual_shift_right_bitmask` instruction.
 - `result = (rs1_val & mask) >> (XLEN - popcount(mask))`
 
 ### 36.3 Constraints
@@ -735,65 +736,61 @@ require multiples of 2.
 ## Appendix A. RV32IM opcode mapping
 
 Each RV32IM opcode either maps directly to one of the sections above or expands
-into a short virtual sequence whose members are already described.  The table
+into a short virtual sequence whose members are already described. The table
 below lists the correspondence.
 
-| Opcode | AIR section(s) |
-| --- | --- |
-| `LUI` | §1 |
-| `AUIPC` | §2 |
-| `JAL` | §3 |
-| `JALR` | §4 |
-| `BEQ` | §5 |
-| `BNE` | §6 |
-| `BLT` | §7 |
-| `BGE` | §8 |
-| `BLTU` | §9 |
-| `BGEU` | §10 |
-| `ADDI` | §19 |
-| `SLTI` | §23 |
-| `SLTIU` | §24 |
-| `XORI` | §16 |
-| `ORI` | §15 |
-| `ANDI` | §14 |
-| `SLLI` | `virtual_muli` (§33) multiplies `rs1` by `1 << shamt` |
-| `SRLI` | `virtual_shift_right_bitmaski` (§35) then `virtual_srli` (§37) |
-| `SRAI` | `virtual_shift_right_bitmaski` (§35) then `virtual_srai` (§38) |
-| `ADD` | §18 |
-| `SUB` | §20 |
-| `SLL` | `virtual_pow2` (§31) + `mul` (§25) |
-| `SLT` | §21 |
-| `SLTU` | §22 |
-| `XOR` | §13 |
-| `SRL` | `virtual_shift_right_bitmask` (§34) + `virtual_srl` (§36) |
-| `SRA` | `virtual_shift_right_bitmask` (§34) + `virtual_sra` (§38) |
-| `OR` | §12 |
-| `AND` | §11 |
-| `MUL` | §25 |
-| `MULH` | Uses `virtual_movsign` (§44) to derive sign masks, followed by
-`mul` (§25) and `mulhu` (§26) as described in the tracer inline sequence |
-| `MULHSU` | Combines `virtual_movsign` (§44), standard arithmetic ops (§11–§18),
-and `mulhu` (§26) per the inline sequence |
-| `MULHU` | §26 |
-| `DIV`, `DIVU` | Expand into the division gadgets: `virtual_advice` (§39),
+| Opcode                                                                   | AIR section(s)                                                       |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `LUI`                                                                    | §1                                                                   |
+| `AUIPC`                                                                  | §2                                                                   |
+| `JAL`                                                                    | §3                                                                   |
+| `JALR`                                                                   | §4                                                                   |
+| `BEQ`                                                                    | §5                                                                   |
+| `BNE`                                                                    | §6                                                                   |
+| `BLT`                                                                    | §7                                                                   |
+| `BGE`                                                                    | §8                                                                   |
+| `BLTU`                                                                   | §9                                                                   |
+| `BGEU`                                                                   | §10                                                                  |
+| `ADDI`                                                                   | §19                                                                  |
+| `SLTI`                                                                   | §23                                                                  |
+| `SLTIU`                                                                  | §24                                                                  |
+| `XORI`                                                                   | §16                                                                  |
+| `ORI`                                                                    | §15                                                                  |
+| `ANDI`                                                                   | §14                                                                  |
+| `SLLI`                                                                   | `virtual_muli` (§33) multiplies `rs1` by `1 << shamt`                |
+| `SRLI`                                                                   | `virtual_shift_right_bitmaski` (§35) then `virtual_srli` (§37)       |
+| `SRAI`                                                                   | `virtual_shift_right_bitmaski` (§35) then `virtual_srai` (§38)       |
+| `ADD`                                                                    | §18                                                                  |
+| `SUB`                                                                    | §20                                                                  |
+| `SLL`                                                                    | `virtual_pow2` (§31) + `mul` (§25)                                   |
+| `SLT`                                                                    | §21                                                                  |
+| `SLTU`                                                                   | §22                                                                  |
+| `XOR`                                                                    | §13                                                                  |
+| `SRL`                                                                    | `virtual_shift_right_bitmask` (§34) + `virtual_srl` (§36)            |
+| `SRA`                                                                    | `virtual_shift_right_bitmask` (§34) + `virtual_sra` (§38)            |
+| `OR`                                                                     | §12                                                                  |
+| `AND`                                                                    | §11                                                                  |
+| `MUL`                                                                    | §25                                                                  |
+| `MULH`                                                                   | Uses `virtual_movsign` (§44) to derive sign masks, followed by       |
+| `mul` (§25) and `mulhu` (§26) as described in the tracer inline sequence |
+| `MULHSU`                                                                 | Combines `virtual_movsign` (§44), standard arithmetic ops (§11–§18), |
+| and `mulhu` (§26) per the inline sequence                                |
+| `MULHU`                                                                  | §26                                                                  |
+| `DIV`, `DIVU`                                                            | Expand into the division gadgets: `virtual_advice` (§39),            |
+
 `virtual_assert_valid_div0` (§41), `virtual_change_divisor` (§42),
 `virtual_assert_eq` (§40), and `virtual_assert_valid_unsigned_remainder` (§43)
 plus the arithmetic rows (§18, §25, §26) that reconstruct
-`dividend = quotient × divisor + remainder` |
-| `REM`, `REMU` | Same as division, but the final write uses the reconstructed
-remainder and the `virtual_assert_valid_unsigned_remainder` gadget |
-| `LB`/`LBU` | Alignment helpers (§48), address arithmetic (§18/§19), a base
-`ld` (§27) from the containing doubleword, followed by
-`virtual_zero_extend_word` (§45) or `virtual_sign_extend_word` (§46) to select
-and extend the byte |
-| `LH`/`LHU` | Same pattern as `LB` but relies on half-word alignment (§48) and
-uses the extend helpers to keep 16-bit slices |
-| `LW` | Word-alignment check (§47), address masking (`and`/`andi`),
-`ld` (§27), bit shuffling via `slli`/`srl` (mapped earlier), and finally
-`virtual_sign_extend_word` (§46) |
-| `SB`/`SH`/`SW` | Verify alignment (sections §48/§47), load the covering
-word with `ld` (§27), merge the new byte/halfword with bitwise ops, and store
-with `sd` (§28) |
-| `ECALL` | §29 |
-| `FENCE` | §30 |
-
+`dividend = quotient × divisor + remainder` | | `REM`, `REMU` | Same as
+division, but the final write uses the reconstructed remainder and the
+`virtual_assert_valid_unsigned_remainder` gadget | | `LB`/`LBU` | Alignment
+helpers (§48), address arithmetic (§18/§19), a base `ld` (§27) from the
+containing doubleword, followed by `virtual_zero_extend_word` (§45) or
+`virtual_sign_extend_word` (§46) to select and extend the byte | | `LH`/`LHU` |
+Same pattern as `LB` but relies on half-word alignment (§48) and uses the extend
+helpers to keep 16-bit slices | | `LW` | Word-alignment check (§47), address
+masking (`and`/`andi`), `ld` (§27), bit shuffling via `slli`/`srl` (mapped
+earlier), and finally `virtual_sign_extend_word` (§46) | | `SB`/`SH`/`SW` |
+Verify alignment (sections §48/§47), load the covering word with `ld` (§27),
+merge the new byte/halfword with bitwise ops, and store with `sd` (§28) | |
+`ECALL` | §29 | | `FENCE` | §30 |
