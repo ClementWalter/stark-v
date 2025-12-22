@@ -3,12 +3,11 @@ ENTRY(_start)
 
 MEMORY {
     TEXT (rx)  : ORIGIN = 0x00000400, LENGTH = 0x000FFC00
-    RODATA (r) : ORIGIN = 0x00100000, LENGTH = 0x00100000
-    DATA  (rw) : ORIGIN = 0x00200000, LENGTH = 0x000FFC00
+    DATA (rw) : ORIGIN = 0x00200000, LENGTH = 0x00100000
 }
 
 __stack_size = 0x00000400; /* 1 KiB */
-__stack_top = 0x00300000; /* 0x00100000 + 2 MiB */
+__stack_top = 0x00200000; /* 0x00100000 + 2 MiB */
 __stack_bottom = __stack_top - __stack_size;
 
 SECTIONS {
@@ -22,7 +21,7 @@ SECTIONS {
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
         *(.eh_frame*)
-    } > RODATA
+    } > DATA
 
     .data : ALIGN(4) {
         *(.data .data.*)
