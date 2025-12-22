@@ -18,8 +18,7 @@ pub mod examples;
 // =============================================================================
 
 pub use examples::{
-    branch, branch_test_impl, constant, fact, factorial_impl, fib, fibonacci_impl, memory,
-    memory_test_impl, muldiv, muldiv_test_impl, BranchResult, ConstantResult, FactorialResult,
+    branch, constant, fact, fib, memory, muldiv, BranchResult, ConstantResult, FactorialResult,
     FibResult, MemoryTestResult, MulDivResult,
 };
 
