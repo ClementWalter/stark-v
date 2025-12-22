@@ -97,6 +97,7 @@ words:
   - strtab
   - stwo
   - syms
+  - subi
   - syscalls
   - thiserror
   - tikv
