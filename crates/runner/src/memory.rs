@@ -325,3 +325,397 @@ impl FromIterator<(u32, u8)> for Memory {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
+mod tests {
+    use super::*;
+    use crate::trace::Tracer;
+
+    // =========================================================================
+    // Basic Operations
+    // =========================================================================
+
+    #[test]
+    fn test_new_creates_empty_memory() {
+        let mem = Memory::new();
+        assert_eq!(mem.read_u8(0), 0);
+        assert_eq!(mem.read_u8(100), 0);
+        assert_eq!(mem.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
+    }
+
+    #[test]
+    fn test_default_same_as_new() {
+        let mem = Memory::default();
+        assert_eq!(mem.read_u8(0), 0);
+        assert_eq!(mem.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
+    }
+
+    #[test]
+    fn test_with_max_clock_diff() {
+        let mem = Memory::with_max_clock_diff(100);
+        assert_eq!(mem.max_clock_diff, 100);
+    }
+
+    #[test]
+    fn test_set_max_clock_diff() {
+        let mut mem = Memory::new();
+        mem.set_max_clock_diff(500);
+        assert_eq!(mem.max_clock_diff, 500);
+    }
+
+    #[test]
+    fn test_read_write_u8() {
+        let mut mem = Memory::new();
+        mem.write_u8(100, 0xAB);
+        assert_eq!(mem.read_u8(100), 0xAB);
+        assert_eq!(mem.read_u8(101), 0); // Adjacent is still zero
+    }
+
+    #[test]
+    fn test_read_write_u16_little_endian() {
+        let mut mem = Memory::new();
+        mem.write_u16(100, 0x1234);
+        // Little-endian: low byte first
+        assert_eq!(mem.read_u8(100), 0x34);
+        assert_eq!(mem.read_u8(101), 0x12);
+        assert_eq!(mem.read_u16(100), 0x1234);
+    }
+
+    #[test]
+    fn test_read_write_u32_little_endian() {
+        let mut mem = Memory::new();
+        mem.write_u32(100, 0xDEADBEEF);
+        // Little-endian: low byte first
+        assert_eq!(mem.read_u8(100), 0xEF);
+        assert_eq!(mem.read_u8(101), 0xBE);
+        assert_eq!(mem.read_u8(102), 0xAD);
+        assert_eq!(mem.read_u8(103), 0xDE);
+        assert_eq!(mem.read_u32(100), 0xDEADBEEF);
+    }
+
+    #[test]
+    fn test_from_iterator() {
+        let mem: Memory = vec![(0u32, 0x11u8), (1, 0x22), (2, 0x33), (3, 0x44)]
+            .into_iter()
+            .collect();
+        assert_eq!(mem.read_u32(0), 0x44332211);
+    }
+
+    // =========================================================================
+    // Traced Single-Byte Access
+    // =========================================================================
+
+    #[test]
+    fn test_read_u8_traced_first_access() {
+        let mem = Memory::new();
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].addr, 100);
+        assert_eq!(accesses[0].prev, 0);
+        assert_eq!(accesses[0].next, 0);
+        assert_eq!(accesses[0].clk_prev, 0);
+        assert_eq!(accesses[0].clk, tracer.clk);
+    }
+
+    #[test]
+    fn test_read_u8_traced_updates_mem_clk() {
+        let mem = Memory::new();
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        mem.read_u8_traced(100, &mut tracer);
+        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+    }
+
+    #[test]
+    fn test_write_u8_traced_records_change() {
+        let mut mem = Memory::new();
+        mem.write_u8(100, 0x42);
+        let mut tracer = Tracer::default();
+        tracer.clk = 5;
+
+        let accesses = mem.write_u8_traced(100, 0xFF, &mut tracer);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].addr, 100);
+        assert_eq!(accesses[0].prev, 0x42);
+        assert_eq!(accesses[0].next, 0xFF);
+        assert_eq!(accesses[0].clk_prev, 0);
+        assert_eq!(accesses[0].clk, tracer.clk);
+
+        // Verify memory was updated
+        assert_eq!(mem.read_u8(100), 0xFF);
+    }
+
+    #[test]
+    fn test_traced_consecutive_accesses() {
+        let mut mem = Memory::new();
+        let mut tracer = Tracer::default();
+
+        // First write at clk=1
+        tracer.clk = 1;
+        mem.write_u8_traced(100, 0x11, &mut tracer);
+
+        // Second write at clk=2
+        tracer.clk = 2;
+        let accesses = mem.write_u8_traced(100, 0x22, &mut tracer);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].clk_prev, 1);
+        assert_eq!(accesses[0].clk, tracer.clk);
+        assert_eq!(accesses[0].prev, 0x11);
+        assert_eq!(accesses[0].next, 0x22);
+    }
+
+    // =========================================================================
+    // Traced Multi-Byte Access (Clock Synchronization)
+    // =========================================================================
+
+    #[test]
+    fn test_read_u32_traced_syncs_clocks() {
+        let mut mem = Memory::new();
+        mem.write_u32(100, 0x44332211);
+        let mut tracer = Tracer::default();
+
+        // Set different clk_prev for each byte
+        tracer.mem_clk.insert(100, 5);
+        tracer.mem_clk.insert(101, 10);
+        tracer.mem_clk.insert(102, 3);
+        tracer.mem_clk.insert(103, 8);
+        tracer.clk = 20;
+
+        let accesses = mem.read_u32_traced(100, &mut tracer);
+
+        // All bytes should end with clk=20 in tracer
+        assert_eq!(tracer.mem_clk.get(&100), Some(&tracer.clk));
+        assert_eq!(tracer.mem_clk.get(&101), Some(&tracer.clk));
+        assert_eq!(tracer.mem_clk.get(&102), Some(&tracer.clk));
+        assert_eq!(tracer.mem_clk.get(&103), Some(&tracer.clk));
+
+        // Should have catch-up accesses for 3 bytes not at max_clk_prev (10)
+        // plus final accesses for all 4 bytes
+        assert!(accesses.len() == 3 + 4);
+    }
+
+    #[test]
+    fn test_write_u16_traced_syncs_and_writes() {
+        let mut mem = Memory::new();
+        let mut tracer = Tracer::default();
+
+        // Different clk_prev for bytes
+        tracer.mem_clk.insert(100, 2);
+        tracer.mem_clk.insert(101, 5);
+        tracer.clk = 10;
+
+        let accesses = mem.write_u16_traced(100, 0xABCD, &mut tracer);
+
+        // Verify memory written correctly
+        assert_eq!(mem.read_u16(100), 0xABCD);
+
+        // Verify clocks updated
+        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+        assert_eq!(tracer.mem_clk.get(&101), Some(&10));
+
+        // Should have catch-up for byte 0 (from 2 to 5) + final accesses
+        assert!(accesses.len() >= 2);
+    }
+
+    // =========================================================================
+    // Intermediate Gap-Filling Accesses
+    // =========================================================================
+
+    #[test]
+    fn test_gap_filling_single_byte() {
+        let mut mem = Memory::with_max_clock_diff(100);
+        mem.write_u8(100, 0x42);
+        let mut tracer = Tracer::default();
+
+        // First access at clk=0
+        tracer.clk = 0;
+        mem.read_u8_traced(100, &mut tracer);
+
+        // Access with gap > max_clock_diff (100)
+        tracer.clk = 350;
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        // Should have intermediate accesses to bridge the gap
+        // Gap of 350 with max_diff 100 needs at least 3 intermediates + 1 final
+        assert!(
+            accesses.len() == 4,
+            "Expected at 4 accesses, got {}",
+            accesses.len()
+        );
+
+        // Verify all clock diffs are within max_clock_diff
+        for access in &accesses {
+            let diff = access.clk.saturating_sub(access.clk_prev);
+            assert!(
+                diff <= 100,
+                "Clock diff {} exceeds max_clock_diff 100",
+                diff
+            );
+        }
+    }
+
+    #[test]
+    fn test_gap_filling_preserves_value() {
+        let mut mem = Memory::with_max_clock_diff(50);
+        mem.write_u8(100, 0xAB);
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 0;
+        mem.read_u8_traced(100, &mut tracer);
+
+        tracer.clk = 200; // Large gap
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        // All intermediate accesses should preserve the value (read, not write)
+        for access in &accesses {
+            assert_eq!(access.prev, 0xAB);
+            assert_eq!(access.next, 0xAB);
+        }
+    }
+
+    #[test]
+    fn test_gap_filling_multi_byte() {
+        let mut mem = Memory::with_max_clock_diff(100);
+        mem.write_u32(100, 0x44332211);
+        let mut tracer = Tracer::default();
+
+        // Set one byte with old clock, others recent
+        tracer.mem_clk.insert(100, 0);
+        tracer.mem_clk.insert(101, 400);
+        tracer.mem_clk.insert(102, 400);
+        tracer.mem_clk.insert(103, 400);
+        tracer.clk = 500;
+
+        let accesses = mem.read_u32_traced(100, &mut tracer);
+
+        // All clock diffs should be within max_clock_diff
+        for access in &accesses {
+            let diff = access.clk.saturating_sub(access.clk_prev);
+            assert!(
+                diff <= 100,
+                "Clock diff {} at addr {} exceeds max_clock_diff 100",
+                diff,
+                access.addr
+            );
+        }
+    }
+
+    #[test]
+    fn test_exact_max_clock_diff_no_intermediate() {
+        let mem = Memory::with_max_clock_diff(100);
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 0;
+        mem.read_u8_traced(100, &mut tracer);
+
+        tracer.clk = 100; // Exactly at max_clock_diff
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        // Should be exactly 1 access (no intermediate needed)
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].clk_prev, 0);
+        assert_eq!(accesses[0].clk, 100);
+    }
+
+    #[test]
+    fn test_just_over_max_clock_diff_one_intermediate() {
+        let mem = Memory::with_max_clock_diff(100);
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 0;
+        mem.read_u8_traced(100, &mut tracer);
+
+        tracer.clk = 101; // Just over max_clock_diff
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        // Should have 1 intermediate + 1 final = 2 accesses
+        assert_eq!(accesses.len(), 2);
+    }
+
+    // =========================================================================
+    // Edge Cases
+    // =========================================================================
+
+    #[test]
+    fn test_address_zero() {
+        let mut mem = Memory::new();
+        mem.write_u32(0, 0xDEADBEEF);
+        assert_eq!(mem.read_u32(0), 0xDEADBEEF);
+
+        let mut tracer = Tracer::default();
+        tracer.clk = 1;
+        let accesses = mem.read_u32_traced(0, &mut tracer);
+        assert!(!accesses.is_empty());
+    }
+
+    #[test]
+    fn test_address_wrap_around() {
+        let mut mem = Memory::new();
+        // Write at max address - should wrap when reading u32
+        mem.write_u8(0xFFFFFFFF, 0x11);
+        mem.write_u8(0x00000000, 0x22); // Wraps to 0
+        mem.write_u8(0x00000001, 0x33);
+        mem.write_u8(0x00000002, 0x44);
+
+        // Read u32 starting at 0xFFFFFFFF wraps around
+        let val = mem.read_u32(0xFFFFFFFF);
+        assert_eq!(val, 0x44332211); // First byte from 0xFFFFFFFF
+    }
+
+    #[test]
+    fn test_max_clock_diff_one() {
+        let mem = Memory::with_max_clock_diff(1);
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 0;
+        mem.read_u8_traced(100, &mut tracer);
+
+        tracer.clk = 5; // Gap of 5, need 4 intermediates
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        // With max_clock_diff=1, gap of 5 needs 5 accesses total
+        assert_eq!(accesses.len(), 5);
+
+        // Verify each step is exactly 1
+        for access in &accesses {
+            let diff = access.clk - access.clk_prev;
+            assert_eq!(diff, 1);
+        }
+    }
+
+    #[test]
+    fn test_max_clock_diff_max() {
+        let mem = Memory::with_max_clock_diff(u32::MAX);
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 0;
+        mem.read_u8_traced(100, &mut tracer);
+
+        tracer.clk = u32::MAX - 1;
+        let accesses = mem.read_u8_traced(100, &mut tracer);
+
+        // Should be exactly 1 access (no intermediate ever needed)
+        assert_eq!(accesses.len(), 1);
+    }
+
+    #[test]
+    fn test_no_gap_sequential_clocks() {
+        let mem = Memory::new();
+        let mut tracer = Tracer::default();
+
+        for clk in 0..10 {
+            tracer.clk = clk;
+            let accesses = mem.read_u8_traced(100, &mut tracer);
+            // Each access should be exactly 1 (no intermediates)
+            assert_eq!(accesses.len(), 1);
+        }
+    }
+}
