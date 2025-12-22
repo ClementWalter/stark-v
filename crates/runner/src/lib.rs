@@ -91,11 +91,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
         let inst = get_or_decode(&mut cache, &mem, cpu.pc)
             .ok_or(RunError::InvalidInstruction { pc: cpu.pc })?;
 
-        let pc_modified = execute(&mut cpu, &mut mem, &inst);
-
-        if !pc_modified {
-            cpu.advance_pc();
-        }
+        execute(&mut cpu, &mut mem, &inst);
 
         cycle_count += 1;
 

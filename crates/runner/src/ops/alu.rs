@@ -5,6 +5,7 @@ pub fn add(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2);
     let result = rs1.wrapping_add(rs2);
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn sub(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -12,6 +13,7 @@ pub fn sub(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2);
     let result = rs1.wrapping_sub(rs2);
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn sll(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -20,6 +22,7 @@ pub fn sll(cpu: &mut Cpu, inst: &DecodedInst) {
     let shamt = rs2 & 0x1F;
     let result = rs1 << shamt;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn slt(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -27,6 +30,7 @@ pub fn slt(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2) as i32;
     let result = if rs1 < rs2 { 1 } else { 0 };
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn sltu(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -34,6 +38,7 @@ pub fn sltu(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2);
     let result = if rs1 < rs2 { 1 } else { 0 };
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn xor(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -41,6 +46,7 @@ pub fn xor(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2);
     let result = rs1 ^ rs2;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn srl(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -49,6 +55,7 @@ pub fn srl(cpu: &mut Cpu, inst: &DecodedInst) {
     let shamt = rs2 & 0x1F;
     let result = rs1 >> shamt;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn sra(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -57,6 +64,7 @@ pub fn sra(cpu: &mut Cpu, inst: &DecodedInst) {
     let shamt = rs2 & 0x1F;
     let result = (rs1 >> shamt) as u32;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn or(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -64,6 +72,7 @@ pub fn or(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2);
     let result = rs1 | rs2;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn and(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -71,4 +80,5 @@ pub fn and(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2);
     let result = rs1 & rs2;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }

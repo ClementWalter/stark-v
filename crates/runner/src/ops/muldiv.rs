@@ -5,6 +5,7 @@ pub fn mul(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2) as i32 as i64;
     let result = rs1.wrapping_mul(rs2) as u32;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -12,6 +13,7 @@ pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2) as i32 as i64;
     let result = (rs1.wrapping_mul(rs2) >> 32) as u32;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -19,6 +21,7 @@ pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2) as u64 as i64;
     let result = (rs1.wrapping_mul(rs2) >> 32) as u32;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -26,6 +29,7 @@ pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst) {
     let rs2 = cpu.reg(inst.rs2) as u64;
     let result = (rs1.wrapping_mul(rs2) >> 32) as u32;
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn div(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -39,6 +43,7 @@ pub fn div(cpu: &mut Cpu, inst: &DecodedInst) {
         rs1.wrapping_div(rs2) as u32
     };
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn divu(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -50,6 +55,7 @@ pub fn divu(cpu: &mut Cpu, inst: &DecodedInst) {
         rs1.wrapping_div(rs2)
     };
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn rem(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -63,6 +69,7 @@ pub fn rem(cpu: &mut Cpu, inst: &DecodedInst) {
         rs1.wrapping_rem(rs2) as u32
     };
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
 
 pub fn remu(cpu: &mut Cpu, inst: &DecodedInst) {
@@ -74,4 +81,5 @@ pub fn remu(cpu: &mut Cpu, inst: &DecodedInst) {
         rs1.wrapping_rem(rs2)
     };
     cpu.set_reg(inst.rd, result);
+    cpu.advance_pc();
 }
