@@ -4,9 +4,12 @@
 #[path = "../glue.rs"]
 mod glue;
 
-use guest_lib::memory_test;
+use guest_lib::{memory_test, MemoryTestResult};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
-    glue::finalize(memory_test())
+    let result = MemoryTestResult {
+        sum: memory_test(),
+    };
+    glue::output(&result)
 }

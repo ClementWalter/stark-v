@@ -4,9 +4,14 @@
 #[path = "../glue.rs"]
 mod glue;
 
-use guest_lib::branch_test;
+use guest_lib::{branch_test, BranchResult};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
-    glue::finalize(branch_test(5))
+    let x = 5;
+    let result = BranchResult {
+        x,
+        value: branch_test(x),
+    };
+    glue::output(&result)
 }

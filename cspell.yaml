@@ -43,6 +43,8 @@ words:
   - mersenne
   - mispredictions
   - mmap
+  - mmio
+  - MMIO
   - muldiv
   - mulh
   - mulhsu

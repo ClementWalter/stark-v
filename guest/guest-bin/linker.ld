@@ -7,8 +7,15 @@ MEMORY {
 }
 
 __stack_size = 0x00000400; /* 1 KiB */
-__stack_top = 0x00200000; /* 0x00100000 + 2 MiB */
+__stack_top = 0x00200000;
 __stack_bottom = __stack_top - __stack_size;
+
+/* I/O region - between TEXT end and STACK bottom */
+__io_start = 0x00100000;
+__halt_flag = __io_start;
+__output_len = __io_start + 4;
+__output_data = __io_start + 8;
+__output_end = __stack_bottom;
 
 SECTIONS {
     .text : ALIGN(4) {

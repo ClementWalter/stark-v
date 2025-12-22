@@ -1,6 +1,7 @@
 use crate::Memory;
 use goblin::elf::Elf;
 use thiserror::Error;
+use tracing::debug;
 
 #[derive(Error, Debug)]
 pub enum ElfError {
@@ -22,6 +23,14 @@ pub struct LoadedElf {
     pub gp: u32,
     /// Memory initialized with loadable segments.
     pub memory: Memory,
+    /// Address of halt flag (from __halt_flag linker symbol).
+    pub halt_flag_addr: u32,
+    /// Address of output length (from __output_len linker symbol).
+    pub output_len_addr: u32,
+    /// Address of output data start (from __output_data linker symbol).
+    pub output_data_addr: u32,
+    /// Address of output data end (from __output_end linker symbol).
+    pub output_end_addr: u32,
 }
 
 /// Load an ELF file and return the entry point, initial registers, and memory.
@@ -34,6 +43,7 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
     }
 
     let entry = elf.entry as u32;
+    debug!(entry = format_args!("0x{:08x}", entry), "ELF entry point");
 
     // Helper to find a symbol by name
     let find_symbol = |name: &str| -> Option<u32> {
@@ -45,9 +55,24 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
 
     // Find __global_pointer$ symbol
     let gp = find_symbol("__global_pointer$").unwrap_or(0x0020_0800);
+    debug!(gp = format_args!("0x{:08x}", gp), "Global pointer");
 
     // Find __stack_top symbol
     let sp = find_symbol("__stack_top").unwrap_or(0x0020_0000);
+    debug!(sp = format_args!("0x{:08x}", sp), "Stack pointer");
+
+    // Find I/O region symbols
+    let halt_flag_addr = find_symbol("__halt_flag").unwrap_or(0x0010_0000);
+    let output_len_addr = find_symbol("__output_len").unwrap_or(0x0010_0004);
+    let output_data_addr = find_symbol("__output_data").unwrap_or(0x0010_0008);
+    let output_end_addr = find_symbol("__output_end").unwrap_or(0x001F_FC00);
+    debug!(
+        halt_flag = format_args!("0x{:08x}", halt_flag_addr),
+        output_len = format_args!("0x{:08x}", output_len_addr),
+        output_data = format_args!("0x{:08x}", output_data_addr),
+        output_end = format_args!("0x{:08x}", output_end_addr),
+        "I/O region"
+    );
 
     // Load all PT_LOAD segments into memory
     let mut mem_data = Vec::new();
@@ -57,6 +82,15 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
             let file_offset = ph.p_offset as usize;
             let file_size = ph.p_filesz as usize;
             let mem_size = ph.p_memsz as usize;
+
+            debug!(
+                vaddr = format_args!("0x{:08x}", vaddr),
+                file_offset,
+                file_size,
+                mem_size,
+                bss_size = mem_size.saturating_sub(file_size),
+                "Loading PT_LOAD segment"
+            );
 
             // Copy file contents
             if file_size > 0 && file_offset + file_size <= bytes.len() {
@@ -75,6 +109,8 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
         }
     }
 
+    debug!(total_bytes = mem_data.len(), "Total memory bytes loaded");
+
     let memory: Memory = mem_data.into_iter().collect();
 
     Ok(LoadedElf {
@@ -82,5 +118,9 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
         sp,
         gp,
         memory,
+        halt_flag_addr,
+        output_len_addr,
+        output_data_addr,
+        output_end_addr,
     })
 }

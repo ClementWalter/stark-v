@@ -2,6 +2,7 @@ mod cpu;
 pub mod decode;
 mod elf;
 mod execute;
+mod io;
 mod memory;
 mod ops;
 pub mod trace;
@@ -35,8 +36,10 @@ pub enum RunError {
 pub struct RunResult {
     /// Total number of cycles executed.
     pub cycles: u64,
-    /// Final program counter (where the infinite loop was detected).
+    /// Final program counter (where halt was detected).
     pub final_pc: u32,
+    /// Output bytes from guest (postcard-serialized data).
+    pub output: Option<Vec<u8>>,
 }
 
 /// Run an ELF program to completion.
@@ -68,6 +71,21 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
     let mut cycle_count: u64 = 0;
 
     loop {
+        // Check halt flag before executing next instruction
+        if mem.read_u32(loaded.halt_flag_addr) != 0 {
+            let output = io::read_output(
+                &mem,
+                loaded.output_len_addr,
+                loaded.output_data_addr,
+                loaded.output_end_addr,
+            );
+            return Ok(RunResult {
+                cycles: cycle_count,
+                final_pc: cpu.pc,
+                output,
+            });
+        }
+
         let prev_pc = cpu.pc;
 
         let inst = get_or_decode(&mut cache, &mem, cpu.pc)
@@ -81,11 +99,18 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
 
         cycle_count += 1;
 
-        // Halt on infinite loop (PC unchanged after execution)
+        // Halt on infinite loop (PC unchanged after execution) - backup detection
         if cpu.pc == prev_pc {
+            let output = io::read_output(
+                &mem,
+                loaded.output_len_addr,
+                loaded.output_data_addr,
+                loaded.output_end_addr,
+            );
             return Ok(RunResult {
                 cycles: cycle_count,
                 final_pc: prev_pc,
+                output,
             });
         }
 

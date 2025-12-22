@@ -19,8 +19,8 @@ struct Cli {
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
 
@@ -36,11 +36,20 @@ fn main() {
 
     match run(&elf_bytes, cli.max_cycles) {
         Ok(result) => {
-            info!(
-                cycles = result.cycles,
-                pc = format!("0x{:08x}", result.final_pc),
-                "Halted (infinite loop)"
-            );
+            if let Some(ref output) = result.output {
+                info!(
+                    cycles = result.cycles,
+                    pc = format!("0x{:08x}", result.final_pc),
+                    output_len = output.len(),
+                    "Halted with output"
+                );
+            } else {
+                info!(
+                    cycles = result.cycles,
+                    pc = format!("0x{:08x}", result.final_pc),
+                    "Halted (no output)"
+                );
+            }
         }
         Err(e) => {
             error!("{e}");

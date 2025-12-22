@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 guest-lib = { path = "../guest-lib" }
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = { version = "1", default-features = false }
 
 [[bin]]
 name = "guest-bin"

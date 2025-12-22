@@ -2,6 +2,21 @@
 
 use core::arch::global_asm;
 use core::panic::PanicInfo;
+use core::ptr;
+
+use postcard::to_slice;
+use serde::Serialize;
+
+// -----------------------------------------------------------------------------
+// Linker symbols for I/O region (defined in linker.ld)
+// -----------------------------------------------------------------------------
+
+unsafe extern "C" {
+    static __halt_flag: u8;
+    static __output_len: u8;
+    static __output_data: u8;
+    static __output_end: u8;
+}
 
 // -----------------------------------------------------------------------------
 // Startup assembly (ELF entrypoint)
@@ -18,32 +33,53 @@ _start:
     .option pop
 
     la sp, __stack_top
-    lw sp, 0(sp)
 
     call __zkvm_start
 "#
 );
 
 // -----------------------------------------------------------------------------
-// Global variables
+// Output functions
 // -----------------------------------------------------------------------------
 
-static mut INITIALIZED_COUNT: u32 = 42;
-static mut ZERO_PAGE: [u8; 128] = [0; 128];
-
-// -----------------------------------------------------------------------------
-// Rust entry shim - must be called with a main function
-// -----------------------------------------------------------------------------
-
-/// Call this from __zkvm_start with the result of your main function.
-#[inline(always)]
-pub fn finalize(value: u32) -> ! {
+/// Serialize data with postcard and write to output region, then halt.
+///
+/// This function:
+/// 1. Serializes `data` using postcard into the output buffer
+/// 2. Writes the length to __output_len
+/// 3. Sets __halt_flag to signal the host
+/// 4. Loops forever (host will stop execution)
+pub fn output<T: Serialize>(data: &T) -> ! {
     unsafe {
-        INITIALIZED_COUNT = INITIALIZED_COUNT.wrapping_add(value);
-        ZERO_PAGE[0] = ZERO_PAGE[0].wrapping_add((INITIALIZED_COUNT & 0xFF) as u8);
-        let sum_with_page = value.wrapping_add(ZERO_PAGE[0] as u32);
-        ZERO_PAGE[1] = ZERO_PAGE[1].wrapping_add(sum_with_page as u8);
+        let data_addr = ptr::addr_of!(__output_data) as *mut u8;
+        let end_addr = ptr::addr_of!(__output_end) as usize;
+        let data_start = data_addr as usize;
+        let max_size = end_addr.saturating_sub(data_start);
+
+        // Create a slice from the output region
+        let output_buffer = core::slice::from_raw_parts_mut(data_addr, max_size);
+
+        // Serialize with postcard
+        match to_slice(data, output_buffer) {
+            Ok(written) => {
+                let len = written.len() as u32;
+                // Write length
+                let len_addr = ptr::addr_of!(__output_len) as *mut u32;
+                ptr::write_volatile(len_addr, len);
+            }
+            Err(_) => {
+                // Serialization failed - write 0 length
+                let len_addr = ptr::addr_of!(__output_len) as *mut u32;
+                ptr::write_volatile(len_addr, 0);
+            }
+        }
+
+        // Set halt flag
+        let halt_addr = ptr::addr_of!(__halt_flag) as *mut u32;
+        ptr::write_volatile(halt_addr, 1);
     }
+
+    // Should never reach here - host stops on halt flag
     /* trunk-ignore(clippy/empty_loop) */
     loop {}
 }

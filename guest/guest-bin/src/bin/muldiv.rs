@@ -4,9 +4,12 @@
 #[path = "../glue.rs"]
 mod glue;
 
-use guest_lib::muldiv_test;
+use guest_lib::{muldiv_test, MulDivResult};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
-    glue::finalize(muldiv_test())
+    let result = MulDivResult {
+        value: muldiv_test(),
+    };
+    glue::output(&result)
 }
