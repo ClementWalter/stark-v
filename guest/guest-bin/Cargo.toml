@@ -9,8 +9,8 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 postcard = { version = "1", default-features = false }
 
 [[bin]]
-name = "guest-bin"
-path = "src/main.rs"
+name = "constant"
+path = "src/bin/constant.rs"
 
 [[bin]]
 name = "fib"

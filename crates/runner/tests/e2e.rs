@@ -7,7 +7,7 @@
 //! 4. Compare with native execution of the same function
 
 use guest_lib::{
-    branch, compute, fact, fib, memory, muldiv, BranchResult, ComputeResult, FactorialResult,
+    branch, constant, fact, fib, memory, muldiv, BranchResult, ConstantResult, FactorialResult,
     FibResult, MemoryTestResult, MulDivResult,
 };
 use runner::run;
@@ -58,9 +58,9 @@ fn run_guest<T: serde::de::DeserializeOwned>(name: &str) -> T {
 }
 
 #[test]
-fn test_guest_bin_main() {
-    let output: ComputeResult = run_guest("guest-bin");
-    assert_eq!(output, compute());
+fn test_compute() {
+    let output: ConstantResult = run_guest("constant");
+    assert_eq!(output, constant());
 }
 
 #[test]
