@@ -1,7 +1,34 @@
 [workspace]
 resolver = "2"
-members = ["guest/guest-lib"]
+members = ["crates/runner", "crates/runner-macros", "guest/guest-lib"]
 exclude = ["guest/guest-bin"]
+
+[workspace.dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = { version = "1", default-features = false }
+
+# Parsing
+goblin = "0.9"
+
+# Data structures
+rustc-hash = "2.1"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Proc-macro utilities
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "visit-mut"] }
+
+# Internal crates
+runner-macros = { path = "crates/runner-macros" }
 
 [profile.dev]
 panic = "abort"

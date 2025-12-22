@@ -35,6 +35,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: riscv32im-unknown-none-elf
 
       - name: Run tests (release)
         run: cargo test --release
