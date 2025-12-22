@@ -23,17 +23,17 @@ SECTIONS {
         *(.eh_frame*)
     } > DATA
 
-    .data : ALIGN(4) {
-        *(.data .data.*)
-        *(.sdata .sdata.*)
-    } > DATA
-
     .bss (NOLOAD) : ALIGN(4) {
         __bss_start = .;
         *(.sbss .sbss.*)
         *(.bss .bss.*)
         *(COMMON)
         __bss_end = .;
+    } > DATA
+
+    .data : ALIGN(4) {
+        *(.data .data.*)
+        *(.sdata .sdata.*)
     } > DATA
 
     PROVIDE(__global_pointer$ = ORIGIN(DATA) + 0x800);

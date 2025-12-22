@@ -43,6 +43,7 @@ words:
   - mersenne
   - mispredictions
   - mmap
+  - muldiv
   - mulh
   - mulhsu
   - mulhu
@@ -65,6 +66,7 @@ words:
   - rustflags
   - RUSTFLAGS
   - rzup
+  - sdiv
   - serde
   - shamir
   - shamt
@@ -73,6 +75,7 @@ words:
   - sltiu
   - sltu
   - sltui
+  - smul
   - srai
   - srli
   - starknet
@@ -80,7 +83,9 @@ words:
   - storeb
   - storeh
   - storew
+  - strtab
   - stwo
+  - syms
   - syscalls
   - thiserror
   - trac

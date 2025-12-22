@@ -5,3 +5,27 @@ edition = "2024"
 
 [dependencies]
 guest-lib = { path = "../guest-lib" }
+
+[[bin]]
+name = "guest-bin"
+path = "src/main.rs"
+
+[[bin]]
+name = "fib"
+path = "src/bin/fib.rs"
+
+[[bin]]
+name = "factorial"
+path = "src/bin/factorial.rs"
+
+[[bin]]
+name = "memory"
+path = "src/bin/memory.rs"
+
+[[bin]]
+name = "muldiv"
+path = "src/bin/muldiv.rs"
+
+[[bin]]
+name = "branch"
+path = "src/bin/branch.rs"
