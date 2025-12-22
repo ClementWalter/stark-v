@@ -7,8 +7,8 @@
 //! 4. Compare with native execution of the same function
 
 use guest_lib::{
-    branch_test, factorial, fibonacci, memory_test, muldiv_test, BranchResult, ComputeResult,
-    FactorialResult, FibResult, MemoryTestResult, MulDivResult,
+    branch, compute, fact, fib, memory, muldiv, BranchResult, ComputeResult, FactorialResult,
+    FibResult, MemoryTestResult, MulDivResult,
 };
 use runner::run;
 use std::path::PathBuf;
@@ -60,67 +60,35 @@ fn run_guest<T: serde::de::DeserializeOwned>(name: &str) -> T {
 #[test]
 fn test_guest_bin_main() {
     let output: ComputeResult = run_guest("guest-bin");
-    let expected = ComputeResult {
-        value: guest_lib::main(),
-    };
-    assert_eq!(output, expected);
+    assert_eq!(output, compute());
 }
 
 #[test]
 fn test_fibonacci() {
     let output: FibResult = run_guest("fib");
-
-    let n = 20;
-    let expected = FibResult {
-        n,
-        value: fibonacci(n),
-    };
-
-    assert_eq!(output, expected);
+    assert_eq!(output, fib(20));
 }
 
 #[test]
 fn test_factorial() {
     let output: FactorialResult = run_guest("factorial");
-
-    let n = 10;
-    let expected = FactorialResult {
-        n,
-        value: factorial(n),
-    };
-
-    assert_eq!(output, expected);
+    assert_eq!(output, fact(10));
 }
 
 #[test]
 fn test_memory() {
     let output: MemoryTestResult = run_guest("memory");
-
-    let expected = MemoryTestResult { sum: memory_test() };
-
-    assert_eq!(output, expected);
+    assert_eq!(output, memory());
 }
 
 #[test]
 fn test_muldiv() {
     let output: MulDivResult = run_guest("muldiv");
-
-    let expected = MulDivResult {
-        value: muldiv_test(),
-    };
-
-    assert_eq!(output, expected);
+    assert_eq!(output, muldiv());
 }
 
 #[test]
 fn test_branch() {
     let output: BranchResult = run_guest("branch");
-
-    let x = 5;
-    let expected = BranchResult {
-        x,
-        value: branch_test(x),
-    };
-
-    assert_eq!(output, expected);
+    assert_eq!(output, branch(5));
 }

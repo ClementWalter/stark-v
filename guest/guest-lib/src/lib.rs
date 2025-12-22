@@ -1,205 +1,55 @@
+//! Guest library for zkVM programs.
+//!
+//! This library provides:
+//! - Result types for guest-host communication
+//! - The `guest_main!` macro for minimal boilerplate
+//! - Example computations for testing
+
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use serde::{Deserialize, Serialize};
-
 // =============================================================================
-// Result types for guest-host communication (serialized with postcard)
+// Modules
 // =============================================================================
 
-/// Result of a simple computation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ComputeResult {
-    pub value: u32,
-}
-
-/// Result of Fibonacci computation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct FibResult {
-    pub n: u32,
-    pub value: u32,
-}
-
-/// Result of factorial computation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct FactorialResult {
-    pub n: u32,
-    pub value: u32,
-}
-
-/// Result of memory test.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MemoryTestResult {
-    pub sum: u32,
-}
-
-/// Result of mul/div test.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MulDivResult {
-    pub value: u32,
-}
-
-/// Result of branch test.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct BranchResult {
-    pub x: u32,
-    pub value: u32,
-}
+pub mod examples;
+pub mod types;
 
 // =============================================================================
-// Computation functions
+// Re-exports
 // =============================================================================
 
-/// Simple computation returning a constant.
-pub fn compute() -> u32 {
-    42
-}
+pub use examples::{
+    branch, branch_test_impl, compute, fact, factorial_impl, fib, fibonacci_impl, memory,
+    memory_test_impl, muldiv, muldiv_test_impl,
+};
+pub use types::{
+    BranchResult, ComputeResult, FactorialResult, FibResult, MemoryTestResult, MulDivResult,
+};
 
-/// Default main entrypoint.
-pub fn main() -> u32 {
-    compute()
-}
+// =============================================================================
+// Guest glue and entry macro
+// =============================================================================
 
-/// Iterative Fibonacci computation.
-pub fn fibonacci(n: u32) -> u32 {
-    if n == 0 {
-        return 0;
-    }
-    if n == 1 {
-        return 1;
-    }
+#[cfg(target_arch = "riscv32")]
+pub mod glue;
 
-    let mut a = 0u32;
-    let mut b = 1u32;
-    let mut i = 2u32;
-
-    while i <= n {
-        let tmp = a.wrapping_add(b);
-        a = b;
-        b = tmp;
-        i += 1;
-    }
-
-    b
-}
-
-/// Iterative factorial computation.
-pub fn factorial(n: u32) -> u32 {
-    let mut result = 1u32;
-    let mut i = 1u32;
-
-    while i <= n {
-        result = result.wrapping_mul(i);
-        i += 1;
-    }
-
-    result
-}
-
-/// Memory stress test: write and read back array values.
-pub fn memory_test() -> u32 {
-    let mut arr = [0u32; 16];
-
-    // Write pattern
-    let mut i = 0usize;
-    while i < 16 {
-        arr[i] = (i as u32).wrapping_mul(7).wrapping_add(3);
-        i += 1;
-    }
-
-    // Read and sum
-    let mut sum = 0u32;
-    i = 0;
-    while i < 16 {
-        sum = sum.wrapping_add(arr[i]);
-        i += 1;
-    }
-
-    sum
-}
-
-/// M-extension test: multiply and divide operations.
-pub fn muldiv_test() -> u32 {
-    let a: u32 = 12345;
-    let b: u32 = 6789;
-
-    let mul_result = a.wrapping_mul(b);
-    let div_result = mul_result / b;
-    let rem_result = mul_result % a;
-
-    // Signed operations
-    let sa: i32 = -1234;
-    let sb: i32 = 567;
-    let smul = sa.wrapping_mul(sb) as u32;
-    let sdiv = (sa / sb) as u32;
-
-    div_result
-        .wrapping_add(rem_result)
-        .wrapping_add(smul)
-        .wrapping_add(sdiv)
-}
-
-/// Branch test: multiple conditional branches.
-pub fn branch_test(x: u32) -> u32 {
-    let mut result = 0u32;
-
-    if x == 0 {
-        result = result.wrapping_add(1);
-    }
-    if x != 5 {
-        result = result.wrapping_add(2);
-    }
-    if (x as i32) < 10 {
-        result = result.wrapping_add(4);
-    }
-    if (x as i32) >= 0 {
-        result = result.wrapping_add(8);
-    }
-    if x < 100 {
-        result = result.wrapping_add(16);
-    }
-    // Always true for unsigned, but exercises bgeu
-    result = result.wrapping_add(32);
-
-    result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compute() {
-        assert_eq!(compute(), 42);
-    }
-
-    #[test]
-    fn test_fibonacci() {
-        assert_eq!(fibonacci(0), 0);
-        assert_eq!(fibonacci(1), 1);
-        assert_eq!(fibonacci(2), 1);
-        assert_eq!(fibonacci(10), 55);
-        assert_eq!(fibonacci(20), 6765);
-    }
-
-    #[test]
-    fn test_factorial() {
-        assert_eq!(factorial(0), 1);
-        assert_eq!(factorial(1), 1);
-        assert_eq!(factorial(5), 120);
-        assert_eq!(factorial(10), 3628800);
-    }
-
-    #[test]
-    fn test_memory() {
-        // Sum of (i*7+3) for i=0..15 = 7*(0+1+...+15) + 3*16 = 7*120 + 48 = 888
-        assert_eq!(memory_test(), 888);
-    }
-
-    #[test]
-    fn test_branch() {
-        // x=5: not 0, not !=5, <10, >=0, <100, >=0 = 0+0+4+8+16+32 = 60
-        assert_eq!(branch_test(5), 4 + 8 + 16 + 32);
-        // x=0: ==0, !=5, <10, >=0, <100, >=0 = 1+2+4+8+16+32 = 63
-        assert_eq!(branch_test(0), 63);
-    }
+/// Macro to define the guest entry point with minimal boilerplate.
+///
+/// # Example
+///
+/// ```ignore
+/// #![no_std]
+/// #![no_main]
+///
+/// guest_lib::guest_main!(guest_lib::fib(20));
+/// ```
+#[cfg(target_arch = "riscv32")]
+#[macro_export]
+macro_rules! guest_main {
+    ($expr:expr) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn __zkvm_start() -> ! {
+            $crate::glue::output(&$expr)
+        }
+    };
 }

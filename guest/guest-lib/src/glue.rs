@@ -1,4 +1,6 @@
 //! Shared glue code for all guest binaries.
+//!
+//! This module is only compiled for the riscv32 target.
 
 use core::arch::global_asm;
 use core::panic::PanicInfo;
@@ -80,7 +82,7 @@ pub fn output<T: Serialize>(data: &T) -> ! {
     }
 
     // Should never reach here - host stops on halt flag
-    /* trunk-ignore(clippy/empty_loop) */
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 
@@ -90,5 +92,6 @@ pub fn output<T: Serialize>(data: &T) -> ! {
 
 #[panic_handler]
 fn panic(_: &PanicInfo) -> ! {
+    #[allow(clippy::empty_loop)]
     loop {}
 }
