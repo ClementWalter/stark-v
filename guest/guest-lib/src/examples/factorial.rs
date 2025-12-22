@@ -1,6 +1,13 @@
 //! Factorial computation example.
 
-use crate::types::FactorialResult;
+use serde::{Deserialize, Serialize};
+
+/// Result of factorial computation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FactorialResult {
+    pub n: u32,
+    pub value: u32,
+}
 
 /// Iterative factorial computation returning a result struct.
 pub fn fact(n: u32) -> FactorialResult {

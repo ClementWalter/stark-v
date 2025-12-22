@@ -1,6 +1,12 @@
 //! M-extension (multiply/divide) test example.
 
-use crate::types::MulDivResult;
+use serde::{Deserialize, Serialize};
+
+/// Result of mul/div test.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MulDivResult {
+    pub value: u32,
+}
 
 /// M-extension test returning a result struct.
 pub fn muldiv() -> MulDivResult {

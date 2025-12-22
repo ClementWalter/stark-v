@@ -1,6 +1,13 @@
 //! Fibonacci computation example.
 
-use crate::types::FibResult;
+use serde::{Deserialize, Serialize};
+
+/// Result of Fibonacci computation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FibResult {
+    pub n: u32,
+    pub value: u32,
+}
 
 /// Iterative Fibonacci computation returning a result struct.
 pub fn fib(n: u32) -> FibResult {

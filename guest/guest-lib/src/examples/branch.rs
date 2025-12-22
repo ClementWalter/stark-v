@@ -1,6 +1,13 @@
 //! Branch test example.
 
-use crate::types::BranchResult;
+use serde::{Deserialize, Serialize};
+
+/// Result of branch test.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BranchResult {
+    pub x: u32,
+    pub value: u32,
+}
 
 /// Branch test returning a result struct.
 pub fn branch(x: u32) -> BranchResult {

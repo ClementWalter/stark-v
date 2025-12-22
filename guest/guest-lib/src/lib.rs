@@ -12,7 +12,6 @@
 // =============================================================================
 
 pub mod examples;
-pub mod types;
 
 // =============================================================================
 // Re-exports
@@ -20,10 +19,8 @@ pub mod types;
 
 pub use examples::{
     branch, branch_test_impl, compute, fact, factorial_impl, fib, fibonacci_impl, memory,
-    memory_test_impl, muldiv, muldiv_test_impl,
-};
-pub use types::{
-    BranchResult, ComputeResult, FactorialResult, FibResult, MemoryTestResult, MulDivResult,
+    memory_test_impl, muldiv, muldiv_test_impl, BranchResult, ComputeResult, FactorialResult,
+    FibResult, MemoryTestResult, MulDivResult,
 };
 
 // =============================================================================

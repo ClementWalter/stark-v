@@ -1,6 +1,12 @@
 //! Memory stress test example.
 
-use crate::types::MemoryTestResult;
+use serde::{Deserialize, Serialize};
+
+/// Result of memory test.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MemoryTestResult {
+    pub sum: u32,
+}
 
 /// Memory stress test returning a result struct.
 pub fn memory() -> MemoryTestResult {

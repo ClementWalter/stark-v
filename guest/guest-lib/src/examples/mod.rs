@@ -7,9 +7,9 @@ pub mod fib;
 pub mod memory;
 pub mod muldiv;
 
-pub use branch::{branch, branch_test_impl};
-pub use compute::compute;
-pub use factorial::{fact, factorial_impl};
-pub use fib::{fib, fibonacci_impl};
-pub use memory::{memory, memory_test_impl};
-pub use muldiv::{muldiv, muldiv_test_impl};
+pub use branch::{branch, branch_test_impl, BranchResult};
+pub use compute::{compute, ComputeResult};
+pub use factorial::{fact, factorial_impl, FactorialResult};
+pub use fib::{fib, fibonacci_impl, FibResult};
+pub use memory::{memory, memory_test_impl, MemoryTestResult};
+pub use muldiv::{muldiv, muldiv_test_impl, MulDivResult};

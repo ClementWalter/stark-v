@@ -1,6 +1,12 @@
 //! Simple computation example.
 
-use crate::types::ComputeResult;
+use serde::{Deserialize, Serialize};
+
+/// Result of a simple computation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ComputeResult {
+    pub value: u32,
+}
 
 /// Simple computation returning a constant.
 pub fn compute() -> ComputeResult {
