@@ -2,38 +2,17 @@ use std::collections::BTreeMap;
 
 use crate::trace::{Access, Tracer};
 
-/// Default maximum clock difference allowed between accesses.
-/// Need to be consistent with max range-check in the prover
-pub const DEFAULT_MAX_CLOCK_DIFF: u32 = 1 << 20; // ~1M cycles
-
 /// Sparse byte-addressable memory using BTreeMap.
 pub struct Memory {
     data: BTreeMap<u32, u8>,
-    /// Maximum allowed clock difference between consecutive accesses to the same address.
-    /// If exceeded, intermediate "catch-up" accesses are generated.
-    max_clock_diff: u32,
 }
 
 impl Memory {
-    /// Create empty memory with default max clock diff.
+    /// Create empty memory.
     pub fn new() -> Self {
         Self {
             data: BTreeMap::new(),
-            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
         }
-    }
-
-    /// Create empty memory with custom max clock diff.
-    pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
-        Self {
-            data: BTreeMap::new(),
-            max_clock_diff,
-        }
-    }
-
-    /// Set the maximum clock difference.
-    pub fn set_max_clock_diff(&mut self, max_diff: u32) {
-        self.max_clock_diff = max_diff;
     }
 
     /// Read a single byte.
@@ -86,79 +65,12 @@ impl Memory {
     // Traced access methods
     // =========================================================================
 
-    /// Generate intermediate accesses for a single byte to bring its clock up.
-    /// Returns the list of intermediate accesses (not including the final one).
-    fn generate_intermediate_accesses(
-        &self,
-        addr: u32,
-        value: u32,
-        clk_prev: u32,
-        target_clk: u32,
-        tracer: &mut Tracer,
-    ) -> Vec<Access> {
-        let mut accesses = Vec::new();
-        let mut current_clk_prev = clk_prev;
-
-        // Generate intermediate accesses until we're within max_clock_diff of target
-        while target_clk.saturating_sub(current_clk_prev) > self.max_clock_diff {
-            let intermediate_clk = current_clk_prev.saturating_add(self.max_clock_diff);
-            accesses.push(Access {
-                addr,
-                prev: value,
-                clk_prev: current_clk_prev,
-                next: value, // No change, just clock catch-up
-                clk: intermediate_clk,
-            });
-            // Update the byte's clock in tracer
-            tracer.mem_clk.insert(addr, intermediate_clk);
-            current_clk_prev = intermediate_clk;
-        }
-
-        accesses
-    }
-
-    /// Trace a single byte access, generating intermediate accesses if needed.
-    fn trace_byte_access(
-        &self,
-        addr: u32,
-        prev_value: u32,
-        next_value: u32,
-        tracer: &mut Tracer,
-    ) -> Vec<Access> {
-        let clk_prev = tracer.mem_clk.get(&addr).copied().unwrap_or(0);
-
-        // Generate intermediate accesses to catch up the clock
-        let mut accesses =
-            self.generate_intermediate_accesses(addr, prev_value, clk_prev, tracer.clk, tracer);
-
-        // The final clk_prev after intermediates
-        let final_clk_prev = if accesses.is_empty() {
-            clk_prev
-        } else {
-            accesses.last().map(|a| a.clk).unwrap_or(clk_prev)
-        };
-
-        // Add the actual access
-        accesses.push(Access {
-            addr,
-            prev: prev_value,
-            clk_prev: final_clk_prev,
-            next: next_value,
-            clk: tracer.clk,
-        });
-
-        // Update the byte's clock
-        tracer.mem_clk.insert(addr, tracer.clk);
-
-        accesses
-    }
-
     /// Read a byte with trace tracking.
     /// Returns a list of accesses (intermediate catch-ups + final read).
     #[inline]
     pub fn read_u8_traced(&self, addr: u32, tracer: &mut Tracer) -> Vec<Access> {
         let value = self.read_u8(addr) as u32;
-        self.trace_byte_access(addr, value, value, tracer)
+        tracer.trace_mem_access(addr, value, value)
     }
 
     /// Trace multiple bytes with clock synchronization.
@@ -183,70 +95,28 @@ impl Memory {
             max_clk_prev = max_clk_prev.max(clk_prev);
         }
 
-        // Step 2: Catch up all bytes to max_clk_prev (with intermediates if needed)
+        // Step 2: Catch up all bytes to max_clk_prev
+        // Save original tracer.clk and temporarily set to max_clk_prev for catch-up
+        let original_clk = tracer.clk;
+        tracer.clk = max_clk_prev;
+
         for (i, &byte_value) in byte_values.iter().enumerate() {
             let byte_addr = base_addr.wrapping_add(i as u32);
             let byte_value = byte_value as u32;
             let clk_prev = tracer.mem_clk.get(&byte_addr).copied().unwrap_or(0);
 
-            // Generate intermediates from clk_prev to max_clk_prev
-            accesses.extend(self.generate_intermediate_accesses(
-                byte_addr,
-                byte_value,
-                clk_prev,
-                max_clk_prev,
-                tracer,
-            ));
-
-            // If this byte wasn't already at max_clk_prev, add a catch-up access
+            // If this byte isn't at max_clk_prev, generate catch-up accesses
             if clk_prev < max_clk_prev {
-                // Get the current clock after intermediates
-                let current_clk = tracer.mem_clk.get(&byte_addr).copied().unwrap_or(clk_prev);
-                if current_clk < max_clk_prev {
-                    accesses.push(Access {
-                        addr: byte_addr,
-                        prev: byte_value,
-                        clk_prev: current_clk,
-                        next: byte_value,
-                        clk: max_clk_prev,
-                    });
-                    tracer.mem_clk.insert(byte_addr, max_clk_prev);
-                }
+                accesses.extend(tracer.trace_mem_access(byte_addr, byte_value, byte_value));
             }
         }
 
-        // Step 3: Generate intermediates from max_clk_prev to tracer.clk and final access
+        // Step 3: Restore original clk and do final accesses
+        tracer.clk = original_clk;
+
         for (i, (&prev, &next)) in byte_values.iter().zip(next_values).enumerate() {
             let byte_addr = base_addr.wrapping_add(i as u32);
-            let prev_value = prev as u32;
-            let next_value = next as u32;
-
-            // Generate intermediates from max_clk_prev to tracer.clk
-            accesses.extend(self.generate_intermediate_accesses(
-                byte_addr,
-                prev_value,
-                max_clk_prev,
-                tracer.clk,
-                tracer,
-            ));
-
-            // Get the final clk_prev after all intermediates
-            let final_clk_prev = tracer
-                .mem_clk
-                .get(&byte_addr)
-                .copied()
-                .unwrap_or(max_clk_prev);
-
-            // Add the actual access
-            accesses.push(Access {
-                addr: byte_addr,
-                prev: prev_value,
-                clk_prev: final_clk_prev,
-                next: next_value,
-                clk: tracer.clk,
-            });
-
-            tracer.mem_clk.insert(byte_addr, tracer.clk);
+            accesses.extend(tracer.trace_mem_access(byte_addr, prev as u32, next as u32));
         }
 
         accesses
@@ -278,7 +148,7 @@ impl Memory {
     #[inline]
     pub fn write_u8_traced(&mut self, addr: u32, val: u8, tracer: &mut Tracer) -> Vec<Access> {
         let prev = self.read_u8(addr) as u32;
-        let accesses = self.trace_byte_access(addr, prev, val as u32, tracer);
+        let accesses = tracer.trace_mem_access(addr, prev, val as u32);
         self.write_u8(addr, val);
         accesses
     }
@@ -321,7 +191,6 @@ impl FromIterator<(u32, u8)> for Memory {
     fn from_iter<I: IntoIterator<Item = (u32, u8)>>(iter: I) -> Self {
         Self {
             data: iter.into_iter().collect(),
-            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
         }
     }
 }
@@ -341,27 +210,12 @@ mod tests {
         let mem = Memory::new();
         assert_eq!(mem.read_u8(0), 0);
         assert_eq!(mem.read_u8(100), 0);
-        assert_eq!(mem.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
     }
 
     #[test]
     fn test_default_same_as_new() {
         let mem = Memory::default();
         assert_eq!(mem.read_u8(0), 0);
-        assert_eq!(mem.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
-    }
-
-    #[test]
-    fn test_with_max_clock_diff() {
-        let mem = Memory::with_max_clock_diff(100);
-        assert_eq!(mem.max_clock_diff, 100);
-    }
-
-    #[test]
-    fn test_set_max_clock_diff() {
-        let mut mem = Memory::new();
-        mem.set_max_clock_diff(500);
-        assert_eq!(mem.max_clock_diff, 500);
     }
 
     #[test]
@@ -526,14 +380,14 @@ mod tests {
     }
 
     // =========================================================================
-    // Intermediate Gap-Filling Accesses
+    // Intermediate Gap-Filling Accesses (uses Tracer's max_clock_diff)
     // =========================================================================
 
     #[test]
     fn test_gap_filling_single_byte() {
-        let mut mem = Memory::with_max_clock_diff(100);
+        let mut mem = Memory::new();
         mem.write_u8(100, 0x42);
-        let mut tracer = Tracer::default();
+        let mut tracer = Tracer::with_max_clock_diff(100);
 
         // First access at clk=0
         tracer.clk = 0;
@@ -547,7 +401,7 @@ mod tests {
         // Gap of 350 with max_diff 100 needs at least 3 intermediates + 1 final
         assert!(
             accesses.len() == 4,
-            "Expected at 4 accesses, got {}",
+            "Expected 4 accesses, got {}",
             accesses.len()
         );
 
@@ -564,9 +418,9 @@ mod tests {
 
     #[test]
     fn test_gap_filling_preserves_value() {
-        let mut mem = Memory::with_max_clock_diff(50);
+        let mut mem = Memory::new();
         mem.write_u8(100, 0xAB);
-        let mut tracer = Tracer::default();
+        let mut tracer = Tracer::with_max_clock_diff(50);
 
         tracer.clk = 0;
         mem.read_u8_traced(100, &mut tracer);
@@ -583,9 +437,9 @@ mod tests {
 
     #[test]
     fn test_gap_filling_multi_byte() {
-        let mut mem = Memory::with_max_clock_diff(100);
+        let mut mem = Memory::new();
         mem.write_u32(100, 0x44332211);
-        let mut tracer = Tracer::default();
+        let mut tracer = Tracer::with_max_clock_diff(100);
 
         // Set one byte with old clock, others recent
         tracer.mem_clk.insert(100, 0);
@@ -610,8 +464,8 @@ mod tests {
 
     #[test]
     fn test_exact_max_clock_diff_no_intermediate() {
-        let mem = Memory::with_max_clock_diff(100);
-        let mut tracer = Tracer::default();
+        let mem = Memory::new();
+        let mut tracer = Tracer::with_max_clock_diff(100);
 
         tracer.clk = 0;
         mem.read_u8_traced(100, &mut tracer);
@@ -627,8 +481,8 @@ mod tests {
 
     #[test]
     fn test_just_over_max_clock_diff_one_intermediate() {
-        let mem = Memory::with_max_clock_diff(100);
-        let mut tracer = Tracer::default();
+        let mem = Memory::new();
+        let mut tracer = Tracer::with_max_clock_diff(100);
 
         tracer.clk = 0;
         mem.read_u8_traced(100, &mut tracer);
@@ -672,8 +526,8 @@ mod tests {
 
     #[test]
     fn test_max_clock_diff_one() {
-        let mem = Memory::with_max_clock_diff(1);
-        let mut tracer = Tracer::default();
+        let mem = Memory::new();
+        let mut tracer = Tracer::with_max_clock_diff(1);
 
         tracer.clk = 0;
         mem.read_u8_traced(100, &mut tracer);
@@ -693,8 +547,8 @@ mod tests {
 
     #[test]
     fn test_max_clock_diff_max() {
-        let mem = Memory::with_max_clock_diff(u32::MAX);
-        let mut tracer = Tracer::default();
+        let mem = Memory::new();
+        let mut tracer = Tracer::with_max_clock_diff(u32::MAX);
 
         tracer.clk = 0;
         mem.read_u8_traced(100, &mut tracer);

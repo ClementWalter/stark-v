@@ -5,6 +5,10 @@
 
 use rustc_hash::FxHashMap;
 
+/// Default maximum clock difference allowed between accesses.
+/// Must be consistent with max range-check in the prover.
+pub const DEFAULT_MAX_CLOCK_DIFF: u32 = 1 << 20; // ~1M cycles
+
 /// Unified access record for both registers and memory.
 ///
 /// - For registers: `addr` is the register index (0-31)
@@ -418,12 +422,15 @@ pub struct RemuTrace {
 // =============================================================================
 
 /// Main tracer structure holding all per-opcode trace tables.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Tracer {
     /// Global clock counter, incremented by 1 at each instruction.
     pub clk: u32,
     /// Current program counter (set before each instruction).
     pub pc: u32,
+    /// Maximum allowed clock difference between consecutive accesses.
+    /// If exceeded, intermediate "catch-up" accesses are generated.
+    pub max_clock_diff: u32,
 
     /// Last access clock for each register (0-31).
     pub reg_clk: [u32; 32],
@@ -485,7 +492,80 @@ pub struct Tracer {
     pub remu: Vec<RemuTrace>,
 }
 
+impl Default for Tracer {
+    fn default() -> Self {
+        Self {
+            clk: 0,
+            pc: 0,
+            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
+            reg_clk: [0; 32],
+            mem_clk: FxHashMap::default(),
+
+            add: Vec::new(),
+            sub: Vec::new(),
+            sll: Vec::new(),
+            slt: Vec::new(),
+            sltu: Vec::new(),
+            xor: Vec::new(),
+            srl: Vec::new(),
+            sra: Vec::new(),
+            or: Vec::new(),
+            and: Vec::new(),
+
+            addi: Vec::new(),
+            slti: Vec::new(),
+            sltiu: Vec::new(),
+            xori: Vec::new(),
+            ori: Vec::new(),
+            andi: Vec::new(),
+            slli: Vec::new(),
+            srli: Vec::new(),
+            srai: Vec::new(),
+
+            lb: Vec::new(),
+            lh: Vec::new(),
+            lw: Vec::new(),
+            lbu: Vec::new(),
+            lhu: Vec::new(),
+
+            sb: Vec::new(),
+            sh: Vec::new(),
+            sw: Vec::new(),
+
+            beq: Vec::new(),
+            bne: Vec::new(),
+            blt: Vec::new(),
+            bge: Vec::new(),
+            bltu: Vec::new(),
+            bgeu: Vec::new(),
+
+            jal: Vec::new(),
+            jalr: Vec::new(),
+
+            lui: Vec::new(),
+            auipc: Vec::new(),
+
+            mul: Vec::new(),
+            mulh: Vec::new(),
+            mulhsu: Vec::new(),
+            mulhu: Vec::new(),
+            div: Vec::new(),
+            divu: Vec::new(),
+            rem: Vec::new(),
+            remu: Vec::new(),
+        }
+    }
+}
+
 impl Tracer {
+    /// Create a new tracer with custom max clock diff.
+    pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
+        Self {
+            max_clock_diff,
+            ..Default::default()
+        }
+    }
+
     /// Create a new tracer with pre-allocated capacity.
     pub fn with_capacity(est_instructions: usize) -> Self {
         // Rough estimate: divide total by number of opcode types
@@ -493,6 +573,7 @@ impl Tracer {
         Self {
             clk: 0,
             pc: 0,
+            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
             reg_clk: [0; 32],
             mem_clk: FxHashMap::default(),
 
@@ -549,6 +630,96 @@ impl Tracer {
             rem: Vec::with_capacity(cap),
             remu: Vec::with_capacity(cap),
         }
+    }
+
+    // =========================================================================
+    // Gap-filling trace methods
+    // =========================================================================
+
+    /// Generate intermediate accesses to bridge a clock gap.
+    /// Returns accesses from `clk_prev` to just before `target_clk`.
+    fn generate_intermediates(
+        &self,
+        addr: u32,
+        value: u32,
+        clk_prev: u32,
+        target_clk: u32,
+    ) -> (Vec<Access>, u32) {
+        let mut accesses = Vec::new();
+        let mut current_clk = clk_prev;
+
+        while target_clk.saturating_sub(current_clk) > self.max_clock_diff {
+            let next_clk = current_clk.saturating_add(self.max_clock_diff);
+            accesses.push(Access {
+                addr,
+                prev: value,
+                clk_prev: current_clk,
+                next: value,
+                clk: next_clk,
+            });
+            current_clk = next_clk;
+        }
+
+        (accesses, current_clk)
+    }
+
+    /// Trace a register access with gap-filling.
+    /// Returns all accesses including intermediates and the final access.
+    pub fn trace_reg_access(&mut self, idx: u8, prev: u32, next: u32) -> Vec<Access> {
+        let clk_prev = self.reg_clk[idx as usize];
+        let addr = idx as u32;
+
+        // Generate intermediate catch-up accesses
+        let (mut accesses, final_clk_prev) =
+            self.generate_intermediates(addr, prev, clk_prev, self.clk);
+
+        // Update reg_clk for intermediates
+        if !accesses.is_empty() {
+            self.reg_clk[idx as usize] = final_clk_prev;
+        }
+
+        // Add the final access
+        accesses.push(Access {
+            addr,
+            prev,
+            clk_prev: final_clk_prev,
+            next,
+            clk: self.clk,
+        });
+
+        // Update the register's clock
+        self.reg_clk[idx as usize] = self.clk;
+
+        accesses
+    }
+
+    /// Trace a memory byte access with gap-filling.
+    /// Returns all accesses including intermediates and the final access.
+    pub fn trace_mem_access(&mut self, addr: u32, prev: u32, next: u32) -> Vec<Access> {
+        let clk_prev = self.mem_clk.get(&addr).copied().unwrap_or(0);
+
+        // Generate intermediate catch-up accesses
+        let (mut accesses, final_clk_prev) =
+            self.generate_intermediates(addr, prev, clk_prev, self.clk);
+
+        // Update mem_clk for intermediates
+        if !accesses.is_empty() {
+            self.mem_clk.insert(addr, final_clk_prev);
+        }
+
+        // Add the final access
+        accesses.push(Access {
+            addr,
+            prev,
+            clk_prev: final_clk_prev,
+            next,
+            clk: self.clk,
+        });
+
+        // Update the memory byte's clock
+        self.mem_clk.insert(addr, self.clk);
+
+        accesses
     }
 
     /// Total number of traced instructions.
@@ -747,4 +918,266 @@ macro_rules! trace {
     (remu: $($field:ident),+ $(,)?) => {
         tracer.remu.push($crate::trace::RemuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
     };
+}
+
+#[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // Tracer Construction
+    // =========================================================================
+
+    #[test]
+    fn test_default_tracer() {
+        let tracer = Tracer::default();
+        assert_eq!(tracer.clk, 0);
+        assert_eq!(tracer.pc, 0);
+        assert_eq!(tracer.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
+        assert_eq!(tracer.reg_clk, [0; 32]);
+        assert!(tracer.mem_clk.is_empty());
+    }
+
+    #[test]
+    fn test_with_max_clock_diff() {
+        let tracer = Tracer::with_max_clock_diff(100);
+        assert_eq!(tracer.max_clock_diff, 100);
+        assert_eq!(tracer.clk, 0);
+    }
+
+    // =========================================================================
+    // Memory Access Tracing
+    // =========================================================================
+
+    #[test]
+    fn test_trace_mem_access_first_access() {
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        let accesses = tracer.trace_mem_access(100, 0x42, 0x42);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].addr, 100);
+        assert_eq!(accesses[0].prev, 0x42);
+        assert_eq!(accesses[0].next, 0x42);
+        assert_eq!(accesses[0].clk_prev, 0);
+        assert_eq!(accesses[0].clk, 10);
+    }
+
+    #[test]
+    fn test_trace_mem_access_consecutive() {
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 1;
+        tracer.trace_mem_access(100, 0x11, 0x11);
+
+        tracer.clk = 2;
+        let accesses = tracer.trace_mem_access(100, 0x11, 0x22);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].clk_prev, 1);
+        assert_eq!(accesses[0].clk, 2);
+        assert_eq!(accesses[0].prev, 0x11);
+        assert_eq!(accesses[0].next, 0x22);
+    }
+
+    #[test]
+    fn test_trace_mem_access_gap_filling() {
+        let mut tracer = Tracer::with_max_clock_diff(100);
+
+        tracer.clk = 0;
+        tracer.trace_mem_access(100, 0x42, 0x42);
+
+        tracer.clk = 350;
+        let accesses = tracer.trace_mem_access(100, 0x42, 0x42);
+
+        // Gap of 350 with max_diff 100 needs 3 intermediates + 1 final
+        assert_eq!(
+            accesses.len(),
+            4,
+            "Expected 4 accesses, got {}",
+            accesses.len()
+        );
+
+        // Verify all clock diffs are within max_clock_diff
+        for access in &accesses {
+            let diff = access.clk.saturating_sub(access.clk_prev);
+            assert!(
+                diff <= 100,
+                "Clock diff {} exceeds max_clock_diff 100",
+                diff
+            );
+        }
+    }
+
+    #[test]
+    fn test_trace_mem_access_exact_max_diff() {
+        let mut tracer = Tracer::with_max_clock_diff(100);
+
+        tracer.clk = 0;
+        tracer.trace_mem_access(100, 0, 0);
+
+        tracer.clk = 100;
+        let accesses = tracer.trace_mem_access(100, 0, 0);
+
+        // Exactly at max_clock_diff - no intermediate needed
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].clk_prev, 0);
+        assert_eq!(accesses[0].clk, 100);
+    }
+
+    #[test]
+    fn test_trace_mem_access_preserves_value() {
+        let mut tracer = Tracer::with_max_clock_diff(50);
+
+        tracer.clk = 0;
+        tracer.trace_mem_access(100, 0xAB, 0xAB);
+
+        tracer.clk = 200;
+        let accesses = tracer.trace_mem_access(100, 0xAB, 0xAB);
+
+        // All intermediate accesses should preserve the value
+        for access in &accesses {
+            assert_eq!(access.prev, 0xAB);
+            assert_eq!(access.next, 0xAB);
+        }
+    }
+
+    #[test]
+    fn test_trace_mem_access_updates_mem_clk() {
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        tracer.trace_mem_access(100, 0, 0);
+
+        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+    }
+
+    // =========================================================================
+    // Register Access Tracing
+    // =========================================================================
+
+    #[test]
+    fn test_trace_reg_access_first_access() {
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        let accesses = tracer.trace_reg_access(5, 0x42, 0x42);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].addr, 5);
+        assert_eq!(accesses[0].prev, 0x42);
+        assert_eq!(accesses[0].next, 0x42);
+        assert_eq!(accesses[0].clk_prev, 0);
+        assert_eq!(accesses[0].clk, 10);
+    }
+
+    #[test]
+    fn test_trace_reg_access_consecutive() {
+        let mut tracer = Tracer::default();
+
+        tracer.clk = 1;
+        tracer.trace_reg_access(5, 0x11, 0x11);
+
+        tracer.clk = 2;
+        let accesses = tracer.trace_reg_access(5, 0x11, 0x22);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].clk_prev, 1);
+        assert_eq!(accesses[0].clk, 2);
+        assert_eq!(accesses[0].prev, 0x11);
+        assert_eq!(accesses[0].next, 0x22);
+    }
+
+    #[test]
+    fn test_trace_reg_access_gap_filling() {
+        let mut tracer = Tracer::with_max_clock_diff(100);
+
+        tracer.clk = 0;
+        tracer.trace_reg_access(5, 0x42, 0x42);
+
+        tracer.clk = 350;
+        let accesses = tracer.trace_reg_access(5, 0x42, 0x42);
+
+        // Gap of 350 with max_diff 100 needs 3 intermediates + 1 final
+        assert_eq!(
+            accesses.len(),
+            4,
+            "Expected 4 accesses, got {}",
+            accesses.len()
+        );
+
+        // Verify all clock diffs are within max_clock_diff
+        for access in &accesses {
+            let diff = access.clk.saturating_sub(access.clk_prev);
+            assert!(
+                diff <= 100,
+                "Clock diff {} exceeds max_clock_diff 100",
+                diff
+            );
+        }
+    }
+
+    #[test]
+    fn test_trace_reg_access_x0() {
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        // x0 can still be traced - the caller handles x0 semantics
+        let accesses = tracer.trace_reg_access(0, 0, 0);
+
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].addr, 0);
+        assert_eq!(accesses[0].prev, 0);
+        assert_eq!(accesses[0].next, 0);
+    }
+
+    #[test]
+    fn test_trace_reg_access_updates_reg_clk() {
+        let mut tracer = Tracer::default();
+        tracer.clk = 10;
+
+        tracer.trace_reg_access(5, 0, 0);
+
+        assert_eq!(tracer.reg_clk[5], 10);
+    }
+
+    // =========================================================================
+    // Edge Cases
+    // =========================================================================
+
+    #[test]
+    fn test_max_clock_diff_one() {
+        let mut tracer = Tracer::with_max_clock_diff(1);
+
+        tracer.clk = 0;
+        tracer.trace_mem_access(100, 0, 0);
+
+        tracer.clk = 5;
+        let accesses = tracer.trace_mem_access(100, 0, 0);
+
+        // With max_clock_diff=1, gap of 5 needs 5 accesses
+        assert_eq!(accesses.len(), 5);
+
+        // Verify each step is exactly 1
+        for access in &accesses {
+            let diff = access.clk - access.clk_prev;
+            assert_eq!(diff, 1);
+        }
+    }
+
+    #[test]
+    fn test_max_clock_diff_max() {
+        let mut tracer = Tracer::with_max_clock_diff(u32::MAX);
+
+        tracer.clk = 0;
+        tracer.trace_mem_access(100, 0, 0);
+
+        tracer.clk = u32::MAX - 1;
+        let accesses = tracer.trace_mem_access(100, 0, 0);
+
+        // No intermediate ever needed
+        assert_eq!(accesses.len(), 1);
+    }
 }
