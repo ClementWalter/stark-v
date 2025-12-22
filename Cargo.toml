@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["guest/guest-lib"]
+members = ["crates/runner","guest/guest-lib"]
 exclude = ["guest/guest-bin"]
 
 [profile.dev]
