@@ -11,3 +11,8 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 runner-macros.workspace = true
+
+[dev-dependencies]
+guest-lib = { path = "../../guest/guest-lib" }
+postcard = "1"
+serde = "1"
