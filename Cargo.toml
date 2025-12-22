@@ -6,6 +6,8 @@ exclude = ["guest/guest-bin"]
 [workspace.dependencies]
 # CLI
 clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = { version = "1", default-features = false }
 
 # Parsing
 goblin = "0.9"
