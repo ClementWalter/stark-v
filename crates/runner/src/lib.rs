@@ -44,7 +44,7 @@ pub struct RunResult {
 
 /// Run an ELF program to completion.
 ///
-/// Executes until an infinite loop is detected (PC unchanged after instruction)
+/// Executes until the guest halts or an infinite loop is detected (PC unchanged after instruction)
 /// or the maximum cycle count is reached.
 ///
 /// # Arguments
