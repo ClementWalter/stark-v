@@ -24,6 +24,7 @@ impl Memory {
     /// Read a half-word (16-bit, little-endian).
     #[inline]
     pub fn read_u16(&self, addr: u32) -> u16 {
+        debug_assert_eq!(addr & 1, 0, "Address must be 2-byte aligned");
         let lo = self.read_u8(addr) as u16;
         let hi = self.read_u8(addr.wrapping_add(1)) as u16;
         lo | (hi << 8)
@@ -32,6 +33,7 @@ impl Memory {
     /// Read a word (32-bit, little-endian).
     #[inline]
     pub fn read_u32(&self, addr: u32) -> u32 {
+        debug_assert_eq!(addr & 3, 0, "Address must be 4-byte aligned");
         let b0 = self.read_u8(addr) as u32;
         let b1 = self.read_u8(addr.wrapping_add(1)) as u32;
         let b2 = self.read_u8(addr.wrapping_add(2)) as u32;
@@ -48,6 +50,7 @@ impl Memory {
     /// Write a half-word (16-bit, little-endian).
     #[inline]
     pub fn write_u16(&mut self, addr: u32, val: u16) {
+        debug_assert_eq!(addr & 1, 0, "Address must be 2-byte aligned");
         self.write_u8(addr, val as u8);
         self.write_u8(addr.wrapping_add(1), (val >> 8) as u8);
     }
@@ -55,6 +58,7 @@ impl Memory {
     /// Write a word (32-bit, little-endian).
     #[inline]
     pub fn write_u32(&mut self, addr: u32, val: u32) {
+        debug_assert_eq!(addr & 3, 0, "Address must be 4-byte aligned");
         self.write_u8(addr, val as u8);
         self.write_u8(addr.wrapping_add(1), (val >> 8) as u8);
         self.write_u8(addr.wrapping_add(2), (val >> 16) as u8);
@@ -67,33 +71,39 @@ impl Memory {
 
     /// Read the aligned word value at the given address.
     /// All traced accesses use 4-byte aligned addresses.
-    #[inline]
-    fn read_aligned_word(&self, addr: u32) -> u32 {
+    /// If addr is not 4-byte aligned, the returned value is the value of the 4-byte
+    /// aligned word containing the byte at addr.
+    ///
+    /// All traced read methods use this same helper function to trace the aligned word.
+    /// Read methods are kept for maintaining Memory interface consistent with the RISC-V
+    /// specification.
+    #[inline(always)]
+    fn read_aligned_word_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
         let aligned = addr & !3;
-        self.read_u32(aligned)
+        let word = self.read_u32(aligned);
+        tracer.trace_mem_access(aligned, word, word)
     }
 
     /// Read a byte with trace tracking.
     /// Traces the full 4-byte aligned word containing this byte.
     #[inline]
     pub fn read_u8_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
-        let word = self.read_aligned_word(addr);
-        tracer.trace_mem_access(addr, word, word)
+        self.read_aligned_word_traced(addr, tracer)
     }
 
     /// Read a half-word with trace tracking.
     /// Traces the full 4-byte aligned word containing this half-word.
     #[inline]
     pub fn read_u16_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
-        let word = self.read_aligned_word(addr);
-        tracer.trace_mem_access(addr, word, word)
+        debug_assert_eq!(addr & 1, 0, "Address must be 2-byte aligned");
+        self.read_aligned_word_traced(addr, tracer)
     }
 
     /// Read a word with trace tracking.
     #[inline]
     pub fn read_u32_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
-        let value = self.read_u32(addr);
-        tracer.trace_mem_access(addr, value, value)
+        debug_assert_eq!(addr & 3, 0, "Address must be 4-byte aligned");
+        self.read_aligned_word_traced(addr, tracer)
     }
 
     /// Write a byte with trace tracking.
@@ -111,6 +121,7 @@ impl Memory {
     /// Traces the full 4-byte aligned word containing this half-word.
     #[inline]
     pub fn write_u16_traced(&mut self, addr: u32, val: u16, tracer: &mut Tracer) -> Access {
+        debug_assert_eq!(addr & 1, 0, "Address must be 2-byte aligned");
         let aligned = addr & !3;
         let prev_word = self.read_u32(aligned);
         self.write_u16(addr, val);
@@ -121,6 +132,7 @@ impl Memory {
     /// Write a word with trace tracking.
     #[inline]
     pub fn write_u32_traced(&mut self, addr: u32, val: u32, tracer: &mut Tracer) -> Access {
+        debug_assert_eq!(addr & 3, 0, "Address must be 4-byte aligned");
         let prev_value = self.read_u32(addr);
         self.write_u32(addr, val);
         tracer.trace_mem_access(addr, prev_value, val)
@@ -325,15 +337,15 @@ mod tests {
         mem.write_u8(100, 0x42);
         let mut tracer = Tracer::with_max_clock_diff(100);
 
-        // First access at clk=0
-        tracer.clk = 0;
+        // First access at clk=1
+        tracer.clk = 1;
         mem.read_u8_traced(100, &mut tracer);
 
         // Access with gap > max_clock_diff (100)
         tracer.clk = 350;
         let access = mem.read_u8_traced(100, &mut tracer);
 
-        // Should have 3 intermediate accesses to bridge the gap
+        // Should have 3 intermediate accesses (101, 201, 301) to bridge the gap
         assert_eq!(
             tracer.mem_clk_update.len(),
             3,
@@ -344,20 +356,12 @@ mod tests {
         // Verify all intermediate clock diffs are within max_clock_diff
         for intermediate in &tracer.mem_clk_update {
             let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
-            assert!(
-                diff <= 100,
-                "Clock diff {} exceeds max_clock_diff 100",
-                diff
-            );
+            assert_eq!(diff, 100, "Clock diff {} should be 100", diff);
         }
 
         // Verify final access clock diff is within max_clock_diff
         let diff = access.clk.saturating_sub(access.clk_prev);
-        assert!(
-            diff <= 100,
-            "Final clock diff {} exceeds max_clock_diff 100",
-            diff
-        );
+        assert_eq!(diff, 49, "Final clock diff {} should be 49", diff);
     }
 
     #[test]
@@ -380,38 +384,6 @@ mod tests {
         // Final access should also preserve value
         assert_eq!(access.prev, 0xAB);
         assert_eq!(access.next, 0xAB);
-    }
-
-    #[test]
-    fn test_gap_filling_multi_byte() {
-        let mut mem = Memory::new();
-        mem.write_u32(100, 0x44332211);
-        let mut tracer = Tracer::with_max_clock_diff(100);
-
-        // Set one byte with old clock, others recent
-        tracer.mem_clk.insert(100, 0);
-        tracer.mem_clk.insert(101, 400);
-        tracer.mem_clk.insert(102, 400);
-        tracer.mem_clk.insert(103, 400);
-        tracer.clk = 500;
-
-        let access = mem.read_u32_traced(100, &mut tracer);
-
-        // All byte-level clock diffs in mem_clk_update should be within max_clock_diff
-        for byte_access in &tracer.mem_clk_update {
-            let diff = byte_access.clk.saturating_sub(byte_access.clk_prev);
-            assert!(
-                diff <= 100,
-                "Clock diff {} at addr {} exceeds max_clock_diff 100",
-                diff,
-                byte_access.addr
-            );
-        }
-
-        // The returned Access represents the whole operation
-        assert_eq!(access.addr, 100);
-        assert_eq!(access.prev, 0x44332211);
-        assert_eq!(access.next, 0x44332211);
     }
 
     #[test]
@@ -455,27 +427,22 @@ mod tests {
         let mut mem = Memory::new();
         mem.write_u32(0, 0xDEADBEEF);
         assert_eq!(mem.read_u32(0), 0xDEADBEEF);
-
-        let mut tracer = Tracer::default();
-        tracer.clk = 1;
-        let access = mem.read_u32_traced(0, &mut tracer);
-        // Only gap-filling entries go to mem_clk_update; byte-level accesses are tracked via mem_clk
-        assert!(tracer.mem_clk_update.is_empty());
-        assert_eq!(access.prev, 0xDEADBEEF);
     }
 
     #[test]
-    fn test_address_wrap_around() {
-        let mut mem = Memory::new();
-        // Write at max address - should wrap when reading u32
-        mem.write_u8(0xFFFFFFFF, 0x11);
-        mem.write_u8(0x00000000, 0x22); // Wraps to 0
-        mem.write_u8(0x00000001, 0x33);
-        mem.write_u8(0x00000002, 0x44);
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn test_address_u32_not_4_byte_aligned() {
+        let mem = Memory::new();
+        mem.read_u32(1);
+    }
 
-        // Read u32 starting at 0xFFFFFFFF wraps around
-        let val = mem.read_u32(0xFFFFFFFF);
-        assert_eq!(val, 0x44332211); // First byte from 0xFFFFFFFF
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn test_address_u16_not_2_byte_aligned() {
+        let mem = Memory::new();
+        mem.read_u16(1);
     }
 
     #[test]
@@ -528,10 +495,6 @@ mod tests {
         // No intermediates needed for sequential clocks
         assert!(tracer.mem_clk_update.is_empty());
     }
-
-    // =========================================================================
-    // Merge/Split Detection Tests
-    // =========================================================================
 
     // =========================================================================
     // 4-Byte Aligned Tracing Tests
