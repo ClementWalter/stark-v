@@ -17,6 +17,11 @@ pub fn fact(n: u32) -> FactorialResult {
     }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> FactorialResult {
+    fact(10)
+}
+
 /// Iterative factorial implementation returning raw value.
 pub fn factorial_impl(n: u32) -> u32 {
     let mut result = 1u32;

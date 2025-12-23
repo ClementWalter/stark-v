@@ -4,5 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-postcard.workspace = true
 serde.workspace = true
+
+# postcard with alloc feature for native builds (needed by dispatcher)
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+postcard = { version = "1", features = ["alloc"] }
+
+# postcard without alloc for riscv32 builds
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+postcard = { version = "1", default-features = false }

@@ -17,6 +17,11 @@ pub fn branch(x: u32) -> BranchResult {
     }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> BranchResult {
+    branch(5)
+}
+
 /// Branch test implementation: multiple conditional branches.
 pub fn branch_test_impl(x: u32) -> u32 {
     let mut result = 0u32;

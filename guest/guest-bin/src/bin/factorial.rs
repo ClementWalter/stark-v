@@ -1,4 +1,4 @@
 #![no_std]
 #![no_main]
 
-guest_lib::guest_main!(guest_lib::fact(10));
+guest_bin::guest_main!(guest_lib::programs::factorial::test_call());

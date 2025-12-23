@@ -1,4 +1,4 @@
 #![no_std]
 #![no_main]
 
-guest_lib::guest_main!(guest_lib::memory());
+guest_bin::guest_main!(guest_lib::programs::memory::test_call());
