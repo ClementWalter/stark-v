@@ -1057,80 +1057,69 @@ write to rd
 ### 11.1 Columns
 
 - pc
+- pc_1, pc_2 (least/most significant limbs are computed from rd[0] and pc, see
+  11.2)
 - clk
 
 - rd_idx
 - rd_prev_clk
 - rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3.
-- a_0, a_1, a_2, a_3 — limbs of the value written to `rd`.
+- rd[0:3]
 
-- imm_0 (imm[0:7])
-- imm_1 (imm[8:15])
-- imm_2 (imm[16:19])
+- imm_0 (imm[0:3])
+- imm_1 (imm[4:11])
+- imm_2 (imm[12:18])
+- imm_msb (imm[19])
 
-- opcode_auipc_flag
-
-- pc_decomp_1, pc_decomp_2
-- carry_1, carry_2, carry_3
+- enabler
 
 ### 11.2 Variables
 
-- `enabler = opcode_auipc_flag`.
-- `expected_opcode_id = opcode_auipc_flag * opcode_id_auipc`.
-- `imm = imm_1 * 2^8 + imm_2 * 2^16` (imm_0 is always 0 for AUIPC)
-- `pc_decomp_0 = a_0` (LSB of pc equals LSB of result)
-- `pc_decomp_3 = (pc - pc_decomp_0 - pc_decomp_1 * 2^8 - pc_decomp_2 * 2^16) / 2^24`
-  (MSB of pc)
+- `imm = imm_0 + imm_1 * 2^4 + imm_2 * 2^12 + imm_msb * 2^19`.
+- `imm_limbs = [0, 2^4 * imm_0, imm_1, imm_2 + imm_msb * 2^7]`.
+- `pc_felt_lo = rd[0] + pc_1 * 2^8 + pc_2 * 2^16`
+- `pc_msl = (pc - pc_felt_lo)/2^24`
+- `pc_limbs = [rd[0], pc_1, pc_2, pc_msl]`
+- `carry[i] = (pc_limbs[i] + imm_limbs[i-1] - rd[i] + carry[i-1])/2^8`
 
 ### 11.3 Constraints
 
-`enabler` and `opcode_auipc_flag` are booleans
+`enabler` is a boolean
 
 - `enabler * (1 - enabler)`
-- `opcode_auipc_flag * (1 - opcode_auipc_flag)`
 
 read instruction from the Program segment
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, 0, imm_0 + imm_1 * 2^8 + imm_2 * 2^16)`
-
-range check imm
-
-- `- RC_8_8(imm_0, imm_1)`
-- `- RC_4_0(imm_2, 0)`
-
-AUIPC: constrain imm_0 = 0 (12-bit left shift means LSB limb is 0)
-
-- `imm_0`
+- `- enabler * Program(pc, opcode_auipc, rd_idx, imm, 0)`
 
 registers update
 
 - `- enabler * RegsImm(pc, clk)`
 - `+ enabler * RegsImm(pc + 4, clk + 1)`
 
-PC decomposition
+range check imm limbs
 
-- `pc - pc_decomp_0 - pc_decomp_1 * 2^8 - pc_decomp_2 * 2^16 - pc_decomp_3 * 2^24`
+- `- RC_4_8_8(imm_0, imm_1, imm_2)`
+- `imm_msb * (1 - imm_msb)`
 
-compute rd = pc + (imm << 12)
+range check middle pc limbs
 
-- `carry_1 * (1 - carry_1)`
-- `carry_2 * (1 - carry_2)`
-- `carry_3 * (1 - carry_3)`
-- `pc_decomp_0 - a_0` (LSB unchanged)
-- `pc_decomp_1 + imm_1 + carry_1 * 2^N_BITS_PER_BYTE - a_1 - carry_0 * 2^N_BITS_PER_BYTE`
-- `pc_decomp_2 + imm_2 + carry_2 * 2^N_BITS_PER_BYTE - a_2 - carry_1 * 2^N_BITS_PER_BYTE`
-- `pc_decomp_3 + carry_3 * 2^N_BITS_PER_BYTE - a_3 - carry_2 * 2^N_BITS_PER_BYTE`
+- `- RC_8_8(pc_1, pc_2)`
+- `- RC_8(2^2 * pc_msl)`
 
-range check pc decomposition and result
+check addition
 
-- `- RC_8_8(pc_decomp_1, pc_decomp_2)`
-- `- RC_8_8(a_0, a_1)`
-- `- RC_8_8(a_2, a_3)`
+- `carry[i] * (1 - carry[i])`
+
+range check rd
+
+- `RC_8_8(rd[0], rd[1])`
+- `RC_8_8(rd[2], rd[3])`
 
 write to rd
 
 - `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
-- `+ enabler * RegsRW(rd_idx, clk, a_0, a_1, a_2, a_3)`
+- `+ enabler * RegsRW(rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk - enabler)`
 
 ## 12. MUL
