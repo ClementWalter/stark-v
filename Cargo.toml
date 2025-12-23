@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/runner", "crates/runner-macros", "crates/simd", "guest/guest-lib"]
+members = [
+  "crates/runner",
+  "crates/runner-macros",
+  "crates/simd",
+  "guest/guest-lib",
+]
 exclude = ["guest/guest-bin"]
 
 [workspace.dependencies]

@@ -4,15 +4,17 @@ mod elf;
 mod execute;
 mod io;
 mod memory;
-mod ops;
+// trace module must come before ops so trace_op! macro is available
+#[macro_use]
 pub mod trace;
+mod ops;
 
 use decode::get_or_decode;
 use thiserror::Error;
 
 pub use cpu::Cpu;
 pub use decode::{DecodedInst, InstCache, Opcode};
-pub use elf::{load_elf, ElfError};
+pub use elf::{ElfError, load_elf};
 pub use execute::execute;
 pub use memory::Memory;
 pub use runner_macros::traced;

@@ -30,7 +30,7 @@ lint:
     - git-diff-check
     - markdownlint@0.46.0
     - prettier@3.7.4
-    - rustfmt@1.91.0
+    - rustfmt@SYSTEM
     - taplo@0.10.0
     - trufflehog@3.91.2
     - yamllint@1.37.1

@@ -1,5 +1,5 @@
 use crate::trace::Tracer;
-use crate::{trace_op, traced, Cpu, DecodedInst};
+use crate::{Cpu, DecodedInst, traced};
 
 #[traced]
 pub fn jal(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {

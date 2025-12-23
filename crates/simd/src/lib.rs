@@ -2,7 +2,7 @@
 //!
 //! Provides 64-byte aligned vectors for optimal SIMD performance (AVX-512 / 16x u32).
 
-use std::alloc::{alloc, alloc_zeroed, realloc, Layout};
+use std::alloc::{Layout, alloc, alloc_zeroed, realloc};
 use std::mem;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::ptr::NonNull;

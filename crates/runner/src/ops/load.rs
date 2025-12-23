@@ -1,5 +1,5 @@
 use crate::trace::Tracer;
-use crate::{trace_op, traced, Cpu, DecodedInst, Memory};
+use crate::{Cpu, DecodedInst, Memory, traced};
 
 #[traced]
 pub fn lb(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {

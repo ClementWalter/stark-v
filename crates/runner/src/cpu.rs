@@ -20,11 +20,7 @@ impl Cpu {
     /// Read register value. x0 always returns 0.
     #[inline]
     pub fn reg(&self, idx: u8) -> u32 {
-        if idx == 0 {
-            0
-        } else {
-            self.regs[idx as usize]
-        }
+        if idx == 0 { 0 } else { self.regs[idx as usize] }
     }
 
     /// Write register value. Writes to x0 are ignored.

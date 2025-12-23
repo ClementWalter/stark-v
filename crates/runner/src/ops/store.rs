@@ -1,5 +1,5 @@
 use crate::trace::Tracer;
-use crate::{trace_op, traced, Cpu, DecodedInst, Memory};
+use crate::{Cpu, DecodedInst, Memory, traced};
 
 #[traced]
 pub fn sb(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
