@@ -426,8 +426,6 @@ pub struct RemuTrace {
 pub struct Tracer {
     /// Global clock counter, incremented by 1 at each instruction.
     pub clk: u32,
-    /// Current program counter (set before each instruction).
-    pub pc: u32,
     /// Maximum allowed clock difference between consecutive accesses.
     /// If exceeded, intermediate "catch-up" accesses are generated.
     pub max_clock_diff: u32,
@@ -436,6 +434,11 @@ pub struct Tracer {
     pub reg_clk: [u32; 32],
     /// Last access clock for each memory address.
     pub mem_clk: FxHashMap<u32, u32>,
+
+    /// Intermediate register clock update accesses (gap-filling).
+    pub reg_clk_update: Vec<Access>,
+    /// Intermediate memory clock update accesses (gap-filling).
+    pub mem_clk_update: Vec<Access>,
 
     // Per-opcode trace tables
     pub add: Vec<AddTrace>,
@@ -496,10 +499,11 @@ impl Default for Tracer {
     fn default() -> Self {
         Self {
             clk: 0,
-            pc: 0,
             max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
             reg_clk: [0; 32],
             mem_clk: FxHashMap::default(),
+            reg_clk_update: Vec::new(),
+            mem_clk_update: Vec::new(),
 
             add: Vec::new(),
             sub: Vec::new(),
@@ -572,10 +576,11 @@ impl Tracer {
         let cap = est_instructions / 40 + 1;
         Self {
             clk: 0,
-            pc: 0,
             max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
             reg_clk: [0; 32],
             mem_clk: FxHashMap::default(),
+            reg_clk_update: Vec::new(),
+            mem_clk_update: Vec::new(),
 
             add: Vec::with_capacity(cap),
             sub: Vec::with_capacity(cap),
@@ -664,62 +669,66 @@ impl Tracer {
     }
 
     /// Trace a register access with gap-filling.
-    /// Returns all accesses including intermediates and the final access.
-    pub fn trace_reg_access(&mut self, idx: u8, prev: u32, next: u32) -> Vec<Access> {
+    /// Intermediate accesses are pushed to `reg_clk_update`.
+    /// Returns only the final access.
+    pub fn trace_reg_access(&mut self, idx: u8, prev: u32, next: u32) -> Access {
         let clk_prev = self.reg_clk[idx as usize];
         let addr = idx as u32;
 
         // Generate intermediate catch-up accesses
-        let (mut accesses, final_clk_prev) =
+        let (intermediates, final_clk_prev) =
             self.generate_intermediates(addr, prev, clk_prev, self.clk);
 
-        // Update reg_clk for intermediates
-        if !accesses.is_empty() {
+        // Store intermediates and update reg_clk
+        if !intermediates.is_empty() {
+            self.reg_clk_update.extend(intermediates);
             self.reg_clk[idx as usize] = final_clk_prev;
         }
 
-        // Add the final access
-        accesses.push(Access {
+        // Create the final access
+        let final_access = Access {
             addr,
             prev,
             clk_prev: final_clk_prev,
             next,
             clk: self.clk,
-        });
+        };
 
         // Update the register's clock
         self.reg_clk[idx as usize] = self.clk;
 
-        accesses
+        final_access
     }
 
     /// Trace a memory byte access with gap-filling.
-    /// Returns all accesses including intermediates and the final access.
-    pub fn trace_mem_access(&mut self, addr: u32, prev: u32, next: u32) -> Vec<Access> {
+    /// Intermediate accesses are pushed to `mem_clk_update`.
+    /// Returns only the final access.
+    pub fn trace_mem_access(&mut self, addr: u32, prev: u32, next: u32) -> Access {
         let clk_prev = self.mem_clk.get(&addr).copied().unwrap_or(0);
 
         // Generate intermediate catch-up accesses
-        let (mut accesses, final_clk_prev) =
+        let (intermediates, final_clk_prev) =
             self.generate_intermediates(addr, prev, clk_prev, self.clk);
 
-        // Update mem_clk for intermediates
-        if !accesses.is_empty() {
+        // Store intermediates and update mem_clk
+        if !intermediates.is_empty() {
+            self.mem_clk_update.extend(intermediates);
             self.mem_clk.insert(addr, final_clk_prev);
         }
 
-        // Add the final access
-        accesses.push(Access {
+        // Create the final access
+        let final_access = Access {
             addr,
             prev,
             clk_prev: final_clk_prev,
             next,
             clk: self.clk,
-        });
+        };
 
         // Update the memory byte's clock
         self.mem_clk.insert(addr, self.clk);
 
-        accesses
+        final_access
     }
 
     /// Total number of traced instructions.
@@ -778,145 +787,146 @@ impl Tracer {
 
 /// Trace macro for recording opcode execution.
 ///
-/// Usage: `trace!(opcode: field1, field2, ...)`
+/// Usage: `trace_op!(opcode: tracer, pc, field1, field2, ...)`
 ///
 /// The macro pushes a new trace row to the appropriate table.
+/// The `#[traced]` attribute macro automatically inserts the opcode name, tracer, and cpu.pc.
 #[macro_export]
-macro_rules! trace {
-    (add: $($field:ident),+ $(,)?) => {
-        tracer.add.push($crate::trace::AddTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+macro_rules! trace_op {
+    (add: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.add.push($crate::trace::AddTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sub: $($field:ident),+ $(,)?) => {
-        tracer.sub.push($crate::trace::SubTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sub: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sub.push($crate::trace::SubTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sll: $($field:ident),+ $(,)?) => {
-        tracer.sll.push($crate::trace::SllTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sll: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sll.push($crate::trace::SllTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (slt: $($field:ident),+ $(,)?) => {
-        tracer.slt.push($crate::trace::SltTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (slt: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.slt.push($crate::trace::SltTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sltu: $($field:ident),+ $(,)?) => {
-        tracer.sltu.push($crate::trace::SltuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sltu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sltu.push($crate::trace::SltuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (xor: $($field:ident),+ $(,)?) => {
-        tracer.xor.push($crate::trace::XorTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (xor: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.xor.push($crate::trace::XorTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (srl: $($field:ident),+ $(,)?) => {
-        tracer.srl.push($crate::trace::SrlTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (srl: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.srl.push($crate::trace::SrlTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sra: $($field:ident),+ $(,)?) => {
-        tracer.sra.push($crate::trace::SraTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sra: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sra.push($crate::trace::SraTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (or: $($field:ident),+ $(,)?) => {
-        tracer.or.push($crate::trace::OrTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (or: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.or.push($crate::trace::OrTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (and: $($field:ident),+ $(,)?) => {
-        tracer.and.push($crate::trace::AndTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (and: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.and.push($crate::trace::AndTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (addi: $($field:ident),+ $(,)?) => {
-        tracer.addi.push($crate::trace::AddiTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (addi: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.addi.push($crate::trace::AddiTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (slti: $($field:ident),+ $(,)?) => {
-        tracer.slti.push($crate::trace::SltiTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (slti: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.slti.push($crate::trace::SltiTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sltiu: $($field:ident),+ $(,)?) => {
-        tracer.sltiu.push($crate::trace::SltiuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sltiu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sltiu.push($crate::trace::SltiuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (xori: $($field:ident),+ $(,)?) => {
-        tracer.xori.push($crate::trace::XoriTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (xori: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.xori.push($crate::trace::XoriTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (ori: $($field:ident),+ $(,)?) => {
-        tracer.ori.push($crate::trace::OriTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (ori: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.ori.push($crate::trace::OriTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (andi: $($field:ident),+ $(,)?) => {
-        tracer.andi.push($crate::trace::AndiTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (andi: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.andi.push($crate::trace::AndiTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (slli: $($field:ident),+ $(,)?) => {
-        tracer.slli.push($crate::trace::SlliTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (slli: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.slli.push($crate::trace::SlliTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (srli: $($field:ident),+ $(,)?) => {
-        tracer.srli.push($crate::trace::SrliTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (srli: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.srli.push($crate::trace::SrliTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (srai: $($field:ident),+ $(,)?) => {
-        tracer.srai.push($crate::trace::SraiTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (srai: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.srai.push($crate::trace::SraiTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (lb: $($field:ident),+ $(,)?) => {
-        tracer.lb.push($crate::trace::LbTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (lb: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.lb.push($crate::trace::LbTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (lh: $($field:ident),+ $(,)?) => {
-        tracer.lh.push($crate::trace::LhTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (lh: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.lh.push($crate::trace::LhTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (lw: $($field:ident),+ $(,)?) => {
-        tracer.lw.push($crate::trace::LwTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (lw: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.lw.push($crate::trace::LwTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (lbu: $($field:ident),+ $(,)?) => {
-        tracer.lbu.push($crate::trace::LbuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (lbu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.lbu.push($crate::trace::LbuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (lhu: $($field:ident),+ $(,)?) => {
-        tracer.lhu.push($crate::trace::LhuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (lhu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.lhu.push($crate::trace::LhuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sb: $($field:ident),+ $(,)?) => {
-        tracer.sb.push($crate::trace::SbTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sb: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sb.push($crate::trace::SbTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sh: $($field:ident),+ $(,)?) => {
-        tracer.sh.push($crate::trace::ShTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sh: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sh.push($crate::trace::ShTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (sw: $($field:ident),+ $(,)?) => {
-        tracer.sw.push($crate::trace::SwTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (sw: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.sw.push($crate::trace::SwTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (beq: $($field:ident),+ $(,)?) => {
-        tracer.beq.push($crate::trace::BeqTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (beq: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.beq.push($crate::trace::BeqTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (bne: $($field:ident),+ $(,)?) => {
-        tracer.bne.push($crate::trace::BneTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (bne: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.bne.push($crate::trace::BneTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (blt: $($field:ident),+ $(,)?) => {
-        tracer.blt.push($crate::trace::BltTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (blt: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.blt.push($crate::trace::BltTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (bge: $($field:ident),+ $(,)?) => {
-        tracer.bge.push($crate::trace::BgeTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (bge: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.bge.push($crate::trace::BgeTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (bltu: $($field:ident),+ $(,)?) => {
-        tracer.bltu.push($crate::trace::BltuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (bltu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.bltu.push($crate::trace::BltuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (bgeu: $($field:ident),+ $(,)?) => {
-        tracer.bgeu.push($crate::trace::BgeuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (bgeu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.bgeu.push($crate::trace::BgeuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (jal: $($field:ident),+ $(,)?) => {
-        tracer.jal.push($crate::trace::JalTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (jal: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.jal.push($crate::trace::JalTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (jalr: $($field:ident),+ $(,)?) => {
-        tracer.jalr.push($crate::trace::JalrTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (jalr: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.jalr.push($crate::trace::JalrTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (lui: $($field:ident),+ $(,)?) => {
-        tracer.lui.push($crate::trace::LuiTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (lui: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.lui.push($crate::trace::LuiTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (auipc: $($field:ident),+ $(,)?) => {
-        tracer.auipc.push($crate::trace::AuipcTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (auipc: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.auipc.push($crate::trace::AuipcTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (mul: $($field:ident),+ $(,)?) => {
-        tracer.mul.push($crate::trace::MulTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (mul: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.mul.push($crate::trace::MulTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (mulh: $($field:ident),+ $(,)?) => {
-        tracer.mulh.push($crate::trace::MulhTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (mulh: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.mulh.push($crate::trace::MulhTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (mulhsu: $($field:ident),+ $(,)?) => {
-        tracer.mulhsu.push($crate::trace::MulhsuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (mulhsu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.mulhsu.push($crate::trace::MulhsuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (mulhu: $($field:ident),+ $(,)?) => {
-        tracer.mulhu.push($crate::trace::MulhuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (mulhu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.mulhu.push($crate::trace::MulhuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (div: $($field:ident),+ $(,)?) => {
-        tracer.div.push($crate::trace::DivTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (div: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.div.push($crate::trace::DivTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (divu: $($field:ident),+ $(,)?) => {
-        tracer.divu.push($crate::trace::DivuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (divu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.divu.push($crate::trace::DivuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (rem: $($field:ident),+ $(,)?) => {
-        tracer.rem.push($crate::trace::RemTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (rem: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.rem.push($crate::trace::RemTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
-    (remu: $($field:ident),+ $(,)?) => {
-        tracer.remu.push($crate::trace::RemuTrace { clk: tracer.clk, pc: tracer.pc, $($field),+ });
+    (remu: $tracer:expr, $pc:expr, $($field:ident),+ $(,)?) => {
+        $tracer.remu.push($crate::trace::RemuTrace { clk: $tracer.clk, pc: $pc, $($field),+ });
     };
 }
 
@@ -933,7 +943,6 @@ mod tests {
     fn test_default_tracer() {
         let tracer = Tracer::default();
         assert_eq!(tracer.clk, 0);
-        assert_eq!(tracer.pc, 0);
         assert_eq!(tracer.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
         assert_eq!(tracer.reg_clk, [0; 32]);
         assert!(tracer.mem_clk.is_empty());
@@ -955,14 +964,14 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        let accesses = tracer.trace_mem_access(100, 0x42, 0x42);
+        let access = tracer.trace_mem_access(100, 0x42, 0x42);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 100);
-        assert_eq!(accesses[0].prev, 0x42);
-        assert_eq!(accesses[0].next, 0x42);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, 10);
+        assert_eq!(access.addr, 100);
+        assert_eq!(access.prev, 0x42);
+        assert_eq!(access.next, 0x42);
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 10);
+        assert!(tracer.mem_clk_update.is_empty());
     }
 
     #[test]
@@ -973,13 +982,13 @@ mod tests {
         tracer.trace_mem_access(100, 0x11, 0x11);
 
         tracer.clk = 2;
-        let accesses = tracer.trace_mem_access(100, 0x11, 0x22);
+        let access = tracer.trace_mem_access(100, 0x11, 0x22);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].clk_prev, 1);
-        assert_eq!(accesses[0].clk, 2);
-        assert_eq!(accesses[0].prev, 0x11);
-        assert_eq!(accesses[0].next, 0x22);
+        assert_eq!(access.clk_prev, 1);
+        assert_eq!(access.clk, 2);
+        assert_eq!(access.prev, 0x11);
+        assert_eq!(access.next, 0x22);
+        assert!(tracer.mem_clk_update.is_empty());
     }
 
     #[test]
@@ -990,25 +999,33 @@ mod tests {
         tracer.trace_mem_access(100, 0x42, 0x42);
 
         tracer.clk = 350;
-        let accesses = tracer.trace_mem_access(100, 0x42, 0x42);
+        let access = tracer.trace_mem_access(100, 0x42, 0x42);
 
-        // Gap of 350 with max_diff 100 needs 3 intermediates + 1 final
+        // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
-            accesses.len(),
-            4,
-            "Expected 4 accesses, got {}",
-            accesses.len()
+            tracer.mem_clk_update.len(),
+            3,
+            "Expected 3 intermediates, got {}",
+            tracer.mem_clk_update.len()
         );
 
-        // Verify all clock diffs are within max_clock_diff
-        for access in &accesses {
-            let diff = access.clk.saturating_sub(access.clk_prev);
+        // Verify all intermediate clock diffs are within max_clock_diff
+        for intermediate in &tracer.mem_clk_update {
+            let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
             assert!(
                 diff <= 100,
                 "Clock diff {} exceeds max_clock_diff 100",
                 diff
             );
         }
+
+        // Verify final access clock diff is within max_clock_diff
+        let diff = access.clk.saturating_sub(access.clk_prev);
+        assert!(
+            diff <= 100,
+            "Final clock diff {} exceeds max_clock_diff 100",
+            diff
+        );
     }
 
     #[test]
@@ -1019,12 +1036,12 @@ mod tests {
         tracer.trace_mem_access(100, 0, 0);
 
         tracer.clk = 100;
-        let accesses = tracer.trace_mem_access(100, 0, 0);
+        let access = tracer.trace_mem_access(100, 0, 0);
 
         // Exactly at max_clock_diff - no intermediate needed
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, 100);
+        assert!(tracer.mem_clk_update.is_empty());
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 100);
     }
 
     #[test]
@@ -1035,13 +1052,16 @@ mod tests {
         tracer.trace_mem_access(100, 0xAB, 0xAB);
 
         tracer.clk = 200;
-        let accesses = tracer.trace_mem_access(100, 0xAB, 0xAB);
+        let access = tracer.trace_mem_access(100, 0xAB, 0xAB);
 
         // All intermediate accesses should preserve the value
-        for access in &accesses {
-            assert_eq!(access.prev, 0xAB);
-            assert_eq!(access.next, 0xAB);
+        for intermediate in &tracer.mem_clk_update {
+            assert_eq!(intermediate.prev, 0xAB);
+            assert_eq!(intermediate.next, 0xAB);
         }
+        // Final access should also preserve value
+        assert_eq!(access.prev, 0xAB);
+        assert_eq!(access.next, 0xAB);
     }
 
     #[test]
@@ -1063,14 +1083,14 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        let accesses = tracer.trace_reg_access(5, 0x42, 0x42);
+        let access = tracer.trace_reg_access(5, 0x42, 0x42);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 5);
-        assert_eq!(accesses[0].prev, 0x42);
-        assert_eq!(accesses[0].next, 0x42);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, 10);
+        assert_eq!(access.addr, 5);
+        assert_eq!(access.prev, 0x42);
+        assert_eq!(access.next, 0x42);
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 10);
+        assert!(tracer.reg_clk_update.is_empty());
     }
 
     #[test]
@@ -1081,13 +1101,13 @@ mod tests {
         tracer.trace_reg_access(5, 0x11, 0x11);
 
         tracer.clk = 2;
-        let accesses = tracer.trace_reg_access(5, 0x11, 0x22);
+        let access = tracer.trace_reg_access(5, 0x11, 0x22);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].clk_prev, 1);
-        assert_eq!(accesses[0].clk, 2);
-        assert_eq!(accesses[0].prev, 0x11);
-        assert_eq!(accesses[0].next, 0x22);
+        assert_eq!(access.clk_prev, 1);
+        assert_eq!(access.clk, 2);
+        assert_eq!(access.prev, 0x11);
+        assert_eq!(access.next, 0x22);
+        assert!(tracer.reg_clk_update.is_empty());
     }
 
     #[test]
@@ -1098,25 +1118,33 @@ mod tests {
         tracer.trace_reg_access(5, 0x42, 0x42);
 
         tracer.clk = 350;
-        let accesses = tracer.trace_reg_access(5, 0x42, 0x42);
+        let access = tracer.trace_reg_access(5, 0x42, 0x42);
 
-        // Gap of 350 with max_diff 100 needs 3 intermediates + 1 final
+        // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
-            accesses.len(),
-            4,
-            "Expected 4 accesses, got {}",
-            accesses.len()
+            tracer.reg_clk_update.len(),
+            3,
+            "Expected 3 intermediates, got {}",
+            tracer.reg_clk_update.len()
         );
 
-        // Verify all clock diffs are within max_clock_diff
-        for access in &accesses {
-            let diff = access.clk.saturating_sub(access.clk_prev);
+        // Verify all intermediate clock diffs are within max_clock_diff
+        for intermediate in &tracer.reg_clk_update {
+            let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
             assert!(
                 diff <= 100,
                 "Clock diff {} exceeds max_clock_diff 100",
                 diff
             );
         }
+
+        // Verify final access clock diff is within max_clock_diff
+        let diff = access.clk.saturating_sub(access.clk_prev);
+        assert!(
+            diff <= 100,
+            "Final clock diff {} exceeds max_clock_diff 100",
+            diff
+        );
     }
 
     #[test]
@@ -1125,12 +1153,12 @@ mod tests {
         tracer.clk = 10;
 
         // x0 can still be traced - the caller handles x0 semantics
-        let accesses = tracer.trace_reg_access(0, 0, 0);
+        let access = tracer.trace_reg_access(0, 0, 0);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 0);
-        assert_eq!(accesses[0].prev, 0);
-        assert_eq!(accesses[0].next, 0);
+        assert_eq!(access.addr, 0);
+        assert_eq!(access.prev, 0);
+        assert_eq!(access.next, 0);
+        assert!(tracer.reg_clk_update.is_empty());
     }
 
     #[test]
@@ -1155,16 +1183,19 @@ mod tests {
         tracer.trace_mem_access(100, 0, 0);
 
         tracer.clk = 5;
-        let accesses = tracer.trace_mem_access(100, 0, 0);
+        let access = tracer.trace_mem_access(100, 0, 0);
 
-        // With max_clock_diff=1, gap of 5 needs 5 accesses
-        assert_eq!(accesses.len(), 5);
+        // With max_clock_diff=1, gap of 5 needs 4 intermediates + 1 final
+        assert_eq!(tracer.mem_clk_update.len(), 4);
 
-        // Verify each step is exactly 1
-        for access in &accesses {
-            let diff = access.clk - access.clk_prev;
+        // Verify each intermediate step is exactly 1
+        for intermediate in &tracer.mem_clk_update {
+            let diff = intermediate.clk - intermediate.clk_prev;
             assert_eq!(diff, 1);
         }
+        // Verify final step is exactly 1
+        let diff = access.clk - access.clk_prev;
+        assert_eq!(diff, 1);
     }
 
     #[test]
@@ -1175,9 +1206,9 @@ mod tests {
         tracer.trace_mem_access(100, 0, 0);
 
         tracer.clk = u32::MAX - 1;
-        let accesses = tracer.trace_mem_access(100, 0, 0);
+        tracer.trace_mem_access(100, 0, 0);
 
         // No intermediate ever needed
-        assert_eq!(accesses.len(), 1);
+        assert!(tracer.mem_clk_update.is_empty());
     }
 }

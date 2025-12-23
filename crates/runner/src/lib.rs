@@ -40,6 +40,8 @@ pub struct RunResult {
     pub final_pc: u32,
     /// Output bytes from guest (postcard-serialized data).
     pub output: Option<Vec<u8>>,
+    /// Execution trace for proving.
+    pub tracer: Tracer,
 }
 
 /// Run an ELF program to completion.
@@ -67,8 +69,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
     let mut cpu = Cpu::new(loaded.entry, loaded.sp, loaded.gp);
     let mut mem = loaded.memory;
     let mut cache: InstCache = InstCache::default();
-
-    let mut cycle_count: u64 = 0;
+    let mut tracer = Tracer::default();
 
     loop {
         // Check halt flag before executing next instruction
@@ -80,9 +81,10 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_end_addr,
             );
             return Ok(RunResult {
-                cycles: cycle_count,
+                cycles: tracer.clk as u64,
                 final_pc: cpu.pc,
                 output,
+                tracer,
             });
         }
 
@@ -91,9 +93,10 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
         let inst = get_or_decode(&mut cache, &mem, cpu.pc)
             .ok_or(RunError::InvalidInstruction { pc: cpu.pc })?;
 
-        execute(&mut cpu, &mut mem, &inst);
+        // Update tracer clock before executing instruction
+        tracer.clk += 1;
 
-        cycle_count += 1;
+        execute(&mut cpu, &mut mem, &inst, &mut tracer);
 
         // Halt on infinite loop (PC unchanged after execution) - backup detection
         if cpu.pc == prev_pc {
@@ -104,16 +107,17 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_end_addr,
             );
             return Ok(RunResult {
-                cycles: cycle_count,
+                cycles: tracer.clk as u64,
                 final_pc: prev_pc,
                 output,
+                tracer,
             });
         }
 
         // Safety limit
-        if cycle_count > max_cycles {
+        if tracer.clk as u64 > max_cycles {
             return Err(RunError::MaxCyclesExceeded {
-                cycles: cycle_count,
+                cycles: tracer.clk as u64,
                 max: max_cycles,
             });
         }

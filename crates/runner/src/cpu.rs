@@ -46,17 +46,19 @@ impl Cpu {
     // =========================================================================
 
     /// Read register with trace tracking.
-    /// Returns a list of accesses (intermediate catch-ups + final read).
+    /// Intermediate catch-ups are stored in `tracer.reg_clk_update`.
+    /// Returns the final access record.
     #[inline]
-    pub fn read_reg(&self, idx: u8, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn read_reg(&self, idx: u8, tracer: &mut Tracer) -> Access {
         let value = self.reg(idx);
         tracer.trace_reg_access(idx, value, value)
     }
 
     /// Write register with trace tracking.
-    /// Returns a list of accesses (intermediate catch-ups + final write).
+    /// Intermediate catch-ups are stored in `tracer.reg_clk_update`.
+    /// Returns the final access record.
     #[inline]
-    pub fn write_reg(&mut self, idx: u8, val: u32, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn write_reg(&mut self, idx: u8, val: u32, tracer: &mut Tracer) -> Access {
         let prev = self.reg(idx);
         self.set_reg(idx, val);
         let next = if idx == 0 { 0 } else { val };
@@ -108,14 +110,14 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        let accesses = cpu.read_reg(5, &mut tracer);
+        let access = cpu.read_reg(5, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 5);
-        assert_eq!(accesses[0].prev, 0x42);
-        assert_eq!(accesses[0].next, 0x42);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, 10);
+        assert_eq!(access.addr, 5);
+        assert_eq!(access.prev, 0x42);
+        assert_eq!(access.next, 0x42);
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 10);
+        assert!(tracer.reg_clk_update.is_empty());
     }
 
     #[test]
@@ -128,16 +130,19 @@ mod tests {
         cpu.read_reg(5, &mut tracer);
 
         tracer.clk = 350;
-        let accesses = cpu.read_reg(5, &mut tracer);
+        let access = cpu.read_reg(5, &mut tracer);
 
-        // Gap of 350 with max_diff 100 needs 3 intermediates + 1 final
-        assert_eq!(accesses.len(), 4);
+        // Gap of 350 with max_diff 100 needs 3 intermediates
+        assert_eq!(tracer.reg_clk_update.len(), 3);
 
-        // Verify all clock diffs are within max_clock_diff
-        for access in &accesses {
-            let diff = access.clk.saturating_sub(access.clk_prev);
+        // Verify all intermediate clock diffs are within max_clock_diff
+        for intermediate in &tracer.reg_clk_update {
+            let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
             assert!(diff <= 100);
         }
+        // Verify final access clock diff is within max_clock_diff
+        let diff = access.clk.saturating_sub(access.clk_prev);
+        assert!(diff <= 100);
     }
 
     #[test]
@@ -146,12 +151,12 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 5;
 
-        let accesses = cpu.read_reg(0, &mut tracer);
+        let access = cpu.read_reg(0, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 0);
-        assert_eq!(accesses[0].prev, 0);
-        assert_eq!(accesses[0].next, 0);
+        assert_eq!(access.addr, 0);
+        assert_eq!(access.prev, 0);
+        assert_eq!(access.next, 0);
+        assert!(tracer.reg_clk_update.is_empty());
     }
 
     // =========================================================================
@@ -165,14 +170,14 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 5;
 
-        let accesses = cpu.write_reg(5, 0x22, &mut tracer);
+        let access = cpu.write_reg(5, 0x22, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 5);
-        assert_eq!(accesses[0].prev, 0x11);
-        assert_eq!(accesses[0].next, 0x22);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, 5);
+        assert_eq!(access.addr, 5);
+        assert_eq!(access.prev, 0x11);
+        assert_eq!(access.next, 0x22);
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 5);
+        assert!(tracer.reg_clk_update.is_empty());
 
         // Verify register was updated
         assert_eq!(cpu.reg(5), 0x22);
@@ -187,16 +192,19 @@ mod tests {
         cpu.write_reg(5, 0x11, &mut tracer);
 
         tracer.clk = 350;
-        let accesses = cpu.write_reg(5, 0x22, &mut tracer);
+        let access = cpu.write_reg(5, 0x22, &mut tracer);
 
-        // Gap of 350 with max_diff 100 needs 3 intermediates + 1 final
-        assert_eq!(accesses.len(), 4);
+        // Gap of 350 with max_diff 100 needs 3 intermediates
+        assert_eq!(tracer.reg_clk_update.len(), 3);
 
-        // Verify all clock diffs are within max_clock_diff
-        for access in &accesses {
-            let diff = access.clk.saturating_sub(access.clk_prev);
+        // Verify all intermediate clock diffs are within max_clock_diff
+        for intermediate in &tracer.reg_clk_update {
+            let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
             assert!(diff <= 100);
         }
+        // Verify final access clock diff is within max_clock_diff
+        let diff = access.clk.saturating_sub(access.clk_prev);
+        assert!(diff <= 100);
     }
 
     #[test]
@@ -205,13 +213,13 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 5;
 
-        let accesses = cpu.write_reg(0, 0xDEADBEEF, &mut tracer);
+        let access = cpu.write_reg(0, 0xDEADBEEF, &mut tracer);
 
         // Still traces the access
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 0);
-        assert_eq!(accesses[0].prev, 0);
-        assert_eq!(accesses[0].next, 0); // x0 stays 0
+        assert_eq!(access.addr, 0);
+        assert_eq!(access.prev, 0);
+        assert_eq!(access.next, 0); // x0 stays 0
+        assert!(tracer.reg_clk_update.is_empty());
 
         // Verify x0 is still 0
         assert_eq!(cpu.reg(0), 0);
@@ -226,12 +234,12 @@ mod tests {
         cpu.write_reg(5, 0x11, &mut tracer);
 
         tracer.clk = 2;
-        let accesses = cpu.write_reg(5, 0x22, &mut tracer);
+        let access = cpu.write_reg(5, 0x22, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].clk_prev, 1);
-        assert_eq!(accesses[0].clk, 2);
-        assert_eq!(accesses[0].prev, 0x11);
-        assert_eq!(accesses[0].next, 0x22);
+        assert_eq!(access.clk_prev, 1);
+        assert_eq!(access.clk, 2);
+        assert_eq!(access.prev, 0x11);
+        assert_eq!(access.next, 0x22);
+        assert!(tracer.reg_clk_update.is_empty());
     }
 }

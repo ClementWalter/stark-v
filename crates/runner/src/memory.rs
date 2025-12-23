@@ -66,26 +66,29 @@ impl Memory {
     // =========================================================================
 
     /// Read a byte with trace tracking.
-    /// Returns a list of accesses (intermediate catch-ups + final read).
+    /// Intermediate catch-ups are stored in `tracer.mem_clk_update`.
+    /// Returns the final access record.
     #[inline]
-    pub fn read_u8_traced(&self, addr: u32, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn read_u8_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
         let value = self.read_u8(addr) as u32;
         tracer.trace_mem_access(addr, value, value)
     }
 
     /// Trace multiple bytes with clock synchronization.
     /// 1. Find max clk_prev across all bytes
-    /// 2. Catch up all bytes to that max (with intermediates if needed)
-    /// 3. Do final access at tracer.clk for all bytes
+    /// 2. Catch up all bytes to that max (with intermediates stored in mem_clk_update)
+    /// 3. Do final access at tracer.clk for all bytes (byte accesses stored in mem_clk_update)
+    /// 4. Return a single Access representing the whole operation (base addr, full prev/next values)
     fn trace_multi_byte_access(
         &self,
         base_addr: u32,
-        byte_count: usize,
         byte_values: &[u8],
         next_values: &[u8],
+        prev_value: u32,
+        next_value: u32,
         tracer: &mut Tracer,
-    ) -> Vec<Access> {
-        let mut accesses = Vec::new();
+    ) -> Access {
+        let byte_count = byte_values.len();
 
         // Step 1: Find max clk_prev across all bytes
         let mut max_clk_prev = 0u32;
@@ -107,67 +110,98 @@ impl Memory {
 
             // If this byte isn't at max_clk_prev, generate catch-up accesses
             if clk_prev < max_clk_prev {
-                accesses.extend(tracer.trace_mem_access(byte_addr, byte_value, byte_value));
+                // trace_mem_access pushes intermediates to mem_clk_update and returns final
+                let catch_up = tracer.trace_mem_access(byte_addr, byte_value, byte_value);
+                // Store the catch-up access too
+                tracer.mem_clk_update.push(catch_up);
             }
         }
 
-        // Step 3: Restore original clk and do final accesses
+        // Step 3: Restore original clk and do final accesses for each byte
         tracer.clk = original_clk;
 
         for (i, (&prev, &next)) in byte_values.iter().zip(next_values).enumerate() {
             let byte_addr = base_addr.wrapping_add(i as u32);
-            accesses.extend(tracer.trace_mem_access(byte_addr, prev as u32, next as u32));
+            let byte_access = tracer.trace_mem_access(byte_addr, prev as u32, next as u32);
+            // Store individual byte accesses in mem_clk_update
+            tracer.mem_clk_update.push(byte_access);
         }
 
-        accesses
+        // Return a single Access representing the whole multi-byte operation
+        Access {
+            addr: base_addr,
+            prev: prev_value,
+            clk_prev: max_clk_prev,
+            next: next_value,
+            clk: original_clk,
+        }
     }
 
     /// Read a half-word with trace tracking.
     /// All bytes are synchronized to the max clk_prev before final access.
+    /// Byte-level accesses are stored in `tracer.mem_clk_update`.
+    /// Returns a single Access for the whole operation.
     #[inline]
-    pub fn read_u16_traced(&self, addr: u32, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn read_u16_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
         let bytes: [u8; 2] = [self.read_u8(addr), self.read_u8(addr.wrapping_add(1))];
-        self.trace_multi_byte_access(addr, 2, &bytes, &bytes, tracer)
+        let value = self.read_u16(addr) as u32;
+        self.trace_multi_byte_access(addr, &bytes, &bytes, value, value, tracer)
     }
 
     /// Read a word with trace tracking.
     /// All bytes are synchronized to the max clk_prev before final access.
+    /// Byte-level accesses are stored in `tracer.mem_clk_update`.
+    /// Returns a single Access for the whole operation.
     #[inline]
-    pub fn read_u32_traced(&self, addr: u32, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn read_u32_traced(&self, addr: u32, tracer: &mut Tracer) -> Access {
         let bytes: [u8; 4] = [
             self.read_u8(addr),
             self.read_u8(addr.wrapping_add(1)),
             self.read_u8(addr.wrapping_add(2)),
             self.read_u8(addr.wrapping_add(3)),
         ];
-        self.trace_multi_byte_access(addr, 4, &bytes, &bytes, tracer)
+        let value = self.read_u32(addr);
+        self.trace_multi_byte_access(addr, &bytes, &bytes, value, value, tracer)
     }
 
     /// Write a byte with trace tracking.
-    /// Returns a list of accesses (intermediate catch-ups + final write).
+    /// Intermediate catch-ups are stored in `tracer.mem_clk_update`.
+    /// Returns the final access record.
     #[inline]
-    pub fn write_u8_traced(&mut self, addr: u32, val: u8, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn write_u8_traced(&mut self, addr: u32, val: u8, tracer: &mut Tracer) -> Access {
         let prev = self.read_u8(addr) as u32;
-        let accesses = tracer.trace_mem_access(addr, prev, val as u32);
+        let access = tracer.trace_mem_access(addr, prev, val as u32);
         self.write_u8(addr, val);
-        accesses
+        access
     }
 
     /// Write a half-word with trace tracking.
     /// All bytes are synchronized to the max clk_prev before final access.
+    /// Byte-level accesses are stored in `tracer.mem_clk_update`.
+    /// Returns a single Access for the whole operation.
     #[inline]
-    pub fn write_u16_traced(&mut self, addr: u32, val: u16, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn write_u16_traced(&mut self, addr: u32, val: u16, tracer: &mut Tracer) -> Access {
         let prev_bytes: [u8; 2] = [self.read_u8(addr), self.read_u8(addr.wrapping_add(1))];
         let next_bytes = val.to_le_bytes();
-        let accesses = self.trace_multi_byte_access(addr, 2, &prev_bytes, &next_bytes, tracer);
+        let prev_value = self.read_u16(addr) as u32;
+        let access = self.trace_multi_byte_access(
+            addr,
+            &prev_bytes,
+            &next_bytes,
+            prev_value,
+            val as u32,
+            tracer,
+        );
         self.write_u16(addr, val);
-        accesses
+        access
     }
 
     /// Write a word with trace tracking.
     /// All bytes are synchronized to the max clk_prev before final access.
+    /// Byte-level accesses are stored in `tracer.mem_clk_update`.
+    /// Returns a single Access for the whole operation.
     #[inline]
-    pub fn write_u32_traced(&mut self, addr: u32, val: u32, tracer: &mut Tracer) -> Vec<Access> {
+    pub fn write_u32_traced(&mut self, addr: u32, val: u32, tracer: &mut Tracer) -> Access {
         let prev_bytes: [u8; 4] = [
             self.read_u8(addr),
             self.read_u8(addr.wrapping_add(1)),
@@ -175,9 +209,11 @@ impl Memory {
             self.read_u8(addr.wrapping_add(3)),
         ];
         let next_bytes = val.to_le_bytes();
-        let accesses = self.trace_multi_byte_access(addr, 4, &prev_bytes, &next_bytes, tracer);
+        let prev_value = self.read_u32(addr);
+        let access =
+            self.trace_multi_byte_access(addr, &prev_bytes, &next_bytes, prev_value, val, tracer);
         self.write_u32(addr, val);
-        accesses
+        access
     }
 }
 
@@ -266,14 +302,14 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(100, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 100);
-        assert_eq!(accesses[0].prev, 0);
-        assert_eq!(accesses[0].next, 0);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, tracer.clk);
+        assert_eq!(access.addr, 100);
+        assert_eq!(access.prev, 0);
+        assert_eq!(access.next, 0);
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 10);
+        assert!(tracer.mem_clk_update.is_empty());
     }
 
     #[test]
@@ -293,14 +329,14 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 5;
 
-        let accesses = mem.write_u8_traced(100, 0xFF, &mut tracer);
+        let access = mem.write_u8_traced(100, 0xFF, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].addr, 100);
-        assert_eq!(accesses[0].prev, 0x42);
-        assert_eq!(accesses[0].next, 0xFF);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, tracer.clk);
+        assert_eq!(access.addr, 100);
+        assert_eq!(access.prev, 0x42);
+        assert_eq!(access.next, 0xFF);
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 5);
+        assert!(tracer.mem_clk_update.is_empty());
 
         // Verify memory was updated
         assert_eq!(mem.read_u8(100), 0xFF);
@@ -317,13 +353,13 @@ mod tests {
 
         // Second write at clk=2
         tracer.clk = 2;
-        let accesses = mem.write_u8_traced(100, 0x22, &mut tracer);
+        let access = mem.write_u8_traced(100, 0x22, &mut tracer);
 
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].clk_prev, 1);
-        assert_eq!(accesses[0].clk, tracer.clk);
-        assert_eq!(accesses[0].prev, 0x11);
-        assert_eq!(accesses[0].next, 0x22);
+        assert_eq!(access.clk_prev, 1);
+        assert_eq!(access.clk, 2);
+        assert_eq!(access.prev, 0x11);
+        assert_eq!(access.next, 0x22);
+        assert!(tracer.mem_clk_update.is_empty());
     }
 
     // =========================================================================
@@ -343,17 +379,24 @@ mod tests {
         tracer.mem_clk.insert(103, 8);
         tracer.clk = 20;
 
-        let accesses = mem.read_u32_traced(100, &mut tracer);
+        let access = mem.read_u32_traced(100, &mut tracer);
 
         // All bytes should end with clk=20 in tracer
-        assert_eq!(tracer.mem_clk.get(&100), Some(&tracer.clk));
-        assert_eq!(tracer.mem_clk.get(&101), Some(&tracer.clk));
-        assert_eq!(tracer.mem_clk.get(&102), Some(&tracer.clk));
-        assert_eq!(tracer.mem_clk.get(&103), Some(&tracer.clk));
+        assert_eq!(tracer.mem_clk.get(&100), Some(&20));
+        assert_eq!(tracer.mem_clk.get(&101), Some(&20));
+        assert_eq!(tracer.mem_clk.get(&102), Some(&20));
+        assert_eq!(tracer.mem_clk.get(&103), Some(&20));
+
+        // Returned access should have base addr, full value, and clk_prev = max (10)
+        assert_eq!(access.addr, 100);
+        assert_eq!(access.prev, 0x44332211);
+        assert_eq!(access.next, 0x44332211);
+        assert_eq!(access.clk_prev, 10); // max of [5, 10, 3, 8]
+        assert_eq!(access.clk, 20);
 
         // Should have catch-up accesses for 3 bytes not at max_clk_prev (10)
-        // plus final accesses for all 4 bytes
-        assert!(accesses.len() == 3 + 4);
+        // plus final accesses for all 4 bytes = 7 byte-level accesses in mem_clk_update
+        assert_eq!(tracer.mem_clk_update.len(), 3 + 4);
     }
 
     #[test]
@@ -366,7 +409,7 @@ mod tests {
         tracer.mem_clk.insert(101, 5);
         tracer.clk = 10;
 
-        let accesses = mem.write_u16_traced(100, 0xABCD, &mut tracer);
+        let access = mem.write_u16_traced(100, 0xABCD, &mut tracer);
 
         // Verify memory written correctly
         assert_eq!(mem.read_u16(100), 0xABCD);
@@ -375,8 +418,13 @@ mod tests {
         assert_eq!(tracer.mem_clk.get(&100), Some(&10));
         assert_eq!(tracer.mem_clk.get(&101), Some(&10));
 
-        // Should have catch-up for byte 0 (from 2 to 5) + final accesses
-        assert!(accesses.len() >= 2);
+        // Returned access should have the full u16 value
+        assert_eq!(access.addr, 100);
+        assert_eq!(access.prev, 0); // was uninitialized
+        assert_eq!(access.next, 0xABCD);
+
+        // Should have catch-up for byte 0 (from 2 to 5) + final accesses for 2 bytes
+        assert_eq!(tracer.mem_clk_update.len(), 1 + 2);
     }
 
     // =========================================================================
@@ -395,25 +443,33 @@ mod tests {
 
         // Access with gap > max_clock_diff (100)
         tracer.clk = 350;
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(100, &mut tracer);
 
-        // Should have intermediate accesses to bridge the gap
-        // Gap of 350 with max_diff 100 needs at least 3 intermediates + 1 final
-        assert!(
-            accesses.len() == 4,
-            "Expected 4 accesses, got {}",
-            accesses.len()
+        // Should have 3 intermediate accesses to bridge the gap
+        assert_eq!(
+            tracer.mem_clk_update.len(),
+            3,
+            "Expected 3 intermediates, got {}",
+            tracer.mem_clk_update.len()
         );
 
-        // Verify all clock diffs are within max_clock_diff
-        for access in &accesses {
-            let diff = access.clk.saturating_sub(access.clk_prev);
+        // Verify all intermediate clock diffs are within max_clock_diff
+        for intermediate in &tracer.mem_clk_update {
+            let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
             assert!(
                 diff <= 100,
                 "Clock diff {} exceeds max_clock_diff 100",
                 diff
             );
         }
+
+        // Verify final access clock diff is within max_clock_diff
+        let diff = access.clk.saturating_sub(access.clk_prev);
+        assert!(
+            diff <= 100,
+            "Final clock diff {} exceeds max_clock_diff 100",
+            diff
+        );
     }
 
     #[test]
@@ -426,13 +482,16 @@ mod tests {
         mem.read_u8_traced(100, &mut tracer);
 
         tracer.clk = 200; // Large gap
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(100, &mut tracer);
 
         // All intermediate accesses should preserve the value (read, not write)
-        for access in &accesses {
-            assert_eq!(access.prev, 0xAB);
-            assert_eq!(access.next, 0xAB);
+        for intermediate in &tracer.mem_clk_update {
+            assert_eq!(intermediate.prev, 0xAB);
+            assert_eq!(intermediate.next, 0xAB);
         }
+        // Final access should also preserve value
+        assert_eq!(access.prev, 0xAB);
+        assert_eq!(access.next, 0xAB);
     }
 
     #[test]
@@ -448,18 +507,23 @@ mod tests {
         tracer.mem_clk.insert(103, 400);
         tracer.clk = 500;
 
-        let accesses = mem.read_u32_traced(100, &mut tracer);
+        let access = mem.read_u32_traced(100, &mut tracer);
 
-        // All clock diffs should be within max_clock_diff
-        for access in &accesses {
-            let diff = access.clk.saturating_sub(access.clk_prev);
+        // All byte-level clock diffs in mem_clk_update should be within max_clock_diff
+        for byte_access in &tracer.mem_clk_update {
+            let diff = byte_access.clk.saturating_sub(byte_access.clk_prev);
             assert!(
                 diff <= 100,
                 "Clock diff {} at addr {} exceeds max_clock_diff 100",
                 diff,
-                access.addr
+                byte_access.addr
             );
         }
+
+        // The returned Access represents the whole operation
+        assert_eq!(access.addr, 100);
+        assert_eq!(access.prev, 0x44332211);
+        assert_eq!(access.next, 0x44332211);
     }
 
     #[test]
@@ -471,12 +535,12 @@ mod tests {
         mem.read_u8_traced(100, &mut tracer);
 
         tracer.clk = 100; // Exactly at max_clock_diff
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(100, &mut tracer);
 
-        // Should be exactly 1 access (no intermediate needed)
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].clk_prev, 0);
-        assert_eq!(accesses[0].clk, 100);
+        // Should be no intermediates needed
+        assert!(tracer.mem_clk_update.is_empty());
+        assert_eq!(access.clk_prev, 0);
+        assert_eq!(access.clk, 100);
     }
 
     #[test]
@@ -488,10 +552,10 @@ mod tests {
         mem.read_u8_traced(100, &mut tracer);
 
         tracer.clk = 101; // Just over max_clock_diff
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(100, &mut tracer);
 
-        // Should have 1 intermediate + 1 final = 2 accesses
-        assert_eq!(accesses.len(), 2);
+        // Should have 1 intermediate stored
+        assert_eq!(tracer.mem_clk_update.len(), 1);
     }
 
     // =========================================================================
@@ -506,8 +570,10 @@ mod tests {
 
         let mut tracer = Tracer::default();
         tracer.clk = 1;
-        let accesses = mem.read_u32_traced(0, &mut tracer);
-        assert!(!accesses.is_empty());
+        let access = mem.read_u32_traced(0, &mut tracer);
+        // Should have byte-level accesses in mem_clk_update
+        assert!(!tracer.mem_clk_update.is_empty());
+        assert_eq!(access.prev, 0xDEADBEEF);
     }
 
     #[test]
@@ -533,16 +599,19 @@ mod tests {
         mem.read_u8_traced(100, &mut tracer);
 
         tracer.clk = 5; // Gap of 5, need 4 intermediates
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(100, &mut tracer);
 
-        // With max_clock_diff=1, gap of 5 needs 5 accesses total
-        assert_eq!(accesses.len(), 5);
+        // With max_clock_diff=1, gap of 5 needs 4 intermediates
+        assert_eq!(tracer.mem_clk_update.len(), 4);
 
-        // Verify each step is exactly 1
-        for access in &accesses {
-            let diff = access.clk - access.clk_prev;
+        // Verify each intermediate step is exactly 1
+        for intermediate in &tracer.mem_clk_update {
+            let diff = intermediate.clk - intermediate.clk_prev;
             assert_eq!(diff, 1);
         }
+        // Verify final step is exactly 1
+        let diff = access.clk - access.clk_prev;
+        assert_eq!(diff, 1);
     }
 
     #[test]
@@ -554,10 +623,10 @@ mod tests {
         mem.read_u8_traced(100, &mut tracer);
 
         tracer.clk = u32::MAX - 1;
-        let accesses = mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(100, &mut tracer);
 
-        // Should be exactly 1 access (no intermediate ever needed)
-        assert_eq!(accesses.len(), 1);
+        // No intermediate ever needed with max clock diff
+        assert!(tracer.mem_clk_update.is_empty());
     }
 
     #[test]
@@ -567,9 +636,9 @@ mod tests {
 
         for clk in 0..10 {
             tracer.clk = clk;
-            let accesses = mem.read_u8_traced(100, &mut tracer);
-            // Each access should be exactly 1 (no intermediates)
-            assert_eq!(accesses.len(), 1);
+            mem.read_u8_traced(100, &mut tracer);
         }
+        // No intermediates needed for sequential clocks
+        assert!(tracer.mem_clk_update.is_empty());
     }
 }
