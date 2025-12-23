@@ -778,82 +778,63 @@ check `cmp_eq`
 - rs1_idx
 - rs1_prev_clk
 - a_0, a_1, a_2, a_3 — limbs of `rs1`.
+- a_msb_f
 
 - rs2_idx
 - rs2_prev_clk
 - b_0, b_1, b_2, b_3 — limbs of `rs2`
+- b_msb_f
 
-- imm_0 (imm[0:7])
-- imm_1 (imm[8:11])
-- imm_msb (imm[12])
-- branch_offset
-- branch_offset_neg
-- cmp_result
-- cmp_lt
+- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
+
+- cmp_result - jump branch if cmp_result is 1
+- cmp_lt - 1 if a < b, 0 otherwise
+- diff_marker[0:3] - 0 everywhere but for i where `a[i] != b[i]` if such i
+  exists, `diff_marker[i] = (a[i] - b[i])^-1`
+- branch_target
 
 - opcode_blt_flag
 - opcode_bltu_flag
 - opcode_bge_flag
 - opcode_bgeu_flag
 
-- a_msb_f
-- b_msb_f
-- diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3
-- diff_val
-
 ### 8.2 Variables
 
 - `enabler = opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `imm = imm_0 + imm_1 * 2^8 + imm_msb * 2^12`
 - `rs_idx_diff = rs1_idx - rs2_idx`
 - `lt = opcode_blt_flag + opcode_bltu_flag`
 - `ge = opcode_bge_flag + opcode_bgeu_flag`
 - `signed = opcode_blt_flag + opcode_bge_flag`
-- `prefix_sum = Σ diff_marker_i`
 - `a_diff = a_3 - a_msb_f`
 - `b_diff = b_3 - b_msb_f`
-- `branch_target = pc + branch_offset - branch_offset_neg`
 
 ### 8.3 Constraints
 
-`enabler`, `opcode_*_flags`, `in_place_flag`, `imm_msb`, `cmp_result` and
-`cmp_lt` are booleans
+`enabler`, `opcode_*_flags`, `in_place_flag` and `cmp_result` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
 - `in_place_flag * (1 - in_place_flag)`
-- `imm_msb * (1 - imm_msb)`
 - `cmp_result * (1 - cmp_result)`
-- `cmp_lt * (1 - cmp_lt)`
+- `diff_marker[i] * (1 - diff_marker[i])`
 
 if in-place flag is 1 then rs1_idx == rs2_idx
 
 - `in_place_flag * rs_idx_diff`
 
-comparison result consistency
-
-- `cmp_lt - cmp_result * lt - (1 - cmp_result) * ge`
-
 read instruction from the Program segment
 
 - `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm)`
 
-range check imm
+check branch target
 
-- `- RC_8_4(imm_0, imm_1)`
-
-branch offset calculation (sign-extended 13-bit offset)
-
-- `(1 - imm_msb) * (branch_offset - 2 * imm)`
-- `(1 - imm_msb) * branch_offset_neg`
-- `imm_msb * (branch_offset + branch_offset_neg - (2^14 - 2 * imm))`
+- `branch_target - ( pc + imm * cmp_result + 4 * (1 - cmp_result) )`
 
 registers update (conditional branch)
 
 - `- enabler * RegsImm(pc, clk)`
-- `cmp_result * (+ enabler * RegsImm(branch_target, clk + 1))`
-- `(1 - cmp_result) * (+ enabler * RegsImm(pc + 4, clk + 1))`
+- `+ enabler * RegsImm(branch_target, clk + 1))`
 
 read from rs1
 
@@ -873,31 +854,32 @@ msb field elements must match actual msb bytes
 - `a_diff * (2^N_BITS_PER_BYTE - a_diff)`
 - `b_diff * (2^N_BITS_PER_BYTE - b_diff)`
 
-diff markers are boolean and sum correctly
+comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
+sum of `diff_marker_i` and
+`diff = (if i == 3 then b_msb_f - a_msb_f else b_i - a_i) * (2 * cmp_lt - 1)`
 
-- `diff_marker_i * (1 - diff_marker_i)`
+- `(1 - prefix_sum) * diff`
+- `diff_marker_i * (diff_val - diff)`
+
+`prefix_sum` contains at most one activation (`prefix_sum = Σ diff_marker_i`)
+
 - `prefix_sum * (1 - prefix_sum)`
 
-comparison logic for each limb i (from 3 down to 0)
-
-- `(1 - prefix_sum) * (if i == 3 then b_msb_f - a_msb_f else b_i - a_i) * (2 * cmp_lt - 1)`
-- `diff_marker_i * (diff_val - (if i == 3 then b_msb_f - a_msb_f else b_i - a_i) * (2 * cmp_lt - 1))`
-
-if equal, cmp_lt is 0
+if equal, result is 0
 
 - `(1 - prefix_sum) * cmp_lt`
 
 range check msb field elements with sign consideration
 
-- `- Bitwise(a_msb_f + signed * 2^(N_BITS_PER_BYTE-1), b_msb_f + signed * 2^(N_BITS_PER_BYTE-1), 0, 0)`
+- `- RC_8_8(a_msb_f + signed * 2^(N_BITS_PER_BYTE-1), b_msb_f + signed * 2^(N_BITS_PER_BYTE-1))`
 
 range check diff_val is non-zero when prefix_sum = 1
 
-- `- prefix_sum * Bitwise(diff_val - 1, 0, 0, 0)`
+- `- prefix_sum * RC_8_8(diff_val - 1, 0)`
 
-range check branch offset
+check `cmp_lt`
 
-- `- RC_8_8(branch_offset_neg, branch_offset)`
+- `cmp_lt - ( cmp_result * lt + (1 - cmp_result) * ge )`
 
 ## 9. JAL/LUI
 
