@@ -909,12 +909,12 @@ range check branch offset
 - rd_idx
 - rd_prev_clk
 - rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3.
-- a_0, a_1, a_2, a_3 — limbs of the value written to `rd`.
+- rd[0:3] — limbs of the value written to `rd`.
+- rd_3_intermediate
 
-- imm_0 (imm[0:7])
-- imm_1 (imm[8:15])
-- imm_2 (imm[16:19])
-- imm_msb (imm[19])
+- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
+
+- branch_target
 
 - opcode_jal_flag
 - opcode_lui_flag
@@ -923,57 +923,46 @@ range check branch offset
 
 - `enabler = opcode_jal_flag + opcode_lui_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `imm = imm_0 + imm_1 * 2^8 + imm_2 * 2^16 + imm_msb * 2^19`
-- `jump_offset = 2 * imm` (for JAL, immediate is left-shifted by 1)
-- `lui_value = imm * 2^12` (for LUI, immediate is left-shifted by 12)
 
 ### 9.3 Constraints
 
-`enabler`, `opcode_*_flags` and `imm_msb` are booleans
+`enabler` and `opcode_*_flags` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `imm_msb * (1 - imm_msb)`
 
 read instruction from the Program segment
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, 0, imm)`
+- `- enabler * Program(pc, expected_opcode_id, rd_idx, imm, 0)`
 
-range check imm
+check branch target
 
-- `- RC_8_8(imm_0, imm_1)`
-- `- RC_4_4(imm_2, imm_msb)`
+- `branch_target - (pc + opcode_jal_flag * imm + opcode_lui_flag * 4)`
 
 registers update
 
-For JAL:
+- `- enabler * RegsImm(pc, clk)`
+- `- enabler * RegsImm(branch_target, clk + 1)`
 
-- `- opcode_jal_flag * RegsImm(pc, clk)`
-- `+ opcode_jal_flag * RegsImm(pc + jump_offset, clk + 1)`
+rd us correctly built from imm:
 
-For LUI:
+- `opcode_lui_flag * rd[0]`
+- `opcode_lui_flag * (2^4 * imm - (rd[1] + rd[2] * 2**8 + rd[3] * 2**16))`
+- `opcode_jal_flag * (pc + 4 - (rd[0] + rd[1] * 2**8 + rd[2] * 2**16 + rd[3] * 2**24))`
 
-- `- opcode_lui_flag * RegsImm(pc, clk)`
-- `+ opcode_lui_flag * RegsImm(pc + 4, clk + 1)`
+rd_3_intermediate selects if rd[3] needs to be RC6 or RC8
 
-JAL: store return address (pc + 4)
+- `rd_3_intermediate - ( opcode_jal_flag * (2^6 - rd[3]) + opcode_lui_flag * rd[3] )`
 
-- `opcode_jal_flag * (a_0 + a_1 * 2^8 + a_2 * 2^16 + a_3 * 2^24 - (pc + 4))`
+range check rd:
 
-LUI: load upper immediate
-
-- `opcode_lui_flag * a_0`
-- `opcode_lui_flag * (a_1 + a_2 * 2^8 + a_3 * 2^16 - lui_value)`
-
-range check a
-
-- `- RC_8_8(a_0, a_1)`
-- `- RC_8_8(a_2, a_3)`
+- `- RC_8_8(rd[0], rd[1])`
+- `- RC_8_8(rd[2], rd_3_intermediate)`
 
 write to rd
 
 - `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
-- `+ enabler * RegsRW(rd_idx, clk, a_0, a_1, a_2, a_3)`
+- `+ enabler * RegsRW(rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk - enabler)`
 
 ## 10. JALR
