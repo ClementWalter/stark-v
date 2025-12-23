@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/runner", "crates/runner-macros", "guest/guest-lib"]
+members = ["crates/runner", "crates/runner-macros", "crates/simd", "guest/guest-lib"]
 exclude = ["guest/guest-bin"]
 
 [workspace.dependencies]
@@ -29,6 +29,7 @@ syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
 runner-macros = { path = "crates/runner-macros" }
+simd = { path = "crates/simd" }
 
 [profile.dev]
 panic = "abort"
