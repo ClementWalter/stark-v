@@ -84,7 +84,8 @@ runner_macros::define_trace_tables! {
 ///
 /// - For registers: `addr` is the register index (0-31)
 /// - For memory: `addr` is the byte address
-#[derive(Clone, Copy, Default)]
+/// - Values stored as `[u8; 4]` little-endian limbs (1-4 bytes meaningful)
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct Access {
     pub addr: u32,
     pub prev: u32,
@@ -97,26 +98,40 @@ impl std::fmt::Debug for Access {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Access")
             .field("addr", &format_args!("{:#x}", self.addr))
-            .field("prev", &self.prev)
+            .field("prev", &format_args!("{:#x}", self.prev))
             .field("clk_prev", &self.clk_prev)
-            .field("next", &self.next)
+            .field("next", &format_args!("{:#x}", self.next))
             .field("clk", &self.clk)
             .finish()
     }
 }
 
 // =============================================================================
-// Columnar AccessTable (for gap-filling)
+// Columnar AccessTable (for clock update)
 // =============================================================================
 
-/// Columnar storage for Access records (used for gap-filling).
-#[derive(Clone, Default)]
+/// Columnar storage for Access records.
+///
+/// Simplified storage since for clock catch-up:
+/// - `prev == next` (value unchanged)
+/// - `clk == clk_prev + max_clock_diff` (fixed increment)
+#[derive(Clone)]
 pub struct AccessTable {
     pub addr: AlignedVec<u32>,
-    pub prev: AlignedVec<u32>,
+    pub value: AlignedVec<u32>,
     pub clk_prev: AlignedVec<u32>,
-    pub next: AlignedVec<u32>,
-    pub clk: AlignedVec<u32>,
+    pub max_clock_diff: u32,
+}
+
+impl Default for AccessTable {
+    fn default() -> Self {
+        Self {
+            addr: AlignedVec::new(),
+            value: AlignedVec::new(),
+            clk_prev: AlignedVec::new(),
+            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
+        }
+    }
 }
 
 impl std::fmt::Debug for AccessTable {
@@ -125,10 +140,10 @@ impl std::fmt::Debug for AccessTable {
         for i in 0..self.len() {
             list.entry(&Access {
                 addr: self.addr[i],
-                prev: self.prev[i],
+                prev: self.value[i],
                 clk_prev: self.clk_prev[i],
-                next: self.next[i],
-                clk: self.clk[i],
+                next: self.value[i],
+                clk: self.clk_prev[i].saturating_add(self.max_clock_diff),
             });
         }
         list.finish()
@@ -143,10 +158,16 @@ impl AccessTable {
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             addr: AlignedVec::with_capacity(cap),
-            prev: AlignedVec::with_capacity(cap),
+            value: AlignedVec::with_capacity(cap),
             clk_prev: AlignedVec::with_capacity(cap),
-            next: AlignedVec::with_capacity(cap),
-            clk: AlignedVec::with_capacity(cap),
+            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
+        }
+    }
+
+    pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
+        Self {
+            max_clock_diff,
+            ..Default::default()
         }
     }
 
@@ -162,16 +183,23 @@ impl AccessTable {
 
     #[inline]
     pub fn push(&mut self, access: Access) {
+        debug_assert_eq!(
+            access.prev, access.next,
+            "clock catch-up must not change value"
+        );
+        debug_assert_eq!(
+            access.clk,
+            access.clk_prev.saturating_add(self.max_clock_diff),
+            "clock must increment by max_clock_diff"
+        );
         self.addr.push(access.addr);
-        self.prev.push(access.prev);
+        self.value.push(access.prev);
         self.clk_prev.push(access.clk_prev);
-        self.next.push(access.next);
-        self.clk.push(access.clk);
     }
 }
 
 impl Tracer {
-    /// Generate and store intermediate accesses for gap-filling.
+    /// Generate and store intermediate accesses for clock catch-up.
     fn fill_gap(
         &mut self,
         table: GapTable,
@@ -231,31 +259,35 @@ impl Tracer {
         final_access
     }
 
-    /// Trace a memory byte access with gap-filling.
+    /// Trace a memory access with gap-filling.
+    /// All memory accesses are traced at 4-byte aligned addresses.
     /// Intermediate accesses are pushed to `mem_clk_update`.
     /// Returns only the final access.
     pub fn trace_mem_access(&mut self, addr: u32, prev: u32, next: u32) -> Access {
-        let clk_prev = self.mem_clk.get(&addr).copied().unwrap_or(0);
+        // Always use 4-byte aligned address
+        let aligned_addr = addr & !3;
+
+        let clk_prev = self.mem_clk.get(&aligned_addr).copied().unwrap_or(0);
 
         // Generate intermediate catch-up accesses and get final clk_prev
-        let final_clk_prev = self.fill_gap(GapTable::Mem, addr, prev, clk_prev, self.clk);
+        let final_clk_prev = self.fill_gap(GapTable::Mem, aligned_addr, prev, clk_prev, self.clk);
 
         // Update mem_clk after gap-filling
         if final_clk_prev != clk_prev {
-            self.mem_clk.insert(addr, final_clk_prev);
+            self.mem_clk.insert(aligned_addr, final_clk_prev);
         }
 
         // Create the final access
         let final_access = Access {
-            addr,
+            addr: aligned_addr,
             prev,
             clk_prev: final_clk_prev,
             next,
             clk: self.clk,
         };
 
-        // Update the memory byte's clock
-        self.mem_clk.insert(addr, self.clk);
+        // Update the memory word's clock
+        self.mem_clk.insert(aligned_addr, self.clk);
 
         final_access
     }
@@ -295,12 +327,14 @@ mod tests {
             if self.idx >= self.table.len() {
                 None
             } else {
+                let clk_prev = self.table.clk_prev[self.idx];
+                let value = self.table.value[self.idx];
                 let access = Access {
                     addr: self.table.addr[self.idx],
-                    prev: self.table.prev[self.idx],
-                    clk_prev: self.table.clk_prev[self.idx],
-                    next: self.table.next[self.idx],
-                    clk: self.table.clk[self.idx],
+                    prev: value,
+                    clk_prev,
+                    next: value, // For gap-filling, prev == next
+                    clk: clk_prev.saturating_add(self.table.max_clock_diff),
                 };
                 self.idx += 1;
                 Some(access)
@@ -644,20 +678,23 @@ mod tests {
 
     #[test]
     fn test_access_table_push() {
-        let mut table = AccessTable::new();
+        let max_clock_diff = 100;
+        let mut table = AccessTable::with_max_clock_diff(max_clock_diff);
 
+        // AccessTable is for gap-filling: prev == next and clk == clk_prev + max_clock_diff
+        let value = 42u32;
         let access = Access {
             addr: 100,
-            prev: 0,
+            prev: value,
             clk_prev: 0,
-            next: 42,
-            clk: 1,
+            next: value,
+            clk: max_clock_diff,
         };
         table.push(access);
 
         assert_eq!(table.len(), 1);
         assert_eq!(table.addr[0], 100);
-        assert_eq!(table.next[0], 42);
+        assert_eq!(table.value[0], value);
     }
 
     #[test]

@@ -273,8 +273,12 @@ fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
         let field_name = &name;
         quote! {
             .field(#field_name, &format_args!(
-                "Access {{ addr: {:#x}, prev: {}, clk_prev: {}, next: {}, clk: {} }}",
-                self.table.#addr[i], self.table.#prev[i], self.table.#clk_prev[i], self.table.#next[i], self.table.#clk[i]
+                "Access {{ addr: {:#x}, prev: {:#x}, clk_prev: {}, next: {:#x}, clk: {} }}",
+                self.table.#addr[i],
+                self.table.#prev[i],
+                self.table.#clk_prev[i],
+                self.table.#next[i],
+                self.table.#clk[i]
             ))
         }
     } else {
@@ -483,6 +487,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
             pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
                 Self {
                     max_clock_diff,
+                    reg_clk_update: AccessTable::with_max_clock_diff(max_clock_diff),
+                    mem_clk_update: AccessTable::with_max_clock_diff(max_clock_diff),
                     ..Default::default()
                 }
             }
