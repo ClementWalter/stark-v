@@ -15,6 +15,11 @@ pub fn memory() -> MemoryTestResult {
     }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> MemoryTestResult {
+    memory()
+}
+
 /// Memory stress test implementation: write and read back array values.
 pub fn memory_test_impl() -> u32 {
     let mut arr = [0u32; 16];

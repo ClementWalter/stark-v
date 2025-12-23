@@ -16,6 +16,11 @@ pub fn load_merge() -> LoadMergeResult {
     }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> LoadMergeResult {
+    load_merge()
+}
+
 #[inline(never)]
 pub fn load_merge_impl() -> (u32, i16, i8) {
     unsafe {

@@ -13,6 +13,11 @@ pub fn constant() -> ConstantResult {
     ConstantResult { value: 42 }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> ConstantResult {
+    constant()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

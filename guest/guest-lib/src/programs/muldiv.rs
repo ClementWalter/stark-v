@@ -15,6 +15,11 @@ pub fn muldiv() -> MulDivResult {
     }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> MulDivResult {
+    muldiv()
+}
+
 /// M-extension test implementation: multiply and divide operations.
 pub fn muldiv_test_impl() -> u32 {
     let a: u32 = 12345;

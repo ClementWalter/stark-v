@@ -17,6 +17,11 @@ pub fn fib(n: u32) -> FibResult {
     }
 }
 
+/// Standard test entry point for e2e testing.
+pub fn test_call() -> FibResult {
+    fib(20)
+}
+
 /// Iterative Fibonacci implementation returning raw value.
 pub fn fibonacci_impl(n: u32) -> u32 {
     if n == 0 {
