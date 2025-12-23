@@ -5,7 +5,7 @@
 //! 2. Run them through the interpreter
 //! 3. Compare the raw postcard bytes with native execution
 //!
-//! To add a new test, simply create a new module in guest/guest-lib/src/examples/
+//! To add a new test, simply create a new module in guest/guest-lib/src/programs/
 //! with a `test_call()` function that returns a serializable result.
 
 use guest_lib::get_test_bytes;

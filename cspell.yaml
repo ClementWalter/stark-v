@@ -2,6 +2,7 @@ version: "0.2"
 suggestionsTimeout: 5000
 words:
   - addi
+  - allocvec
   - andi
   - auipc
   - bgeu
