@@ -121,10 +121,6 @@ write to rd
 - imm_0 (imm[0:7])
 - imm_1 (imm[8:10])
 - imm_msb (imm[11])
-- sext_imm_0
-- sext_imm_1
-- sext_imm_2
-- sext_imm_3
 
 - opcode_add_flag
 - opcode_sub_flag
@@ -134,20 +130,19 @@ write to rd
 
 ### 2.2 Variables
 
-- `SEXT_CST_i = le_bytes(2^32 - 2^12)[i]`
 - `enabler = opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
-- `carry_sext[0] = (imm_0 + SEXT_CST_0 - sext_imm_0) / 2^N_BITS_PER_BYTE`
-- `carry_sext[1] = (imm_1 + 2^3 * imm_msb + SEXT_CST_1 + carry_sext[0] - sext_imm_1) / 2^N_BITS_PER_BYTE`
-- `carry_sext[2] = (SEXT_CST_2 + carry_sext[1] - sext_imm_2) / 2^N_BITS_PER_BYTE`
-- `carry_sext[3] = (SEXT_CST_3 + carry_sext[2] - sext_imm_3) / 2^N_BITS_PER_BYTE`
-- `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^N_BITS_PER_BYTE`
-  with `carry_add[-1] = 0`
-- `carry_sub[i] = (a_i + sext_imm_i - b_i + carry_sub[i - 1]) / 2^N_BITS_PER_BYTE`
-  with `carry_sub[-1] = 0`
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`
 - `bitwise = opcode_xor_flag + 2 * opcode_or_flag + 3 * opcode_and_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
 - `imm = imm_0 + imm_1 * 2^8 + imm_msb * 2^11`
+- `sext_imm_0 = imm_0`
+- `sext_imm_1 = imm_1 + 2^3 * (2^5 - 1) * imm_msb`
+- `sext_imm_2 = (2^8 - 1) * imm_msb`
+- `sext_imm_3 = (2^8 - 1) * imm_msb`
+- `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^N_BITS_PER_BYTE`
+  with `carry_add[-1] = 0`
+- `carry_sub[i] = (a_i + sext_imm_i - b_i + carry_sub[i - 1]) / 2^N_BITS_PER_BYTE`
+  with `carry_sub[-1] = 0`
 - `r_idx_diff = rd_idx - rs1_idx`
 
 ### 2.3 Constraints
@@ -162,20 +157,10 @@ read instruction from the Program segment
 
 - `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
 
-range check imm and sext_imm
+range check imm (range checks sext_imm too)
 
 - `- RC_8_3(imm_0, imm_1)`
 - `imm_msb * (1 - imm_msb)`
-- `- RC_8_8(sext_imm_0, sext_imm_1)`
-- `- RC_8_8(sext_imm_2, sext_imm_3)`
-
-sext_imm is imm sign-extended
-
-- `imm_msb * carry_sext[i] * (1 - carry_sext[i])`
-- `(1 - imm_msb) * (imm_0 - sext_imm_0)`
-- `(1 - imm_msb) * (imm_1 - sext_imm_1)`
-- `(1 - imm_msb) * (0 - sext_imm_2)`
-- `(1 - imm_msb) * (0 - sext_imm_3)`
 
 registers update
 
@@ -606,10 +591,6 @@ write to rd
 - imm_0 (imm[0:7])
 - imm_1 (imm[8:10])
 - imm_msb (imm[11])
-- sext_imm_0
-- sext_imm_1
-- sext_imm_2
-- sext_imm_3
 
 - opcode_slti_flag
 - opcode_sltiu_flag
@@ -621,14 +602,13 @@ write to rd
 
 ### 6.2 Variables
 
-- `SEXT_CST_i = le_bytes(2^32 - 2^12)[i]`
 - `enabler = opcode_slti_flag + opcode_sltiu_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `carry_sext[0] = (imm_0 + SEXT_CST_0 - sext_imm_0) / 2^N_BITS_PER_BYTE`
-- `carry_sext[1] = (imm_1 + 2^3 * imm_msb + SEXT_CST_1 + carry_sext[0] - sext_imm_1) / 2^N_BITS_PER_BYTE`
-- `carry_sext[2] = (SEXT_CST_2 + carry_sext[1] - sext_imm_2) / 2^N_BITS_PER_BYTE`
-- `carry_sext[3] = (SEXT_CST_3 + carry_sext[2] - sext_imm_3) / 2^N_BITS_PER_BYTE`
 - `imm = imm_0 + imm_1 * 2^8 + imm_msb * 2^11`
+- `sext_imm_0 = imm_0`
+- `sext_imm_1 = imm_1 + 2^3 * (2^5 - 1) * imm_msb`
+- `sext_imm_2 = (2^8 - 1) * imm_msb`
+- `sext_imm_3 = (2^8 - 1) * imm_msb`
 - `r_idx_diff = rd_idx - rs1_idx`
 - `b_diff = b_3 - b_msb_f`
 - `sext_imm_diff = sext_imm_3 - sext_imm_msb_f`
@@ -645,20 +625,10 @@ read instruction from the Program segment
 
 - `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
 
-range check imm and sext_imm
+range check imm
 
 - `- RC_8_3(imm_0, imm_1)`
 - `imm_msb * (1 - imm_msb)`
-- `- RC_8_8(sext_imm_0, sext_imm_1)`
-- `- RC_8_8(sext_imm_2, sext_imm_3)`
-
-sext_imm is imm sign-extended
-
-- `imm_msb * carry_sext[i] * (1 - carry_sext[i])`
-- `(1 - imm_msb) * (imm_0 - sext_imm_0)`
-- `(1 - imm_msb) * (imm_1 - sext_imm_1)`
-- `(1 - imm_msb) * (0 - sext_imm_2)`
-- `(1 - imm_msb) * (0 - sext_imm_3)`
 
 registers update
 
@@ -735,37 +705,31 @@ write to rd
 - rs2_prev_clk
 - b_0, b_1, b_2, b_3 — limbs of `rs2`
 
-- imm_0 (imm[0:7])
-- imm_1 (imm[8:11])
-- imm_msb (imm[12])
-- branch_offset
-- branch_offset_neg
-- cmp_result
+- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
+
+- cmp_result - jump branch if cmp_result is 1
+- diff_inv_marker[0:3] - 0 everywhere but for i where `a[i] != b[i]` if such i
+  exists, `diff_inv_marker[i] = (a[i] - b[i])^-1`
+- branch_target
 
 - opcode_beq_flag
 - opcode_bne_flag
-
-- diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2, diff_inv_marker_3
 
 ### 7.2 Variables
 
 - `enabler = opcode_beq_flag + opcode_bne_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `imm = imm_0 + imm_1 * 2^8 + imm_msb * 2^12`
 - `rs_idx_diff = rs1_idx - rs2_idx`
 - `cmp_eq = cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag`
-- `diff_inv_sum = Σ (a_i - b_i) * diff_inv_marker_i`
-- `branch_target = pc + branch_offset - branch_offset_neg`
+- `diff_inv_sum = cmp_eq + Σ (a_i - b_i) * diff_inv_marker[i]`
 
 ### 7.3 Constraints
 
-`enabler`, `opcode_*_flags`, `in_place_flag`, `imm_msb` and `cmp_result` are
-booleans
+`enabler`, `opcode_*_flags`, `in_place_flag` and `cmp_result` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
 - `in_place_flag * (1 - in_place_flag)`
-- `imm_msb * (1 - imm_msb)`
 - `cmp_result * (1 - cmp_result)`
 
 if in-place flag is 1 then rs1_idx == rs2_idx
@@ -776,21 +740,14 @@ read instruction from the Program segment
 
 - `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm)`
 
-range check imm
+check branch target
 
-- `- RC_8_4(imm_0, imm_1)`
-
-branch offset calculation (sign-extended 13-bit offset)
-
-- `(1 - imm_msb) * (branch_offset - 2 * imm)`
-- `(1 - imm_msb) * branch_offset_neg`
-- `imm_msb * (branch_offset + branch_offset_neg - (2^14 - 2 * imm))`
+- `branch_target - ( pc + imm * cmp_result + 4 * (1 - cmp_result) )`
 
 registers update (conditional branch)
 
 - `- enabler * RegsImm(pc, clk)`
-- `cmp_result * (+ enabler * RegsImm(branch_target, clk + 1))`
-- `(1 - cmp_result) * (+ enabler * RegsImm(pc + 4, clk + 1))`
+- `+ enabler * RegsImm(branch_target, clk + 1))`
 
 read from rs1
 
@@ -805,14 +762,10 @@ read from rs2
 - `- (1 - in_place_flag) * RC_20(clk - rs2_prev_clk - enabler)`
 - `in_place_flag * (clk - rs2_prev_clk)`
 
-equality check with multiplicative inverse
+check `cmp_eq`
 
-- `enabler * (cmp_eq + diff_inv_sum - 1)`
-- `cmp_eq * (a_i - b_i)` for each i
-
-range check branch offset
-
-- `- RC_8_8(branch_offset_neg, branch_offset)`
+- for i in [0:3]: `cmp_eq * ( a[i] - b[i] )`
+- `enabler * (1 - diff_inv_sum)`
 
 ## 8. Branch Less Than (blt/bltu/bge/bgeu)
 
