@@ -261,6 +261,30 @@ fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
     }
 }
 
+/// Generate debug field entries for a single row
+fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
+    let name = field.to_string();
+    if is_access_field(&name) {
+        let addr = format_ident!("{}_addr", name);
+        let prev = format_ident!("{}_prev", name);
+        let clk_prev = format_ident!("{}_clk_prev", name);
+        let next = format_ident!("{}_next", name);
+        let clk = format_ident!("{}_clk", name);
+        let field_name = &name;
+        quote! {
+            .field(#field_name, &format_args!(
+                "Access {{ addr: {:#x}, prev: {}, clk_prev: {}, next: {}, clk: {} }}",
+                self.table.#addr[i], self.table.#prev[i], self.table.#clk_prev[i], self.table.#next[i], self.table.#clk[i]
+            ))
+        }
+    } else {
+        let field_name = &name;
+        quote! {
+            .field(#field_name, &self.table.#field[i])
+        }
+    }
+}
+
 /// Generate a single table struct and impl
 fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let struct_name = table_name(&opcode.name);
@@ -270,6 +294,7 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let field_inits_cap: Vec<_> = opcode.fields.iter().map(generate_field_init_cap).collect();
     let push_params: Vec<_> = opcode.fields.iter().map(generate_push_param).collect();
     let push_stmts: Vec<_> = opcode.fields.iter().map(generate_push_stmt).collect();
+    let debug_fields: Vec<_> = opcode.fields.iter().map(generate_debug_field).collect();
 
     // Find the first scalar field for len() (should be 'clk')
     let len_field = opcode
@@ -280,9 +305,32 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         .unwrap_or_else(|| Ident::new("clk", Span::call_site()));
 
     quote! {
-        #[derive(Debug, Clone, Default)]
+        #[derive(Clone, Default)]
         pub struct #struct_name {
             #(#field_decls)*
+        }
+
+        impl std::fmt::Debug for #struct_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut list = f.debug_list();
+                for i in 0..self.len() {
+                    // Create a debug struct for each row
+                    struct Row<'a> {
+                        table: &'a #struct_name,
+                        idx: usize,
+                    }
+                    impl std::fmt::Debug for Row<'_> {
+                        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            let i = self.idx;
+                            f.debug_struct("")
+                                #(#debug_fields)*
+                                .finish()
+                        }
+                    }
+                    list.entry(&Row { table: self, idx: i });
+                }
+                list.finish()
+            }
         }
 
         impl #struct_name {
@@ -353,9 +401,17 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
         })
         .collect();
 
+    let debug_table_fields: Vec<_> = opcodes
+        .iter()
+        .map(|op| {
+            let name = &op.name;
+            let name_str = name.to_string();
+            quote! { .field(#name_str, &self.#name) }
+        })
+        .collect();
+
     quote! {
         /// Main tracer structure holding all per-opcode columnar trace tables.
-        #[derive(Debug)]
         pub struct Tracer {
             /// Global clock counter, incremented by 1 at each instruction.
             pub clk: u32,
@@ -374,6 +430,38 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
 
             // Per-opcode trace tables
             #(#table_fields,)*
+        }
+
+        impl std::fmt::Debug for Tracer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                // Wrapper to display u32 in hex
+                struct Hex(u32);
+                impl std::fmt::Debug for Hex {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "{:#x}", self.0)
+                    }
+                }
+
+                // Wrapper to display HashMap keys in hex
+                struct HexKeyMap<'a>(&'a rustc_hash::FxHashMap<u32, u32>);
+                impl std::fmt::Debug for HexKeyMap<'_> {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        f.debug_map()
+                            .entries(self.0.iter().map(|(k, v)| (Hex(*k), v)))
+                            .finish()
+                    }
+                }
+
+                f.debug_struct("Tracer")
+                    .field("clk", &self.clk)
+                    .field("max_clock_diff", &self.max_clock_diff)
+                    .field("reg_clk", &self.reg_clk)
+                    .field("mem_clk", &HexKeyMap(&self.mem_clk))
+                    .field("reg_clk_update", &self.reg_clk_update)
+                    .field("mem_clk_update", &self.mem_clk_update)
+                    #(#debug_table_fields)*
+                    .finish()
+            }
         }
 
         impl Default for Tracer {

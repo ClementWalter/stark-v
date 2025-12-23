@@ -76,6 +76,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
     loop {
         // Check halt flag before executing next instruction
         if mem.read_u32(loaded.halt_flag_addr) != 0 {
+            dbg!(&tracer);
             let output = io::read_output(
                 &mem,
                 loaded.output_len_addr,

@@ -84,7 +84,7 @@ runner_macros::define_trace_tables! {
 ///
 /// - For registers: `addr` is the register index (0-31)
 /// - For memory: `addr` is the byte address
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Access {
     pub addr: u32,
     pub prev: u32,
@@ -93,18 +93,46 @@ pub struct Access {
     pub clk: u32,
 }
 
+impl std::fmt::Debug for Access {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Access")
+            .field("addr", &format_args!("{:#x}", self.addr))
+            .field("prev", &self.prev)
+            .field("clk_prev", &self.clk_prev)
+            .field("next", &self.next)
+            .field("clk", &self.clk)
+            .finish()
+    }
+}
+
 // =============================================================================
 // Columnar AccessTable (for gap-filling)
 // =============================================================================
 
 /// Columnar storage for Access records (used for gap-filling).
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct AccessTable {
     pub addr: AlignedVec<u32>,
     pub prev: AlignedVec<u32>,
     pub clk_prev: AlignedVec<u32>,
     pub next: AlignedVec<u32>,
     pub clk: AlignedVec<u32>,
+}
+
+impl std::fmt::Debug for AccessTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut list = f.debug_list();
+        for i in 0..self.len() {
+            list.entry(&Access {
+                addr: self.addr[i],
+                prev: self.prev[i],
+                clk_prev: self.clk_prev[i],
+                next: self.next[i],
+                clk: self.clk[i],
+            });
+        }
+        list.finish()
+    }
 }
 
 impl AccessTable {

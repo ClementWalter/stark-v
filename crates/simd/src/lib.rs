@@ -3,6 +3,7 @@
 //! Provides 64-byte aligned vectors for optimal SIMD performance (AVX-512 / 16x u32).
 
 use std::alloc::{Layout, alloc, alloc_zeroed, realloc};
+use std::fmt;
 use std::mem;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::ptr::NonNull;
@@ -15,11 +16,17 @@ pub const SIMD_ALIGNMENT: usize = 64;
 ///
 /// This is a thin wrapper around a raw allocation that maintains alignment.
 /// It implements `Deref<Target = [T]>` for convenient slice access.
-#[derive(Debug)]
 pub struct AlignedVec<T> {
     ptr: NonNull<T>,
     len: usize,
     capacity: usize,
+}
+
+impl<T: fmt::Debug> fmt::Debug for AlignedVec<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Display as a slice, like a regular Vec
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 // SAFETY: AlignedVec owns its data and T: Send implies the vec is Send
