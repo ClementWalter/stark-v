@@ -7,7 +7,8 @@ use simd::AlignedVec;
 
 /// Default maximum clock difference allowed between accesses.
 /// Must be consistent with max range-check in the prover.
-pub const DEFAULT_MAX_CLOCK_DIFF: u32 = 1 << 20; // ~1M cycles
+/// RangeCheck20 is an array of from 0 to u20::MAX, i.e. to 2^20 - 1.
+pub const DEFAULT_MAX_CLOCK_DIFF: u32 = (1 << 20) - 1;
 
 // =============================================================================
 // Generate all trace tables, Tracer struct, and trace_op! macro
