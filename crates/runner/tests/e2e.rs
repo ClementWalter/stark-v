@@ -7,8 +7,8 @@
 //! 4. Compare with native execution of the same function
 
 use guest_lib::{
-    branch, constant, fact, fib, memory, muldiv, BranchResult, ConstantResult, FactorialResult,
-    FibResult, MemoryTestResult, MulDivResult,
+    BranchResult, ConstantResult, FactorialResult, FibResult, LoadMergeResult, MemoryTestResult,
+    MulDivResult, branch, constant, fact, fib, load_merge, memory, muldiv,
 };
 use runner::run;
 use std::path::PathBuf;
@@ -91,4 +91,10 @@ fn test_muldiv() {
 fn test_branch() {
     let output: BranchResult = run_guest("branch");
     assert_eq!(output, branch(5));
+}
+
+#[test]
+fn test_load_merge() {
+    let output: LoadMergeResult = run_guest("load_merge");
+    assert_eq!(output, load_merge());
 }

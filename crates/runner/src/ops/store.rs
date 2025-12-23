@@ -1,25 +1,35 @@
-use crate::{Cpu, DecodedInst, Memory};
+use crate::trace::Tracer;
+use crate::{Cpu, DecodedInst, Memory, traced};
 
-pub fn sb(cpu: &mut Cpu, mem: &mut Memory, inst: &DecodedInst) {
-    let base = cpu.reg(inst.rs1);
-    let addr = base.wrapping_add(inst.imm as u32);
-    let value = cpu.reg(inst.rs2) as u8;
-    mem.write_u8(addr, value);
+#[traced]
+pub fn sb(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let rs2 = cpu.read_reg(inst.rs2, tracer);
+    let addr = rs1.next.wrapping_add(inst.imm as u32);
+    let value = rs2.next as u8;
+    let mem = memory.write_u8_traced(addr, value, tracer);
     cpu.advance_pc();
+    trace_op!(rs1, rs2, mem);
 }
 
-pub fn sh(cpu: &mut Cpu, mem: &mut Memory, inst: &DecodedInst) {
-    let base = cpu.reg(inst.rs1);
-    let addr = base.wrapping_add(inst.imm as u32);
-    let value = cpu.reg(inst.rs2) as u16;
-    mem.write_u16(addr, value);
+#[traced]
+pub fn sh(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let rs2 = cpu.read_reg(inst.rs2, tracer);
+    let addr = rs1.next.wrapping_add(inst.imm as u32);
+    let value = rs2.next as u16;
+    let mem = memory.write_u16_traced(addr, value, tracer);
     cpu.advance_pc();
+    trace_op!(rs1, rs2, mem);
 }
 
-pub fn sw(cpu: &mut Cpu, mem: &mut Memory, inst: &DecodedInst) {
-    let base = cpu.reg(inst.rs1);
-    let addr = base.wrapping_add(inst.imm as u32);
-    let value = cpu.reg(inst.rs2);
-    mem.write_u32(addr, value);
+#[traced]
+pub fn sw(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let rs2 = cpu.read_reg(inst.rs2, tracer);
+    let addr = rs1.next.wrapping_add(inst.imm as u32);
+    let value = rs2.next;
+    let mem = memory.write_u32_traced(addr, value, tracer);
     cpu.advance_pc();
+    trace_op!(rs1, rs2, mem);
 }

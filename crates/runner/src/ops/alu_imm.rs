@@ -1,67 +1,86 @@
-use crate::{Cpu, DecodedInst};
+use crate::trace::Tracer;
+use crate::{Cpu, DecodedInst, traced};
 
-pub fn addi(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
-    let result = rs1.wrapping_add(inst.imm as u32);
-    cpu.set_reg(inst.rd, result);
+#[traced]
+pub fn addi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let result = rs1.next.wrapping_add(inst.imm as u32);
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn slti(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1) as i32;
-    let result = if rs1 < inst.imm { 1 } else { 0 };
-    cpu.set_reg(inst.rd, result);
+#[traced]
+pub fn slti(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let result = if (rs1.next as i32) < inst.imm { 1 } else { 0 };
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn sltiu(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
-    let result = if rs1 < (inst.imm as u32) { 1 } else { 0 };
-    cpu.set_reg(inst.rd, result);
+#[traced]
+pub fn sltiu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let result = if rs1.next < (inst.imm as u32) { 1 } else { 0 };
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn xori(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
-    let result = rs1 ^ (inst.imm as u32);
-    cpu.set_reg(inst.rd, result);
+#[traced]
+pub fn xori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let result = rs1.next ^ (inst.imm as u32);
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn ori(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
-    let result = rs1 | (inst.imm as u32);
-    cpu.set_reg(inst.rd, result);
+#[traced]
+pub fn ori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let result = rs1.next | (inst.imm as u32);
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn andi(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
-    let result = rs1 & (inst.imm as u32);
-    cpu.set_reg(inst.rd, result);
+#[traced]
+pub fn andi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
+    let result = rs1.next & (inst.imm as u32);
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn slli(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
+#[traced]
+pub fn slli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
     let shamt = inst.imm as u32 & 0x1F;
-    let result = rs1 << shamt;
-    cpu.set_reg(inst.rd, result);
+    let result = rs1.next << shamt;
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn srli(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1);
+#[traced]
+pub fn srli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
     let shamt = inst.imm as u32 & 0x1F;
-    let result = rs1 >> shamt;
-    cpu.set_reg(inst.rd, result);
+    let result = rs1.next >> shamt;
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }
 
-pub fn srai(cpu: &mut Cpu, inst: &DecodedInst) {
-    let rs1 = cpu.reg(inst.rs1) as i32;
+#[traced]
+pub fn srai(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let rs1 = cpu.read_reg(inst.rs1, tracer);
     let shamt = inst.imm as u32 & 0x1F;
-    let result = (rs1 >> shamt) as u32;
-    cpu.set_reg(inst.rd, result);
+    let result = ((rs1.next as i32) >> shamt) as u32;
+    let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
+    trace_op!(rd, rs1);
 }

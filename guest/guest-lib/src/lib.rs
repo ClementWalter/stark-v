@@ -18,8 +18,8 @@ pub mod examples;
 // =============================================================================
 
 pub use examples::{
-    branch, constant, fact, fib, memory, muldiv, BranchResult, ConstantResult, FactorialResult,
-    FibResult, MemoryTestResult, MulDivResult,
+    BranchResult, ConstantResult, FactorialResult, FibResult, LoadMergeResult, MemoryTestResult,
+    MulDivResult, branch, constant, fact, fib, load_merge, memory, muldiv,
 };
 
 // =============================================================================
