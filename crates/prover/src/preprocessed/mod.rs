@@ -1,13 +1,13 @@
 //! A collection of preprocessed columns, whose values are publicly acknowledged, and independent of
 //! the proof.
 //!
-//! This module provides a backend-agnostic trait for generating preprocessed columns,
-//! with optimized implementations for each backend (CPU, SIMD, etc.).
+//! Each column type defines its own trait (extending `Backend`) with backend-specific
+//! implementations. This allows columns to be added independently in separate files.
 
 use stwo::{
-    core::{fields::m31::BaseField, poly::circle::CanonicCoset},
+    core::fields::m31::BaseField,
     prover::{
-        backend::{Backend, Col},
+        backend::Backend,
         poly::{BitReversedOrder, circle::CircleEvaluation},
     },
 };
@@ -15,13 +15,11 @@ use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 
 pub mod range_check;
 
-/// Trait for generating preprocessed columns for a specific backend.
+/// Trait for generating preprocessed columns.
 ///
-/// Each backend (CPU, SIMD, GPU) implements this trait with its own optimized
-/// column generation strategy.
-pub trait PreprocessedColumns: Backend {
-    // Add required preprocessed columns here
-    fn range_check() -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>>;
+/// Each trait implements this with its own optimized column generation.
+pub trait PreProcessedColumns<B: Backend> {
+    fn gen_columns() -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 }
 
 /// A collection of preprocessed columns with their identifiers.
@@ -30,14 +28,16 @@ pub struct PreProcessedTrace<B: Backend> {
     pub ids: Vec<PreProcessedColumnId>,
 }
 
-impl<B: PreprocessedColumns> PreProcessedTrace<B> {
-    /// Creates a new preprocessed trace using the backend's column generation.
-    pub fn new() -> Self {
+impl<B: Backend> Default for PreProcessedTrace<B>
+where
+    range_check::RangeCheckColumns<'static, ()>: PreProcessedColumns<B>,
+{
+    fn default() -> Self {
         let mut columns = Vec::new();
         let mut ids = Vec::new();
 
-        // Generate preprocessed columns from backend implementation
-        let range_check_cols = B::range_check();
+        // Range check columns
+        let range_check_cols = range_check::RangeCheckColumns::gen_columns();
         let range_check_ids = range_check::RangeCheckColumns::to_ids(None);
 
         for (id, col) in range_check_ids.into_iter().zip(range_check_cols) {
@@ -45,25 +45,8 @@ impl<B: PreprocessedColumns> PreProcessedTrace<B> {
             ids.push(id);
         }
 
+        // Future columns would be added here with their own trait bounds
+
         Self { columns, ids }
     }
-}
-
-impl<B: PreprocessedColumns> Default for PreProcessedTrace<B> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Creates a CircleEvaluation from a column of BaseField values.
-pub fn column_to_circle_eval<B: Backend>(
-    column: Col<B, BaseField>,
-    log_size: u32,
-) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
-    let domain = CanonicCoset::new(log_size).circle_domain();
-    CircleEvaluation::new(domain, column)
 }

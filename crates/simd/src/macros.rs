@@ -25,15 +25,15 @@ macro_rules! aligned_vec {
     ($value:expr; $len:expr) => {{
         let mut vec = Vec::with_capacity_in($len, $crate::AlignedAllocator);
         vec.resize($len, $value);
-        vec
+        $crate::AlignedVec(vec)
     }};
     ($($elem:expr),+ $(,)?) => {{
         let mut vec = Vec::new_in($crate::AlignedAllocator);
         $(vec.push($elem);)+
-        vec
+        $crate::AlignedVec(vec)
     }};
     () => {
-        Vec::new_in($crate::AlignedAllocator)
+        $crate::AlignedVec(Vec::new_in($crate::AlignedAllocator))
     };
 }
 

@@ -37,7 +37,7 @@ macro_rules! trace_columns {
                 T: AsRef<[U]>,
             {
                 itertools::izip!($( self.$column.as_ref().chunks(chunk_size) ),*)
-                    .map(|($( $column ),*)| $name { $( $column ),* })
+                    .map(|$( $column ),*| $name { $( $column ),* })
                     .collect()
             }
         }

@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types)]
 #![feature(
+    allocator_api,
     portable_simd,
     array_chunks,
     iter_array_chunks,
