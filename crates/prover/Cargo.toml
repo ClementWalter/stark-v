@@ -20,6 +20,7 @@ peak_alloc = { workspace = true, optional = true }
 smalloc = { workspace = true, optional = true }
 mimalloc = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
+simd = { workspace = true }
 
 [dev-dependencies]
 divan.workspace = true

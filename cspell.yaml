@@ -47,6 +47,7 @@ words:
   - memsz
   - merkle
   - mersenne
+  - metavar
   - mimalloc
   - mispredictions
   - mmap
@@ -109,3 +110,5 @@ words:
   - writeback
   - xori
   - zkvm
+  - evals
+  - ilog2
