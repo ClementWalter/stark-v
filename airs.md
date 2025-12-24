@@ -947,114 +947,9 @@ write to rd
 - `+ enabler * RegsRW(rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk - enabler)`
 
-## 10. JALR
+## 10. AUIPC
 
 ### 10.1 Columns
-
-- pc
-- clk
-- in_place_flag
-
-- rd_idx
-- rd_prev_clk
-- rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3.
-- a_0, a_1, a_2, a_3 — limbs of the value written to `rd`.
-
-- rs1_idx
-- rs1_prev_clk
-- b_0, b_1, b_2, b_3 — limbs of `rs1`.
-
-- imm_0 (imm[0:7])
-- imm_1 (imm[8:10])
-- imm_msb (imm[11])
-- imm_sign
-
-- opcode_jalr_flag
-
-- jump_target_0, jump_target_1, jump_target_2, jump_target_3
-- carry_0, carry_1, carry_2, carry_3
-
-### 10.2 Variables
-
-- `enabler = opcode_jalr_flag`.
-- `expected_opcode_id = opcode_jalr_flag * opcode_id_jalr`.
-- `imm = imm_0 + imm_1 * 2^8 + imm_msb * 2^11`
-- `r_idx_diff = rd_idx - rs1_idx`
-- `sext_imm_0 = imm_0`
-- `sext_imm_1 = imm_1 + imm_msb * 2^3`
-- `sext_imm_2 = imm_sign * (2^N_BITS_PER_BYTE - 1)`
-- `sext_imm_3 = imm_sign * (2^N_BITS_PER_BYTE - 1)`
-
-### 10.3 Constraints
-
-`enabler`, `in_place_flag`, `imm_msb`, `imm_sign` and `opcode_jalr_flag` are
-booleans
-
-- `enabler * (1 - enabler)`
-- `in_place_flag * (1 - in_place_flag)`
-- `imm_msb * (1 - imm_msb)`
-- `imm_sign * (1 - imm_sign)`
-- `opcode_jalr_flag * (1 - opcode_jalr_flag)`
-
-if in-place flag is 1 then rd_idx == rs1_idx
-
-- `in_place_flag * r_idx_diff`
-
-read instruction from the Program segment
-
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
-
-range check imm
-
-- `- RC_8_3(imm_0, imm_1)`
-
-sign extension consistency
-
-- `(1 - imm_msb) * imm_sign`
-
-registers update (jump to computed address)
-
-- `- enabler * RegsImm(pc, clk)`
-- `+ enabler * RegsImm(jump_target_0 + jump_target_1 * 2^8 + jump_target_2 * 2^16 + jump_target_3 * 2^24, clk + 1)`
-
-read from rs1
-
-- `- enabler * RegsRW(rs1_idx, rs1_prev_clk, b_0, b_1, b_2, b_3)`
-- `+ enabler * RegsRW(rs1_idx, clk, b_0, b_1, b_2, b_3)`
-- `- RC_20(clk - rs1_prev_clk - enabler)`
-
-compute jump target (rs1 + sext_imm, set LSB to 0)
-
-- `carry_0 * (1 - carry_0)`
-- `carry_1 * (1 - carry_1)`
-- `carry_2 * (1 - carry_2)`
-- `carry_3 * (1 - carry_3)`
-- `b_0 + sext_imm_0 + carry_0 * 2^N_BITS_PER_BYTE - jump_target_0 - (jump_target_0 % 2) * 2^N_BITS_PER_BYTE`
-- `b_1 + sext_imm_1 + carry_1 * 2^N_BITS_PER_BYTE - jump_target_1 - carry_0`
-- `b_2 + sext_imm_2 + carry_2 * 2^N_BITS_PER_BYTE - jump_target_2 - carry_1`
-- `b_3 + sext_imm_3 + carry_3 * 2^N_BITS_PER_BYTE - jump_target_3 - carry_2`
-
-store return address (pc + 4)
-
-- `a_0 + a_1 * 2^8 + a_2 * 2^16 + a_3 * 2^24 - (pc + 4)`
-
-range check a and jump_target
-
-- `- RC_8_8(a_0, a_1)`
-- `- RC_8_8(a_2, a_3)`
-- `- RC_8_8(jump_target_0, jump_target_1)`
-- `- RC_8_8(jump_target_2, jump_target_3)`
-
-write to rd
-
-- `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
-- `+ enabler * RegsRW(rd_idx, clk, a_0, a_1, a_2, a_3)`
-- `- (1 - in_place_flag) * RC_20(clk - rd_prev_clk - enabler)`
-- `in_place_flag * (clk - rd_prev_clk)`
-
-## 11. AUIPC
-
-### 11.1 Columns
 
 - pc
 - pc_1, pc_2 (least/most significant limbs are computed from rd[0] and pc, see
@@ -1073,7 +968,7 @@ write to rd
 
 - enabler
 
-### 11.2 Variables
+### 10.2 Variables
 
 - `imm = imm_0 + imm_1 * 2^4 + imm_2 * 2^12 + imm_msb * 2^19`.
 - `imm_limbs = [0, 2^4 * imm_0, imm_1, imm_2 + imm_msb * 2^7]`.
@@ -1082,7 +977,7 @@ write to rd
 - `pc_limbs = [rd[0], pc_1, pc_2, pc_msl]`
 - `carry[i] = (pc_limbs[i] + imm_limbs[i-1] - rd[i] + carry[i-1])/2^8`
 
-### 11.3 Constraints
+### 10.3 Constraints
 
 `enabler` is a boolean
 
@@ -1121,233 +1016,6 @@ write to rd
 - `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
 - `+ enabler * RegsRW(rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk - enabler)`
-
-## 12. MUL
-
-### 12.1 Columns
-
-- pc
-- clk
-- in_place_flag_1
-- in_place_flag_2
-
-- rd_idx
-- rd_prev_clk
-- rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3.
-- a_0, a_1, a_2, a_3 — limbs of the value written to `rd`.
-
-- rs1_idx
-- rs1_prev_clk
-- b_0, b_1, b_2, b_3 — limbs of `rs1`.
-
-- rs2_idx
-- rs2_prev_clk
-- c_0, c_1, c_2, c_3 — limbs of `rs2`
-
-- opcode_mul_flag
-
-- carry_0, carry_1, carry_2, carry_3
-
-### 12.2 Variables
-
-- `enabler = opcode_mul_flag`.
-- `expected_opcode_id = opcode_mul_flag * opcode_id_mul`.
-- `rs_idx_diff = rs1_idx - rs2_idx`
-- `rd_idx_diff_1 = rd_idx - rs1_idx`
-- `rd_idx_diff_2 = rd_idx - rs2_idx`
-- `product_sum[i] = Σ_{k=0}^{i} b_k * c_{i-k}` (convolution sum for limb i)
-
-### 12.3 Constraints
-
-`enabler`, `opcode_mul_flag` and `in_place_flags` are booleans
-
-- `enabler * (1 - enabler)`
-- `opcode_mul_flag * (1 - opcode_mul_flag)`
-- `in_place_flag_i * (1 - in_place_flag_i)`
-
-if in-place flag is 1 then register diff (or one of register diffs) is 0
-
-- `in_place_flag_1 * rs_idx_diff`
-- `in_place_flag_2 * rd_idx_diff_1 * rd_idx_diff_2`
-
-read instruction from the Program segment
-
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
-
-registers update
-
-- `- enabler * RegsImm(pc, clk)`
-- `+ enabler * RegsImm(pc + 4, clk + 1)`
-
-read from rs1
-
-- `- enabler * RegsRW(rs1_idx, rs1_prev_clk, b_0, b_1, b_2, b_3)`
-- `+ enabler * RegsRW(rs1_idx, clk, b_0, b_1, b_2, b_3)`
-- `- RC_20(clk - rs1_prev_clk - enabler)`
-
-read from rs2
-
-- `- enabler * RegsRW(rs2_idx, rs2_prev_clk, c_0, c_1, c_2, c_3)`
-- `+ enabler * RegsRW(rs2_idx, clk, c_0, c_1, c_2, c_3)`
-- `- (1 - in_place_flag_1) * RC_20(clk - rs2_prev_clk - enabler)`
-- `in_place_flag_1 * (clk - rs2_prev_clk)`
-
-multiplication with carries (schoolbook multiplication)
-
-- `carry_i * (2^N_BITS_PER_BYTE - 1 - carry_i)` for i in [0,3]
-- `product_sum[0] + carry_0 * 2^N_BITS_PER_BYTE - a_0 - carry_0` where
-  `product_sum[0] = b_0 * c_0`
-- `product_sum[1] + carry_1 * 2^N_BITS_PER_BYTE - a_1 - carry_0` where
-  `product_sum[1] = b_0 * c_1 + b_1 * c_0`
-- `product_sum[2] + carry_2 * 2^N_BITS_PER_BYTE - a_2 - carry_1` where
-  `product_sum[2] = b_0 * c_2 + b_1 * c_1 + b_2 * c_0`
-- `product_sum[3] + carry_3 * 2^N_BITS_PER_BYTE - a_3 - carry_2` where
-  `product_sum[3] = b_0 * c_3 + b_1 * c_2 + b_2 * c_1 + b_3 * c_0`
-
-range check carries and result
-
-- `- RC_8_8(carry_0, carry_1)`
-- `- RC_8_8(carry_2, carry_3)`
-- `- RC_8_8(a_0, a_1)`
-- `- RC_8_8(a_2, a_3)`
-
-write to rd
-
-- `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
-- `+ enabler * RegsRW(rd_idx, clk, a_0, a_1, a_2, a_3)`
-- `- (1 - in_place_flag_2) * RC_20(clk - rd_prev_clk - enabler)`
-- `in_place_flag_2 * (clk - rd_prev_clk)`
-
-## 13. MULH (mulh/mulhsu/mulhu)
-
-### 13.1 Columns
-
-- pc
-- clk
-- in_place_flag_1
-- in_place_flag_2
-
-- rd_idx
-- rd_prev_clk
-- rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3.
-- a_0, a_1, a_2, a_3 — limbs of the value written to `rd`.
-
-- rs1_idx
-- rs1_prev_clk
-- b_0, b_1, b_2, b_3 — limbs of `rs1`.
-
-- rs2_idx
-- rs2_prev_clk
-- c_0, c_1, c_2, c_3 — limbs of `rs2`
-
-- opcode_mulh_flag
-- opcode_mulhsu_flag
-- opcode_mulhu_flag
-
-- a_mul_0, a_mul_1, a_mul_2, a_mul_3 — lower 32 bits of b \* c
-- b_ext, c_ext — sign extension values
-- carry_mul_0, carry_mul_1, carry_mul_2, carry_mul_3 — carries for lower
-  multiplication
-- carry_0, carry_1, carry_2, carry_3 — carries for upper multiplication
-
-### 13.2 Variables
-
-- `enabler = opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag`.
-- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `rs_idx_diff = rs1_idx - rs2_idx`
-- `rd_idx_diff_1 = rd_idx - rs1_idx`
-- `rd_idx_diff_2 = rd_idx - rs2_idx`
-- `signed = opcode_mulh_flag + opcode_mulhsu_flag` (both operands signed for
-  MULH, rs1 only for MULHSU)
-- `b_sign = b_ext / (2^N_BITS_PER_BYTE - 1)` (sign bit of rs1)
-- `c_sign = c_ext / (2^N_BITS_PER_BYTE - 1)` (sign bit of rs2)
-
-### 13.3 Constraints
-
-`enabler`, `opcode_*_flags`, `in_place_flags`, `b_sign`, and `c_sign` are
-booleans
-
-- `enabler * (1 - enabler)`
-- `opcode_*_flag * (1 - opcode_*_flag)`
-- `in_place_flag_i * (1 - in_place_flag_i)`
-- `b_sign * (1 - b_sign)`
-- `c_sign * (1 - c_sign)`
-
-if in-place flag is 1 then register diff (or one of register diffs) is 0
-
-- `in_place_flag_1 * rs_idx_diff`
-- `in_place_flag_2 * rd_idx_diff_1 * rd_idx_diff_2`
-
-read instruction from the Program segment
-
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
-
-registers update
-
-- `- enabler * RegsImm(pc, clk)`
-- `+ enabler * RegsImm(pc + 4, clk + 1)`
-
-read from rs1
-
-- `- enabler * RegsRW(rs1_idx, rs1_prev_clk, b_0, b_1, b_2, b_3)`
-- `+ enabler * RegsRW(rs1_idx, clk, b_0, b_1, b_2, b_3)`
-- `- RC_20(clk - rs1_prev_clk - enabler)`
-
-read from rs2
-
-- `- enabler * RegsRW(rs2_idx, rs2_prev_clk, c_0, c_1, c_2, c_3)`
-- `+ enabler * RegsRW(rs2_idx, clk, c_0, c_1, c_2, c_3)`
-- `- (1 - in_place_flag_1) * RC_20(clk - rs2_prev_clk - enabler)`
-- `in_place_flag_1 * (clk - rs2_prev_clk)`
-
-sign extension constraints
-
-- `opcode_mulhu_flag * b_sign` (unsigned operands for MULHU)
-- `(opcode_mulhu_flag + opcode_mulhsu_flag) * c_sign` (rs2 unsigned for MULHU
-  and MULHSU)
-- `b_ext - b_sign * (2^N_BITS_PER_BYTE - 1)`
-- `c_ext - c_sign * (2^N_BITS_PER_BYTE - 1)`
-
-sign bit extraction with XOR
-
-- `- signed * Bitwise(b_3, 2^(N_BITS_PER_BYTE-1), b_3 + 2^(N_BITS_PER_BYTE-1) - 2 * b_sign * 2^(N_BITS_PER_BYTE-1), 3)`
-- `- opcode_mulh_flag * Bitwise(c_3, 2^(N_BITS_PER_BYTE-1), c_3 + 2^(N_BITS_PER_BYTE-1) - 2 * c_sign * 2^(N_BITS_PER_BYTE-1), 3)`
-
-lower 32-bit multiplication (b _ c = a_mul + 2^32 _ a)
-
-- `carry_mul_i * (2^N_BITS_PER_BYTE - 1 - carry_mul_i)` for i in [0,3]
-- `(Σ_{k=0}^{0} b_k * c_{0-k}) + carry_mul_0 * 2^N_BITS_PER_BYTE - a_mul_0 - carry_mul_0`
-- `(Σ_{k=0}^{1} b_k * c_{1-k}) + carry_mul_1 * 2^N_BITS_PER_BYTE - a_mul_1 - carry_mul_0`
-- `(Σ_{k=0}^{2} b_k * c_{2-k}) + carry_mul_2 * 2^N_BITS_PER_BYTE - a_mul_2 - carry_mul_1`
-- `(Σ_{k=0}^{3} b_k * c_{3-k}) + carry_mul_3 * 2^N_BITS_PER_BYTE - a_mul_3 - carry_mul_2`
-
-upper 32-bit multiplication (high part)
-
-- `carry_i * (2^N_BITS_PER_BYTE - 1 - carry_i)` for i in [0,3]
-- `carry_mul_3 + (Σ_{k=1}^{3} b_k * c_{3+0-k}) + 4 * (b_0 * c_ext + c_0 * b_ext) + carry_0 * 2^N_BITS_PER_BYTE - a_0 - carry_0`
-- `carry_0 + (Σ_{k=2}^{3} b_k * c_{3+1-k}) + 3 * (b_1 * c_ext + c_1 * b_ext) + carry_1 * 2^N_BITS_PER_BYTE - a_1 - carry_0`
-- `carry_1 + (Σ_{k=3}^{3} b_k * c_{3+2-k}) + 2 * (b_2 * c_ext + c_2 * b_ext) + carry_2 * 2^N_BITS_PER_BYTE - a_2 - carry_1`
-- `carry_2 + 1 * (b_3 * c_ext + c_3 * b_ext) + carry_3 * 2^N_BITS_PER_BYTE - a_3 - carry_2`
-
-range check carries and results
-
-- `- RC_8_8(carry_mul_0, carry_mul_1)`
-- `- RC_8_8(carry_mul_2, carry_mul_3)`
-- `- RC_8_8(carry_0, carry_1)`
-- `- RC_8_8(carry_2, carry_3)`
-- `- RC_8_8(a_mul_0, a_mul_1)`
-- `- RC_8_8(a_mul_2, a_mul_3)`
-- `- RC_8_8(a_0, a_1)`
-- `- RC_8_8(a_2, a_3)`
-
-write to rd
-
-- `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
-- `+ enabler * RegsRW(rd_idx, clk, a_0, a_1, a_2, a_3)`
-- `- (1 - in_place_flag_2) * RC_20(clk - rd_prev_clk - enabler)`
-- `in_place_flag_2 * (clk - rd_prev_clk)`
-
-## DIVREM (div/divu/rem/remu)
 
 ### Columns
 
@@ -1482,169 +1150,132 @@ write to rd
     Program(pc, expected_opcode, rd_idx, rs1_idx, rs2_idx)
     ```
 
-## Load Operations (loadw/loadb/loadh/loadbu/loadhu)
+## 11. Load unsigned (lbu/lhu)
 
-### Columns
+### 11.1 Columns
 
-- `read_data[4]`: raw bytes from memory
-- `write_data[4]`: result limbs after load processing
-- `shift_amount`: memory alignment offset (0-3)
-- `sign_bit`: most significant bit for sign extension
-- `opcode_loadw_flag, opcode_loadb_flag, opcode_loadbu_flag, opcode_loadh_flag, opcode_loadhu_flag`:
-  opcode selectors
+- pc
+- clk
+- in_place_flag
 
-### Variables
+- rd_prev_clk
+- rd_idx
+- rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3
+- rd[0:3]
 
-- `rs1_data[4], rd_data[4]`: register data
-- `rs1_in_place`: in-place flag for memory timing
-- `opcode_id`: instruction opcode
-- `rs1_idx, rd_idx`: register indices
-- `imm_12`: sign-extended 12-bit immediate
+- rs1_prev_clk
+- rs1_idx
+- base_0, base_1, base_2, base_3
 
-### Constraints
+- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
 
-1. **Boolean constraints**: All flags and bits are binary
-   - `opcode_loadw_flag, opcode_loadb_flag, opcode_loadbu_flag, opcode_loadh_flag, opcode_loadhu_flag in {0, 1}`
-   - `sign_bit in {0, 1}`
+- mem_prev_clk
+- mem_val[0:3]
+- shift_amount
+- markers - one-hot encoding of the loaded bytes position
 
-2. **Single opcode selection**: Exactly one opcode flag is set
-   - `opcode_loadw_flag + opcode_loadb_flag + opcode_loadbu_flag + opcode_loadh_flag + opcode_loadhu_flag = 1`
+- opcode_lbu_flag
+- opcode_lhu_flag
+- opcode_lw_flag
 
-3. **Sign bit extraction**: Extract MSB for sign extension
+### 11.2 Variables
 
-   ```
-   For LOADB: sign_source = shift_amount
-   For LOADH: sign_source = 1 + shift_amount
-   For others: sign_source = 0
+- `enabler = Σ opcode_i_flag`
+- `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
+- `mem_addr = base_0 + base_1 * 2^8 + base_2 * 2^16 + base_3 * 2^24 + imm`
+- `sum_marker = Σ marker[i]`
+- `shift_id = Σ i * marker[i]`
 
-   sign_check = (opcode_loadb_flag + opcode_loadh_flag) * sign_bit
-   Range check: (read_data[sign_source] - sign_bit * 128) in RC_20 (7-bit range)
-   ```
+### 11.3 Constraints
 
-4. **Load result construction**:
+`enabler`, `opcode_*_flags`, `in_place_flag` and `marker[i]` are booleans
 
-   ```
-   For LOADW:
-     write_data[i] = read_data[i] for all i
+- `enabler * (1 - enabler)`
+- `opcode_*_flag * (1 - opcode_*_flag)`
+- `in_place_flag * (1 - in_place_flag)`
+- `marker[i] * (1 - marker[i])`
 
-   For LOADB (signed):
-     write_data[0] = read_data[shift_amount]
-     write_data[i] = sign_bit * 255 for i > 0
+if in-place flag is 1 then register diff (or one of register diffs) is 0
 
-   For LOADBU (unsigned):
-     write_data[0] = read_data[shift_amount]
-     write_data[i] = 0 for i > 0
+- `in_place_flag_1 * rs_idx_diff`
 
-   For LOADH (signed):
-     write_data[i] = read_data[i + shift_amount] for i < 2
-     write_data[i] = sign_bit * 255 for i >= 2
+read instruction from the Program segment
 
-   For LOADHU (unsigned):
-     write_data[i] = read_data[i + shift_amount] for i < 2
-     write_data[i] = 0 for i >= 2
-   ```
+- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
 
-5. **Memory address calculation**:
+registers update
 
-   ```
-   address = rs1_data + imm_12
-   Memory load: (address, read_data)
-   ```
+- `- enabler * RegsImm(pc, clk)`
+- `+ enabler * RegsImm(pc + 4, clk + 1)`
 
-6. **Shift amount validation**:
+read from rs1
 
-   ```
-   For LOADB/LOADBU: shift_amount in {0, 1, 2, 3}
-   For LOADH/LOADHU: shift_amount in {0, 2}
-   For LOADW: shift_amount = 0
-   ```
+- `- enabler * RegsRW(rs1_idx, rs1_prev_clk, base_0, base_1, base_2, base_3)`
+- `+ enabler * RegsRW(rs1_idx, clk, base_0, base_1, base_2, base_3)`
+- `- RC_20(clk - rs1_prev_clk - enabler)`
 
-7. **Memory interactions**:
+check that base is on 30 bits
 
-   ```
-   RegsRW(rs1_idx, rs1_data, rs1_in_place)
-   RegsRW(rd_idx, write_data, 0)
-   Memory(address, read_data)
-   ```
+- `- RC_6(base_3)`
 
-8. **Program interaction**:
-   ```
-   expected_opcode = opcode_loadw_flag * LOADW + opcode_loadb_flag * LOADB +
-                     opcode_loadbu_flag * LOADBU + opcode_loadh_flag * LOADH +
-                     opcode_loadhu_flag * LOADHU
-   Program(pc, expected_opcode, rd_idx, rs1_idx, imm_12)
-   ```
+check shift amount
 
-## Store Operations (storew/storeh/storeb)
+- `shift_amount - ( opcode_lbu_flag * shift_id + opcode_lhu_flag * ( (2 - shift_id) * 0 + (6 - shift_id) * 2 ) + opcode_lw_flag * 0 )`
 
-### Columns
+range check imm and check that `base_0 - shift_amount` is a multiple of 4
 
-- `rs2_data[4]`: source register data to store
-- `prev_data[4]`: existing memory content at target address
-- `write_data[4]`: final memory content after store operation
-- `shift_amount`: memory alignment offset (0-3)
-- `opcode_storew_flag, opcode_storeh_flag, opcode_storeb_flag`: opcode selectors
+- `- RC_8_3_6(imm_0, imm_1, (base_0 - shift_amount)/2^2)`
+- `imm_msb * (1 - imm_msb)`
 
-### Variables
+check that addr_u32 is at most 30 bits
 
-- `rs1_data[4], rs2_data[4]`: register data
-- `rs1_in_place, rs2_in_place`: in-place flags for memory timing
-- `opcode_id`: instruction opcode
-- `rs1_idx, rs2_idx`: register indices
-- `imm_12`: sign-extended 12-bit immediate
+- `- RC_8_8(u32_addr_0, u32_addr_1)`
+- `- RC_8_6(u32_addr_2, u32_addr_3)`
 
-### Constraints
+read memory
 
-1. **Boolean constraints**: All flags are binary
-   - `opcode_storew_flag, opcode_storeh_flag, opcode_storeb_flag in {0, 1}`
+- `- Memory(mem_addr - shift_amount, mem_prev_clk, mem_val[0], mem_val[1], mem_val[2], mem_val[3])`
+- `+ Memory(mem_addr - shift_amount, clk, mem_val[0], mem_val[1], mem_val[2], mem_val[3])`
 
-2. **Single opcode selection**: Exactly one opcode flag is set
-   - `opcode_storew_flag + opcode_storeh_flag + opcode_storeb_flag = 1`
+for lbu `marker` contains a single one when row is enabled
 
-3. **Store result construction**: Merge source data with existing memory
+- `opcode_lbu_flag * (1 - sum_marker)`
 
-   ```
-   For STOREW:
-     write_data[i] = rs2_data[i] for all i
+for lhu `marker` is either `[1,1,0,0]` or `[0,0,1,1]`
 
-   For STOREH:
-     For i in range(shift_amount, shift_amount + 2):
-       write_data[i] = rs2_data[i - shift_amount]
-     For other i:
-       write_data[i] = prev_data[i]
+- `opcode_lhu_flag * (2 - sum_marker)`
+- `opcode_lhu_flag * (1 - shift_id) * (5 - shift_id)`
 
-   For STOREB:
-     write_data[shift_amount] = rs2_data[0]
-     For other i:
-       write_data[i] = prev_data[i]
-   ```
+check that lbu loads the correct byte
 
-4. **Memory address calculation**:
+- `opcode_lbu_flag * rd[1]`, `opcode_lbu_flag * rd[2]`,
+  `opcode_lbu_flag * rd[3]`
+- for i in [0:3] `opcode_lbu_flag * (rd[0] - mem_val[i]) * marker[i]`
 
-   ```
-   address = rs1_data + imm_12
-   Memory store: (address, write_data)
-   ```
+check that lhu loads the correct half_word (for config `[1,1,0,0]`)
 
-5. **Shift amount validation**:
+- `opcode_lhu_flag * (2 - shift_id) * (rd[0] - mem_val[0])`
+- `opcode_lhu_flag * (2 - shift_id) * (rd[1] - mem_val[1])`
+- `opcode_lhu_flag * (2 - shift_id) * rd[2]`
+- `opcode_lhu_flag * (2 - shift_id) * rd[3]`
 
-   ```
-   For STOREB: shift_amount in {0, 1, 2, 3}
-   For STOREH: shift_amount in {0, 2}
-   For STOREW: shift_amount = 0
-   ```
+check that lhu loads the correct half_word (for config `[0,0,1,1]`)
 
-6. **Memory interactions**:
+- `opcode_lhu_flag * (6 - shift_id) * (rd[0] - mem_val[2])`
+- `opcode_lhu_flag * (6 - shift_id) * (rd[1] - mem_val[3])`
+- `opcode_lhu_flag * (6 - shift_id) * rd[2]`
+- `opcode_lhu_flag * (6 - shift_id) * rd[3]`
 
-   ```
-   RegsRW(rs1_idx, rs1_data, rs1_in_place)
-   RegsRW(rs2_idx, rs2_data, rs2_in_place)
-   Memory(address, prev_data) -> Memory(address, write_data)
-   ```
+check that lw loads all the bytes
 
-7. **Program interaction**:
-   ```
-   expected_opcode = opcode_storew_flag * STOREW + opcode_storeh_flag * STOREH +
-                     opcode_storeb_flag * STOREB
-   Program(pc, expected_opcode, rs1_idx, rs2_idx, imm_12)
-   ```
+- `opcode_lw_flag * (rd[0] - mem_val[0])`
+- `opcode_lw_flag * (rd[1] - mem_val[1])`
+- `opcode_lw_flag * (rd[2] - mem_val[2])`
+- `opcode_lw_flag * (rd[3] - mem_val[3])`
+
+write to rd
+
+- `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
+- `+ enabler * RegsRW(rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
+- `- (1 - in_place_flag) * RC_20(clk - rd_prev_clk - enabler)`
+- `in_place_flag * (clk - rd_prev_clk)`
