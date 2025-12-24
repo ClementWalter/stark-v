@@ -1172,7 +1172,7 @@ write to rd
 - mem_prev_clk
 - mem_val[0:3]
 - shift_amount
-- markers - one-hot encoding of the loaded bytes position
+- markers - one-hot encoding of the loaded bytes position (LE)
 
 - opcode_lbu_flag
 - opcode_lhu_flag
@@ -1220,7 +1220,7 @@ check that base is on 30 bits
 
 check shift amount
 
-- `shift_amount - ( opcode_lbu_flag * shift_id + opcode_lhu_flag * ( (2 - shift_id) * 0 + (6 - shift_id) * 2 ) + opcode_lw_flag * 0 )`
+- `shift_amount - ( opcode_lbu_flag * shift_id + opcode_lhu_flag * ( (shift_id - 1) / 2 ) + opcode_lw_flag * 0 )`
 
 range check imm and check that `base_0 - shift_amount` is a multiple of 4
 
@@ -1252,19 +1252,14 @@ check that lbu loads the correct byte
   `opcode_lbu_flag * rd[3]`
 - for i in [0:3] `opcode_lbu_flag * (rd[0] - mem_val[i]) * marker[i]`
 
-check that lhu loads the correct half_word (for config `[1,1,0,0]`)
+check that lhu loads the correct half word
 
-- `opcode_lhu_flag * (2 - shift_id) * (rd[0] - mem_val[0])`
-- `opcode_lhu_flag * (2 - shift_id) * (rd[1] - mem_val[1])`
-- `opcode_lhu_flag * (2 - shift_id) * rd[2]`
-- `opcode_lhu_flag * (2 - shift_id) * rd[3]`
-
-check that lhu loads the correct half_word (for config `[0,0,1,1]`)
-
-- `opcode_lhu_flag * (6 - shift_id) * (rd[0] - mem_val[2])`
-- `opcode_lhu_flag * (6 - shift_id) * (rd[1] - mem_val[3])`
-- `opcode_lhu_flag * (6 - shift_id) * rd[2]`
-- `opcode_lhu_flag * (6 - shift_id) * rd[3]`
+- `opcode_lhu_flag * rd[2]`
+- `opcode_lhu_flag * rd[3]`
+- `opcode_lhu_flag * ( (5 - shift_id) / 4 ) * (rd[0] - mem_val[0])`
+- `opcode_lhu_flag * ( (5 - shift_id) / 4 ) * (rd[1] - mem_val[1])`
+- `opcode_lhu_flag * ( (shift_id - 1) / 4 ) * (rd[0] - mem_val[2])`
+- `opcode_lhu_flag * ( (shift_id - 1) / 4 ) * (rd[1] - mem_val[3])`
 
 check that lw loads all the bytes
 
