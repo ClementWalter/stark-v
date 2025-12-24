@@ -8,27 +8,32 @@ words:
   - bgeu
   - bitmask
   - bltu
+  - bytemuck
   - cfgs
-  - Clément
+  - clément
   - clippy
   - condvar
   - csrrw
   - divu
   - doctest
   - dtolnay
-  - EBREAK
-  - ECALL
+  - ebreak
+  - ecall
   - ehdr
   - filesz
-  - Fondeur
+  - fondeur
   - funct
   - futex
   - globl
   - halfword
+  - hashbrown
   - immediates
   - inplace
   - insn
+  - itertools
   - jalr
+  - jemalloc
+  - jemallocator
   - kakarot
   - littleriscv
   - loadb
@@ -42,10 +47,10 @@ words:
   - memsz
   - merkle
   - mersenne
+  - mimalloc
   - mispredictions
   - mmap
   - mmio
-  - MMIO
   - muldiv
   - mulh
   - mulhsu
@@ -67,7 +72,6 @@ words:
   - rodata
   - rustc
   - rustflags
-  - RUSTFLAGS
   - rzup
   - sdiv
   - serde
@@ -91,9 +95,10 @@ words:
   - syms
   - syscalls
   - thiserror
+  - tikv
   - trac
   - transpiling
-  - Ttext
+  - ttext
   - underflowed
   - unimp
   - usize
