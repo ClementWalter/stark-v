@@ -1150,7 +1150,7 @@ write to rd
     Program(pc, expected_opcode, rd_idx, rs1_idx, rs2_idx)
     ```
 
-## 11. Load/store unsigned (lbu/lhu/lw/sb/sh/sw)
+## 11. Load/store (lb/lbu/lh/lhu/lw/sb/sh/sw)
 
 ### 11.1 Columns
 
@@ -1175,11 +1175,12 @@ write to rd
 
 - r2_idx (rd_idx - rs2_idx)
 
-<!-- source columns -->
+<!-- source columns (3rd byte of src val is src_val[3]+2^7*src_msb)-->
 
 - src_addr
 - src_prev_clk (mem_prev_clk - rs2_prev_clk)
 - src_val (mem_val[0:3] - rs2[0:3])
+- src_msb
 
 <!-- columns for address shifting -->
 
@@ -1188,6 +1189,8 @@ write to rd
 
 <!-- flags -->
 
+- opcode_lb_flag
+- opcode_lh_flag
 - opcode_lbu_flag
 - opcode_lhu_flag
 - opcode_lw_flag
@@ -1202,13 +1205,15 @@ write to rd
 - `mem_addr = base_0 + base_1 * 2^8 + base_2 * 2^16 + base_3 * 2^24 + imm`
 - `sum_marker = Σ marker[i]`
 - `shift_id = Σ i * marker[i]`
-- `opcode_b_flag = opcode_lbu_flag + opcode_sb_flag`
-- `opcode_h_flag = opcode_lhu_flag + opcode_sh_flag`
+- `opcode_b_flag = opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag`
+- `opcode_h_flag = opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag`
 - `opcode_w_flag = opcode_lwu_flag + opcode_sw_flag`
+- `is_signed = opcode_lb_flag + opcode_lh_flag`
 - `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`
 - `is_load = 1 - is_store`
 - `src_as = REG_AS * is_store + RW_AS * is_load`
 - `dst_as = REG_AS * is_load + RW_AS * is_store`
+- `src_val[3] = src_val[3] + src_msb * 2^7`
 
 ### 11.3 Constraints
 
@@ -1272,15 +1277,15 @@ for lhu/sh `marker` is either `[1,1,0,0]` or `[0,0,1,1]`
 
 check that lbu/sb loads the correct byte
 
-- `opcode_b_flag * dst_val[1]`
-- `opcode_b_flag * dst_val[2]`
-- `opcode_b_flag * dst_val[3]`
+- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst_val[1])`
+- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst_val[2])`
+- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst_val[3])`
 - for i in [0:3] `opcode_b_flag * (dst_val[0] - src_val[i]) * marker[i]`
 
 check that lhu/sh loads the correct half word
 
-- `opcode_h_flag * dst_val[2]`
-- `opcode_h_flag * dst_val[3]`
+- `opcode_h_flag * (is_signed * src_msb * (2^8-1) - dst_val[2])`
+- `opcode_h_flag * (is_signed * src_msb * (2^8-1) - dst_val[3])`
 - `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst_val[0] - src_val[0])`
 - `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst_val[1] - src_val[1])`
 - `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst_val[0] - src_val[2])`
