@@ -1150,9 +1150,57 @@ write to rd
     Program(pc, expected_opcode, rd_idx, rs1_idx, rs2_idx)
     ```
 
-## 11. Load/store (lb/lbu/lh/lhu/lw/sb/sh/sw)
+## 11. JALR
 
 ### 11.1 Columns
+
+- pc
+- to_pc_over_two
+- to_pc_lsb
+- clk
+
+- rs1_prev_clk
+- rs1_idx
+- rs1[0:3]
+
+- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
+
+### 11.2 Variables
+
+- `rs1_felt = rs1[0] + rs1[1] * 2^8 + rs1[2] * 2^16 + rs1[3] * 2^24`
+
+### 11.3 Constraints
+
+`enabler` and `to_pc_lsb` are boolean
+
+- `enabler * (1 - enabler)`
+
+read instruction from the Program segment
+
+- `- enabler * Program(pc, opcode_jalr_id, rs1_idx, imm)`
+
+read from rs1
+
+- `- enabler * RegsRW(rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `+ enabler * RegsRW(rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `- RC_20(clk - rs1_prev_clk)`
+
+check that rs1 is a M31
+
+- `RC_M31(rs1[0], rs1[3])`
+
+check next pc
+
+- `2 * to_pc_over_two + to_pc_lsb - (rs1_felt + imm)`
+
+update registers
+
+- `- enabler * RegsImm(pc, clk)`
+- `+ enabler * RegsImm(2 * to_pc_over_two, clk + 1)`
+
+## 12. Load/store (lb/lbu/lh/lhu/lw/sb/sh/sw)
+
+### 12.1 Columns
 
 - pc
 - clk
@@ -1198,7 +1246,7 @@ write to rd
 - opcode_sh_flag
 - opcode_sw_flag
 
-### 11.2 Variables
+### 12.2 Variables
 
 - `enabler = Σ opcode_i_flag`
 - `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
@@ -1215,13 +1263,12 @@ write to rd
 - `dst_as = REG_AS * is_load + RW_AS * is_store`
 - `src_val[3] = src_val[3] + src_msb * 2^7`
 
-### 11.3 Constraints
+### 12.3 Constraints
 
-`enabler`, `opcode_*_flags`, `in_place_flag` and `marker[i]` are booleans
+`enabler`, `opcode_*_flags` and `marker[i]` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `in_place_flag * (1 - in_place_flag)`
 - `marker[i] * (1 - marker[i])`
 
 read instruction from the Program segment
