@@ -1150,33 +1150,50 @@ write to rd
     Program(pc, expected_opcode, rd_idx, rs1_idx, rs2_idx)
     ```
 
-## 11. Load unsigned (lbu/lhu)
+## 11. Load/store unsigned (lbu/lhu/lw/sb/sh/sw)
 
 ### 11.1 Columns
 
 - pc
 - clk
-- in_place_flag
 
-- rd_prev_clk
-- rd_idx
-- rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3
-- rd[0:3]
+<!-- destination columns -->
+
+- dst_addr
+- dst_prev_clk (rd_prev_clk - mem_prev_clk)
+- dst_prev_val (rd_prev_val[0:3] - mem_prev_val[0:3])
+- dst_val (rd[0:3] - mem_val[0:3])
+
+<!-- columns for byte/halfword/word address -->
 
 - rs1_prev_clk
 - rs1_idx
 - base_0, base_1, base_2, base_3
-
 - imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
 
-- mem_prev_clk
-- mem_val[0:3]
+<!-- second register index -->
+
+- r2_idx (rd_idx - rs2_idx)
+
+<!-- source columns -->
+
+- src_addr
+- src_prev_clk (mem_prev_clk - rs2_prev_clk)
+- src_val (mem_val[0:3] - rs2[0:3])
+
+<!-- columns for address shifting -->
+
 - shift_amount
 - markers - one-hot encoding of the loaded bytes position (LE)
+
+<!-- flags -->
 
 - opcode_lbu_flag
 - opcode_lhu_flag
 - opcode_lw_flag
+- opcode_sb_flag
+- opcode_sh_flag
+- opcode_sw_flag
 
 ### 11.2 Variables
 
@@ -1185,6 +1202,13 @@ write to rd
 - `mem_addr = base_0 + base_1 * 2^8 + base_2 * 2^16 + base_3 * 2^24 + imm`
 - `sum_marker = Σ marker[i]`
 - `shift_id = Σ i * marker[i]`
+- `opcode_b_flag = opcode_lbu_flag + opcode_sb_flag`
+- `opcode_h_flag = opcode_lhu_flag + opcode_sh_flag`
+- `opcode_w_flag = opcode_lwu_flag + opcode_sw_flag`
+- `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`
+- `is_load = 1 - is_store`
+- `src_as = REG_AS * is_store + RW_AS * is_load`
+- `dst_as = REG_AS * is_load + RW_AS * is_store`
 
 ### 11.3 Constraints
 
@@ -1195,13 +1219,11 @@ write to rd
 - `in_place_flag * (1 - in_place_flag)`
 - `marker[i] * (1 - marker[i])`
 
-if in-place flag is 1 then register diff (or one of register diffs) is 0
-
-- `in_place_flag_1 * rs_idx_diff`
-
 read instruction from the Program segment
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
+/!\ rs1_idx is before rd_idx for loads /!\
+
+- `- enabler * Program(pc, expected_opcode_id, rs1_idx, r2_idx, imm)`
 
 registers update
 
@@ -1212,65 +1234,67 @@ read from rs1
 
 - `- enabler * RegsRW(rs1_idx, rs1_prev_clk, base_0, base_1, base_2, base_3)`
 - `+ enabler * RegsRW(rs1_idx, clk, base_0, base_1, base_2, base_3)`
-- `- RC_20(clk - rs1_prev_clk - enabler)`
-
-check that base is on 30 bits
-
-- `- RC_6(base_3)`
+- `- RC_20(clk - rs1_prev_clk)`
 
 check shift amount
 
-- `shift_amount - ( opcode_lbu_flag * shift_id + opcode_lhu_flag * ( (shift_id - 1) / 2 ) + opcode_lw_flag * 0 )`
+- `shift_amount - ( opcode_b_flag * shift_id + opcode_h_flag * ( (shift_id - 1) / 2 ) + opcode_w_flag * 0 )`
 
-range check imm and check that `base_0 - shift_amount` is a multiple of 4
+range check imm
 
-- `- RC_8_3_6(imm_0, imm_1, (base_0 - shift_amount)/2^2)`
+- `- RC_8_3_6(imm_0, imm_1)`
 - `imm_msb * (1 - imm_msb)`
 
-check that addr_u32 is at most 30 bits
+check that `base_0 - shift_amount` is a multiple of 4 and that base is on 30
+bits
 
-- `- RC_8_8(u32_addr_0, u32_addr_1)`
-- `- RC_8_6(u32_addr_2, u32_addr_3)`
+- `- RC_6_6((base_0 - shift_amount)/2^2, base_3)`
 
-read memory
+check src/dst addresses (load/store dependent)
 
-- `- Memory(mem_addr - shift_amount, mem_prev_clk, mem_val[0], mem_val[1], mem_val[2], mem_val[3])`
-- `+ Memory(mem_addr - shift_amount, clk, mem_val[0], mem_val[1], mem_val[2], mem_val[3])`
+- `src_addr - ( is_load * (mem_addr - shift_amount) + is_store * r2_idx )`
+- `dst_addr - ( is_load * r2_idx + is_store * (mem_addr - shift_amount) )`
 
-for lbu `marker` contains a single one when row is enabled
+read src
 
-- `opcode_lbu_flag * (1 - sum_marker)`
+- `- enabler * Memory(src_as, src_addr, src_prev_clk, src_val[0], src_val[1], src_val[2], src_val[3])`
+- `+ enabler * Memory(src_as, src_addr, clk, src_val[0], src_val[1], src_val[2], src_val[3])`
+- `- RC_20(clk - src_prev_clk)`
 
-for lhu `marker` is either `[1,1,0,0]` or `[0,0,1,1]`
+for lbu/sb `marker` contains a single one when row is enabled
 
-- `opcode_lhu_flag * (2 - sum_marker)`
-- `opcode_lhu_flag * (1 - shift_id) * (5 - shift_id)`
+- `opcode_b_flag * (1 - sum_marker)`
 
-check that lbu loads the correct byte
+for lhu/sh `marker` is either `[1,1,0,0]` or `[0,0,1,1]`
 
-- `opcode_lbu_flag * rd[1]`, `opcode_lbu_flag * rd[2]`,
-  `opcode_lbu_flag * rd[3]`
-- for i in [0:3] `opcode_lbu_flag * (rd[0] - mem_val[i]) * marker[i]`
+- `opcode_h_flag * (2 - sum_marker)`
+- `opcode_h_flag * (1 - shift_id) * (5 - shift_id)`
 
-check that lhu loads the correct half word
+check that lbu/sb loads the correct byte
 
-- `opcode_lhu_flag * rd[2]`
-- `opcode_lhu_flag * rd[3]`
-- `opcode_lhu_flag * ( (5 - shift_id) / 4 ) * (rd[0] - mem_val[0])`
-- `opcode_lhu_flag * ( (5 - shift_id) / 4 ) * (rd[1] - mem_val[1])`
-- `opcode_lhu_flag * ( (shift_id - 1) / 4 ) * (rd[0] - mem_val[2])`
-- `opcode_lhu_flag * ( (shift_id - 1) / 4 ) * (rd[1] - mem_val[3])`
+- `opcode_b_flag * dst_val[1]`
+- `opcode_b_flag * dst_val[2]`
+- `opcode_b_flag * dst_val[3]`
+- for i in [0:3] `opcode_b_flag * (dst_val[0] - src_val[i]) * marker[i]`
 
-check that lw loads all the bytes
+check that lhu/sh loads the correct half word
 
-- `opcode_lw_flag * (rd[0] - mem_val[0])`
-- `opcode_lw_flag * (rd[1] - mem_val[1])`
-- `opcode_lw_flag * (rd[2] - mem_val[2])`
-- `opcode_lw_flag * (rd[3] - mem_val[3])`
+- `opcode_h_flag * dst_val[2]`
+- `opcode_h_flag * dst_val[3]`
+- `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst_val[0] - src_val[0])`
+- `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst_val[1] - src_val[1])`
+- `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst_val[0] - src_val[2])`
+- `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst_val[1] - src_val[3])`
 
-write to rd
+check that lw/sw loads all the bytes
 
-- `- enabler * RegsRW(rd_idx, rd_prev_clk, rd_prev_val_0, rd_prev_val_1, rd_prev_val_2, rd_prev_val_3)`
-- `+ enabler * RegsRW(rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- (1 - in_place_flag) * RC_20(clk - rd_prev_clk - enabler)`
-- `in_place_flag * (clk - rd_prev_clk)`
+- `opcode_w_flag * (dst_val[0] - src_val[0])`
+- `opcode_w_flag * (dst_val[1] - src_val[1])`
+- `opcode_w_flag * (dst_val[2] - src_val[2])`
+- `opcode_w_flag * (dst_val[3] - src_val[3])`
+
+write into dst
+
+- `- enabler * Memory(dst_as, dst_addr, dst_prev_clk, dst_prev_val[0], dst_prev_val[1], dst_prev_val[2], dst_prev_val[3])`
+- `+ enabler * Memory(dst_as, dst_addr, clk, dst_val[0], dst_val[1], dst_val[2], dst_val[3])`
+- `- RC_20(clk - dst_prev_clk)`
