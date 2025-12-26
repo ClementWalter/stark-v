@@ -48,18 +48,20 @@ transpiler).
 
 ## 1. Base ALU Reg (add/sub/xor/or/and)
 
-### 1.0 Metadata
+- `add`: `x[rd] = x[rs1] + x[rs2]`
+- `sub`: `x[rd] = x[rs1] - x[rs2]`
+- `xor`: `x[rd] = x[rs1] ^ x[rs2]`
+- `or`: `x[rd] = x[rs1] | x[rs2]`
+- `and`: `x[rd] = x[rs1] & x[rs2]`
 
-- **Opcodes:** `add` (`x[rd] = x[rs1] + x[rs2]`), `sub`
-  (`x[rd] = x[rs1] - x[rs2]`), `xor` (`x[rd] = x[rs1] ^ x[rs2]`), `or`
-  (`x[rd] = x[rs1] | x[rs2]`), `and` (`x[rd] = x[rs1] & x[rs2]`).
-- **T:** 29 columns.
-- **Lookups:** Program 1, Registers 2, Memory 6, RC_20 3, Bitwise 4 (xor/or/and
-  only);
-- **Factorization cost:** Extra cost compared to separating add/sub and
-  xor/or/and: bitwise rows use 4T, add/sub rows use 4T + 2L
-  (`max_log_size = 21`) or 4T + 4L (`max_log_size = 20`), leaving 4 unused cells
-  per bitwise opcode and 8–12 unused cells per add/sub opcode.
+### 1.0 Factorization cost
+
+Extra cost compared to having 2 components: add/sub - xor/or/and
+
+- for bitwise: 4T
+- for add/sub: 4T + 2L (`max_log_size = 21`) or 4T + 4L (`max_log_size = 20`)
+
+=> 4 unused cells per bitwise and 8 to 12 cells per add/sub
 
 ### 1.1 Columns
 
@@ -145,6 +147,12 @@ write to rd
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 2. Base ALU Imm (addi/subi/xori/ori/andi)
+
+- `addi`: `x[rd] = x[rs1] + sext(immediate)`
+- `subi`: `x[rd] = x[rs1] - sext(immediate)`
+- `xori`: `x[rd] = x[rs1] ^ sext(immediate)`
+- `ori`: `x[rd] = x[rs1] | sext(immediate)`
+- `andi`: `x[rd] = x[rs1] & sext(immediate)`
 
 ### 2.0 Factorization cost
 
@@ -241,6 +249,10 @@ write to rd
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 3. Shifts Reg (sll/srl/sra)
+
+- `sll`: `x[rd] = x[rs1] << (x[rs2] & 0x1f)`
+- `srl`: `x[rd] = x[rs1] >>u (x[rs2] & 0x1f)`
+- `sra`: `x[rd] = x[rs1] >>s (x[rs2] & 0x1f)`
 
 ### 3.1 Columns
 
@@ -364,6 +376,10 @@ write to rd
 
 ## 4. Shifts Imm (slli/srli/srai)
 
+- `slli`: `x[rd] = x[rs1] << immediate[4:0]`
+- `srli`: `x[rd] = x[rs1] >>u immediate[4:0]`
+- `srai`: `x[rd] = x[rs1] >>s immediate[4:0]`
+
 ### 4.1 Columns
 
 - pc
@@ -477,6 +493,9 @@ write to rd
 
 ## 5. Less Than Reg (slt/sltu)
 
+- `slt`: `x[rd] = (x[rs1] <s x[rs2]) ? 1 : 0`
+- `sltu`: `x[rd] = (x[rs1] <u x[rs2]) ? 1 : 0`
+
 ### 5.1 Columns
 
 - pc
@@ -574,6 +593,9 @@ write to rd
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 6. Less Than Imm (slti/sltiu)
+
+- `slti`: `x[rd] = (x[rs1] <s sext(immediate)) ? 1 : 0`
+- `sltiu`: `x[rd] = (x[rs1] <u sext(immediate)) ? 1 : 0`
 
 ### 6.1 Columns
 
@@ -678,6 +700,9 @@ write to rd
 
 ## 7. Branch Equal (beq/bne)
 
+- `beq`: `if (x[rs1] == x[rs2]) pc += sext(offset)`
+- `bne`: `if (x[rs1] != x[rs2]) pc += sext(offset)`
+
 ### 7.1 Columns
 
 - pc
@@ -743,6 +768,11 @@ we can `to_pc` with degree 2 by putting it at the end
 - `+ enabler * Registers(pc + imm_felt * cmp_result + 4 * (1 - cmp_result), clk + 1)`
 
 ## 8. Branch Less Than (blt/bltu/bge/bgeu)
+
+- `blt`: `if (x[rs1] <s x[rs2]) pc += sext(offset)`
+- `bltu`: `if (x[rs1] <u x[rs2]) pc += sext(offset)`
+- `bge`: `if (x[rs1] >=s x[rs2]) pc += sext(offset)`
+- `bgeu`: `if (x[rs1] >=u x[rs2]) pc += sext(offset)`
 
 ### 8.1 Columns
 
@@ -849,6 +879,8 @@ check `cmp_lt`
 
 ## 9. LUI
 
+- `lui`: `x[rd] = sext(immediate[31:12] << 12)`
+
 ### 9.1 Columns
 
 - enabler
@@ -893,6 +925,8 @@ write to rd
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 10. AUIPC
+
+- `auipc`: `x[rd] = pc + sext(immediate[31:12] << 12)`
 
 ### 10.1 Columns
 
@@ -942,6 +976,8 @@ write to rd
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 11. JALR
+
+- `jalr`: `x[rd] = pc + 4; pc = (x[rs1] + sext(offset)) & ~1`
 
 ### 11.1 Columns
 
@@ -1014,6 +1050,8 @@ write to rd
 
 ## 12. JAL
 
+- `jal`: `x[rd] = pc + 4; pc += sext(offset)`
+
 ### 12.1 Columns
 
 - enabler
@@ -1062,6 +1100,15 @@ write to rd
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 13. Load/store (lb/lbu/lh/lhu/lw/sb/sh/sw)
+
+- `lb`: `x[rd] = sext(M[x[rs1] + sext(offset)][7:0])`
+- `lbu`: `x[rd] = sext(M[x[rs1] + sext(offset)][7:0])`
+- `lh`: `x[rd] = sext(M[x[rs1] + sext(offset)][15:0])`
+- `lhu`: `x[rd] = sext(M[x[rs1] + sext(offset)][15:0])`
+- `lw`: `x[rd] = M[x[rs1] + sext(offset)][31:0]`
+- `sb`: `M[x[rs1] + sext(offset)][7:0] = x[rs2][7:0]`
+- `sh`: `M[x[rs1] + sext(offset)][15:0] = x[rs2][15:0]`
+- `sw`: `M[x[rs1] + sext(offset)][31:0] = x[rs2][31:0]`
 
 ### 13.0 Factorization cost
 
