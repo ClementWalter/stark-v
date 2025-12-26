@@ -1,3 +1,4 @@
+#![feature(allocator_api)]
 mod cpu;
 pub mod decode;
 mod elf;

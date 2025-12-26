@@ -1,0 +1,37 @@
+[package]
+name = "prover"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+stwo.workspace = true
+stwo-constraint-framework.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+num-traits.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+itertools.workspace = true
+test-log.workspace = true
+rayon.workspace = true
+tikv-jemallocator = { workspace = true, optional = true }
+peak_alloc = { workspace = true, optional = true }
+smalloc = { workspace = true, optional = true }
+mimalloc = { workspace = true, optional = true }
+ctor = { workspace = true, optional = true }
+simd = { workspace = true }
+
+[dev-dependencies]
+divan.workspace = true
+test-log.workspace = true
+
+[features]
+slow-tests = []
+parallel = ["stwo/parallel", "stwo-constraint-framework/parallel"]
+track-relations = []
+default = []
+peak-alloc = ["dep:peak_alloc"]
+jemalloc = ["dep:tikv-jemallocator"]
+mimalloc = ["dep:mimalloc"]
+smalloc = ["dep:smalloc", "dep:ctor"]

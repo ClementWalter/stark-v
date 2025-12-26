@@ -4,7 +4,8 @@ runs:
   using: composite
   steps:
     - name: Setup Rust
-      uses: dtolnay/rust-toolchain@nightly
+      uses: dtolnay/rust-toolchain@master
       with:
         components: clippy, rustfmt
         targets: riscv32im-unknown-none-elf
+        toolchain: nightly-2025-07-14
