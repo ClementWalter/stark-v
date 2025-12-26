@@ -48,14 +48,18 @@ transpiler).
 
 ## 1. Base ALU Reg (add/sub/xor/or/and)
 
-### 1.0 Factorization cost
+### 1.0 Metadata
 
-Extra cost compared to having 2 components: add/sub - xor/or/and
-
-- for bitwise: 4T
-- for add/sub: 4T + 2L (`max_log_size = 21`) or 4T + 4L (`max_log_size = 20`)
-
-=> 4 unused cells per bitwise and 8 to 12 cells per add/sub
+- **Opcodes:** `add` (`x[rd] = x[rs1] + x[rs2]`), `sub`
+  (`x[rd] = x[rs1] - x[rs2]`), `xor` (`x[rd] = x[rs1] ^ x[rs2]`), `or`
+  (`x[rd] = x[rs1] | x[rs2]`), `and` (`x[rd] = x[rs1] & x[rs2]`).
+- **T:** 29 columns.
+- **Lookups:** Program 1, Registers 2, Memory 6, RC_20 3, Bitwise 4 (xor/or/and
+  only);
+- **Factorization cost:** Extra cost compared to separating add/sub and
+  xor/or/and: bitwise rows use 4T, add/sub rows use 4T + 2L
+  (`max_log_size = 21`) or 4T + 4L (`max_log_size = 20`), leaving 4 unused cells
+  per bitwise opcode and 8–12 unused cells per add/sub opcode.
 
 ### 1.1 Columns
 
@@ -116,8 +120,8 @@ read from rs1
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
 - `- RC_20(clk - rs2_prev_clk)`
 
 check carries
@@ -232,8 +236,8 @@ range check a (redundant for bitwise)
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, clk, rd[0], rd[1], rd[2], rd[3])`
+- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
+- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 3. Shifts Reg (sll/srl/sra)
@@ -250,7 +254,8 @@ write to rd
 
 - rs1_idx
 - rs1_prev_clk
-- rs1[0..3] - `rs[3]` has 7 bit
+- rs1[0..3] - `rs1[3]` stores the unsigned magnitude while `rs1_sign` carries
+  the sign bit
 - rs1_sign
 
 - rs2_idx
@@ -281,11 +286,11 @@ write to rd
 
 ### 3.3 Constraints
 
-`enabler`, `opcode_*_flags` and `b_sign` are booleans
+`enabler`, `opcode_*_flags` and `rs1_sign` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `b_sign * (1 - b_sign)`
+- `rs1_sign * (1 - rs1_sign)`
 
 hot-one encodings must contain at most one activation
 
@@ -294,7 +299,7 @@ hot-one encodings must contain at most one activation
 - `Σ bit_shift_marker[i] = enabler`
 - `Σ limb_shift_marker[i] = enabler`
 
-bit_multiplier are correctly formed
+bit_multipliers are correctly formed
 
 - `bit_multiplier_left - left_shift * bit_multiplier`
 - `bit_multiplier_right - right_shift * bit_multiplier`
@@ -341,7 +346,7 @@ right shift constraints, for i in [0..3] and for j in [0..3]:
 - `bit_shift_carry[j + i + 1] * right_shift * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right`
   if `j < 3 - i`
 
-shift carries should no exceed 2^bit_shift
+shift carries should not exceed `2^bit_shift`
 
 - `- RC_8_8(bit_multiplier - enabler - bit_shift_carry[0], bit_multiplier - enabler - bit_shift_carry[1])`
 - `- RC_8_8(bit_multiplier - enabler - bit_shift_carry[2], bit_multiplier - enabler - bit_shift_carry[3])`
@@ -404,7 +409,7 @@ write to rd
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `b_sign * (1 - b_sign)`
+- `rs1_sign * (1 - rs1_sign)`
 
 hot-one encodings must contain at most one activation
 
@@ -644,7 +649,7 @@ diff markers are boolean and sum correctly
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
-`diff = (2 * cmp_result - 1) * ( if i == 3 {sext_imm_msl_felt - rs1_msl_felt} else {sext_imm_i[i] - rs1[i]} )`
+`diff = (2 * cmp_result - 1) * ( if i == 3 {sext_imm_msl_felt - rs1_msl_felt} else {sext_imm_i - rs1[i]} )`
 
 - `(1 - prefix_sum) * diff`
 - `diff_marker_i * (diff_val - diff)`
@@ -735,7 +740,7 @@ registers update (conditional branch), since there's an odd number of lookups,
 we can `to_pc` with degree 2 by putting it at the end
 
 - `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(pc + imm_felt * cmp_result + 4 * (1 - cmp_result), clk + 1))`
+- `+ enabler * Registers(pc + imm_felt * cmp_result + 4 * (1 - cmp_result), clk + 1)`
 
 ## 8. Branch Less Than (blt/bltu/bge/bgeu)
 
@@ -760,6 +765,7 @@ we can `to_pc` with degree 2 by putting it at the end
 - cmp_lt - 1 if a < b, 0 otherwise
 - diff_marker[0..3] - 0 everywhere but for i where `a[i] != b[i]` if such i
   exists, `diff_marker[i] = (a[i] - b[i])^-1`
+- diff_val
 - branch_target
 
 - opcode_blt_flag
@@ -795,7 +801,7 @@ check branch target
 registers update (conditional branch)
 
 - `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(branch_target, clk + 1))`
+- `+ enabler * Registers(branch_target, clk + 1)`
 
 read from rs1
 
@@ -812,7 +818,7 @@ read from rs2
 msl felt must match actual msl
 
 - `(rs1[3] - rs1_msl_felt) * (2^N_BITS_PER_BYTE - (rs1[3] - rs1_msl_felt))`
-- `(rs2[3] - rs2_msl_felt) * (2^N_BITS_PER_BYTE - (rs3[3] - rs2_msl_felt))`
+- `(rs2[3] - rs2_msl_felt) * (2^N_BITS_PER_BYTE - (rs2[3] - rs2_msl_felt))`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
@@ -857,8 +863,6 @@ check `cmp_lt`
 - imm_1 (decoded_imm[4:11])
 - imm_2 (decoded_imm[12:19])
 
-- branch_target
-
 ### 9.2 Variables
 
 - `imm = imm_0 + imm_1 * 2^4 + imm_2 * 2^12`
@@ -876,15 +880,15 @@ read instruction from the Program segment (U-type)
 registers update
 
 - `- enabler * Registers(pc, clk)`
-- `- enabler * Registers(pc + 4, clk + 1)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
 
-range check rd:
+range check imm limbs:
 
 - `- RC_4_8_8(imm_0, imm_1, imm_2)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
+- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
 - `+ enabler * Memory(REG_AS, rd_idx, clk, 0, imm_0 * 2^4, imm_1, imm_2)`
 - `- RC_20(clk - rd_prev_clk)`
 
@@ -928,13 +932,13 @@ check that rd is pc + imm
 
 range check rd
 
-- `RC_8_8(rd[1], rd[2])`
-- `RC_M31(rd[0], rd[3])`
+- `- RC_8_8(rd[1], rd[2])`
+- `- RC_M31(rd[0], rd[3])`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, clk, rd[0], rd[1], rd[2], rd[3])`
+- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
+- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk)`
 
 ## 11. JALR
@@ -995,8 +999,8 @@ update registers
 
 check that rd is a M31
 
-- `RC_8_8(rd[1], rd[2])`
-- `RC_M31(rd[0], rd[3])`
+- `- RC_8_8(rd[1], rd[2])`
+- `- RC_M31(rd[0], rd[3])`
 
 rd is pc+4
 
@@ -1040,12 +1044,12 @@ read instruction from the Program segment (U-type)
 update registers
 
 - `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(pc + imm, clk + 1)`
+- `+ enabler * Registers(pc + imm_felt, clk + 1)`
 
 check that rd is a M31
 
-- `RC_8_8(rd[1], rd[2])`
-- `RC_M31(rd[0], rd[3])`
+- `- RC_8_8(rd[1], rd[2])`
+- `- RC_M31(rd[0], rd[3])`
 
 rd is pc+4
 
@@ -1126,12 +1130,12 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 
 - `enabler = Σ opcode_i_flag`
 - `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
-- `mem_addr = base[0] + base[1] * 2^8 + base[2] * 2^16 + base[3] * 2^24 + imm`
+- `mem_addr = base[0] + base[1] * 2^8 + base[2] * 2^16 + base[3] * 2^24 + imm_felt`
 - `sum_marker = Σ marker[i]`
 - `shift_id = Σ i * marker[i]`
 - `opcode_b_flag = opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag`
 - `opcode_h_flag = opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag`
-- `opcode_w_flag = opcode_lwu_flag + opcode_sw_flag`
+- `opcode_w_flag = opcode_lw_flag + opcode_sw_flag`
 - `is_signed = opcode_lb_flag + opcode_lh_flag`
 - `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`
 - `is_load = enabler - is_store`
@@ -1150,7 +1154,7 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 read instruction from the Program segment (I-type for loads and S-type for
 stores)
 
-- `- enabler * Program(pc, expected_opcode_id, rs1_idx, r2_idx, imm)`
+- `- enabler * Program(pc, expected_opcode_id, rs1_idx, r2_idx, imm_felt)`
 
 registers update
 
