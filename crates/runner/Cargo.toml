@@ -8,6 +8,7 @@ clap.workspace = true
 goblin.workspace = true
 rustc-hash.workspace = true
 simd.workspace = true
+stwo-constraint-framework.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

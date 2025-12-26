@@ -1,5 +1,5 @@
 use crate::trace::Tracer;
-use crate::{Cpu, DecodedInst, Memory, traced};
+use crate::{Cpu, DecodedInst, Memory};
 
 /// Extract a byte from a u32 word at the given byte offset (0-3).
 #[inline]
@@ -13,7 +13,6 @@ fn extract_halfword(word: u32, offset: u32) -> u16 {
     (word >> (8 * (offset & 2))) as u16
 }
 
-#[traced]
 pub fn lb(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -23,10 +22,9 @@ pub fn lb(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
     let value = byte as i8 as i32 as u32; // Sign-extend
     let rd = cpu.write_reg(inst.rd, value, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, mem);
+    trace_op!(lb: tracer, cpu.pc, rd, rs1, mem);
 }
 
-#[traced]
 pub fn lh(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -36,10 +34,9 @@ pub fn lh(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
     let value = halfword as i16 as i32 as u32; // Sign-extend
     let rd = cpu.write_reg(inst.rd, value, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, mem);
+    trace_op!(lh: tracer, cpu.pc, rd, rs1, mem);
 }
 
-#[traced]
 pub fn lw(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -47,10 +44,9 @@ pub fn lw(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
     let value = mem.next;
     let rd = cpu.write_reg(inst.rd, value, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, mem);
+    trace_op!(lw: tracer, cpu.pc, rd, rs1, mem);
 }
 
-#[traced]
 pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -59,10 +55,9 @@ pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
     let value = extract_byte(mem.next, addr) as u32; // Zero-extend
     let rd = cpu.write_reg(inst.rd, value, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, mem);
+    trace_op!(lbu: tracer, cpu.pc, rd, rs1, mem);
 }
 
-#[traced]
 pub fn lhu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -71,5 +66,5 @@ pub fn lhu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
     let value = extract_halfword(mem.next, addr) as u32; // Zero-extend
     let rd = cpu.write_reg(inst.rd, value, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, mem);
+    trace_op!(lhu: tracer, cpu.pc, rd, rs1, mem);
 }

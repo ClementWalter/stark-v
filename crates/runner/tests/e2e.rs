@@ -42,26 +42,25 @@ fn run_guest_raw(name: &str) -> Vec<u8> {
     ensure_guest_built();
 
     let elf_path = guest_bin_dir().join(name);
-    let elf_bytes = std::fs::read(&elf_path)
-        .unwrap_or_else(|e| panic!("Failed to read ELF {}: {}", elf_path.display(), e));
+    let elf_bytes =
+        std::fs::read(&elf_path).unwrap_or_else(|e| panic!("Failed to read ELF {elf_path:?}: {e}"));
 
     let result =
-        run(&elf_bytes, 10_000_000).unwrap_or_else(|e| panic!("Failed to run {}: {}", name, e));
+        run(&elf_bytes, 10_000_000).unwrap_or_else(|e| panic!("Failed to run {name}: {e}"));
 
     result
         .output
-        .unwrap_or_else(|| panic!("No output from {}", name))
+        .unwrap_or_else(|| panic!("No output from {name}"))
 }
 
 /// Test a single example by comparing guest output bytes with native output bytes.
 fn test_example(name: &str) {
     let guest_bytes = run_guest_raw(name);
-    let native_bytes = get_test_bytes(name).unwrap_or_else(|| panic!("Unknown example: {}", name));
+    let native_bytes = get_test_bytes(name).unwrap_or_else(|| panic!("Unknown example: {name}"));
 
     assert_eq!(
         guest_bytes, native_bytes,
-        "Output mismatch for example '{}'\n  Guest bytes: {:?}\n  Native bytes: {:?}",
-        name, guest_bytes, native_bytes
+        "Output mismatch for example '{name}'\n  Guest bytes: {guest_bytes:?}\n  Native bytes: {native_bytes:?}",
     );
 }
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+runner.workspace = true
 stwo.workspace = true
 stwo-constraint-framework.workspace = true
 tracing.workspace = true

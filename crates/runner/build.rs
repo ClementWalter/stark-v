@@ -37,8 +37,7 @@ fn main() {
 fn test_{name}() {{
     test_example("{name}");
 }}
-"#,
-            name = name
+"#
         ));
     }
 

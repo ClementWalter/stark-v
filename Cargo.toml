@@ -67,6 +67,7 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
+runner = { path = "crates/runner" }
 runner-macros = { path = "crates/runner-macros" }
 simd = { path = "crates/simd" }
 
