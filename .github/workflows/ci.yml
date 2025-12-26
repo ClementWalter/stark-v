@@ -23,7 +23,9 @@ jobs:
           submodules: recursive
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-07-14
 
       - name: Build (release)
         run: cargo build --release
@@ -38,9 +40,10 @@ jobs:
           submodules: recursive
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
         with:
           targets: riscv32im-unknown-none-elf
+          toolchain: nightly-2025-07-14
 
       - name: Run tests (release)
         run: cargo test --release
