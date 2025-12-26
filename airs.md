@@ -38,12 +38,13 @@ transpiler).
 
 - R-type: `(opcode_id, rd_idx, rs1_idx, rs2_idx)`
 - S-type: `(opcode_id, rs1_idx, rs2_idx, imm_felt)`
-- I-type: `(opcode_id, rd, rs1, imm_decoded)`
-- I-type (shift): `(opcode_id, rd, rs1, imm_truncated)`
-- I-type (load): `(opcode_id, rs1, rd, imm_felt)`
+- I-type: `(opcode_id, rd_idx, rs1_idx, imm_decoded)`
+- I-type (shift): `(opcode_id, rd_idx, rs1_idx, imm_truncated)`
+- I-type (load): `(opcode_id, rs1_idx, rd_idx, imm_felt)`
 - U-type (lui): `(opcode_id, rd_idx, decoded_imm, 0)`
 - U-type (auipc): `(opcode_id, rd_idx, imm_felt, 0)`
-- J-type: `(opcode_id, rd, imm, 0)`
+- J-type: `(opcode_id, rd_idx, imm_idx, 0)`
+- B-type: `(opcode_id, rs1_idx, rs2_idx, imm)`
 
 ## 1. Base ALU Reg (add/sub/xor/or/and)
 
@@ -676,22 +677,20 @@ write to rd
 
 - pc
 - clk
-- in_place_flag
 
 - rs1_idx
 - rs1_prev_clk
-- a_0, a_1, a_2, a_3 — limbs of `rs1`.
+- rs1[0..3]
 
 - rs2_idx
 - rs2_prev_clk
-- b_0, b_1, b_2, b_3 — limbs of `rs2`
+- rs2[0..3]
 
-- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
+- imm_felt
 
 - cmp_result - jump branch if cmp_result is 1
-- diff_inv_marker[0..3] - 0 everywhere but for i where `a[i] != b[i]` if such i
-  exists, `diff_inv_marker[i] = (a[i] - b[i])^-1`
-- branch_target
+- diff_inv_marker[0..3] - 0 everywhere but for i where `rs1[i] != rs2[i]` if
+  such i exists, `diff_inv_marker[i] = (rs1[i] - rs2[i])^-1`
 
 - opcode_beq_flag
 - opcode_bne_flag
@@ -700,53 +699,43 @@ write to rd
 
 - `enabler = opcode_beq_flag + opcode_bne_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `rs_idx_diff = rs1_idx - rs2_idx`
 - `cmp_eq = cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag`
-- `diff_inv_sum = cmp_eq + Σ (a_i - b_i) * diff_inv_marker[i]`
+- `diff_inv_sum = cmp_eq + Σ (rs1[i] - rs2[i]) * diff_inv_marker[i]`
 
 ### 7.3 Constraints
 
-`enabler`, `opcode_*_flags`, `in_place_flag` and `cmp_result` are booleans
+`enabler`, `opcode_*_flags` and `cmp_result` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `in_place_flag * (1 - in_place_flag)`
 - `cmp_result * (1 - cmp_result)`
 
-if in-place flag is 1 then rs1_idx == rs2_idx
+read instruction from the Program segment (B-type)
 
-- `in_place_flag * rs_idx_diff`
-
-read instruction from the Program segment
-
-- `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm)`
-
-check branch target
-
-- `branch_target - ( pc + imm * cmp_result + 4 * (1 - cmp_result) )`
-
-registers update (conditional branch)
-
-- `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(branch_target, clk + 1))`
+- `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm_felt)`
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, a_0, a_1, a_2, a_3)`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, a_0, a_1, a_2, a_3)`
-- `- RC_20(clk - rs1_prev_clk - enabler)`
+- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `- RC_20(clk - rs1_prev_clk)`
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, b_0, b_1, b_2, b_3)`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, b_0, b_1, b_2, b_3)`
-- `- (1 - in_place_flag) * RC_20(clk - rs2_prev_clk - enabler)`
-- `in_place_flag * (clk - rs2_prev_clk)`
+- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `- RC_20(clk - rs2_prev_clk)`
 
 check `cmp_eq`
 
-- for i in [0..3]: `cmp_eq * ( a[i] - b[i] )`
+- for i in [0..3]: `cmp_eq * ( rs1[i] - rs2[i] )`
 - `enabler * (1 - diff_inv_sum)`
+
+registers update (conditional branch), since there's an odd number of lookups,
+we can `to_pc` with degree 2 by putting it at the end
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + imm_felt * cmp_result + 4 * (1 - cmp_result), clk + 1))`
 
 ## 8. Branch Less Than (blt/bltu/bge/bgeu)
 
@@ -754,19 +743,18 @@ check `cmp_eq`
 
 - pc
 - clk
-- in_place_flag
 
 - rs1_idx
 - rs1_prev_clk
-- a_0, a_1, a_2, a_3 — limbs of `rs1`.
-- a_msb_f
+- rs1[0..3]
+- rs1_msl_felt
 
 - rs2_idx
 - rs2_prev_clk
-- b_0, b_1, b_2, b_3 — limbs of `rs2`
-- b_msb_f
+- rs2[0..3]
+- rs2_msl_felt
 
-- imm - equals M31(imm) if imm>=0 and - M31(imm) if imm<0
+- imm_felt
 
 - cmp_result - jump branch if cmp_result is 1
 - cmp_lt - 1 if a < b, 0 otherwise
@@ -783,34 +771,26 @@ check `cmp_eq`
 
 - `enabler = opcode_blt_flag + opcode_bltu_flag + opcode_bge_flag + opcode_bgeu_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `rs_idx_diff = rs1_idx - rs2_idx`
 - `lt = opcode_blt_flag + opcode_bltu_flag`
 - `ge = opcode_bge_flag + opcode_bgeu_flag`
 - `signed = opcode_blt_flag + opcode_bge_flag`
-- `a_diff = a_3 - a_msb_f`
-- `b_diff = b_3 - b_msb_f`
 
 ### 8.3 Constraints
 
-`enabler`, `opcode_*_flags`, `in_place_flag` and `cmp_result` are booleans
+`enabler`, `opcode_*_flags` and `cmp_result` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `in_place_flag * (1 - in_place_flag)`
 - `cmp_result * (1 - cmp_result)`
 - `diff_marker[i] * (1 - diff_marker[i])`
 
-if in-place flag is 1 then rs1_idx == rs2_idx
+read instruction from the Program segment (B-type)
 
-- `in_place_flag * rs_idx_diff`
-
-read instruction from the Program segment
-
-- `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm)`
+- `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm_felt)`
 
 check branch target
 
-- `branch_target - ( pc + imm * cmp_result + 4 * (1 - cmp_result) )`
+- `branch_target - ( pc + imm_felt * cmp_result + 4 * (1 - cmp_result) )`
 
 registers update (conditional branch)
 
@@ -819,25 +799,24 @@ registers update (conditional branch)
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, a_0, a_1, a_2, a_3)`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, a_0, a_1, a_2, a_3)`
-- `- RC_20(clk - rs1_prev_clk - enabler)`
+- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `- RC_20(clk - rs1_prev_clk)`
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, b_0, b_1, b_2, b_3)`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, b_0, b_1, b_2, b_3)`
-- `- (1 - in_place_flag) * RC_20(clk - rs2_prev_clk - enabler)`
-- `in_place_flag * (clk - rs2_prev_clk)`
+- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `- RC_20(clk - rs2_prev_clk)`
 
-msb field elements must match actual msb bytes
+msl felt must match actual msl
 
-- `a_diff * (2^N_BITS_PER_BYTE - a_diff)`
-- `b_diff * (2^N_BITS_PER_BYTE - b_diff)`
+- `(rs1[3] - rs1_msl_felt) * (2^N_BITS_PER_BYTE - (rs1[3] - rs1_msl_felt))`
+- `(rs2[3] - rs2_msl_felt) * (2^N_BITS_PER_BYTE - (rs3[3] - rs2_msl_felt))`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
-`diff = (if i == 3 then b_msb_f - a_msb_f else b_i - a_i) * (2 * cmp_lt - 1)`
+`diff = (2 * cmp_lt - 1) * ( if i == 3 {rs2_msl_felt - rs1_msl_felt} else {rs2[i] - rs1[i]} )`
 
 - `(1 - prefix_sum) * diff`
 - `diff_marker_i * (diff_val - diff)`
@@ -850,11 +829,11 @@ if equal, result is 0
 
 - `(1 - prefix_sum) * cmp_lt`
 
-range check msb field elements with sign consideration
+range check msl felts with sign consideration
 
-- `- RC_8_8(a_msb_f + signed * 2^(N_BITS_PER_BYTE-1), b_msb_f + signed * 2^(N_BITS_PER_BYTE-1))`
+- `- RC_8_8(rs1_msl_felt + signed * 2^(N_BITS_PER_BYTE-1), rs2_msl_felt + signed * 2^(N_BITS_PER_BYTE-1))`
 
-range check diff_val is non-zero when prefix_sum = 1
+diff_val is > 0
 
 - `- prefix_sum * RC_8_8(diff_val - 1, 0)`
 
@@ -1155,7 +1134,7 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 - `opcode_w_flag = opcode_lwu_flag + opcode_sw_flag`
 - `is_signed = opcode_lb_flag + opcode_lh_flag`
 - `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`
-- `is_load = 1 - is_store`
+- `is_load = enabler - is_store`
 - `src_as = REG_AS * is_store + RW_AS * is_load`
 - `dst_as = REG_AS * is_load + RW_AS * is_store`
 - `src[3] = src[3] + src_msb * 2^7`
