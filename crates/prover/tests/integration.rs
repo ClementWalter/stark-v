@@ -1,8 +1,8 @@
 //! Integration tests for component aggregation.
 
 use num_traits::Zero;
-use prover::components::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
-use prover::relations::Relations;
+use prover::components::opcodes::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
+use prover::relations::{Counters, Relations};
 use runner::trace::Tracer;
 
 #[test]
@@ -11,7 +11,8 @@ fn test_all_components_aggregate() {
     let tracer = Tracer::default();
 
     // Generate traces for all components
-    let traces: Traces = gen_trace(tracer);
+    let mut counters = Counters::new();
+    let traces: Traces = gen_trace(tracer, &mut counters);
 
     // Generate interaction traces with default relations
     let relations = Relations::dummy();
@@ -32,7 +33,8 @@ fn test_traces_struct_has_all_opcodes() {
     let tracer = Tracer::default();
 
     // Generate traces for all components
-    let traces: Traces = gen_trace(tracer);
+    let mut counters = Counters::new();
+    let traces: Traces = gen_trace(tracer, &mut counters);
 
     // Verify we can access all 45 opcode fields by checking a few from each category
 

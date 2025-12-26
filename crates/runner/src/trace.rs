@@ -709,51 +709,51 @@ mod tests {
 
         #[test]
         fn test_add_columns_size() {
-            // ADD: clk, pc, rd (10 limbed fields), rs1 (10), rs2 (10) = 32 total
+            // ADD: enabler (1), clk, pc, rd (10 limbed fields), rs1 (10), rs2 (10) = 33 total
             // Access fields: addr (1) + prev_0..3 (4) + clk_prev (1) + next_0..3 (4) = 10
-            assert_eq!(AddColumns::<()>::SIZE, 32);
+            assert_eq!(AddColumns::<()>::SIZE, 33);
         }
 
         #[test]
         fn test_addi_columns_size() {
-            // ADDI: clk, pc, rd (10 limbed fields), rs1 (10) = 22 total
-            assert_eq!(AddiColumns::<()>::SIZE, 22);
+            // ADDI: enabler (1), clk, pc, rd (10 limbed fields), rs1 (10) = 23 total
+            assert_eq!(AddiColumns::<()>::SIZE, 23);
         }
 
         #[test]
         fn test_lui_columns_size() {
-            // LUI: clk, pc, rd (10 limbed fields) = 12 total
-            assert_eq!(LuiColumns::<()>::SIZE, 12);
+            // LUI: enabler (1), clk, pc, rd (10 limbed fields) = 13 total
+            assert_eq!(LuiColumns::<()>::SIZE, 13);
         }
 
         #[test]
         fn test_lb_columns_size() {
-            // LB: clk, pc, rd (10), rs1 (10), mem (10) = 32 total
-            assert_eq!(LbColumns::<()>::SIZE, 32);
+            // LB: enabler (1), clk, pc, rd (10), rs1 (10), mem (10) = 33 total
+            assert_eq!(LbColumns::<()>::SIZE, 33);
         }
 
         #[test]
         fn test_sb_columns_size() {
-            // SB: clk, pc, rs1 (10), rs2 (10), mem (10) = 32 total
-            assert_eq!(SbColumns::<()>::SIZE, 32);
+            // SB: enabler (1), clk, pc, rs1 (10), rs2 (10), mem (10) = 33 total
+            assert_eq!(SbColumns::<()>::SIZE, 33);
         }
 
         #[test]
         fn test_beq_columns_size() {
-            // BEQ: clk, pc, rs1 (10), rs2 (10) = 22 total
-            assert_eq!(BeqColumns::<()>::SIZE, 22);
+            // BEQ: enabler (1), clk, pc, rs1 (10), rs2 (10) = 23 total
+            assert_eq!(BeqColumns::<()>::SIZE, 23);
         }
 
         #[test]
         fn test_jal_columns_size() {
-            // JAL: clk, pc, rd (10 limbed fields) = 12 total
-            assert_eq!(JalColumns::<()>::SIZE, 12);
+            // JAL: enabler (1), clk, pc, rd (10 limbed fields) = 13 total
+            assert_eq!(JalColumns::<()>::SIZE, 13);
         }
 
         #[test]
         fn test_mul_columns_size() {
-            // MUL: clk, pc, rd (10), rs1 (10), rs2 (10) = 32 total
-            assert_eq!(MulColumns::<()>::SIZE, 32);
+            // MUL: enabler (1), clk, pc, rd (10), rs1 (10), rs2 (10) = 33 total
+            assert_eq!(MulColumns::<()>::SIZE, 33);
         }
     }
 }

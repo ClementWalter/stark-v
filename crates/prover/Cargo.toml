@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 runner.workspace = true
+simd.workspace = true
 stwo.workspace = true
 stwo-constraint-framework.workspace = true
 tracing.workspace = true
@@ -21,7 +22,6 @@ peak_alloc = { workspace = true, optional = true }
 smalloc = { workspace = true, optional = true }
 mimalloc = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
-simd = { workspace = true }
 
 [dev-dependencies]
 divan.workspace = true

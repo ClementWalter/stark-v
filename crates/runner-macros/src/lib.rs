@@ -4,7 +4,6 @@
 //! - `define_trace_tables!` macro for generating columnar trace tables
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -194,6 +193,7 @@ fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
 }
 
 /// Flatten field identifiers for prover columns.
+/// Enabler is always the first column.
 /// Access fields expand to 10 columns:
 /// - addr (1 column)
 /// - prev_0..prev_3 (4 limbs for u32 value)
@@ -201,6 +201,10 @@ fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
 /// - next_0..next_3 (4 limbs for u32 value)
 fn flatten_fields(fields: &[Ident]) -> Vec<Ident> {
     let mut result = Vec::new();
+
+    // Enabler is always the first column
+    result.push(format_ident!("enabler"));
+
     for field in fields {
         let name = field.to_string();
         if is_access_field(&name) {
@@ -225,8 +229,12 @@ fn flatten_fields(fields: &[Ident]) -> Vec<Ident> {
 /// Generate the into_columns body that splits u32 values into limbs.
 /// This handles the conversion from the trace table's u32 storage to
 /// the prover's limbed representation.
+/// Enabler is always the first column.
 fn generate_into_columns_body(fields: &[Ident]) -> proc_macro2::TokenStream {
     let mut column_exprs = Vec::new();
+
+    // Enabler is always the first column
+    column_exprs.push(quote! { self.enabler });
 
     for field in fields {
         let name = field.to_string();
@@ -341,20 +349,15 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let push_stmts: Vec<_> = opcode.fields.iter().map(generate_push_stmt).collect();
     let debug_fields: Vec<_> = opcode.fields.iter().map(generate_debug_field).collect();
 
-    // Find the first scalar field for len() (should be 'clk')
-    let len_field = opcode
-        .fields
-        .iter()
-        .find(|f| !is_access_field(&f.to_string()))
-        .cloned()
-        .unwrap_or_else(|| Ident::new("clk", Span::call_site()));
-
     // Generate into_columns body that splits u32 values into limbs
+    // (enabler is prepended separately in the body)
     let into_columns_body = generate_into_columns_body(&opcode.fields);
 
     quote! {
         #[derive(Clone, Default)]
         pub struct #struct_name {
+            /// Enabler column: 1 for real rows, 0 for padding.
+            pub enabler: simd::AlignedVec<u32>,
             #(#field_decls)*
         }
 
@@ -371,6 +374,7 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                             let i = self.idx;
                             f.debug_struct("")
+                                .field("enabler", &self.table.enabler[i])
                                 #(#debug_fields)*
                                 .finish()
                         }
@@ -384,33 +388,37 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         impl #struct_name {
             pub fn new() -> Self {
                 Self {
+                    enabler: simd::AlignedVec::new(),
                     #(#field_inits)*
                 }
             }
 
             pub fn with_capacity(cap: usize) -> Self {
                 Self {
+                    enabler: simd::AlignedVec::with_capacity(cap),
                     #(#field_inits_cap)*
                 }
             }
 
             #[inline]
             pub fn len(&self) -> usize {
-                self.#len_field.len()
+                self.enabler.len()
             }
 
             #[inline]
             pub fn is_empty(&self) -> bool {
-                self.#len_field.is_empty()
+                self.enabler.is_empty()
             }
 
             #[inline]
             pub fn push(&mut self, #(#push_params),*) {
+                self.enabler.push(1);
                 #(#push_stmts)*
             }
 
             /// Consumes the table and returns columns as a Vec in canonical order.
             /// Order matches the column struct field order.
+            /// Enabler is the first column, followed by other fields.
             /// Access fields have prev/next split into 4 u8 limbs (little-endian).
             pub fn into_columns(self) -> Vec<simd::AlignedVec<u32>> {
                 #into_columns_body
