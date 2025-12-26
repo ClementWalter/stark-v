@@ -1274,3 +1274,74 @@ write into dst
 - `- enabler * Memory(dst_as, dst_addr, dst_prev_clk, dst_prev_val[0], dst_prev_val[1], dst_prev_val[2], dst_prev_val[3])`
 - `+ enabler * Memory(dst_as, dst_addr, clk, dst[0], dst[1], dst[2], dst[3])`
 - `- RC_20(clk - dst_prev_clk)`
+
+## 14. MUL
+
+- `mul`: `x[rd] = x[rs1] x x[rs2]`
+
+### 14.1 Columns
+
+- enabler
+- pc
+- clk
+
+- rd_idx
+- rd_prev_clk
+- rd_prev[0..3]
+- rd[0..3]
+
+- rs1_idx
+- rs1_prev_clk
+- rs1[0..3]
+
+- rs2_idx
+- rs2_prev_clk
+- rs2[0..3]
+
+### 14.2 Variables
+
+- `carry[i] = ( carry[i - 1] - rd[i] + Σ{k=0..i} rs1[k] * rs2[i - k] ) / 2^8`
+  with `carry[-1]=0`
+
+### 14.3 Constraints
+
+`enabler` is a boolean
+
+- `enabler * (1 - enabler)`
+
+read instruction from the Program segment (R-type)
+
+- `- enabler * Program(pc, opcode_mul_id, rd_idx, rs1_idx, rs2_idx)`
+
+registers update
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
+- `- RC_20(clk - rs1_prev_clk)`
+
+read from rs2
+
+- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
+- `- RC_20(clk - rs2_prev_clk)`
+
+check carries
+
+- `- RC_8_8(carry[0], carry[1])`
+- `- RC_8_8(carry[2], carry[3])`
+
+range check rd
+
+- `- RC_8_8(rd[0], rd[1])`
+- `- RC_8_8(rd[2], rd[3])`
+
+write to rd
+
+- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
+- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
+- `- RC_20(clk - rd_prev_clk)`
