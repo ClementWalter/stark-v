@@ -28,7 +28,9 @@ impl FrameworkEval for Eval {
         // DUMMY CONSTRAINT: clk - clk = 0 (always satisfied)
         eval.add_constraint(cols.clk.clone() - cols.clk.clone());
 
-        eval.finalize_logup();
+        // NOTE: finalize_logup() is not called because there are no logup relations
+        // in the dummy constraints. When real constraints are implemented,
+        // logup relations should be added and finalize_logup() should be called.
         eval
     }
 }

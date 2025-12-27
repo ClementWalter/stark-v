@@ -7,7 +7,7 @@ members = [
   "crates/simd",
   "guest/guest-lib",
 ]
-exclude = ["guest/guest-bin"]
+exclude = ["guest/guest-bin", "guest/guest-tests"]
 
 [workspace.package]
 version = "0.0.1"

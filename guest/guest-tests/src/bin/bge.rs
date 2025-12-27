@@ -1,0 +1,121 @@
+//! Test binary for BGE (Branch if Greater or Equal) instruction.
+//!
+//! Executes the BGE instruction multiple times to generate trace data.
+
+#![no_std]
+#![no_main]
+
+use core::arch::asm;
+
+#[unsafe(no_mangle)]
+pub extern "C" fn __zkvm_start() -> ! {
+    unsafe {
+        // Execute BGE instruction 32 times (ensures log_size >= 5)
+        // BGE: if rs1 >= rs2 (signed) then pc += imm
+        // Using t1=5, t2=5 so branch is taken (equal case)
+        asm!(
+            // Load test values into registers
+            "li t1, 5",
+            "li t2, 5",
+            // Execute BGE 32 times (branch taken each time)
+            "bge t1, t2, 1f",
+            "nop",
+            "1:",
+            "bge t1, t2, 2f",
+            "nop",
+            "2:",
+            "bge t1, t2, 3f",
+            "nop",
+            "3:",
+            "bge t1, t2, 4f",
+            "nop",
+            "4:",
+            "bge t1, t2, 5f",
+            "nop",
+            "5:",
+            "bge t1, t2, 6f",
+            "nop",
+            "6:",
+            "bge t1, t2, 7f",
+            "nop",
+            "7:",
+            "bge t1, t2, 8f",
+            "nop",
+            "8:",
+            "bge t1, t2, 9f",
+            "nop",
+            "9:",
+            "bge t1, t2, 10f",
+            "nop",
+            "10:",
+            "bge t1, t2, 11f",
+            "nop",
+            "11:",
+            "bge t1, t2, 12f",
+            "nop",
+            "12:",
+            "bge t1, t2, 13f",
+            "nop",
+            "13:",
+            "bge t1, t2, 14f",
+            "nop",
+            "14:",
+            "bge t1, t2, 15f",
+            "nop",
+            "15:",
+            "bge t1, t2, 16f",
+            "nop",
+            "16:",
+            "bge t1, t2, 17f",
+            "nop",
+            "17:",
+            "bge t1, t2, 18f",
+            "nop",
+            "18:",
+            "bge t1, t2, 19f",
+            "nop",
+            "19:",
+            "bge t1, t2, 20f",
+            "nop",
+            "20:",
+            "bge t1, t2, 21f",
+            "nop",
+            "21:",
+            "bge t1, t2, 22f",
+            "nop",
+            "22:",
+            "bge t1, t2, 23f",
+            "nop",
+            "23:",
+            "bge t1, t2, 24f",
+            "nop",
+            "24:",
+            "bge t1, t2, 25f",
+            "nop",
+            "25:",
+            "bge t1, t2, 26f",
+            "nop",
+            "26:",
+            "bge t1, t2, 27f",
+            "nop",
+            "27:",
+            "bge t1, t2, 28f",
+            "nop",
+            "28:",
+            "bge t1, t2, 29f",
+            "nop",
+            "29:",
+            "bge t1, t2, 30f",
+            "nop",
+            "30:",
+            "bge t1, t2, 31f",
+            "nop",
+            "31:",
+            "bge t1, t2, 32f",
+            "nop",
+            "32:",
+            options(nostack, nomem)
+        );
+    }
+    guest_tests::halt()
+}

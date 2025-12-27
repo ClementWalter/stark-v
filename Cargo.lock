@@ -1120,6 +1120,7 @@ dependencies = [
  "itertools 0.13.0",
  "mimalloc",
  "num-traits",
+ "paste",
  "peak_alloc",
  "rayon",
  "runner",

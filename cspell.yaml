@@ -60,6 +60,8 @@ words:
   - mults
   - norelax
   - noreturn
+  - nostack
+  - nomem
   - objdump
   - openvm
   - pairable
