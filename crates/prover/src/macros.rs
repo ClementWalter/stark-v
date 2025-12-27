@@ -1,479 +1,676 @@
+//! Utility macros for the prover.
+
+/// Helper macro to count identifiers
 #[macro_export]
-macro_rules! trace_columns {
-    ($name:ident, $($column:ident),* $(,)?) => {
-        // ---------- Borrow version ----------
-        #[derive(Debug, Clone, Copy)]
-        pub struct $name<'a, T: ?Sized> {
-            $(pub $column: &'a T),*
-        }
-
-        #[allow(dead_code)]
-        impl<'a, T: ?Sized> $name<'a, T> {
-            #[inline(always)]
-            pub fn iter(&self) -> impl Iterator<Item = &'a T> {
-                [$(self.$column),*].into_iter()
-            }
-        }
-
-        #[allow(dead_code)]
-        impl<'a, T> $name<'a, T> {
-            #[inline(always)]
-            pub fn from_slice(slice: &'a [T]) -> Self {
-                assert!(
-                    slice.len() == <[()]>::len(&[$(trace_columns!(@unit $column)),*]),
-                    "slice length mismatch for {}",
-                    stringify!($name)
-                );
-                let mut it = slice.iter();
-                Self {
-                    $(
-                        $column: it.next().expect("slice too short"),
-                    )*
-                }
-            }
-
-            pub fn chunks<U>(&self, chunk_size: usize) -> Vec<$name<'a, [U]>>
-            where
-                T: AsRef<[U]>,
-            {
-                itertools::izip!($( self.$column.as_ref().chunks(chunk_size) ),*)
-                    .map(|$( $column ),*| $name { $( $column ),* })
-                    .collect()
-            }
-        }
-
-        #[allow(dead_code)]
-        impl $name<'static, ()> {
-            pub const SIZE: usize = <[()]>::len(&[$(trace_columns!(@unit $column)),*]);
-
-            pub fn to_ids(suffix: Option<u32>) -> Vec<
-                stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId
-            > {
-                vec![
-                    $(
-                        stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId {
-                            id: match suffix {
-                                Some(suffix) => format!("{}_{}_{}", stringify!($name), stringify!($column), suffix.to_string()),
-                                None => format!("{}_{}", stringify!($name), stringify!($column)),
-                            },
-                        }
-                    ),*
-                ]
-            }
-        }
-
-        // ---------- Owned version ----------
-        trace_columns!(@owned_impl $name, $($column),*);
-    };
-
-    (@owned_impl $name:ident, $($column:ident),*) => {
-        #[derive(Debug, Clone)]
-        #[allow(dead_code)]
-        pub struct ${concat($name, Owned)}<T> {
-            $(pub $column: T),*
-        }
-
-        #[allow(dead_code)]
-        impl<T> ${concat($name, Owned)}<T> {
-            #[inline(always)]
-            pub fn from_eval<E>(eval: &mut E) -> Self
-            where
-                E: stwo_constraint_framework::EvalAtRow<F = T>,
-            {
-                Self {
-                    $(
-                        $column: eval.next_trace_mask(),
-                    )*
-                }
-            }
-
-            pub fn from_ids<E>(eval: &mut E, suffix: Option<u32>) -> Self
-            where
-                E: stwo_constraint_framework::EvalAtRow<F = T>,
-            {
-                Self {
-                    $($column: eval.get_preprocessed_column(stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId { id: match suffix {
-                        Some(suffix) => format!("{}_{}_{}", stringify!($name), stringify!($column), suffix.to_string()),
-                        None => format!("{}_{}", stringify!($name), stringify!($column)),
-                    } }),)*
-                }
-            }
-        }
-
-        #[allow(dead_code)]
-        impl ${concat($name, Owned)}<()> {
-            pub const SIZE: usize = <[()]>::len(&[$(trace_columns!(@unit $column)),*]);
-        }
-    };
-
-    // helper
-    (@unit $_field:ident) => { () };
+macro_rules! count_idents {
+    () => { 0usize };
+    ($first:ident $(, $rest:ident)*) => { 1usize + $crate::count_idents!($($rest),*) };
 }
 
+/// Macro to generate Relations struct and preprocessed table infrastructure.
+///
+/// Usage:
+/// ```ignore
+/// relations! {
+///     relations {
+///         program_access: addr, clk, value;
+///         memory_access: addr, clk, limb_0, limb_1, limb_2, limb_3;
+///     }
+///     preprocessed {
+///         range_check_20: value;
+///     }
+/// }
+/// ```
+///
+/// Generates:
+/// - `Relations` struct with `LookupElements<N>` for ALL relations (both regular and preprocessed)
+/// - `PreProcessedTrace` struct for constant table data
+/// - `Counters` struct for multiplicity tracking
 #[macro_export]
-macro_rules! combine {
-    ($relations:expr, $cols:expr $(,)?) => {{
-        let cols = $cols;
-        let simd_size = cols[0].len();
-        let n_cols = cols.len();
-
-        let mut combined: Vec<stwo::prover::backend::simd::qm31::PackedQM31> =
-            Vec::with_capacity(simd_size);
-
-        // Create an iterator over all columns simultaneously
-        let mut col_iters: Vec<_> = cols.iter().map(|c| c.iter()).collect();
-
-        for _ in 0..simd_size {
-            // Collect one row worth of values by pulling one from each iterator
-            let mut packed_m31_values = Vec::with_capacity(n_cols);
-            for it in &mut col_iters {
-                let v = *it.next().unwrap();
-                packed_m31_values.push(unsafe {
-                    stwo::prover::backend::simd::m31::PackedM31::from_simd_unchecked(v)
-                });
-            }
-            combined.push($relations.combine(&packed_m31_values));
-        }
-        combined
-    }};
-}
-
-#[macro_export]
-macro_rules! emit_col {
-    ($denom:expr, $interaction_trace:expr) => {
-        use num_traits::One;
-        let mut col = $interaction_trace.new_col();
-        let one = stwo::prover::backend::simd::qm31::PackedQM31::one();
-        for (vec_row, &d) in $denom.iter().enumerate() {
-            col.write_frac(vec_row, one, d);
-        }
-        col.finalize_col();
-    };
-}
-
-#[macro_export]
-macro_rules! consume_col {
-    ($denom:expr, $interaction_trace:expr) => {
-        use num_traits::One;
-        let mut col = $interaction_trace.new_col();
-        let minus_one = -stwo::prover::backend::simd::qm31::PackedQM31::one();
-        for (vec_row, &d) in $denom.iter().enumerate() {
-            col.write_frac(vec_row, minus_one, d);
-        }
-        col.finalize_col();
-    };
-}
-
-#[macro_export]
-macro_rules! write_col {
-    ($numerator:expr, $denom:expr, $interaction_trace:expr) => {
-        let mut col = $interaction_trace.new_col();
-        for (vec_row, (n, d)) in itertools::izip!($numerator, $denom).enumerate() {
-            col.write_frac(vec_row, n, d);
-        }
-        col.finalize_col();
-    };
-}
-
-#[macro_export]
-macro_rules! write_pair {
+macro_rules! relations {
     (
-        $numerator_0:expr,
-        $denom_0:expr,
-        $numerator_1:expr,
-        $denom_1:expr,
-        $interaction_trace:expr
-    ) => {{
-        let mut col = $interaction_trace.new_col();
-        for (vec_row, (n_0, d_0, n_1, d_1)) in
-            itertools::izip!($numerator_0, $denom_0, $numerator_1, $denom_1).enumerate()
-        {
-            let numerator = n_0 * d_1 + n_1 * d_0;
-            let denom = d_0 * d_1;
-            col.write_frac(vec_row, numerator, denom);
-        }
-        col.finalize_col();
-    }};
-}
-
-#[macro_export]
-macro_rules! consume_pair {
-    // Variant that takes a list of columns to consume in pairs
-    ($interaction_trace:expr; $($col:expr),+ $(,)?) => {{
-        let secure_columns = vec![$($col),+];
-        for [pair0, pair1] in secure_columns.into_iter().array_chunks::<2>() {
-            let mut col = $interaction_trace.new_col();
-            for (vec_row, (d_0, d_1)) in itertools::izip!(pair0.iter(), pair1.iter()).enumerate() {
-                let numerator = *d_0 + *d_1;
-                let denom = *d_0 * *d_1;
-                col.write_frac(vec_row, -numerator, denom);
-            }
-            col.finalize_col();
-        }
-    }};
-
-    // Variant that takes two columns to write in pairs
-    ($denom_0:expr, $denom_1:expr, $interaction_trace:expr) => {{
-        let mut col = $interaction_trace.new_col();
-        for (vec_row, (d_0, d_1)) in itertools::izip!($denom_0, $denom_1).enumerate() {
-            let numerator = d_0 + d_1;
-            let denom = d_0 * d_1;
-            col.write_frac(vec_row, -numerator, denom);
-        }
-        col.finalize_col();
-    }};
-}
-
-#[macro_export]
-macro_rules! emit_pair {
-    ($denom_0:expr, $denom_1:expr, $interaction_trace:expr) => {{
-        let mut col = $interaction_trace.new_col();
-        for (vec_row, (d_0, d_1)) in itertools::izip!($denom_0, $denom_1).enumerate() {
-            let numerator = d_0 + d_1;
-            let denom = d_0 * d_1;
-            col.write_frac(vec_row, numerator, denom);
-        }
-        col.finalize_col();
-    }};
-}
-
-#[macro_export]
-macro_rules! add_to_relation {
-    ($eval:expr, $relation:expr, $numerator:expr, $($col:expr),+ $(,)?) => {
-        {
-        $eval.add_to_relation(stwo_constraint_framework::RelationEntry::new(
-            &$relation,
-            $numerator.clone(),
-            &[$($col.clone()),*],
-        ))
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! circle_evaluation_u32 {
-    ($column:expr) => {
-        stwo::prover::poly::circle::CircleEvaluation::<
-            stwo::prover::backend::simd::SimdBackend,
-            stwo::core::fields::m31::BaseField,
-            stwo::prover::poly::BitReversedOrder,
-        >::new(
-            stwo::core::poly::circle::CanonicCoset::new($column.len().ilog2()).circle_domain(),
-            stwo::prover::backend::simd::column::BaseColumn::from_iter(
-                $column
-                    .iter()
-                    .map(|v| stwo::core::fields::m31::BaseField::from_u32_unchecked(*v)),
-            ),
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! circle_evaluation_u32x16 {
-    ($column:expr) => {
-        stwo::prover::poly::circle::CircleEvaluation::<
-            stwo::prover::backend::simd::SimdBackend,
-            stwo::core::fields::m31::BaseField,
-            stwo::prover::poly::BitReversedOrder,
-        >::new(
-            stwo::core::poly::circle::CanonicCoset::new(
-                $column.len().ilog2() + stwo::prover::backend::simd::m31::LOG_N_LANES,
-            )
-            .circle_domain(),
-            stwo::prover::backend::simd::column::BaseColumn::from_simd(
-                $column
-                    .iter()
-                    .map(|v| unsafe {
-                        stwo::prover::backend::simd::m31::PackedM31::from_simd_unchecked(*v)
-                    })
-                    .collect::<Vec<stwo::prover::backend::simd::m31::PackedM31>>(),
-            ),
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! column_vec_u32 {
-    ($($column:expr),*) => {
-        ColumnVec::from(vec![
-            $(circle_evaluation_u32!($column)),*
-        ])
-    };
-}
-
-#[macro_export]
-macro_rules! column_vec_u32x16 {
-    ($($column:expr),*) => {
-        ColumnVec::from(vec![$(circle_evaluation_u32x16!($column)),*])
-    };
-}
-
-#[macro_export]
-macro_rules! simd_vec {
-    ($($column:expr),*) => {
-        vec![
+        relations {
             $(
-                $column
-                .chunks(16)
-                .map(u32x16::from_slice)
-                .collect::<Vec<u32x16>>()
-        ),*
-        ]
+                $rel_name:ident: $($rel_field:ident),+ $(,)?
+            );* $(;)?
+        }
+        preprocessed {
+            $(
+                $prep_name:ident: $($prep_col:ident),+ $(,)?
+            );* $(;)?
+        }
+    ) => {
+        use std::marker::PhantomData;
+        use simd::AlignedVec;
+        use stwo::core::ColumnVec;
+        use stwo::core::fields::m31::BaseField;
+        use stwo::core::poly::circle::CanonicCoset;
+        use stwo::prover::backend::simd::SimdBackend;
+        use stwo::prover::backend::simd::column::BaseColumn;
+        use stwo::prover::poly::BitReversedOrder;
+        use stwo::prover::poly::circle::CircleEvaluation;
+        use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
+
+        // ==================== Relations ====================
+
+        #[derive(Clone)]
+        pub struct Relations {
+            // Regular relations
+            $(
+                #[doc = concat!("Relation: (", $(stringify!($rel_field), ", ",)+ ")")]
+                pub $rel_name: stwo_constraint_framework::logup::LookupElements<
+                    { $crate::count_idents!($($rel_field),+) }
+                >,
+            )*
+            // Preprocessed relations
+            $(
+                #[doc = concat!("Preprocessed relation: (", $(stringify!($prep_col), ", ",)+ ")")]
+                pub $prep_name: stwo_constraint_framework::logup::LookupElements<
+                    { $crate::count_idents!($($prep_col),+) }
+                >,
+            )*
+        }
+
+        impl Relations {
+            pub fn dummy() -> Self {
+                Self {
+                    $(
+                        $rel_name: stwo_constraint_framework::logup::LookupElements::dummy(),
+                    )*
+                    $(
+                        $prep_name: stwo_constraint_framework::logup::LookupElements::dummy(),
+                    )*
+                }
+            }
+
+            pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
+                Self {
+                    $(
+                        $rel_name: stwo_constraint_framework::logup::LookupElements::draw(channel),
+                    )*
+                    $(
+                        $prep_name: stwo_constraint_framework::logup::LookupElements::draw(channel),
+                    )*
+                }
+            }
+        }
+
+        // ==================== Preprocessed Tables ====================
+
+        /// Trait for preprocessed table generation.
+        pub trait PreprocessedTable<const N: usize> {
+            const LOG_SIZE: u32;
+            fn index(values: [u32; N]) -> u32;
+            fn gen_columns() -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>;
+            fn column_ids() -> Vec<PreProcessedColumnId>;
+        }
+
+        /// Generic counter for tracking multiplicities.
+        pub struct Counter<T: PreprocessedTable<N>, const N: usize> {
+            counts: AlignedVec<u32>,
+            _marker: PhantomData<T>,
+        }
+
+        impl<T: PreprocessedTable<N>, const N: usize> Counter<T, N> {
+            pub fn new() -> Self {
+                let size = 1 << T::LOG_SIZE;
+                let mut counts = AlignedVec::with_capacity(size);
+                counts.resize(size, 0);
+                Self {
+                    counts,
+                    _marker: PhantomData,
+                }
+            }
+
+            #[inline]
+            pub fn register(&mut self, values: [u32; N]) {
+                let idx = T::index(values) as usize;
+                debug_assert!(idx < self.counts.len(), "index {idx} out of bounds");
+                self.counts[idx] += 1;
+            }
+
+            /// Register many values at once from column slices.
+            /// Each row across the columns forms one lookup value.
+            ///
+            /// Example for N=1 (range_check_20):
+            /// ```ignore
+            /// counters.range_check_20.register_many([&trace.value]);
+            /// ```
+            pub fn register_many(&mut self, columns: [&[u32]; N]) {
+                let len = columns[0].len();
+                debug_assert!(columns.iter().all(|c| c.len() == len), "column length mismatch");
+                for i in 0..len {
+                    let values: [u32; N] = std::array::from_fn(|j| columns[j][i]);
+                    let idx = T::index(values) as usize;
+                    debug_assert!(idx < self.counts.len(), "index {idx} out of bounds");
+                    self.counts[idx] += 1;
+                }
+            }
+
+            /// Add counts from a vector (element-wise merge).
+            /// Used when the tracer has already accumulated counts in an AlignedVec.
+            pub fn add_counts(&mut self, counts: &[u32]) {
+                assert_eq!(
+                    counts.len(),
+                    self.counts.len(),
+                    "counts length mismatch: expected {}, got {}",
+                    self.counts.len(),
+                    counts.len()
+                );
+                for (dest, src) in self.counts.iter_mut().zip(counts.iter()) {
+                    *dest += src;
+                }
+            }
+
+            pub fn into_trace(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+                let domain = CanonicCoset::new(T::LOG_SIZE).circle_domain();
+                let col: BaseColumn = self.counts.into();
+                vec![CircleEvaluation::new(domain, col)]
+            }
+        }
+
+        impl<T: PreprocessedTable<N>, const N: usize> Default for Counter<T, N> {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        /// Preprocessed trace containing all constant lookup tables.
+        pub struct PreProcessedTrace {
+            pub trace: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+            pub ids: Vec<PreProcessedColumnId>,
+        }
+
+        impl PreProcessedTrace {
+            pub fn new() -> Self {
+                let mut trace = vec![];
+                let mut ids = vec![];
+
+                $(
+                    trace.extend(
+                        <$crate::preprocessed::$prep_name::Table<{ $crate::count_idents!($($prep_col),+) }>
+                            as PreprocessedTable<{ $crate::count_idents!($($prep_col),+) }>>::gen_columns()
+                    );
+                    ids.extend(
+                        <$crate::preprocessed::$prep_name::Table<{ $crate::count_idents!($($prep_col),+) }>
+                            as PreprocessedTable<{ $crate::count_idents!($($prep_col),+) }>>::column_ids()
+                    );
+                )*
+
+                Self { trace, ids }
+            }
+        }
+
+        impl Default for PreProcessedTrace {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        /// Aggregate of all multiplicity counters.
+        pub struct Counters {
+            $(
+                #[doc = concat!("Counter for ", stringify!($prep_name), ": (", $(stringify!($prep_col), ", ",)+ ")")]
+                pub $prep_name: Counter<
+                    $crate::preprocessed::$prep_name::Table<{ $crate::count_idents!($($prep_col),+) }>,
+                    { $crate::count_idents!($($prep_col),+) }
+                >,
+            )*
+        }
+
+        impl Counters {
+            pub fn new() -> Self {
+                Self {
+                    $(
+                        $prep_name: Counter::new(),
+                    )*
+                }
+            }
+
+            pub fn into_traces(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+                let mut traces = vec![];
+                $(
+                    traces.extend(self.$prep_name.into_trace());
+                )*
+                traces
+            }
+        }
+
+        impl Default for Counters {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
     };
 }
 
+/// Macro to aggregate all RV32IM opcode components.
+///
+/// Usage:
+/// ```ignore
+/// opcode_components! {
+///     alu::add, alu::sub, ...,
+///     load::lb, load::lh, ...
+/// }
+/// ```
+///
+/// Generates:
+/// - `Traces` struct with one field per opcode (CircleEvaluation columns)
+/// - `ClaimedSum` struct with one QM31 field per opcode + `sum()` method
+/// - `Components` struct with one air::Component field per opcode
+/// - `gen_trace(tracer)` function consuming tracer and calling each component's gen_trace
+/// - `gen_interaction_trace(traces, relations)` function aggregating all interaction traces
 #[macro_export]
-macro_rules! components {
-    // handle foo::bar forms
-    ( $( $module:ident :: $name:ident ),+ $(,)? ) => {
-        $crate::components!(@impl $( ($module, $name) ),+ );
-    };
-    // internal implementation
-    (@impl $( ($module:ident, $name:ident) ),+ $(,)? ) => {
-        use $crate::relations::Relations;
-        use $crate::circle_evaluation_u32x16;
+macro_rules! opcode_components {
+    ($($category:ident :: $opcode:ident),* $(,)?) => {
+        use stwo::core::fields::qm31::QM31;
+        use stwo::core::fields::m31::BaseField;
+        use stwo::core::ColumnVec;
+        use stwo::core::air::Component as AirComponent;
+        use stwo::prover::backend::simd::SimdBackend;
+        use stwo::prover::poly::circle::CircleEvaluation;
+        use stwo::prover::poly::BitReversedOrder;
 
-        use stwo::core::fields::qm31::SecureField;
-        use std::simd::u32x16;
-        use num_traits::Zero;
-        use stwo::{
-            core::{fields::{m31::BaseField}, ColumnVec},
-            prover::{backend::simd::{SimdBackend}, poly::{circle::CircleEvaluation, BitReversedOrder}, ComponentProver},
-        };
-        use stwo::core::pcs::TreeVec;
-        use stwo::core::air::Component;
-        use stwo_constraint_framework::{
-            relation_tracker::{add_to_relation_entries, RelationTrackerEntry},
-            TraceLocationAllocator,
-        };
-
-        components!(@gen_structs $( ($module, $name) ),+);
-        components!(@gen_fns $( ($module, $name) ),+);
-    };
-
-    (@gen_structs $( ($module:ident, $name:ident) ),+ ) => {
-        #[derive(Clone)]
+        /// Trace columns for all components.
+        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct Traces {
-            $( pub ${concat($module, _, $name)}: Vec<Vec<u32x16>>, )+
+            $(
+                pub ${concat($category, _, $opcode)}: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+            )*
         }
 
+        impl Traces {
+            /// Returns the maximum log_size across all component traces.
+            pub fn max_log_size(&self) -> u32 {
+                self.log_sizes().into_iter().max().unwrap_or(4)
+            }
+
+            /// Returns log_size for each non-empty component trace.
+            pub fn log_sizes(&self) -> Vec<u32> {
+                let mut sizes = vec![];
+                $(
+                    if let Some(first) = self.${concat($category, _, $opcode)}.first() {
+                        sizes.push(first.domain.log_size());
+                    }
+                )*
+                sizes
+            }
+
+            /// Clone all columns into a flattened vec (for commitment).
+            pub fn columns_cloned(&self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+                let mut columns = vec![];
+                $(
+                    columns.extend(self.${concat($category, _, $opcode)}.clone());
+                )*
+                columns
+            }
+
+            /// Consume self and return all columns flattened.
+            pub fn into_columns(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+                let mut columns = vec![];
+                $(
+                    columns.extend(self.${concat($category, _, $opcode)});
+                )*
+                columns
+            }
+
+        }
+
+        /// Claim containing log_size for each component.
+        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
+        pub struct Claim {
+            $(
+                pub ${concat($category, _, $opcode)}: u32,
+            )*
+        }
+
+        impl From<&Traces> for Claim {
+            fn from(traces: &Traces) -> Self {
+                Self {
+                    $(
+                        ${concat($category, _, $opcode)}: traces.${concat($category, _, $opcode)}
+                            .first()
+                            .map(|eval| eval.domain.log_size())
+                            .unwrap_or(0),
+                    )*
+                }
+            }
+        }
+
+        impl Claim {
+            /// Mix claim into the channel.
+            pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
+                $(
+                    channel.mix_u64(self.${concat($category, _, $opcode)} as u64);
+                )*
+            }
+        }
+
+        /// Claimed sums from interaction traces.
+        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct ClaimedSum {
-            $( pub ${concat($module, _, $name)}: SecureField, )+
+            $(
+                pub ${concat($category, _, $opcode)}: QM31,
+            )*
         }
 
         impl ClaimedSum {
-            pub fn sum(&self) -> SecureField {
-                SecureField::zero() $( + self.${concat($module, _, $name)} )+
+            /// Sum all claimed values.
+            pub fn sum(&self) -> QM31 {
+                use num_traits::Zero;
+                let mut total = QM31::zero();
+                $(
+                    total += self.${concat($category, _, $opcode)};
+                )*
+                total
             }
         }
 
+        /// AIR components for all opcodes.
+        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct Components {
-            $( pub ${concat($module, _, $name)}: $module::$name::air::Component, )+
+            $(
+                pub ${concat($category, _, $opcode)}: $category::$opcode::air::Component,
+            )*
         }
-    };
 
-    (@gen_fns $( ($module:ident, $name:ident) ),+ ) => {
+        /// Generate all trace columns from tracer.
+        /// Consumes the tracer and calls each component's witness::gen_trace.
+        /// Counters are populated during trace generation for preprocessed lookups.
         pub fn gen_trace(
-            log_size: u32,
-            scheduling_lookup_data: &[Vec<u32x16>],
-            compression_lookup_data: &[Vec<u32x16>],
+            tracer: runner::trace::Tracer,
+            counters: &mut $crate::relations::Counters,
         ) -> Traces {
             Traces {
                 $(
-                    ${concat($module, _, $name)}: $module::$name::witness::gen_trace(
-                        log_size,
-                        scheduling_lookup_data,
-                        compression_lookup_data
-                    ),
-                )+
+                    ${concat($category, _, $opcode)}: $category::$opcode::witness::gen_trace(tracer.$opcode, counters),
+                )*
             }
         }
 
+        /// Generate all interaction traces.
+        /// Returns interaction trace columns and claimed sums for all components.
         pub fn gen_interaction_trace(
             traces: &Traces,
-            relations: &Relations,
+            relations: &$crate::relations::Relations,
         ) -> (
             ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
             ClaimedSum,
         ) {
-            let mut interaction_trace = vec![];
-
+            let mut all_columns = vec![];
             $(
-                let (trace, ${concat($module, _, $name, _, claimed_sum)}) =
-                    $module::$name::witness::gen_interaction_trace(&traces.${concat($module, _, $name)}, relations);
-                interaction_trace.extend(trace);
-            )+
-            (
-                interaction_trace,
-                ClaimedSum {
-                    $( ${concat($module, _, $name)}: ${concat($module, _, $name, _, claimed_sum)}, )+
-                },
-            )
-        }
+                let (cols, claimed) = $category::$opcode::witness::gen_interaction_trace(
+                    &traces.${concat($category, _, $opcode)},
+                    relations,
+                );
+                all_columns.extend(cols);
+                let ${concat($category, _, $opcode, _claimed)} = claimed;
+            )*
 
-        impl Traces {
-            pub fn len(&self) -> usize {
-                0 $( + self.${concat($module, _, $name)}.iter().map(|v| v.len()).sum::<usize>() )+
-            }
+            let claimed_sum = ClaimedSum {
+                $(
+                    ${concat($category, _, $opcode)}: ${concat($category, _, $opcode, _claimed)},
+                )*
+            };
 
-            pub fn is_empty(&self) -> bool {
-                self.len() == 0
-            }
-        }
-
-        impl IntoIterator for Traces {
-            type Item = CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>;
-            type IntoIter = std::vec::IntoIter<Self::Item>;
-
-            fn into_iter(self) -> Self::IntoIter {
-                let cols = vec![
-                    $( self.${concat($module, _, $name)} ),+
-                ];
-
-                cols
-                    .into_iter()
-                    .flatten()
-                    .map(|col| circle_evaluation_u32x16!(col))
-                    .collect::<Vec<_>>()
-                    .into_iter()
-            }
+            (all_columns, claimed_sum)
         }
 
         impl Components {
+            /// Create all AIR components.
+            /// Each component gets its log_size from the claim.
             pub fn new(
-                log_size: u32,
-                location_allocator: &mut TraceLocationAllocator,
-                relations: Relations,
+                claim: &Claim,
+                location_allocator: &mut stwo_constraint_framework::TraceLocationAllocator,
+                relations: $crate::relations::Relations,
                 claimed_sum: &ClaimedSum,
             ) -> Self {
                 Self {
                     $(
-                        ${concat($module, _, $name)}: $module::$name::air::Component::new(
+                        ${concat($category, _, $opcode)}: $category::$opcode::air::Component::new(
                             location_allocator,
-                            $module::$name::air::Eval { log_size, relations: relations.clone() },
-                            claimed_sum.${concat($module, _, $name)},
+                            $category::$opcode::air::Eval {
+                                log_size: claim.${concat($category, _, $opcode)},
+                                relations: relations.clone(),
+                            },
+                            claimed_sum.${concat($category, _, $opcode)},
                         ),
-                    )+
+                    )*
                 }
             }
 
-            pub fn provers(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
-                vec![ $(&self.${concat($module, _, $name)},)+ ]
+            /// Get all components as trait objects for proving.
+            pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
+                vec![ $(&self.${concat($category, _, $opcode)},)* ]
             }
 
+            /// Collect relation tracker entries from all components.
             pub fn relation_entries(
                 &self,
-                trace: &TreeVec<Vec<&Vec<BaseField>>>,
-            ) -> Vec<RelationTrackerEntry> {
+                trace: &stwo::core::pcs::TreeVec<Vec<&Vec<BaseField>>>,
+            ) -> Vec<stwo_constraint_framework::relation_tracker::RelationTrackerEntry> {
+                use stwo_constraint_framework::relation_tracker::add_to_relation_entries;
                 itertools::chain!(
-                    $( add_to_relation_entries(&self.${concat($module, _, $name)}, trace) ),+
+                    $( add_to_relation_entries(&self.${concat($category, _, $opcode)}, trace) ),*
                 )
                 .collect()
             }
 
-            pub fn trace_log_degree_bounds(&self) -> Vec<TreeVec<ColumnVec<u32>>> {
+            /// Collect trace log degree bounds from all components.
+            pub fn trace_log_degree_bounds(&self) -> Vec<stwo::core::pcs::TreeVec<ColumnVec<u32>>> {
                 vec![
-                    $( self.${concat($module, _, $name)}.trace_log_degree_bounds(), )+
+                    $( self.${concat($category, _, $opcode)}.trace_log_degree_bounds(), )*
+                ]
+            }
+        }
+    };
+}
+
+/// Macro to aggregate preprocessed components (multiplicity tracking).
+///
+/// Usage:
+/// ```ignore
+/// preprocessed_components! {
+///     range_check_20,
+///     // xor_8,
+/// }
+/// ```
+///
+/// Generates:
+/// - `Traces` struct with one field per preprocessed table (multiplicity columns)
+/// - `ClaimedSum` struct with one QM31 field per table + `sum()` method
+/// - `Components` struct with one air::Component field per table
+/// - `gen_interaction_trace(traces, relations)` function aggregating all interaction traces
+#[macro_export]
+macro_rules! preprocessed_components {
+    ($($table:ident),* $(,)?) => {
+        use stwo::core::fields::qm31::QM31;
+        use stwo::core::fields::m31::BaseField;
+        use stwo::core::ColumnVec;
+        use stwo::core::air::Component as AirComponent;
+        use stwo::prover::backend::simd::SimdBackend;
+        use stwo::prover::poly::circle::CircleEvaluation;
+        use stwo::prover::poly::BitReversedOrder;
+
+        /// Trace columns for preprocessed multiplicity components.
+        pub struct Traces {
+            $(
+                pub $table: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+            )*
+        }
+
+        impl Traces {
+            /// Create preprocessed traces from counters.
+            /// Each counter's accumulated multiplicities become a trace column.
+            pub fn from_counters(counters: $crate::relations::Counters) -> Self {
+                Self {
+                    $(
+                        $table: counters.$table.into_trace(),
+                    )*
+                }
+            }
+
+            /// Returns the maximum log_size across all preprocessed traces.
+            pub fn max_log_size(&self) -> u32 {
+                self.log_sizes().into_iter().max().unwrap_or(4)
+            }
+
+            /// Returns log_size for each non-empty preprocessed trace.
+            pub fn log_sizes(&self) -> Vec<u32> {
+                let mut sizes = vec![];
+                $(
+                    if let Some(first) = self.$table.first() {
+                        sizes.push(first.domain.log_size());
+                    }
+                )*
+                sizes
+            }
+
+            /// Clone all columns into a flattened vec (for commitment).
+            pub fn columns_cloned(&self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+                let mut columns = vec![];
+                $(
+                    columns.extend(self.$table.clone());
+                )*
+                columns
+            }
+
+            /// Consume self and return all columns flattened.
+            pub fn into_columns(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+                let mut columns = vec![];
+                $(
+                    columns.extend(self.$table);
+                )*
+                columns
+            }
+
+        }
+
+        /// Claim containing log_size for each preprocessed table.
+        pub struct Claim {
+            $(
+                pub $table: u32,
+            )*
+        }
+
+        impl From<&Traces> for Claim {
+            fn from(traces: &Traces) -> Self {
+                Self {
+                    $(
+                        $table: traces.$table
+                            .first()
+                            .map(|eval| eval.domain.log_size())
+                            .unwrap_or(0),
+                    )*
+                }
+            }
+        }
+
+        impl Claim {
+            /// Mix claim into the channel.
+            pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
+                $(
+                    channel.mix_u64(self.$table as u64);
+                )*
+            }
+        }
+
+        /// Claimed sums from preprocessed interaction traces.
+        pub struct ClaimedSum {
+            $(
+                pub $table: QM31,
+            )*
+        }
+
+        impl ClaimedSum {
+            /// Sum all claimed values.
+            pub fn sum(&self) -> QM31 {
+                use num_traits::Zero;
+                let mut total = QM31::zero();
+                $(
+                    total += self.$table;
+                )*
+                total
+            }
+        }
+
+        /// AIR components for preprocessed tables.
+        pub struct Components {
+            $(
+                pub $table: $table::air::Component,
+            )*
+        }
+
+        /// Generate all interaction traces for preprocessed components.
+        pub fn gen_interaction_trace(
+            traces: &Traces,
+            relations: &$crate::relations::Relations,
+        ) -> (
+            ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+            ClaimedSum,
+        ) {
+            let mut all_columns = vec![];
+            $(
+                let (cols, claimed) = $table::witness::gen_interaction_trace(
+                    &traces.$table,
+                    relations,
+                );
+                all_columns.extend(cols);
+                let ${concat($table, _claimed)} = claimed;
+            )*
+
+            let claimed_sum = ClaimedSum {
+                $(
+                    $table: ${concat($table, _claimed)},
+                )*
+            };
+
+            (all_columns, claimed_sum)
+        }
+
+        impl Components {
+            /// Create all preprocessed AIR components.
+            pub fn new(
+                claim: &Claim,
+                location_allocator: &mut stwo_constraint_framework::TraceLocationAllocator,
+                relations: $crate::relations::Relations,
+                claimed_sum: &ClaimedSum,
+            ) -> Self {
+                Self {
+                    $(
+                        $table: $table::air::Component::new(
+                            location_allocator,
+                            $table::air::Eval {
+                                log_size: claim.$table,
+                                relations: relations.clone(),
+                            },
+                            claimed_sum.$table,
+                        ),
+                    )*
+                }
+            }
+
+            /// Get all components as trait objects for proving.
+            pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
+                vec![ $(&self.$table,)* ]
+            }
+
+            /// Collect relation tracker entries from all components.
+            pub fn relation_entries(
+                &self,
+                trace: &stwo::core::pcs::TreeVec<Vec<&Vec<BaseField>>>,
+            ) -> Vec<stwo_constraint_framework::relation_tracker::RelationTrackerEntry> {
+                use stwo_constraint_framework::relation_tracker::add_to_relation_entries;
+                itertools::chain!(
+                    $( add_to_relation_entries(&self.$table, trace) ),*
+                )
+                .collect()
+            }
+
+            /// Collect trace log degree bounds from all components.
+            pub fn trace_log_degree_bounds(&self) -> Vec<stwo::core::pcs::TreeVec<ColumnVec<u32>>> {
+                vec![
+                    $( self.$table.trace_log_degree_bounds(), )*
                 ]
             }
         }

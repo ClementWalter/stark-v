@@ -1,106 +1,13 @@
 //! Proc-macros for the runner crate.
 //!
 //! Provides:
-//! - `#[traced]` attribute macro that rewrites `trace_op!(...)` calls
 //! - `define_trace_tables!` macro for generating columnar trace tables
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
-use quote::{ToTokens, format_ident, quote};
+use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::visit_mut::VisitMut;
-use syn::{
-    Expr, ExprMacro, Ident, ItemFn, Macro, Stmt, StmtMacro, Token, braced, parse_macro_input,
-};
-
-// =============================================================================
-// #[traced] attribute macro
-// =============================================================================
-
-/// Visitor that rewrites `trace_op!(field1, field2, ...)` to `trace_op!(fn_name: field1, field2, ...)`
-struct TraceRewriter {
-    fn_name: syn::Ident,
-}
-
-impl TraceRewriter {
-    /// Check if a path refers to the trace_op macro
-    fn is_trace_op_path(path: &syn::Path) -> bool {
-        path.is_ident("trace_op")
-            || path
-                .segments
-                .last()
-                .map(|seg| seg.ident == "trace_op")
-                .unwrap_or(false)
-    }
-
-    /// Rewrite macro tokens to include function name, tracer, and cpu.pc
-    fn rewrite_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let fn_name = &self.fn_name;
-        let original_tokens = tokens.clone();
-        // Transform: trace_op!(field1, field2, ...)
-        // To: trace_op!(fn_name: tracer, cpu.pc, field1, field2, ...)
-        *tokens = quote! { #fn_name: tracer, cpu.pc, #original_tokens };
-    }
-}
-
-impl VisitMut for TraceRewriter {
-    fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        // First recurse into nested expressions
-        syn::visit_mut::visit_expr_mut(self, expr);
-
-        // Check if this is a macro call to `trace_op!`
-        if let Expr::Macro(ExprMacro {
-            mac: Macro { path, tokens, .. },
-            ..
-        }) = expr
-            && Self::is_trace_op_path(path)
-        {
-            self.rewrite_tokens(tokens);
-        }
-    }
-
-    fn visit_stmt_mut(&mut self, stmt: &mut Stmt) {
-        // First recurse into nested statements
-        syn::visit_mut::visit_stmt_mut(self, stmt);
-
-        // Check if this is a macro statement
-        if let Stmt::Macro(StmtMacro {
-            mac: Macro { path, tokens, .. },
-            ..
-        }) = stmt
-            && Self::is_trace_op_path(path)
-        {
-            self.rewrite_tokens(tokens);
-        }
-    }
-}
-
-/// Attribute macro that rewrites `trace_op!(...)` calls to include the function name.
-///
-/// # Example
-///
-/// ```ignore
-/// #[traced]
-/// pub fn add(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
-///     let rs1 = cpu.read_reg(inst.rs1, tracer);
-///     let rs2 = cpu.read_reg(inst.rs2, tracer);
-///     let rd = cpu.write_reg(inst.rd, rs1.next.wrapping_add(rs2.next), tracer);
-///
-///     trace_op!(rd, rs1, rs2);  // Becomes: trace_op!(add: tracer, cpu.pc, rd, rs1, rs2)
-/// }
-/// ```
-#[proc_macro_attribute]
-pub fn traced(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut func = parse_macro_input!(item as ItemFn);
-    let fn_name = func.sig.ident.clone();
-
-    // Rewrite all trace!(...) calls in the function body
-    let mut rewriter = TraceRewriter { fn_name };
-    rewriter.visit_item_fn_mut(&mut func);
-
-    func.into_token_stream().into()
-}
+use syn::{Ident, Token, braced, parse_macro_input};
 
 // =============================================================================
 // define_trace_tables! proc-macro
@@ -162,17 +69,17 @@ fn table_name(opcode: &Ident) -> Ident {
 fn generate_field_decls(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
+        // Access fields expand to 4 columns: addr, prev, clk_prev, next
+        // Note: clk is NOT stored - it's redundant with tracer.clk at call site
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
         let clk_prev = format_ident!("{}_clk_prev", name);
         let next = format_ident!("{}_next", name);
-        let clk = format_ident!("{}_clk", name);
         quote! {
             pub #addr: simd::AlignedVec<u32>,
             pub #prev: simd::AlignedVec<u32>,
             pub #clk_prev: simd::AlignedVec<u32>,
             pub #next: simd::AlignedVec<u32>,
-            pub #clk: simd::AlignedVec<u32>,
         }
     } else {
         // Scalar field (clk, pc)
@@ -186,17 +93,16 @@ fn generate_field_decls(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_field_init(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
+        // Access fields expand to 4 columns (no clk)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
         let clk_prev = format_ident!("{}_clk_prev", name);
         let next = format_ident!("{}_next", name);
-        let clk = format_ident!("{}_clk", name);
         quote! {
             #addr: simd::AlignedVec::new(),
             #prev: simd::AlignedVec::new(),
             #clk_prev: simd::AlignedVec::new(),
             #next: simd::AlignedVec::new(),
-            #clk: simd::AlignedVec::new(),
         }
     } else {
         quote! {
@@ -209,17 +115,16 @@ fn generate_field_init(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_field_init_cap(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
+        // Access fields expand to 4 columns (no clk)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
         let clk_prev = format_ident!("{}_clk_prev", name);
         let next = format_ident!("{}_next", name);
-        let clk = format_ident!("{}_clk", name);
         quote! {
             #addr: simd::AlignedVec::with_capacity(cap),
             #prev: simd::AlignedVec::with_capacity(cap),
             #clk_prev: simd::AlignedVec::with_capacity(cap),
             #next: simd::AlignedVec::with_capacity(cap),
-            #clk: simd::AlignedVec::with_capacity(cap),
         }
     } else {
         quote! {
@@ -242,17 +147,16 @@ fn generate_push_param(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
+        // Access fields expand to 4 columns (no clk - it's available from tracer.clk)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
         let clk_prev = format_ident!("{}_clk_prev", name);
         let next = format_ident!("{}_next", name);
-        let clk = format_ident!("{}_clk", name);
         quote! {
             self.#addr.push(#field.addr);
             self.#prev.push(#field.prev);
             self.#clk_prev.push(#field.clk_prev);
             self.#next.push(#field.next);
-            self.#clk.push(#field.clk);
         }
     } else {
         quote! {
@@ -265,26 +169,171 @@ fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
+        // Access fields expand to 4 columns (no clk)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
         let clk_prev = format_ident!("{}_clk_prev", name);
         let next = format_ident!("{}_next", name);
-        let clk = format_ident!("{}_clk", name);
         let field_name = &name;
         quote! {
             .field(#field_name, &format_args!(
-                "Access {{ addr: {:#x}, prev: {:#x}, clk_prev: {}, next: {:#x}, clk: {} }}",
+                "Access {{ addr: {:#x}, prev: {:#x}, clk_prev: {}, next: {:#x} }}",
                 self.table.#addr[i],
                 self.table.#prev[i],
                 self.table.#clk_prev[i],
-                self.table.#next[i],
-                self.table.#clk[i]
+                self.table.#next[i]
             ))
         }
     } else {
         let field_name = &name;
         quote! {
             .field(#field_name, &self.table.#field[i])
+        }
+    }
+}
+
+/// Flatten field identifiers for prover columns.
+/// Enabler is always the first column.
+/// Access fields expand to 10 columns:
+/// - addr (1 column)
+/// - prev_0..prev_3 (4 limbs for u32 value)
+/// - clk_prev (1 column)
+/// - next_0..next_3 (4 limbs for u32 value)
+fn flatten_fields(fields: &[Ident]) -> Vec<Ident> {
+    let mut result = Vec::new();
+
+    // Enabler is always the first column
+    result.push(format_ident!("enabler"));
+
+    for field in fields {
+        let name = field.to_string();
+        if is_access_field(&name) {
+            // Access fields expand to 10 columns with limbed prev/next
+            result.push(format_ident!("{}_addr", name));
+            // prev as 4 u8 limbs (little-endian)
+            for i in 0usize..4 {
+                result.push(format_ident!("{}_prev_{}", name, i));
+            }
+            result.push(format_ident!("{}_clk_prev", name));
+            // next as 4 u8 limbs (little-endian)
+            for i in 0usize..4 {
+                result.push(format_ident!("{}_next_{}", name, i));
+            }
+        } else {
+            result.push(field.clone());
+        }
+    }
+    result
+}
+
+/// Generate the into_columns body that splits u32 values into limbs.
+/// This handles the conversion from the trace table's u32 storage to
+/// the prover's limbed representation.
+/// Enabler is always the first column.
+fn generate_into_columns_body(fields: &[Ident]) -> proc_macro2::TokenStream {
+    let mut column_exprs = Vec::new();
+
+    // Enabler is always the first column
+    column_exprs.push(quote! { self.enabler });
+
+    for field in fields {
+        let name = field.to_string();
+        if is_access_field(&name) {
+            let addr = format_ident!("{}_addr", name);
+            let prev = format_ident!("{}_prev", name);
+            let clk_prev = format_ident!("{}_clk_prev", name);
+            let next = format_ident!("{}_next", name);
+
+            // addr column
+            column_exprs.push(quote! { self.#addr });
+
+            // prev as 4 limbs (little-endian: limb 0 is least significant byte)
+            for i in 0u8..4 {
+                let shift = i * 8;
+                column_exprs.push(quote! {
+                    {
+                        let mut v = simd::AlignedVec::with_capacity(self.#prev.len());
+                        for val in self.#prev.iter() {
+                            v.push(((val >> #shift) & 0xFF) as u32);
+                        }
+                        v
+                    }
+                });
+            }
+
+            // clk_prev column
+            column_exprs.push(quote! { self.#clk_prev });
+
+            // next as 4 limbs (little-endian: limb 0 is least significant byte)
+            for i in 0u8..4 {
+                let shift = i * 8;
+                column_exprs.push(quote! {
+                    {
+                        let mut v = simd::AlignedVec::with_capacity(self.#next.len());
+                        for val in self.#next.iter() {
+                            v.push(((val >> #shift) & 0xFF) as u32);
+                        }
+                        v
+                    }
+                });
+            }
+        } else {
+            // Scalar field (clk, pc) - return directly
+            column_exprs.push(quote! { self.#field });
+        }
+    }
+
+    quote! {
+        vec![
+            #(#column_exprs),*
+        ]
+    }
+}
+
+/// Generate column struct name (e.g., "add" -> "AddColumns")
+fn column_struct_name(opcode: &Ident) -> Ident {
+    let name = opcode.to_string();
+    let capitalized = name
+        .chars()
+        .enumerate()
+        .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
+        .collect::<String>();
+    format_ident!("{}Columns", capitalized)
+}
+
+/// Generate prover column struct for AIR evaluation
+fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
+    let struct_name = column_struct_name(&opcode.name);
+    let flat_fields = flatten_fields(&opcode.fields);
+    let field_count = flat_fields.len();
+
+    let owned_fields: Vec<_> = flat_fields.iter().map(|f| quote! { pub #f: T }).collect();
+
+    let from_eval_fields: Vec<_> = flat_fields
+        .iter()
+        .map(|f| quote! { #f: eval.next_trace_mask() })
+        .collect();
+
+    quote! {
+        /// Column struct for AIR evaluation.
+        #[derive(Debug, Clone)]
+        pub struct #struct_name<T> {
+            #(#owned_fields),*
+        }
+
+        impl<T> #struct_name<T> {
+            /// Number of columns in this struct.
+            pub const SIZE: usize = #field_count;
+
+            /// Construct from an AIR evaluator by reading trace masks.
+            #[inline(always)]
+            pub fn from_eval<E>(eval: &mut E) -> Self
+            where E: EvalAtRow<F = T>
+            {
+                Self {
+                    #(#from_eval_fields),*
+                }
+            }
         }
     }
 }
@@ -300,17 +349,15 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let push_stmts: Vec<_> = opcode.fields.iter().map(generate_push_stmt).collect();
     let debug_fields: Vec<_> = opcode.fields.iter().map(generate_debug_field).collect();
 
-    // Find the first scalar field for len() (should be 'clk')
-    let len_field = opcode
-        .fields
-        .iter()
-        .find(|f| !is_access_field(&f.to_string()))
-        .cloned()
-        .unwrap_or_else(|| Ident::new("clk", Span::call_site()));
+    // Generate into_columns body that splits u32 values into limbs
+    // (enabler is prepended separately in the body)
+    let into_columns_body = generate_into_columns_body(&opcode.fields);
 
     quote! {
         #[derive(Clone, Default)]
         pub struct #struct_name {
+            /// Enabler column: 1 for real rows, 0 for padding.
+            pub enabler: simd::AlignedVec<u32>,
             #(#field_decls)*
         }
 
@@ -327,6 +374,7 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                             let i = self.idx;
                             f.debug_struct("")
+                                .field("enabler", &self.table.enabler[i])
                                 #(#debug_fields)*
                                 .finish()
                         }
@@ -340,29 +388,40 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         impl #struct_name {
             pub fn new() -> Self {
                 Self {
+                    enabler: simd::AlignedVec::new(),
                     #(#field_inits)*
                 }
             }
 
             pub fn with_capacity(cap: usize) -> Self {
                 Self {
+                    enabler: simd::AlignedVec::with_capacity(cap),
                     #(#field_inits_cap)*
                 }
             }
 
             #[inline]
             pub fn len(&self) -> usize {
-                self.#len_field.len()
+                self.enabler.len()
             }
 
             #[inline]
             pub fn is_empty(&self) -> bool {
-                self.#len_field.is_empty()
+                self.enabler.is_empty()
             }
 
             #[inline]
             pub fn push(&mut self, #(#push_params),*) {
+                self.enabler.push(1);
                 #(#push_stmts)*
+            }
+
+            /// Consumes the table and returns columns as a Vec in canonical order.
+            /// Order matches the column struct field order.
+            /// Enabler is the first column, followed by other fields.
+            /// Access fields have prev/next split into 4 u8 limbs (little-endian).
+            pub fn into_columns(self) -> Vec<simd::AlignedVec<u32>> {
+                #into_columns_body
             }
         }
     }
@@ -577,10 +636,23 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let tracer = generate_tracer(&def.opcodes);
     let trace_op_macro = generate_trace_op_macro(&def.opcodes);
 
+    // Generate prover columns
+    let prover_columns: Vec<_> = def.opcodes.iter().map(generate_prover_columns).collect();
+
     let output = quote! {
+        // Runner code (existing)
         #(#tables)*
         #tracer
         #trace_op_macro
+
+        // Prover columns (NEW)
+        pub mod prover_columns {
+            // Import EvalAtRow for from_eval method
+            #[allow(unused_imports)]
+            use stwo_constraint_framework::EvalAtRow;
+
+            #(#prover_columns)*
+        }
     };
 
     output.into()

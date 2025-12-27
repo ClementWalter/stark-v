@@ -1,7 +1,6 @@
 use crate::trace::Tracer;
-use crate::{Cpu, DecodedInst, traced};
+use crate::{Cpu, DecodedInst};
 
-#[traced]
 pub fn beq(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -10,10 +9,9 @@ pub fn beq(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     } else {
         cpu.advance_pc();
     }
-    trace_op!(rs1, rs2);
+    trace_op!(beq: tracer, cpu.pc, rs1, rs2);
 }
 
-#[traced]
 pub fn bne(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -22,10 +20,9 @@ pub fn bne(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     } else {
         cpu.advance_pc();
     }
-    trace_op!(rs1, rs2);
+    trace_op!(bne: tracer, cpu.pc, rs1, rs2);
 }
 
-#[traced]
 pub fn blt(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -34,10 +31,9 @@ pub fn blt(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     } else {
         cpu.advance_pc();
     }
-    trace_op!(rs1, rs2);
+    trace_op!(blt: tracer, cpu.pc, rs1, rs2);
 }
 
-#[traced]
 pub fn bge(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -46,10 +42,9 @@ pub fn bge(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     } else {
         cpu.advance_pc();
     }
-    trace_op!(rs1, rs2);
+    trace_op!(bge: tracer, cpu.pc, rs1, rs2);
 }
 
-#[traced]
 pub fn bltu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -58,10 +53,9 @@ pub fn bltu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     } else {
         cpu.advance_pc();
     }
-    trace_op!(rs1, rs2);
+    trace_op!(bltu: tracer, cpu.pc, rs1, rs2);
 }
 
-#[traced]
 pub fn bgeu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -70,5 +64,5 @@ pub fn bgeu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     } else {
         cpu.advance_pc();
     }
-    trace_op!(rs1, rs2);
+    trace_op!(bgeu: tracer, cpu.pc, rs1, rs2);
 }

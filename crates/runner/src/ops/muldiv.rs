@@ -1,7 +1,6 @@
 use crate::trace::Tracer;
-use crate::{Cpu, DecodedInst, traced};
+use crate::{Cpu, DecodedInst};
 
-#[traced]
 pub fn mul(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -10,10 +9,9 @@ pub fn mul(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let result = rs1_val.wrapping_mul(rs2_val) as u32;
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(mul: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -22,10 +20,9 @@ pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let result = (rs1_val.wrapping_mul(rs2_val) >> 32) as u32;
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(mulh: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -34,10 +31,9 @@ pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let result = (rs1_val.wrapping_mul(rs2_val) >> 32) as u32;
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(mulhsu: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -46,10 +42,9 @@ pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let result = (rs1_val.wrapping_mul(rs2_val) >> 32) as u32;
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(mulhu: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn div(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -64,10 +59,9 @@ pub fn div(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     };
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(div: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn divu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -78,10 +72,9 @@ pub fn divu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     };
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(divu: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn rem(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -96,10 +89,9 @@ pub fn rem(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     };
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(rem: tracer, cpu.pc, rd, rs1, rs2);
 }
 
-#[traced]
 pub fn remu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
@@ -110,5 +102,5 @@ pub fn remu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     };
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(rd, rs1, rs2);
+    trace_op!(remu: tracer, cpu.pc, rd, rs1, rs2);
 }

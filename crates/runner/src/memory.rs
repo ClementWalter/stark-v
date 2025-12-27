@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(access.prev, 0);
         assert_eq!(access.next, 0);
         assert_eq!(access.clk_prev, 0);
-        assert_eq!(access.clk, 10);
+        // Note: access.clk is no longer stored; use tracer.clk at call site
         assert!(tracer.mem_clk_update.is_empty());
     }
 
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(access.prev, 0x42);
         assert_eq!(access.next, 0xFF);
         assert_eq!(access.clk_prev, 0);
-        assert_eq!(access.clk, 5);
+        // Note: access.clk is no longer stored; use tracer.clk at call site
         assert!(tracer.mem_clk_update.is_empty());
 
         // Verify memory was updated
@@ -278,7 +278,7 @@ mod tests {
         let access = mem.write_u8_traced(100, 0x22, &mut tracer);
 
         assert_eq!(access.clk_prev, 1);
-        assert_eq!(access.clk, 2);
+        // Note: access.clk is no longer stored; current clk is tracer.clk=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
         assert!(tracer.mem_clk_update.is_empty());
@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(access.addr, 100);
         assert_eq!(access.prev, 0x44332211);
         assert_eq!(access.next, 0x44332211);
-        assert_eq!(access.clk, 20);
+        // Note: access.clk is no longer stored; use tracer.clk at call site
     }
 
     #[test]
@@ -353,15 +353,13 @@ mod tests {
             tracer.mem_clk_update.len()
         );
 
-        // Verify all intermediate clock diffs are within max_clock_diff
-        for intermediate in &tracer.mem_clk_update {
-            let diff = intermediate.clk.saturating_sub(intermediate.clk_prev);
-            assert_eq!(diff, 100, "Clock diff {} should be 100", diff);
-        }
+        // Verify intermediates have correct clk_prev progression: 1, 101, 201
+        assert_eq!(tracer.mem_clk_update.clk_prev[0], 1);
+        assert_eq!(tracer.mem_clk_update.clk_prev[1], 101);
+        assert_eq!(tracer.mem_clk_update.clk_prev[2], 201);
 
-        // Verify final access clock diff is within max_clock_diff
-        let diff = access.clk.saturating_sub(access.clk_prev);
-        assert_eq!(diff, 49, "Final clock diff {} should be 49", diff);
+        // Final access's clk_prev should be 301, and tracer.clk=350, so diff is 49
+        assert_eq!(access.clk_prev, 301);
     }
 
     #[test]
@@ -400,7 +398,7 @@ mod tests {
         // Should be no intermediates needed
         assert!(tracer.mem_clk_update.is_empty());
         assert_eq!(access.clk_prev, 0);
-        assert_eq!(access.clk, 100);
+        // Note: access.clk is no longer stored; current clk is tracer.clk=100
     }
 
     #[test]
@@ -459,13 +457,15 @@ mod tests {
         // With max_clock_diff=1, gap of 5 needs 4 intermediates
         assert_eq!(tracer.mem_clk_update.len(), 4);
 
-        // Verify clk_prev values increase by 1 (max_clock_diff) each step
-        for (i, intermediate) in tracer.mem_clk_update.iter().enumerate() {
-            assert_eq!(intermediate.clk_prev, i as u32);
-        }
+        // Verify clk_prev values increase by 1 (max_clock_diff) each step: 0, 1, 2, 3
+        assert_eq!(tracer.mem_clk_update.clk_prev[0], 0);
+        assert_eq!(tracer.mem_clk_update.clk_prev[1], 1);
+        assert_eq!(tracer.mem_clk_update.clk_prev[2], 2);
+        assert_eq!(tracer.mem_clk_update.clk_prev[3], 3);
+
         // Final access should have clk_prev = 4 (last intermediate's clk)
         assert_eq!(access.clk_prev, 4);
-        assert_eq!(access.clk, 5);
+        // Note: access.clk is no longer stored; current clk is tracer.clk=5
     }
 
     #[test]

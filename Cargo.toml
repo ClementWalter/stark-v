@@ -7,7 +7,7 @@ members = [
   "crates/simd",
   "guest/guest-lib",
 ]
-exclude = ["guest/guest-bin"]
+exclude = ["guest/guest-bin", "guest/guest-tests"]
 
 [workspace.package]
 version = "0.0.1"
@@ -67,6 +67,7 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
+runner = { path = "crates/runner" }
 runner-macros = { path = "crates/runner-macros" }
 simd = { path = "crates/simd" }
 
