@@ -146,7 +146,7 @@ write to rd
 - `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
 - `- RC_20(clk - rd_prev_clk)`
 
-## 2. Base ALU Imm (addi/subi/xori/ori/andi)
+## 2. Base ALU Imm (addi/xori/ori/andi)
 
 - `addi`: `x[rd] = x[rs1] + sext(immediate)`
 - `xori`: `x[rd] = x[rs1] ^ sext(immediate)`
