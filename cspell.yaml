@@ -1,12 +1,15 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
+  - ADDSUB
   - addi
   - allocvec
   - andi
+  - andn
   - auipc
   - bgeu
   - bitmask
+  - bitmaski
   - bltu
   - bytemuck
   - cfgs
@@ -15,6 +18,7 @@ words:
   - condvar
   - csrrw
   - divu
+  - doubleword
   - doctest
   - dtolnay
   - ebreak
@@ -29,6 +33,7 @@ words:
   - hashbrown
   - immediates
   - inplace
+  - intermed
   - insn
   - itertools
   - jalr
@@ -44,20 +49,27 @@ words:
   - logup
   - madv
   - madvise
+  - MEPC
   - memsz
   - merkle
   - mersenne
   - metavar
   - mimalloc
+  - mret
+  - MRET
   - mispredictions
   - mmap
   - mmio
   - muldiv
+  - movsign
+  - Movsign
   - mulh
   - mulhsu
   - mulhu
+  - muli
   - mult
   - mults
+  - MTVEC
   - norelax
   - noreturn
   - nostack
@@ -65,6 +77,7 @@ words:
   - objdump
   - openvm
   - pairable
+  - popcount
   - println
   - readelf
   - regs
@@ -97,6 +110,7 @@ words:
   - strtab
   - stwo
   - syms
+  - subi
   - syscalls
   - thiserror
   - tikv
@@ -107,10 +121,13 @@ words:
   - unimp
   - usize
   - vaddr
+  - Virt
+  - virt
   - vm
   - worktree
   - worktrees
   - writeback
+  - XLEN
   - xori
   - zkvm
   - evals
