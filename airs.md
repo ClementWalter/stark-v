@@ -91,10 +91,10 @@ Extra cost compared to having 2 components: add/sub - xor/or/and
 
 - `enabler = opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `carry_add[i+1] = (rs1[i+1] + rs2[i+1] + carry_add[i] - rd[i+1]) / 2^N_BITS_PER_BYTE`
-  with `carry_add[0] = 0`.
-- `carry_sub[i+1] = (rd[i+1] + rs2[i+1] - rs1[i+1] + carry_sub[i]) / 2^N_BITS_PER_BYTE`
-  with `carry_sub[0] = 0`.
+- `carry_add[i+1] = (rs1[i+1] + rs2[i+1] + carry_add[i] - rd[i+1]) / 2^8` with
+  `carry_add[0] = 0`.
+- `carry_sub[i+1] = (rd[i+1] + rs2[i+1] - rs1[i+1] + carry_sub[i]) / 2^8` with
+  `carry_sub[0] = 0`.
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
 - `bitwise_id = opcode_xor_flag + 2 * opcode_or_flag + 3 * opcode_and_flag + 4 * (opcode_add_flag + opcode_sub_flag)`.
 
@@ -191,10 +191,10 @@ Same as 1.0
 - `sext_imm_1 = imm_1 + 2^3 * (2^5 - 1) * imm_msb`
 - `sext_imm_2 = (2^8 - 1) * imm_msb`
 - `sext_imm_3 = (2^8 - 1) * imm_msb`
-- `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^N_BITS_PER_BYTE`
-  with `carry_add[-1] = 0`
-- `carry_sub[i] = (a_i + sext_imm_i - b_i + carry_sub[i - 1]) / 2^N_BITS_PER_BYTE`
-  with `carry_sub[-1] = 0`
+- `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^8` with
+  `carry_add[-1] = 0`
+- `carry_sub[i] = (a_i + sext_imm_i - b_i + carry_sub[i - 1]) / 2^8` with
+  `carry_sub[-1] = 0`
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`
 - `bitwise_id = opcode_xor_flag + 2 * opcode_or_flag + 3 * opcode_and_flag`.
 
@@ -558,8 +558,8 @@ read from rs2
 
 `msl` are the most significant limbs as felts
 
-- `(rs1[3] - rs1_msl_felt) * (2^N_BITS_PER_BYTE - (rs1[3] - rs1_msl_felt) )`
-- `(rs2[3] - rs2_msl_felt) * (2^N_BITS_PER_BYTE - (rs2[3] - rs2_msl_felt) )`
+- `(rs1[3] - rs1_msl_felt) * (2^8 - (rs1[3] - rs1_msl_felt) )`
+- `(rs2[3] - rs2_msl_felt) * (2^8 - (rs2[3] - rs2_msl_felt) )`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
@@ -580,7 +580,7 @@ range check msl felts with sign consideration (`opcode_slt_flag = 1`,
 `cmp_result` = 0, `rs1[3] = 32`, `rs1_msl_felt = 32 - 256`, `rs2[3] = 64` and
 `rs2_msl_felt = 64` would pass without this check)
 
-- `- RC_8_8(rs1_msl_felt + opcode_slt_flag * 2^(N_BITS_PER_BYTE-1), rs2_msl_felt + opcode_slt_flag * 2^(N_BITS_PER_BYTE-1))`
+- `- RC_8_8(rs1_msl_felt + opcode_slt_flag * 2^(8-1), rs2_msl_felt + opcode_slt_flag * 2^(8-1))`
 
 diff_val is > 0
 
@@ -646,7 +646,7 @@ read instruction from the Program segment (I-type)
 
 range check imm and range check `rs1_msl_felt` with sign consideration
 
-- `- RC_8_8_3(rs1_msl_felt + opcode_slti_flag * 2^(N_BITS_PER_BYTE-1), imm_0, imm_1)`
+- `- RC_8_8_3(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, imm_1)`
 - `imm_msb * (1 - imm_msb)`
 
 registers update
@@ -662,7 +662,7 @@ read from rs1
 
 `msl` are the most significant limbs as felts
 
-- `(rs1[3] - rs1_msl_felt) * (2^N_BITS_PER_BYTE - (rs1[3] - rs1_msl_felt) )`
+- `(rs1[3] - rs1_msl_felt) * (2^8 - (rs1[3] - rs1_msl_felt) )`
 
 diff markers are boolean and sum correctly
 
@@ -847,8 +847,8 @@ read from rs2
 
 msl felt must match actual msl
 
-- `(rs1[3] - rs1_msl_felt) * (2^N_BITS_PER_BYTE - (rs1[3] - rs1_msl_felt))`
-- `(rs2[3] - rs2_msl_felt) * (2^N_BITS_PER_BYTE - (rs2[3] - rs2_msl_felt))`
+- `(rs1[3] - rs1_msl_felt) * (2^8 - (rs1[3] - rs1_msl_felt))`
+- `(rs2[3] - rs2_msl_felt) * (2^8 - (rs2[3] - rs2_msl_felt))`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
@@ -867,7 +867,7 @@ if equal, result is 0
 
 range check msl felts with sign consideration
 
-- `- RC_8_8(rs1_msl_felt + signed * 2^(N_BITS_PER_BYTE-1), rs2_msl_felt + signed * 2^(N_BITS_PER_BYTE-1))`
+- `- RC_8_8(rs1_msl_felt + signed * 2^(8-1), rs2_msl_felt + signed * 2^(8-1))`
 
 diff_val is > 0
 
@@ -1348,8 +1348,6 @@ write to rd
 
 ## 15. MULH (mulh/mulhu/mulhsu)
 
-- `enabler = Σ opcode_i_flag`
-- `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
 - `mulh`: `x[rd] = (x[rs1] s×s x[rs2]) >>s 32`
 - `mulhsu`: `x[rd] = (x[rs1] sx x[rs2]) >>s 32`
 - `mulhu`: `x[rd] = (x[rs1] ux x[rs2]) >>u 32`
@@ -1380,6 +1378,8 @@ write to rd
 
 ### 15.2 Variables
 
+- `enabler = Σ opcode_i_flag`
+- `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
 - `rs1[3] = rs1[3] + rs1_sign * 2^7`
 - `rs2[3] = rs2[3] + rs2_sign * 2^7`
 - `rs1[4] = rs1[5] = rs1[6] = rs1[7] = rs1_sign * (2^8 - 1)`
@@ -1398,7 +1398,7 @@ write to rd
 
 read instruction from the Program segment (R-type)
 
-- `- enabler * Program(pc, opcode_mul_id, rd_idx, rs1_idx, rs2_idx)`
+- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
 
 registers update
 
@@ -1440,4 +1440,172 @@ write to rd
 
 - `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
 - `+ enabler * Memory(REG_AS, rd_idx, clk, rd[4], rd[5], rd[6], rd[7])`
+- `- RC_20(clk - rd_prev_clk)`
+
+## 16. DIV (div/divu/rem/remu)
+
+- `div`: `x[rd] = x[rs1] /s x[rs2]`
+- `divu`: `x[rd] = x[rs1] /u x[rs2]`
+- `rem`: `x[rd] = x[rs1] %s x[rs2]`
+- `remu`: `x[rd] = x[rs1] %u x[rs2]`
+
+### 16.1 Columns
+
+- pc
+- clk
+
+- rd_idx
+- rd_prev_clk
+- rd_prev[0..3]
+
+- rs1_idx
+- rs1_prev_clk
+- b[0..3]
+
+- rs2_idx
+- rs2_prev_clk
+- c[0..3]
+
+- zero_divisor
+- r_zero
+
+- q[0..3]
+- r[0..3]
+
+- b_sign
+- c_sign
+- q_sign
+- sign_xor
+
+- c_sum_inv
+- r_sum_inv
+
+- r_abs[0..3]
+- r_inv[0..3]
+- lt_marker[0..3]
+- lt_diff
+
+- opcode_div_flag
+- opcode_divu_flag
+- opcode_rem_flag
+- opcode_remu_flag
+
+### 16.2 Variables
+
+- `enabler = Σ opcode_i_flag`
+- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`
+- `is_div = opcode_div_flag + opcode_divu_flag`
+- `is_signed = opcode_div_flag + opcode_rem_flag`
+- `special_case = zero_divisor + r_zero`
+- `valid_and_not_zero_divisor = enabler - zero_divisor`
+- `valid_and_not_special_case = enabler - special_case`
+- `q_sum = q[0] + q[1] + q[2] + q[3]`
+- `c_sum = c[0] + c[1] + c[2] + c[3]`
+- `r_sum = r[0] + r[1] + r[2] + r[3]`
+- `b[3] = b[3] + b_sign * 2^7`
+- `c[3] = c[3] + c_sign * 2^7`
+- `q[3] = q[3] + q_sign * 2^7`
+- `b[4,5,6,7] = b_sign * (2^8 - 1)`
+- `c[4,5,6,7] = c_sign * (2^8 - 1)`
+- `q[4,5,6,7] = q_sign * (2^8 - 1)`
+- `r[4,5,6,7] = (1 - r_zero) * b_sign * (2^8 - 1)`
+- `carry[i] = (carry[i - 1] + r[i] + Σ_{k = 0..i} c[k] * q[i - k] - b[i]) / 2^8`
+  with `carry[-1] = 0`
+- `carry_lt[i] = (carry_lt[i - 1] + r[i] + r_abs[i]) / 2^8` with
+  `carry_lt[-1] = 0`
+- `diff[i] = (1 - 2 * c_sign) * (c[i] - r_abs[i])` for `i ∈ [0, 3]`
+- `prefix_sum[i+1] = prefix_sum[i] + lt_marker[i]` for `i ∈ [0, 3]` and
+  `prefix_sum[0] = special_case`
+- `a[i] = is_div * q[i] + (1 - is_div) * r[i]`
+
+### 16.3 Constraints
+
+`enabler`, `opcode_*_flag`, `zero_divisor`, `r_zero`, `b_sign`, `c_sign`,
+`q_sign`, `sign_xor`, `lt_marker[i]`, `special_case`,
+`valid_and_not_zero_divisor`, and `valid_and_not_special_case` are booleans
+
+- `enabler * (1 - enabler)`
+- `opcode_*_flag * (1 - opcode_*_flag)`
+- `zero_divisor * (1 - zero_divisor)`
+- `r_zero * (1 - r_zero)`
+- `b_sign * (1 - b_sign)`
+- `c_sign * (1 - c_sign)`
+- `q_sign * (1 - q_sign)`
+- `sign_xor * (1 - sign_xor)`
+- `lt_marker[i] * (1 - lt_marker[i])` for `i ∈ [0, 3]`
+- `special_case * (1 - special_case)`
+- `valid_and_not_zero_divisor * (1 - valid_and_not_zero_divisor)`
+- `valid_and_not_special_case * (1 - valid_and_not_special_case)`
+
+read instruction from the Program segment (R-type)
+
+- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
+
+registers update
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, b[0], b[1], b[2], b[3])`
+- `+ enabler * Memory(REG_AS, rs1_idx, clk, b[0], b[1], b[2], b[3])`
+- `- RC_20(clk - rs1_prev_clk)`
+
+read from rs2
+
+- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, c[0], c[1], c[2], c[3])`
+- `+ enabler * Memory(REG_AS, rs2_idx, clk, c[0], c[1], c[2], c[3])`
+- `- RC_20(clk - rs2_prev_clk)`
+
+check carries to ensure that `b = c * q + r`
+
+- `- enabler * RC_8_11(q[i], carry[i])` for `i ∈ [0, 3]`
+- `- enabler * RC_8_11(r[i], carry[4+i])` for `i ∈ [0, 3]`
+
+zero divisor detection (`zero_divisor=1 <=> c=0`)
+
+- `zero_divisor * c[i]` for `i ∈ [0, 3]`
+- `zero_divisor * (q[i] - (2^8 - 1))` for `i ∈ [0, 3]`
+- `valid_and_not_zero_divisor * (c_sum * c_sum_inv - 1)`
+
+remainder-zero detection
+
+- `r_zero * r[i]` for `i ∈ [0, 3]`
+- `valid_and_not_special_case * (r_sum * r_sum_inv - 1)`
+
+signed and sign xor
+
+- `(1 - is_signed) * b_sign`
+- `(1 - is_signed) * c_sign`
+- `enabler * (sign_xor - b_sign - c_sign + 2 * b_sign * c_sign)`
+
+quotient sign selection (when `zero_divisor = 1`, `q = -1`)
+
+- `(1 - zero_divisor) * q_sum * (q_sign - sign_xor)`
+- `(1 - zero_divisor) * (q_sign - sign_xor) * q_sign`
+
+absolute remainder construction (`carry_lt[-1] = 0`)
+
+- `(1 - sign_xor) * (r_abs[i] - r[i])` for `i ∈ [0, 3]`
+- `sign_xor * (carry_lt[i] - carry_lt[i - 1]) * (carry_lt[i] - 1)` for
+  `i ∈ [0, 3]`
+- `sign_xor * (1 - carry_lt[i]) * r_abs[i]` for `i ∈ [0, 3]`
+- `sign_xor * ((r_abs[i] - 2^8) * r_inv[i] - 1)` for `i ∈ [0, 3]`
+
+compare `|r|` with `|c|` from the most significant byte
+
+- `enabler * (1 - prefix_sum[i+1]) * diff[i]` for `i ∈ [3, 0]`, i decreases
+- `enabler * lt_marker[i] * (lt_diff - diff[i])` for `i ∈ [3, 0]`, i
+  decreases
+- `enabler * (1 - prefix_sum[4])`
+
+`lt_diff` is non-zero whenever the comparison is executed
+
+- `- (enabler - special_case) * RC_8(lt_diff - 1)`
+
+write to rd (`a[i]` selects `q` for div/divu and `r` for rem/remu)
+
+- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
+- `+ enabler * Memory(REG_AS, rd_idx, clk, a[0], a[1], a[2], a[3])`
 - `- RC_20(clk - rd_prev_clk)`
