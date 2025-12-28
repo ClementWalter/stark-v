@@ -1596,8 +1596,7 @@ absolute remainder construction (`carry_lt[-1] = 0`)
 compare `|r|` with `|c|` from the most significant byte
 
 - `enabler * (1 - prefix_sum[i+1]) * diff[i]` for `i ∈ [3, 0]`, i decreases
-- `enabler * lt_marker[i] * (lt_diff - diff[i])` for `i ∈ [3, 0]`, i
-  decreases
+- `enabler * lt_marker[i] * (lt_diff - diff[i])` for `i ∈ [3, 0]`, i decreases
 - `enabler * (1 - prefix_sum[4])`
 
 `lt_diff` is non-zero whenever the comparison is executed
