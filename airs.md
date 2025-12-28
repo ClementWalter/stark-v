@@ -149,7 +149,6 @@ write to rd
 ## 2. Base ALU Imm (addi/subi/xori/ori/andi)
 
 - `addi`: `x[rd] = x[rs1] + sext(immediate)`
-- `subi`: `x[rd] = x[rs1] - sext(immediate)`
 - `xori`: `x[rd] = x[rs1] ^ sext(immediate)`
 - `ori`: `x[rd] = x[rs1] | sext(immediate)`
 - `andi`: `x[rd] = x[rs1] & sext(immediate)`
@@ -193,8 +192,6 @@ Same as 1.0
 - `sext_imm_3 = (2^8 - 1) * imm_msb`
 - `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^8` with
   `carry_add[-1] = 0`
-- `carry_sub[i] = (a_i + sext_imm_i - b_i + carry_sub[i - 1]) / 2^8` with
-  `carry_sub[-1] = 0`
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`
 - `bitwise_id = opcode_xor_flag + 2 * opcode_or_flag + 3 * opcode_and_flag`.
 
@@ -228,7 +225,6 @@ read from rs1
 check carries
 
 - `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
-- `opcode_sub_flag * carry_sub[i] * (1 - carry_sub[i])`
 
 perform bitwise operation and RC rd (same tradeoff as 1.3)
 
