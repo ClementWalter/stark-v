@@ -6,3 +6,4 @@ pub mod load;
 pub mod muldiv;
 pub mod store;
 pub mod upper;
+pub mod utils;
