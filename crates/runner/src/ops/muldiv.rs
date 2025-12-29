@@ -6,6 +6,7 @@
 //! - div family: div, divu, rem, remu (airs.md Section 16)
 
 use crate::trace::Tracer;
+use super::utils::m31_inverse;
 use crate::{Cpu, DecodedInst};
 
 // =============================================================================
@@ -186,7 +187,7 @@ fn compute_div_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> DivWitnes
     // For the less-than check: r < c (divisor)
     // We need to find the first differing byte
     let c = rs2_val;
-    let c_bytes = c.to_le_bytes();
+    let mut c_bytes = c.to_le_bytes();
     let r_bytes = r.to_le_bytes();
 
     let mut lt_marker = [0u32; 4];
@@ -204,11 +205,15 @@ fn compute_div_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> DivWitnes
     }
 
     // Inverses for non-zero checks
+    if c_sign == 1 {
+        // match AIR's c[3] = c[3] + c_sign * 2^7
+        c_bytes[3] = c_bytes[3].wrapping_add(1 << 7);
+    }
     let c_sum: u32 = c_bytes.iter().map(|&x| x as u32).sum();
-    let c_sum_inv = if c_sum == 0 { 0 } else { 1 }; // Simplified witness
+    let c_sum_inv = if c_sum == 0 { 0 } else { m31_inverse(c_sum) };
 
     let r_sum: u32 = r_bytes.iter().map(|&x| x as u32).sum();
-    let r_sum_inv = if r_sum == 0 { 0 } else { 1 }; // Simplified witness
+    let r_sum_inv = if r_sum == 0 { 0 } else { m31_inverse(r_sum) };
 
     // r_abs and r_inv for signed remainder
     let r_abs = r_limbs; // For unsigned, r_abs = r

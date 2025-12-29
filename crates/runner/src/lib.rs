@@ -95,6 +95,31 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
         let inst = get_or_decode(&mut cache, &mem, cpu.pc)
             .ok_or(RunError::InvalidInstruction { pc: cpu.pc })?;
 
+        // Early-exit on explicit self-loop sentinels (e.g., `jal x0, 0` used to halt tests).
+        // Avoid tracing this noop instruction so the final trace doesn't contain a bogus row.
+        let is_self_loop = match inst.opcode {
+            decode::Opcode::Jal if inst.rd == 0 && inst.imm == 0 => true,
+            decode::Opcode::Jalr if inst.rd == 0 => {
+                let target = cpu.reg(inst.rs1).wrapping_add(inst.imm as u32) & !1;
+                target == cpu.pc
+            }
+            _ => false,
+        };
+        if is_self_loop {
+            let output = io::read_output(
+                &mem,
+                loaded.output_len_addr,
+                loaded.output_data_addr,
+                loaded.output_end_addr,
+            );
+            return Ok(RunResult {
+                cycles: tracer.clk as u64,
+                final_pc: cpu.pc,
+                output,
+                tracer,
+            });
+        }
+
         // Update tracer clock before executing instruction
         tracer.clk += 1;
 

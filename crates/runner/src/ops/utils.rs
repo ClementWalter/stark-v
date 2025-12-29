@@ -123,6 +123,12 @@ pub fn compute_lt_reg_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> Lt
     let rs1_bytes = rs1_val.to_le_bytes();
     let rs2_bytes = rs2_val.to_le_bytes();
 
+    let cmp_result = if is_signed {
+        (rs1_val as i32) < (rs2_val as i32)
+    } else {
+        rs1_val < rs2_val
+    };
+
     // For signed comparison, msl_felt is the signed interpretation of MSB as an M31 field element
     let rs1_msl_felt = if is_signed {
         byte_to_signed_felt(rs1_bytes[3])
@@ -151,7 +157,14 @@ pub fn compute_lt_reg_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> Lt
         };
         if a != b {
             diff_marker[i] = 1;
-            diff_val = if b > a { b - a } else { a - b };
+            // diff_val follows cmp_result orientation to stay positive in the field.
+            // Use M31 modulus so signed MSB comparisons like -1 vs 0 produce a small gap (1).
+            let diff = if cmp_result {
+                (b as u64 + M31_P as u64 - a as u64) % M31_P as u64
+            } else {
+                (a as u64 + M31_P as u64 - b as u64) % M31_P as u64
+            };
+            diff_val = diff as u32;
             break;
         }
     }
@@ -180,6 +193,12 @@ pub struct LtImmWitness {
 /// Used by lt_imm (slti/sltiu) family.
 pub fn compute_lt_imm_witness(rs1_val: u32, imm: i32, is_signed: bool) -> LtImmWitness {
     let rs1_bytes = rs1_val.to_le_bytes();
+
+    let cmp_result = if is_signed {
+        (rs1_val as i32) < imm
+    } else {
+        rs1_val < imm as u32
+    };
 
     // Sign-extend the immediate to 32 bits and get bytes
     let imm_extended = imm as u32;
@@ -213,7 +232,12 @@ pub fn compute_lt_imm_witness(rs1_val: u32, imm: i32, is_signed: bool) -> LtImmW
         };
         if a != b {
             diff_marker[i] = 1;
-            diff_val = if b > a { b - a } else { a - b };
+            let diff = if cmp_result {
+                (b as u64 + M31_P as u64 - a as u64) % M31_P as u64
+            } else {
+                (a as u64 + M31_P as u64 - b as u64) % M31_P as u64
+            };
+            diff_val = diff as u32;
             break;
         }
     }
@@ -317,10 +341,26 @@ mod tests {
     }
 
     #[test]
+    fn test_lt_reg_witness_signed_negative_vs_positive() {
+        // -5 < 5 (signed), ensure diff uses signed ordering for MSB
+        let w = compute_lt_reg_witness(0xFFFFFFFB, 0x5, true);
+        assert_eq!(w.diff_marker, [0, 0, 0, 1]);
+        assert_eq!(w.diff_val, 1); // 0 - (-1) in the field is 1
+    }
+
+    #[test]
     fn test_lt_reg_witness_unsigned() {
         // 0xFFFFFFFF > 1 (unsigned)
         let w = compute_lt_reg_witness(0xFFFFFFFF, 1, false);
         assert_eq!(w.rs1_msl_felt, 0xFF); // unsigned, just the byte value
         assert_eq!(w.rs2_msl_felt, 0);
+    }
+
+    #[test]
+    fn test_lt_imm_witness_signed_negative_vs_positive() {
+        // -5 < 5 (signed immediate)
+        let w = compute_lt_imm_witness(0xFFFFFFFB, 5, true);
+        assert_eq!(w.diff_marker, [0, 0, 0, 1]);
+        assert_eq!(w.diff_val, 1);
     }
 }

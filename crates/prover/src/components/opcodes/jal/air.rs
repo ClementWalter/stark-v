@@ -1,6 +1,8 @@
 //! AIR component for JAL - airs.md Section 12
 
 use num_traits::One;
+use runner::decode::Opcode;
+use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use super::columns::JalColumns;
@@ -26,8 +28,28 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = JalColumns::from_eval(&mut eval);
 
+        // Section 12.2: Variables
+        let rd = [
+            cols.rd_next_0.clone(),
+            cols.rd_next_1.clone(),
+            cols.rd_next_2.clone(),
+            cols.rd_next_3.clone(),
+        ];
+        let rd_felt = rd[0].clone()
+            + E::F::from(BaseField::from_u32_unchecked(1 << 8)) * rd[1].clone()
+            + E::F::from(BaseField::from_u32_unchecked(1 << 16)) * rd[2].clone()
+            + E::F::from(BaseField::from_u32_unchecked(1 << 24)) * rd[3].clone();
+
+        let opcode_jal_id = E::F::from(BaseField::from_u32_unchecked(Opcode::Jal as u32));
+        let _ = opcode_jal_id;
+
         // enabler is boolean
         eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
+
+        // rd is pc + 4
+        eval.add_constraint(
+            rd_felt - (cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4))),
+        );
 
         eval
     }
