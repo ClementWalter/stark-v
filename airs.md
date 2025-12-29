@@ -1174,8 +1174,8 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 - `enabler = Σ opcode_i_flag`
 - `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
 - `mem_addr = base[0] + base[1] * 2^8 + base[2] * 2^16 + base[3] * 2^24 + imm_felt`
-- `sum_marker = Σ marker[i]`
-- `shift_id = Σ i * marker[i]`
+- `sum_markers = Σ markers[i]`
+- `shift_id = Σ i * markers[i]`
 - `opcode_b_flag = opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag`
 - `opcode_h_flag = opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag`
 - `opcode_w_flag = opcode_lw_flag + opcode_sw_flag`
@@ -1188,11 +1188,11 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 
 ### 13.3 Constraints
 
-`enabler`, `opcode_*_flags` and `marker[i]` are booleans
+`enabler`, `opcode_*_flags` and `markers[i]` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `marker[i] * (1 - marker[i])`
+- `markers[i] * (1 - markers[i])`
 
 read instruction from the Program segment (I-type for loads and S-type for
 stores)
@@ -1224,8 +1224,8 @@ check that base is a M31:
 
 check src/dst addresses (load/store dependent)
 
-- `src_addr - ( is_load * (mem_addr - shift_amount) + is_store * r2_idx )`
-- `dst_addr - ( is_load * r2_idx + is_store * (mem_addr - shift_amount) )`
+- `src_addr_selector - ( is_load * (mem_addr - shift_amount) + is_store * r2_idx )`
+- `dst_addr_selector - ( is_load * r2_idx + is_store * (mem_addr - shift_amount) )`
 
 read src
 
@@ -1233,13 +1233,13 @@ read src
 - `+ enabler * Memory(src_as, src_addr, clk, src[0], src[1], src[2], src[3])`
 - `- RC_20(clk - src_prev_clk)`
 
-for lbu/sb `marker` contains a single one when row is enabled
+for lbu/sb `markers` contains a single one when row is enabled
 
-- `opcode_b_flag * (1 - sum_marker)`
+- `opcode_b_flag * (1 - sum_markers)`
 
-for lhu/sh `marker` is either `[1,1,0,0]` or `[0,0,1,1]`
+for lhu/sh `markers` is either `[1,1,0,0]` or `[0,0,1,1]`
 
-- `opcode_h_flag * (2 - sum_marker)`
+- `opcode_h_flag * (2 - sum_markers)`
 - `opcode_h_flag * (1 - shift_id) * (5 - shift_id)`
 
 check that lbu/sb loads the correct byte
@@ -1247,7 +1247,7 @@ check that lbu/sb loads the correct byte
 - `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[1])`
 - `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
 - `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
-- for i in [0..3] `opcode_b_flag * (dst[0] - src[i]) * marker[i]`
+- for i in [0..3] `opcode_b_flag * (dst[0] - src[i]) * markers[i]`
 
 check that lhu/sh loads the correct half word
 

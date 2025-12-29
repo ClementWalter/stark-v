@@ -1,11 +1,9 @@
-//! AIR component for range check 20 multiplicity.
-//!
-//! Provides the preprocessed side of the LogUp relation:
-//! Σ (multiplicity[i] / (value[i] - z))
+//! AIR component for JALR - airs.md Section 11
 
+use num_traits::One;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::Columns;
+use super::columns::JalrColumns;
 use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
@@ -26,11 +24,14 @@ impl FrameworkEval for Eval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let cols = Columns::from_eval(&mut eval);
+        let cols = JalrColumns::from_eval(&mut eval);
 
-        // TODO: Add LogUp constraint
-        // For now, dummy constraint (multiplicity - multiplicity = 0)
-        eval.add_constraint(cols.multiplicity.clone() - cols.multiplicity.clone());
+        // enabler is boolean
+        eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
+
+        // to_pc_lsb is boolean
+        eval.add_constraint(cols.to_pc_lsb.clone() * (E::F::one() - cols.to_pc_lsb.clone()));
+
 
         eval
     }

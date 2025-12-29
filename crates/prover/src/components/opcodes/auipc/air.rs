@@ -1,11 +1,9 @@
-//! AIR component for range check 20 multiplicity.
-//!
-//! Provides the preprocessed side of the LogUp relation:
-//! Σ (multiplicity[i] / (value[i] - z))
+//! AIR component for AUIPC - airs.md Section 10
 
+use num_traits::One;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::Columns;
+use super::columns::AuipcColumns;
 use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
@@ -26,11 +24,10 @@ impl FrameworkEval for Eval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let cols = Columns::from_eval(&mut eval);
+        let cols = AuipcColumns::from_eval(&mut eval);
 
-        // TODO: Add LogUp constraint
-        // For now, dummy constraint (multiplicity - multiplicity = 0)
-        eval.add_constraint(cols.multiplicity.clone() - cols.multiplicity.clone());
+        // enabler is boolean (single opcode family)
+        eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
 
         eval
     }

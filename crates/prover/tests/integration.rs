@@ -36,43 +36,21 @@ fn test_traces_struct_has_all_opcodes() {
     let mut counters = Counters::new();
     let traces: Traces = gen_trace(tracer, &mut counters);
 
-    // Verify we can access all 45 opcode fields by checking a few from each category
-
-    // ALU (10 opcodes)
-    assert!(traces.alu_add.is_empty());
-    assert!(traces.alu_sub.is_empty());
-    assert!(traces.alu_xor.is_empty());
-
-    // ALU Immediate (9 opcodes)
-    assert!(traces.alu_imm_addi.is_empty());
-    assert!(traces.alu_imm_slli.is_empty());
-    assert!(traces.alu_imm_xori.is_empty());
-
-    // Load (5 opcodes)
-    assert!(traces.load_lb.is_empty());
-    assert!(traces.load_lw.is_empty());
-    assert!(traces.load_lhu.is_empty());
-
-    // Store (3 opcodes)
-    assert!(traces.store_sb.is_empty());
-    assert!(traces.store_sh.is_empty());
-    assert!(traces.store_sw.is_empty());
-
-    // Branch (6 opcodes)
-    assert!(traces.branch_beq.is_empty());
-    assert!(traces.branch_bne.is_empty());
-    assert!(traces.branch_blt.is_empty());
-
-    // Jump (2 opcodes)
-    assert!(traces.jump_jal.is_empty());
-    assert!(traces.jump_jalr.is_empty());
-
-    // Upper Immediate (2 opcodes)
-    assert!(traces.upper_lui.is_empty());
-    assert!(traces.upper_auipc.is_empty());
-
-    // MulDiv (8 opcodes)
-    assert!(traces.muldiv_mul.is_empty());
-    assert!(traces.muldiv_div.is_empty());
-    assert!(traces.muldiv_rem.is_empty());
+    // Verify we can access each opcode family trace (16 families total).
+    assert!(traces.base_alu_reg_base_alu_reg.is_empty());
+    assert!(traces.base_alu_imm_base_alu_imm.is_empty());
+    assert!(traces.shifts_reg_shifts_reg.is_empty());
+    assert!(traces.shifts_imm_shifts_imm.is_empty());
+    assert!(traces.lt_reg_lt_reg.is_empty());
+    assert!(traces.lt_imm_lt_imm.is_empty());
+    assert!(traces.branch_eq_branch_eq.is_empty());
+    assert!(traces.branch_lt_branch_lt.is_empty());
+    assert!(traces.lui_lui.is_empty());
+    assert!(traces.auipc_auipc.is_empty());
+    assert!(traces.jalr_jalr.is_empty());
+    assert!(traces.jal_jal.is_empty());
+    assert!(traces.load_store_load_store.is_empty());
+    assert!(traces.mul_mul.is_empty());
+    assert!(traces.mulh_mulh.is_empty());
+    assert!(traces.div_div.is_empty());
 }
