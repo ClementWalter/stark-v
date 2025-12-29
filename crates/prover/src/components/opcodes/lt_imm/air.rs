@@ -38,7 +38,6 @@ impl FrameworkEval for Eval {
         );
         eval.add_constraint(cols.imm_msb.clone() * (E::F::one() - cols.imm_msb.clone()));
 
-
         eval
     }
 }

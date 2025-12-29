@@ -61,7 +61,6 @@ impl FrameworkEval for Eval {
             cols.diff_marker_3.clone() * (E::F::one() - cols.diff_marker_3.clone()),
         );
 
-
         eval
     }
 }

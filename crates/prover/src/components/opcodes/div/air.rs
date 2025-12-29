@@ -58,7 +58,6 @@ impl FrameworkEval for Eval {
         eval.add_constraint(cols.lt_marker_2.clone() * (E::F::one() - cols.lt_marker_2.clone()));
         eval.add_constraint(cols.lt_marker_3.clone() * (E::F::one() - cols.lt_marker_3.clone()));
 
-
         eval
     }
 }

@@ -32,7 +32,6 @@ impl FrameworkEval for Eval {
         // to_pc_lsb is boolean
         eval.add_constraint(cols.to_pc_lsb.clone() * (E::F::one() - cols.to_pc_lsb.clone()));
 
-
         eval
     }
 }

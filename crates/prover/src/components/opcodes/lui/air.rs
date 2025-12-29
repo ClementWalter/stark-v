@@ -29,7 +29,6 @@ impl FrameworkEval for Eval {
         // enabler is boolean (single opcode family)
         eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
 
-
         eval
     }
 }

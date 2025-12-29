@@ -44,7 +44,6 @@ impl FrameworkEval for Eval {
         eval.add_constraint(cols.rs1_sign.clone() * (E::F::one() - cols.rs1_sign.clone()));
         eval.add_constraint(cols.rs2_sign.clone() * (E::F::one() - cols.rs2_sign.clone()));
 
-
         eval
     }
 }

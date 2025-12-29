@@ -108,7 +108,6 @@ impl FrameworkEval for Eval {
             + cols.limb_shift_marker_3.clone();
         eval.add_constraint(limb_marker_sum - enabler.clone());
 
-
         eval
     }
 }
