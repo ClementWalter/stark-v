@@ -30,7 +30,7 @@ runner_macros::define_trace_tables! {
     base_alu_imm: {
         clk, pc, rd, rs1,
         imm_0, imm_1, imm_msb,
-        opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
+        opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
     },
 
     // ==========================================================================
@@ -832,8 +832,8 @@ mod tests {
         #[test]
         fn test_base_alu_imm_columns_size() {
             // base_alu_imm: clk, pc, rd (10), rs1 (10),
-            // + imm_0, imm_1, imm_msb (3) + 5 opcode flags = 30 total (no enabler - has flags)
-            assert_eq!(BaseAluImmColumns::<()>::SIZE, 30);
+            // + imm_0, imm_1, imm_msb (3) + 4 opcode flags = 29 total (no enabler - has flags)
+            assert_eq!(BaseAluImmColumns::<()>::SIZE, 29);
         }
 
         #[test]
