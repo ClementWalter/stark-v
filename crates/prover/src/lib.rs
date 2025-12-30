@@ -13,6 +13,7 @@ pub mod components;
 pub mod preprocessed;
 pub mod prover;
 pub mod relations;
+pub mod witness;
 
 pub use prover::prove_rv32im;
 
