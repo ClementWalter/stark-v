@@ -37,20 +37,20 @@ fn test_traces_struct_has_all_opcodes() {
     let traces: Traces = gen_trace(tracer, &mut counters);
 
     // Verify we can access each opcode family trace (16 families total).
-    assert!(traces.base_alu_reg_base_alu_reg.is_empty());
-    assert!(traces.base_alu_imm_base_alu_imm.is_empty());
-    assert!(traces.shifts_reg_shifts_reg.is_empty());
-    assert!(traces.shifts_imm_shifts_imm.is_empty());
-    assert!(traces.lt_reg_lt_reg.is_empty());
-    assert!(traces.lt_imm_lt_imm.is_empty());
-    assert!(traces.branch_eq_branch_eq.is_empty());
-    assert!(traces.branch_lt_branch_lt.is_empty());
-    assert!(traces.lui_lui.is_empty());
-    assert!(traces.auipc_auipc.is_empty());
-    assert!(traces.jalr_jalr.is_empty());
-    assert!(traces.jal_jal.is_empty());
-    assert!(traces.load_store_load_store.is_empty());
-    assert!(traces.mul_mul.is_empty());
-    assert!(traces.mulh_mulh.is_empty());
-    assert!(traces.div_div.is_empty());
+    assert!(traces.base_alu_reg.is_empty());
+    assert!(traces.base_alu_imm.is_empty());
+    assert!(traces.shifts_reg.is_empty());
+    assert!(traces.shifts_imm.is_empty());
+    assert!(traces.lt_reg.is_empty());
+    assert!(traces.lt_imm.is_empty());
+    assert!(traces.branch_eq.is_empty());
+    assert!(traces.branch_lt.is_empty());
+    assert!(traces.lui.is_empty());
+    assert!(traces.auipc.is_empty());
+    assert!(traces.jalr.is_empty());
+    assert!(traces.jal.is_empty());
+    assert!(traces.load_store.is_empty());
+    assert!(traces.mul.is_empty());
+    assert!(traces.mulh.is_empty());
+    assert!(traces.div.is_empty());
 }

@@ -54,7 +54,7 @@ impl FrameworkEval for Eval {
         for i in 1..4 {
             let mut limb_sum = carry[i - 1].clone() + rs1[i].clone() * rs2[0].clone();
             for k in 1..=i {
-                limb_sum = limb_sum + rs1[i - k].clone() * rs2[k].clone();
+                limb_sum += rs1[i - k].clone() * rs2[k].clone();
             }
             carry[i] = (limb_sum - rd[i].clone()) * inv_two_pow_8;
         }

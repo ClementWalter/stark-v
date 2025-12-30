@@ -1,9 +1,9 @@
 //! AIR component for Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
 
 use num_traits::{One, Zero};
-use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo::core::fields::m31::BaseField;
 use runner::decode::Opcode;
+use stwo::core::fields::m31::BaseField;
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use super::columns::Base_alu_regColumns;
 use crate::relations::Relations;
@@ -69,19 +69,13 @@ impl FrameworkEval for Eval {
         let mut carry_add: [E::F; 4] = std::array::from_fn(|_| E::F::zero());
         let mut carry_sub: [E::F; 4] = std::array::from_fn(|_| E::F::zero());
 
-        carry_add[0] =
-            (rs1[0].clone() + rs2[0].clone() - rd[0].clone()) * inv_two_pow_8;
-        carry_sub[0] =
-            (rd[0].clone() + rs2[0].clone() - rs1[0].clone()) * inv_two_pow_8;
+        carry_add[0] = (rs1[0].clone() + rs2[0].clone() - rd[0].clone()) * inv_two_pow_8;
+        carry_sub[0] = (rd[0].clone() + rs2[0].clone() - rs1[0].clone()) * inv_two_pow_8;
         for i in 1..4 {
-            carry_add[i] = (rs1[i].clone()
-                + rs2[i].clone()
-                + carry_add[i - 1].clone()
+            carry_add[i] = (rs1[i].clone() + rs2[i].clone() + carry_add[i - 1].clone()
                 - rd[i].clone())
                 * inv_two_pow_8;
-            carry_sub[i] = (rd[i].clone()
-                + rs2[i].clone()
-                - rs1[i].clone()
+            carry_sub[i] = (rd[i].clone() + rs2[i].clone() - rs1[i].clone()
                 + carry_sub[i - 1].clone())
                 * inv_two_pow_8;
         }
@@ -125,17 +119,13 @@ impl FrameworkEval for Eval {
         // check carries
         for carry in carry_add {
             eval.add_constraint(
-                cols.opcode_add_flag.clone()
-                    * carry.clone()
-                    * (E::F::one() - carry),
+                cols.opcode_add_flag.clone() * carry.clone() * (E::F::one() - carry),
             );
         }
 
         for carry in carry_sub {
             eval.add_constraint(
-                cols.opcode_sub_flag.clone()
-                    * carry.clone()
-                    * (E::F::one() - carry),
+                cols.opcode_sub_flag.clone() * carry.clone() * (E::F::one() - carry),
             );
         }
 

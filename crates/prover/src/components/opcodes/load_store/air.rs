@@ -78,7 +78,8 @@ impl FrameworkEval for Eval {
             cols.src_next_0.clone(),
             cols.src_next_1.clone(),
             cols.src_next_2.clone(),
-            cols.src_next_3.clone() + cols.src_msb.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+            cols.src_next_3.clone()
+                + cols.src_msb.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
         ];
 
         let pow2 = |exp: u32| E::F::from(BaseField::from_u32_unchecked(1 << exp));
@@ -89,8 +90,9 @@ impl FrameworkEval for Eval {
             + pow2(24) * base[3].clone()
             + cols.imm_felt.clone();
 
-        let sum_markers =
-            markers.iter().fold(E::F::zero(), |acc, marker| acc + marker.clone());
+        let sum_markers = markers
+            .iter()
+            .fold(E::F::zero(), |acc, marker| acc + marker.clone());
         let shift_id = markers
             .iter()
             .enumerate()
@@ -106,7 +108,8 @@ impl FrameworkEval for Eval {
             + cols.opcode_sh_flag.clone();
         let opcode_w_flag = cols.opcode_lw_flag.clone() + cols.opcode_sw_flag.clone();
         let is_signed = cols.opcode_lb_flag.clone() + cols.opcode_lh_flag.clone();
-        let is_store = cols.opcode_sb_flag.clone() + cols.opcode_sh_flag.clone() + cols.opcode_sw_flag.clone();
+        let is_store =
+            cols.opcode_sb_flag.clone() + cols.opcode_sh_flag.clone() + cols.opcode_sw_flag.clone();
         let is_load = enabler.clone() - is_store.clone();
 
         let reg_as = E::F::zero();
@@ -154,9 +157,7 @@ impl FrameworkEval for Eval {
         eval.add_constraint(
             cols.shift_amount.clone()
                 - (opcode_b_flag.clone() * shift_id.clone()
-                    + opcode_h_flag.clone()
-                        * (shift_id.clone() - E::F::one())
-                        * half_inv),
+                    + opcode_h_flag.clone() * (shift_id.clone() - E::F::one()) * half_inv),
         );
 
         // check src/dst addresses (load/store dependent)
@@ -175,15 +176,17 @@ impl FrameworkEval for Eval {
         eval.add_constraint(opcode_b_flag.clone() * (E::F::one() - sum_markers.clone()));
 
         // for lhu/sh markers is either [1,1,0,0] or [0,0,1,1]
-        eval.add_constraint(opcode_h_flag.clone() * (E::F::from(BaseField::from_u32_unchecked(2)) - sum_markers.clone()));
+        eval.add_constraint(
+            opcode_h_flag.clone()
+                * (E::F::from(BaseField::from_u32_unchecked(2)) - sum_markers.clone()),
+        );
         eval.add_constraint(
             opcode_h_flag.clone()
                 * (E::F::one() - shift_id.clone())
                 * (E::F::from(BaseField::from_u32_unchecked(5)) - shift_id.clone()),
         );
 
-        let signed_mask = is_signed.clone() * cols.src_msb.clone()
-            * (pow2(8) - E::F::one());
+        let signed_mask = is_signed.clone() * cols.src_msb.clone() * (pow2(8) - E::F::one());
 
         // check that lbu/sb loads the correct byte
         eval.add_constraint(opcode_b_flag.clone() * (signed_mask.clone() - dst[1].clone()));

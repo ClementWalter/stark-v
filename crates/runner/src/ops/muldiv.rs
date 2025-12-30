@@ -5,8 +5,8 @@
 //! - mulh family: mulh, mulhsu, mulhu (airs.md Section 15)
 //! - div family: div, divu, rem, remu (airs.md Section 16)
 
-use crate::trace::Tracer;
 use super::utils::m31_inverse;
+use crate::trace::Tracer;
 use crate::{Cpu, DecodedInst};
 
 // =============================================================================
@@ -51,10 +51,10 @@ fn compute_mulh_witness(
 
     // rd_high is the full 64-bit result split into 8 bytes
     let rd_high = [
-        (lo & 0xFF) as u32,
-        ((lo >> 8) & 0xFF) as u32,
-        ((lo >> 16) & 0xFF) as u32,
-        ((lo >> 24) & 0xFF) as u32,
+        (lo & 0xFF),
+        ((lo >> 8) & 0xFF),
+        ((lo >> 16) & 0xFF),
+        ((lo >> 24) & 0xFF),
     ];
 
     let rs1_sign = if rs1_signed { (rs1_val >> 31) & 1 } else { 0 };
@@ -172,16 +172,16 @@ fn compute_div_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> DivWitnes
 
     // Compute limbs for q and r
     let q_limbs = [
-        (q & 0xFF) as u32,
-        ((q >> 8) & 0xFF) as u32,
-        ((q >> 16) & 0xFF) as u32,
-        ((q >> 24) & 0xFF) as u32,
+        (q & 0xFF),
+        ((q >> 8) & 0xFF),
+        ((q >> 16) & 0xFF),
+        ((q >> 24) & 0xFF),
     ];
     let r_limbs = [
-        (r & 0xFF) as u32,
-        ((r >> 8) & 0xFF) as u32,
-        ((r >> 16) & 0xFF) as u32,
-        ((r >> 24) & 0xFF) as u32,
+        (r & 0xFF),
+        ((r >> 8) & 0xFF),
+        ((r >> 16) & 0xFF),
+        ((r >> 24) & 0xFF),
     ];
 
     // For the less-than check: r < c (divisor)

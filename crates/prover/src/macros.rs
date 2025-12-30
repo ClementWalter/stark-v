@@ -249,8 +249,7 @@ macro_rules! relations {
 /// Usage:
 /// ```ignore
 /// opcode_components! {
-///     alu::add, alu::sub, ...,
-///     load::lb, load::lh, ...
+///     add, sub, lb, lh, ...
 /// }
 /// ```
 ///
@@ -262,7 +261,7 @@ macro_rules! relations {
 /// - `gen_interaction_trace(traces, relations)` function aggregating all interaction traces
 #[macro_export]
 macro_rules! opcode_components {
-    ($($category:ident :: $opcode:ident),* $(,)?) => {
+    ($($opcode:ident),* $(,)?) => {
         use stwo::core::fields::qm31::QM31;
         use stwo::core::fields::m31::BaseField;
         use stwo::core::ColumnVec;
@@ -272,10 +271,9 @@ macro_rules! opcode_components {
         use stwo::prover::poly::BitReversedOrder;
 
         /// Trace columns for all components.
-        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct Traces {
             $(
-                pub ${concat($category, _, $opcode)}: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                pub $opcode: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
             )*
         }
 
@@ -289,7 +287,7 @@ macro_rules! opcode_components {
             pub fn log_sizes(&self) -> Vec<u32> {
                 let mut sizes = vec![];
                 $(
-                    if let Some(first) = self.${concat($category, _, $opcode)}.first() {
+                    if let Some(first) = self.$opcode.first() {
                         sizes.push(first.domain.log_size());
                     }
                 )*
@@ -300,7 +298,7 @@ macro_rules! opcode_components {
             pub fn columns_cloned(&self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let mut columns = vec![];
                 $(
-                    columns.extend(self.${concat($category, _, $opcode)}.clone());
+                    columns.extend(self.$opcode.clone());
                 )*
                 columns
             }
@@ -309,7 +307,7 @@ macro_rules! opcode_components {
             pub fn into_columns(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let mut columns = vec![];
                 $(
-                    columns.extend(self.${concat($category, _, $opcode)});
+                    columns.extend(self.$opcode);
                 )*
                 columns
             }
@@ -317,10 +315,9 @@ macro_rules! opcode_components {
         }
 
         /// Claim containing log_size for each component.
-        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct Claim {
             $(
-                pub ${concat($category, _, $opcode)}: u32,
+                pub $opcode: u32,
             )*
         }
 
@@ -328,7 +325,7 @@ macro_rules! opcode_components {
             fn from(traces: &Traces) -> Self {
                 Self {
                     $(
-                        ${concat($category, _, $opcode)}: traces.${concat($category, _, $opcode)}
+                        $opcode: traces.$opcode
                             .first()
                             .map(|eval| eval.domain.log_size())
                             .unwrap_or(0),
@@ -341,16 +338,15 @@ macro_rules! opcode_components {
             /// Mix claim into the channel.
             pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
                 $(
-                    channel.mix_u64(self.${concat($category, _, $opcode)} as u64);
+                    channel.mix_u64(self.$opcode as u64);
                 )*
             }
         }
 
         /// Claimed sums from interaction traces.
-        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct ClaimedSum {
             $(
-                pub ${concat($category, _, $opcode)}: QM31,
+                pub $opcode: QM31,
             )*
         }
 
@@ -360,17 +356,16 @@ macro_rules! opcode_components {
                 use num_traits::Zero;
                 let mut total = QM31::zero();
                 $(
-                    total += self.${concat($category, _, $opcode)};
+                    total += self.$opcode;
                 )*
                 total
             }
         }
 
         /// AIR components for all opcodes.
-        /// Field naming: `category_opcode` (e.g., `alu_add` for `alu::add`)
         pub struct Components {
             $(
-                pub ${concat($category, _, $opcode)}: $category::$opcode::air::Component,
+                pub $opcode: $opcode::air::Component,
             )*
         }
 
@@ -383,7 +378,7 @@ macro_rules! opcode_components {
         ) -> Traces {
             Traces {
                 $(
-                    ${concat($category, _, $opcode)}: $category::$opcode::witness::gen_trace(tracer.$opcode, counters),
+                    $opcode: $opcode::witness::gen_trace(tracer.$opcode, counters),
                 )*
             }
         }
@@ -399,17 +394,17 @@ macro_rules! opcode_components {
         ) {
             let mut all_columns = vec![];
             $(
-                let (cols, claimed) = $category::$opcode::witness::gen_interaction_trace(
-                    &traces.${concat($category, _, $opcode)},
+                let (cols, claimed) = $opcode::witness::gen_interaction_trace(
+                    &traces.$opcode,
                     relations,
                 );
                 all_columns.extend(cols);
-                let ${concat($category, _, $opcode, _claimed)} = claimed;
+                let ${concat($opcode, _claimed)} = claimed;
             )*
 
             let claimed_sum = ClaimedSum {
                 $(
-                    ${concat($category, _, $opcode)}: ${concat($category, _, $opcode, _claimed)},
+                    $opcode: ${concat($opcode, _claimed)},
                 )*
             };
 
@@ -427,13 +422,13 @@ macro_rules! opcode_components {
             ) -> Self {
                 Self {
                     $(
-                        ${concat($category, _, $opcode)}: $category::$opcode::air::Component::new(
+                        $opcode: $opcode::air::Component::new(
                             location_allocator,
-                            $category::$opcode::air::Eval {
-                                log_size: claim.${concat($category, _, $opcode)},
+                            $opcode::air::Eval {
+                                log_size: claim.$opcode,
                                 relations: relations.clone(),
                             },
-                            claimed_sum.${concat($category, _, $opcode)},
+                            claimed_sum.$opcode,
                         ),
                     )*
                 }
@@ -441,7 +436,7 @@ macro_rules! opcode_components {
 
             /// Get all components as trait objects for proving.
             pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
-                vec![ $(&self.${concat($category, _, $opcode)},)* ]
+                vec![ $(&self.$opcode,)* ]
             }
 
             /// Collect relation tracker entries from all components.
@@ -451,7 +446,7 @@ macro_rules! opcode_components {
             ) -> Vec<stwo_constraint_framework::relation_tracker::RelationTrackerEntry> {
                 use stwo_constraint_framework::relation_tracker::add_to_relation_entries;
                 itertools::chain!(
-                    $( add_to_relation_entries(&self.${concat($category, _, $opcode)}, trace) ),*
+                    $( add_to_relation_entries(&self.$opcode, trace) ),*
                 )
                 .collect()
             }
@@ -459,7 +454,7 @@ macro_rules! opcode_components {
             /// Collect trace log degree bounds from all components.
             pub fn trace_log_degree_bounds(&self) -> Vec<stwo::core::pcs::TreeVec<ColumnVec<u32>>> {
                 vec![
-                    $( self.${concat($category, _, $opcode)}.trace_log_degree_bounds(), )*
+                    $( self.$opcode.trace_log_degree_bounds(), )*
                 ]
             }
         }
