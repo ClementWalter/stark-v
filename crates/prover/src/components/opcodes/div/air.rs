@@ -1,0 +1,251 @@
+//! AIR component for DIV (div/divu/rem/remu) - airs.md Section 16
+
+use num_traits::{One, Zero};
+use runner::decode::Opcode;
+use stwo::core::fields::m31::BaseField;
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+
+use super::columns::DivColumns;
+use crate::relations::Relations;
+
+pub type Component = FrameworkComponent<Eval>;
+
+#[derive(Clone)]
+pub struct Eval {
+    pub log_size: u32,
+    pub relations: Relations,
+}
+
+impl FrameworkEval for Eval {
+    fn log_size(&self) -> u32 {
+        self.log_size
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_size + 1
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let cols = DivColumns::from_eval(&mut eval);
+
+        // Section 16.2: Variables
+        let enabler = cols.opcode_div_flag.clone()
+            + cols.opcode_divu_flag.clone()
+            + cols.opcode_rem_flag.clone()
+            + cols.opcode_remu_flag.clone();
+
+        let expected_opcode_id = cols.opcode_div_flag.clone()
+            * E::F::from(BaseField::from_u32_unchecked(Opcode::Div as u32))
+            + cols.opcode_divu_flag.clone()
+                * E::F::from(BaseField::from_u32_unchecked(Opcode::Divu as u32))
+            + cols.opcode_rem_flag.clone()
+                * E::F::from(BaseField::from_u32_unchecked(Opcode::Rem as u32))
+            + cols.opcode_remu_flag.clone()
+                * E::F::from(BaseField::from_u32_unchecked(Opcode::Remu as u32));
+
+        let is_div = cols.opcode_div_flag.clone() + cols.opcode_divu_flag.clone();
+        let is_signed = cols.opcode_div_flag.clone() + cols.opcode_rem_flag.clone();
+        let special_case = cols.zero_divisor.clone() + cols.r_zero.clone();
+        let valid_and_not_zero_divisor = enabler.clone() - cols.zero_divisor.clone();
+        let valid_and_not_special_case = enabler.clone() - special_case.clone();
+
+        let b = [
+            cols.rs1_next_0.clone(),
+            cols.rs1_next_1.clone(),
+            cols.rs1_next_2.clone(),
+            cols.rs1_next_3.clone()
+                + cols.b_sign.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+        ];
+        let c = [
+            cols.rs2_next_0.clone(),
+            cols.rs2_next_1.clone(),
+            cols.rs2_next_2.clone(),
+            cols.rs2_next_3.clone()
+                + cols.c_sign.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+        ];
+        let q = [
+            cols.q_0.clone(),
+            cols.q_1.clone(),
+            cols.q_2.clone(),
+            cols.q_3.clone()
+                + cols.q_sign.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+        ];
+        let r = [
+            cols.r_0.clone(),
+            cols.r_1.clone(),
+            cols.r_2.clone(),
+            cols.r_3.clone(),
+        ];
+
+        let q_sum = q.iter().fold(E::F::zero(), |acc, limb| acc + limb.clone());
+        let c_sum = c.iter().fold(E::F::zero(), |acc, limb| acc + limb.clone());
+        let r_sum = r.iter().fold(E::F::zero(), |acc, limb| acc + limb.clone());
+
+        let r_abs = [
+            cols.r_abs_0.clone(),
+            cols.r_abs_1.clone(),
+            cols.r_abs_2.clone(),
+            cols.r_abs_3.clone(),
+        ];
+        let r_inv = [
+            cols.r_inv_0.clone(),
+            cols.r_inv_1.clone(),
+            cols.r_inv_2.clone(),
+            cols.r_inv_3.clone(),
+        ];
+        let lt_markers = [
+            cols.lt_marker_0.clone(),
+            cols.lt_marker_1.clone(),
+            cols.lt_marker_2.clone(),
+            cols.lt_marker_3.clone(),
+        ];
+
+        let pow2_8 = E::F::from(BaseField::from_u32_unchecked(1 << 8));
+        let pow2_8_minus_one = pow2_8.clone() - E::F::one();
+        let two = E::F::one() + E::F::one();
+
+        let mut carry_lt: [E::F; 4] = std::array::from_fn(|_| E::F::zero());
+        let inv_pow2_8 = BaseField::from_u32_unchecked(1 << 8).inverse();
+        for i in 0..4 {
+            let prev = if i == 0 {
+                E::F::zero()
+            } else {
+                carry_lt[i - 1].clone()
+            };
+            carry_lt[i] = (prev + r[i].clone() + r_abs[i].clone()) * inv_pow2_8;
+        }
+
+        let diff = [
+            (E::F::one() - two.clone() * cols.c_sign.clone()) * (c[0].clone() - r_abs[0].clone()),
+            (E::F::one() - two.clone() * cols.c_sign.clone()) * (c[1].clone() - r_abs[1].clone()),
+            (E::F::one() - two.clone() * cols.c_sign.clone()) * (c[2].clone() - r_abs[2].clone()),
+            (E::F::one() - two.clone() * cols.c_sign.clone()) * (c[3].clone() - r_abs[3].clone()),
+        ];
+
+        let a = [
+            is_div.clone() * q[0].clone() + (E::F::one() - is_div.clone()) * r[0].clone(),
+            is_div.clone() * q[1].clone() + (E::F::one() - is_div.clone()) * r[1].clone(),
+            is_div.clone() * q[2].clone() + (E::F::one() - is_div.clone()) * r[2].clone(),
+            is_div.clone() * q[3].clone() + (E::F::one() - is_div.clone()) * r[3].clone(),
+        ];
+
+        let _ = (expected_opcode_id, a, b);
+
+        // Section 16.3: Constraints
+
+        // boolean constraints
+        eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
+        eval.add_constraint(
+            cols.opcode_div_flag.clone() * (E::F::one() - cols.opcode_div_flag.clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_divu_flag.clone() * (E::F::one() - cols.opcode_divu_flag.clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_rem_flag.clone() * (E::F::one() - cols.opcode_rem_flag.clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_remu_flag.clone() * (E::F::one() - cols.opcode_remu_flag.clone()),
+        );
+        eval.add_constraint(cols.zero_divisor.clone() * (E::F::one() - cols.zero_divisor.clone()));
+        eval.add_constraint(cols.r_zero.clone() * (E::F::one() - cols.r_zero.clone()));
+        eval.add_constraint(cols.b_sign.clone() * (E::F::one() - cols.b_sign.clone()));
+        eval.add_constraint(cols.c_sign.clone() * (E::F::one() - cols.c_sign.clone()));
+        eval.add_constraint(cols.q_sign.clone() * (E::F::one() - cols.q_sign.clone()));
+        eval.add_constraint(cols.sign_xor.clone() * (E::F::one() - cols.sign_xor.clone()));
+        for marker in lt_markers.iter() {
+            eval.add_constraint(marker.clone() * (E::F::one() - marker.clone()));
+        }
+        eval.add_constraint(special_case.clone() * (E::F::one() - special_case.clone()));
+        eval.add_constraint(
+            valid_and_not_zero_divisor.clone() * (E::F::one() - valid_and_not_zero_divisor.clone()),
+        );
+        eval.add_constraint(
+            valid_and_not_special_case.clone() * (E::F::one() - valid_and_not_special_case.clone()),
+        );
+
+        // zero divisor detection
+        for limb in c.iter() {
+            eval.add_constraint(cols.zero_divisor.clone() * limb.clone());
+        }
+        for limb in q.iter() {
+            eval.add_constraint(
+                cols.zero_divisor.clone() * (limb.clone() - pow2_8_minus_one.clone()),
+            );
+        }
+        eval.add_constraint(
+            valid_and_not_zero_divisor.clone()
+                * (c_sum.clone() * cols.c_sum_inv.clone() - E::F::one()),
+        );
+
+        // remainder-zero detection
+        for limb in r.iter() {
+            eval.add_constraint(cols.r_zero.clone() * limb.clone());
+        }
+        eval.add_constraint(
+            valid_and_not_special_case.clone()
+                * (r_sum.clone() * cols.r_sum_inv.clone() - E::F::one()),
+        );
+
+        // signed and sign xor
+        eval.add_constraint((E::F::one() - is_signed.clone()) * cols.b_sign.clone());
+        eval.add_constraint((E::F::one() - is_signed.clone()) * cols.c_sign.clone());
+        eval.add_constraint(
+            enabler.clone()
+                * (cols.sign_xor.clone() - cols.b_sign.clone() - cols.c_sign.clone()
+                    + two.clone() * cols.b_sign.clone() * cols.c_sign.clone()),
+        );
+
+        // quotient sign selection
+        eval.add_constraint(
+            (E::F::one() - cols.zero_divisor.clone())
+                * q_sum.clone()
+                * (cols.q_sign.clone() - cols.sign_xor.clone()),
+        );
+        eval.add_constraint(
+            (E::F::one() - cols.zero_divisor.clone())
+                * (cols.q_sign.clone() - cols.sign_xor.clone())
+                * cols.q_sign.clone(),
+        );
+
+        // absolute remainder construction
+        for i in 0..4 {
+            eval.add_constraint(
+                (E::F::one() - cols.sign_xor.clone()) * (r_abs[i].clone() - r[i].clone()),
+            );
+
+            let prev = if i == 0 {
+                E::F::zero()
+            } else {
+                carry_lt[i - 1].clone()
+            };
+            eval.add_constraint(
+                cols.sign_xor.clone()
+                    * (carry_lt[i].clone() - prev.clone())
+                    * (carry_lt[i].clone() - E::F::one()),
+            );
+            eval.add_constraint(
+                cols.sign_xor.clone() * (E::F::one() - carry_lt[i].clone()) * r_abs[i].clone(),
+            );
+            eval.add_constraint(
+                cols.sign_xor.clone()
+                    * ((r_abs[i].clone() - pow2_8.clone()) * r_inv[i].clone() - E::F::one()),
+            );
+        }
+
+        // compare |r| with |c| from the most significant byte
+        let mut prefix_sum = special_case.clone();
+        for i in (0..4).rev() {
+            prefix_sum += lt_markers[i].clone();
+            eval.add_constraint(
+                enabler.clone() * (E::F::one() - prefix_sum.clone()) * diff[i].clone(),
+            );
+            eval.add_constraint(
+                enabler.clone() * lt_markers[i].clone() * (cols.lt_diff.clone() - diff[i].clone()),
+            );
+        }
+        eval.add_constraint(enabler.clone() * (E::F::one() - prefix_sum.clone()));
+
+        eval
+    }
+}

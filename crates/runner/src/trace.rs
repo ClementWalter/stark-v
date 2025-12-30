@@ -15,66 +15,175 @@ pub const DEFAULT_MAX_CLOCK_DIFF: u32 = (1 << 20) - 1;
 // =============================================================================
 
 runner_macros::define_trace_tables! {
-    // R-type ALU
-    add: { clk, pc, rd, rs1, rs2 },
-    sub: { clk, pc, rd, rs1, rs2 },
-    sll: { clk, pc, rd, rs1, rs2 },
-    slt: { clk, pc, rd, rs1, rs2 },
-    sltu: { clk, pc, rd, rs1, rs2 },
-    xor: { clk, pc, rd, rs1, rs2 },
-    srl: { clk, pc, rd, rs1, rs2 },
-    sra: { clk, pc, rd, rs1, rs2 },
-    or: { clk, pc, rd, rs1, rs2 },
-    and: { clk, pc, rd, rs1, rs2 },
+    // ==========================================================================
+    // 1. Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
+    // ==========================================================================
+    base_alu_reg: {
+        clk, pc, rd, rs1, rs2,
+        opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
+    },
 
-    // I-type ALU
-    addi: { clk, pc, rd, rs1 },
-    slti: { clk, pc, rd, rs1 },
-    sltiu: { clk, pc, rd, rs1 },
-    xori: { clk, pc, rd, rs1 },
-    ori: { clk, pc, rd, rs1 },
-    andi: { clk, pc, rd, rs1 },
-    slli: { clk, pc, rd, rs1 },
-    srli: { clk, pc, rd, rs1 },
-    srai: { clk, pc, rd, rs1 },
+    // ==========================================================================
+    // 2. Base ALU Imm (addi/xori/ori/andi) - airs.md Section 2
+    // ==========================================================================
+    base_alu_imm: {
+        clk, pc, rd, rs1,
+        imm_0, imm_1, imm_msb,
+        opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
+    },
 
-    // Load
-    lb: { clk, pc, rd, rs1, mem },
-    lh: { clk, pc, rd, rs1, mem },
-    lw: { clk, pc, rd, rs1, mem },
-    lbu: { clk, pc, rd, rs1, mem },
-    lhu: { clk, pc, rd, rs1, mem },
+    // ==========================================================================
+    // 3. Shifts Reg (sll/srl/sra) - airs.md Section 3
+    // ==========================================================================
+    shifts_reg: {
+        clk, pc, rd, rs1, rs2,
+        rs1_sign,
+        opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
+        bit_multiplier_left, bit_multiplier_right,
+        bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
+        bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7,
+        limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3,
+        bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3
+    },
 
-    // Store
-    sb: { clk, pc, rs1, rs2, mem },
-    sh: { clk, pc, rs1, rs2, mem },
-    sw: { clk, pc, rs1, rs2, mem },
+    // ==========================================================================
+    // 4. Shifts Imm (slli/srli/srai) - airs.md Section 4
+    // ==========================================================================
+    shifts_imm: {
+        clk, pc, rd, rs1,
+        rs1_sign, imm_truncated,
+        opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
+        bit_multiplier_left, bit_multiplier_right,
+        bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
+        bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7,
+        limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3,
+        bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3
+    },
 
-    // Branch
-    beq: { clk, pc, rs1, rs2 },
-    bne: { clk, pc, rs1, rs2 },
-    blt: { clk, pc, rs1, rs2 },
-    bge: { clk, pc, rs1, rs2 },
-    bltu: { clk, pc, rs1, rs2 },
-    bgeu: { clk, pc, rs1, rs2 },
+    // ==========================================================================
+    // 5. Less Than Reg (slt/sltu) - airs.md Section 5
+    // ==========================================================================
+    lt_reg: {
+        clk, pc, rd, rs1, rs2,
+        cmp_result, rs1_msl_felt, rs2_msl_felt,
+        opcode_slt_flag, opcode_sltu_flag,
+        diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
+        diff_val
+    },
 
-    // Jump
-    jal: { clk, pc, rd },
-    jalr: { clk, pc, rd, rs1 },
+    // ==========================================================================
+    // 6. Less Than Imm (slti/sltiu) - airs.md Section 6
+    // ==========================================================================
+    lt_imm: {
+        clk, pc, rd, rs1,
+        cmp_result, rs1_msl_felt,
+        imm_0, imm_1, imm_msb,
+        opcode_slti_flag, opcode_sltiu_flag,
+        diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
+        diff_val
+    },
 
-    // Upper immediate
-    lui: { clk, pc, rd },
-    auipc: { clk, pc, rd },
+    // ==========================================================================
+    // 7. Branch Equal (beq/bne) - airs.md Section 7
+    // ==========================================================================
+    branch_eq: {
+        clk, pc, rs1, rs2,
+        imm_felt, cmp_result,
+        diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2, diff_inv_marker_3,
+        opcode_beq_flag, opcode_bne_flag
+    },
 
-    // M-extension
-    mul: { clk, pc, rd, rs1, rs2 },
-    mulh: { clk, pc, rd, rs1, rs2 },
-    mulhsu: { clk, pc, rd, rs1, rs2 },
-    mulhu: { clk, pc, rd, rs1, rs2 },
-    div: { clk, pc, rd, rs1, rs2 },
-    divu: { clk, pc, rd, rs1, rs2 },
-    rem: { clk, pc, rd, rs1, rs2 },
-    remu: { clk, pc, rd, rs1, rs2 },
+    // ==========================================================================
+    // 8. Branch Less Than (blt/bltu/bge/bgeu) - airs.md Section 8
+    // ==========================================================================
+    branch_lt: {
+        clk, pc, rs1, rs2,
+        rs1_msl_felt, rs2_msl_felt,
+        imm_felt, cmp_result, cmp_lt,
+        diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
+        diff_val, branch_target,
+        opcode_blt_flag, opcode_bltu_flag, opcode_bge_flag, opcode_bgeu_flag
+    },
+
+    // ==========================================================================
+    // 9. LUI - airs.md Section 9
+    // ==========================================================================
+    lui: {
+        clk, pc, rd,
+        imm_0, imm_1, imm_2
+    },
+
+    // ==========================================================================
+    // 10. AUIPC - airs.md Section 10
+    // ==========================================================================
+    auipc: {
+        clk, pc, rd,
+        imm_felt
+    },
+
+    // ==========================================================================
+    // 11. JALR - airs.md Section 11
+    // ==========================================================================
+    jalr: {
+        clk, pc, rd, rs1,
+        to_pc_over_two, to_pc_lsb,
+        imm_felt
+    },
+
+    // ==========================================================================
+    // 12. JAL - airs.md Section 12
+    // ==========================================================================
+    jal: {
+        clk, pc, rd,
+        imm_felt
+    },
+
+    // ==========================================================================
+    // 13. Load/Store (lb/lbu/lh/lhu/lw/sb/sh/sw) - airs.md Section 13
+    // ==========================================================================
+    load_store: {
+        clk, pc, dst, rs1, src,
+        r2_idx, imm_felt, src_msb,
+        shift_amount,
+        src_addr_selector, dst_addr_selector,
+        marker_0, marker_1, marker_2, marker_3,
+        opcode_lb_flag, opcode_lh_flag, opcode_lbu_flag, opcode_lhu_flag, opcode_lw_flag,
+        opcode_sb_flag, opcode_sh_flag, opcode_sw_flag
+    },
+
+    // ==========================================================================
+    // 14. MUL - airs.md Section 14
+    // ==========================================================================
+    mul: {
+        clk, pc, rd, rs1, rs2
+    },
+
+    // ==========================================================================
+    // 15. MULH (mulh/mulhsu/mulhu) - airs.md Section 15
+    // ==========================================================================
+    mulh: {
+        clk, pc, rd, rs1, rs2,
+        rd_high_0, rd_high_1, rd_high_2, rd_high_3,
+        rs1_sign, rs2_sign,
+        opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag
+    },
+
+    // ==========================================================================
+    // 16. DIV (div/divu/rem/remu) - airs.md Section 16
+    // ==========================================================================
+    div: {
+        clk, pc, rd, rs1, rs2,
+        zero_divisor, r_zero,
+        q_0, q_1, q_2, q_3,
+        r_0, r_1, r_2, r_3,
+        b_sign, c_sign, q_sign, sign_xor,
+        c_sum_inv, r_sum_inv,
+        r_abs_0, r_abs_1, r_abs_2, r_abs_3,
+        r_inv_0, r_inv_1, r_inv_2, r_inv_3,
+        lt_marker_0, lt_marker_1, lt_marker_2, lt_marker_3,
+        lt_diff,
+        opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag
+    },
 }
 
 // =============================================================================
@@ -619,8 +728,8 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_add_table_push() {
-        let mut table = AddTable::new();
+    fn test_base_alu_reg_table_push() {
+        let mut table = Base_alu_regTable::new();
 
         let rd = Access {
             addr: 1,
@@ -641,7 +750,8 @@ mod tests {
             next: 5,
         };
 
-        table.push(1, 0x1000, rd, rs1, rs2);
+        // Push with opcode flags: add=1, sub=0, xor=0, or=0, and=0
+        table.push(1, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
 
         assert_eq!(table.len(), 1);
         assert_eq!(table.clk[0], 1);
@@ -650,6 +760,8 @@ mod tests {
         assert_eq!(table.rd_next[0], 10);
         assert_eq!(table.rs1_addr[0], 2);
         assert_eq!(table.rs2_addr[0], 3);
+        assert_eq!(table.opcode_add_flag[0], 1);
+        assert_eq!(table.opcode_sub_flag[0], 0);
     }
 
     #[test]
@@ -680,9 +792,11 @@ mod tests {
         let rs1 = Access::default();
         let rs2 = Access::default();
 
-        tracer.add.push(0, 0, rd, rs1, rs2);
-        tracer.add.push(1, 4, rd, rs1, rs2);
-        tracer.sub.push(2, 8, rd, rs1, rs2);
+        // base_alu_reg with add flag
+        tracer.base_alu_reg.push(0, 0, rd, rs1, rs2, 1, 0, 0, 0, 0);
+        tracer.base_alu_reg.push(1, 4, rd, rs1, rs2, 1, 0, 0, 0, 0);
+        // base_alu_reg with sub flag
+        tracer.base_alu_reg.push(2, 8, rd, rs1, rs2, 0, 1, 0, 0, 0);
 
         assert_eq!(tracer.total_traces(), 3);
     }
@@ -696,58 +810,57 @@ mod tests {
         let rs1 = Access::default();
         let rs2 = Access::default();
 
-        trace_op!(add: tracer, 0x1000, rd, rs1, rs2);
+        trace_op!(base_alu_reg: tracer, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
 
-        assert_eq!(tracer.add.len(), 1);
-        assert_eq!(tracer.add.clk[0], 1);
-        assert_eq!(tracer.add.pc[0], 0x1000);
+        assert_eq!(tracer.base_alu_reg.len(), 1);
+        assert_eq!(tracer.base_alu_reg.clk[0], 1);
+        assert_eq!(tracer.base_alu_reg.pc[0], 0x1000);
     }
 
-    // Test prover column generation from Phase 1
+    // Test prover column generation for new family tables
     mod prover_column_tests {
         use super::prover_columns::*;
 
         #[test]
-        fn test_add_columns_size() {
-            // ADD: enabler (1), clk, pc, rd (10 limbed fields), rs1 (10), rs2 (10) = 33 total
-            // Access fields: addr (1) + prev_0..3 (4) + clk_prev (1) + next_0..3 (4) = 10
-            assert_eq!(AddColumns::<()>::SIZE, 33);
+        fn test_base_alu_reg_columns_size() {
+            // base_alu_reg: clk, pc, rd (10), rs1 (10), rs2 (10),
+            // + 5 opcode flags = 37 total (no enabler - has flags)
+            assert_eq!(Base_alu_regColumns::<()>::SIZE, 37);
         }
 
         #[test]
-        fn test_addi_columns_size() {
-            // ADDI: enabler (1), clk, pc, rd (10 limbed fields), rs1 (10) = 23 total
-            assert_eq!(AddiColumns::<()>::SIZE, 23);
+        fn test_base_alu_imm_columns_size() {
+            // base_alu_imm: clk, pc, rd (10), rs1 (10),
+            // + imm_0, imm_1, imm_msb (3) + 5 opcode flags = 30 total (no enabler - has flags)
+            assert_eq!(Base_alu_immColumns::<()>::SIZE, 30);
         }
 
         #[test]
         fn test_lui_columns_size() {
-            // LUI: enabler (1), clk, pc, rd (10 limbed fields) = 13 total
-            assert_eq!(LuiColumns::<()>::SIZE, 13);
+            // LUI: enabler (1), clk, pc, rd (10), imm_0, imm_1, imm_2 = 16 total
+            assert_eq!(LuiColumns::<()>::SIZE, 16);
         }
 
         #[test]
-        fn test_lb_columns_size() {
-            // LB: enabler (1), clk, pc, rd (10), rs1 (10), mem (10) = 33 total
-            assert_eq!(LbColumns::<()>::SIZE, 33);
+        fn test_load_store_columns_size() {
+            // load_store: clk (1), pc (1), dst (10), rs1 (10), src (10),
+            // + r2_idx, imm_felt, src_msb, shift_amount (4)
+            // + src_addr_selector, dst_addr_selector (2)
+            // + marker_0..3 (4) + 8 opcode flags = 50 total (no enabler - has flags)
+            assert_eq!(Load_storeColumns::<()>::SIZE, 50);
         }
 
         #[test]
-        fn test_sb_columns_size() {
-            // SB: enabler (1), clk, pc, rs1 (10), rs2 (10), mem (10) = 33 total
-            assert_eq!(SbColumns::<()>::SIZE, 33);
-        }
-
-        #[test]
-        fn test_beq_columns_size() {
-            // BEQ: enabler (1), clk, pc, rs1 (10), rs2 (10) = 23 total
-            assert_eq!(BeqColumns::<()>::SIZE, 23);
+        fn test_branch_eq_columns_size() {
+            // branch_eq: clk (1), pc (1), rs1 (10), rs2 (10),
+            // + imm_felt (1), cmp_result (1) + diff_inv_marker_0..3 (4) + 2 opcode flags = 30 total (no enabler - has flags)
+            assert_eq!(Branch_eqColumns::<()>::SIZE, 30);
         }
 
         #[test]
         fn test_jal_columns_size() {
-            // JAL: enabler (1), clk, pc, rd (10 limbed fields) = 13 total
-            assert_eq!(JalColumns::<()>::SIZE, 13);
+            // JAL: enabler (1), clk, pc, rd (10), imm_felt = 14 total
+            assert_eq!(JalColumns::<()>::SIZE, 14);
         }
 
         #[test]

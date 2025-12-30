@@ -32,7 +32,6 @@ impl FrameworkEval for Eval {
         // For now, dummy constraint (multiplicity - multiplicity = 0)
         eval.add_constraint(cols.multiplicity.clone() - cols.multiplicity.clone());
 
-        eval.finalize_logup();
         eval
     }
 }
