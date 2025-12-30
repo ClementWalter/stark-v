@@ -370,7 +370,7 @@ macro_rules! opcode_components {
         }
 
         /// Generate all trace columns from tracer.
-        /// Consumes the tracer and calls each component's witness::gen_trace.
+        /// Consumes the tracer and calls into_witness() on each table.
         /// Counters are populated during trace generation for preprocessed lookups.
         pub fn gen_trace(
             tracer: runner::trace::Tracer,
@@ -378,7 +378,7 @@ macro_rules! opcode_components {
         ) -> Traces {
             Traces {
                 $(
-                    $opcode: $opcode::witness::gen_trace(tracer.$opcode, counters),
+                    $opcode: tracer.$opcode.into_witness(counters),
                 )*
             }
         }

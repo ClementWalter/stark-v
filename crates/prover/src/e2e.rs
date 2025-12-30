@@ -106,7 +106,7 @@ macro_rules! test_bin_e2e {
                 );
 
                 let mut counters = $crate::relations::Counters::new();
-                let trace = witness::gen_trace(tracer.$component, &mut counters);
+                let trace = tracer.$component.into_witness(&mut counters);
 
                 let log_size = trace.first()
                     .map(|t| t.domain.log_size())
