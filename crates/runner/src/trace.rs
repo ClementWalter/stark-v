@@ -6,9 +6,7 @@
 
 use simd::AlignedVec;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 
@@ -195,61 +193,6 @@ runner_macros::define_trace_tables! {
         opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag
     },
 }
-
-// =============================================================================
-// into_witness implementation for all table types
-// =============================================================================
-
-/// Implement `into_witness` for a table type.
-macro_rules! impl_into_witness {
-    ($($table:ident),* $(,)?) => {
-        $(
-            impl $table {
-                /// Convert table to trace columns, padding to power of 2.
-                /// Always produces columns with minimum log_size of 4 (16 rows),
-                /// even for empty tables.
-                ///
-                /// The `counters` parameter is for preprocessed multiplicity tracking
-                /// (will be populated when LogUp is implemented).
-                pub fn into_witness<C>(self, _counters: &mut C) -> Trace {
-                    let len = self.len() as u32;
-                    let log_size = len.next_power_of_two().ilog2().max(4);
-                    let padded_len = 1 << log_size;
-                    let columns = self.into_columns();
-                    let domain = CanonicCoset::new(log_size).circle_domain();
-
-                    columns
-                        .into_iter()
-                        .map(|mut col| {
-                            col.resize(padded_len, 0);
-                            let base_col: BaseColumn = col.into();
-                            CircleEvaluation::new(domain, base_col)
-                        })
-                        .collect()
-                }
-            }
-        )*
-    };
-}
-
-impl_into_witness!(
-    BaseAluRegTable,
-    BaseAluImmTable,
-    ShiftsRegTable,
-    ShiftsImmTable,
-    LtRegTable,
-    LtImmTable,
-    BranchEqTable,
-    BranchLtTable,
-    LuiTable,
-    AuipcTable,
-    JalrTable,
-    JalTable,
-    LoadStoreTable,
-    MulTable,
-    MulhTable,
-    DivTable,
-);
 
 // =============================================================================
 // Tracer memory access methods and utils
