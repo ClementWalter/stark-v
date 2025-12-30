@@ -510,6 +510,33 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             pub fn into_columns(self) -> Vec<simd::AlignedVec<u32>> {
                 #into_columns_body
             }
+
+            /// Convert table to trace columns, padding to power of 2.
+            /// Always produces columns with minimum log_size of 4 (16 rows),
+            /// even for empty tables.
+            ///
+            /// The `counters` parameter is for preprocessed multiplicity tracking
+            /// (will be populated when LogUp is implemented).
+            pub fn into_witness<C>(self, _counters: &mut C) -> crate::Trace {
+                use stwo::core::poly::circle::CanonicCoset;
+                use stwo::prover::backend::simd::column::BaseColumn;
+                use stwo::prover::poly::circle::CircleEvaluation;
+
+                let len = self.len() as u32;
+                let log_size = len.next_power_of_two().ilog2().max(4);
+                let padded_len = 1 << log_size;
+                let columns = self.into_columns();
+                let domain = CanonicCoset::new(log_size).circle_domain();
+
+                columns
+                    .into_iter()
+                    .map(|mut col| {
+                        col.resize(padded_len, 0);
+                        let base_col: BaseColumn = col.into();
+                        CircleEvaluation::new(domain, base_col)
+                    })
+                    .collect()
+            }
         }
     }
 }

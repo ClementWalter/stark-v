@@ -9,6 +9,7 @@ goblin.workspace = true
 rustc-hash.workspace = true
 simd.workspace = true
 stwo-constraint-framework.workspace = true
+stwo.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -19,4 +20,3 @@ guest-lib = { path = "../../guest/guest-lib" }
 postcard.workspace = true
 prover = { path = "../prover" }
 serde.workspace = true
-stwo.workspace = true

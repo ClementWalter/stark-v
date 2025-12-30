@@ -21,21 +21,20 @@ pub mod shifts_imm; // Section 4: slli, srli, srai
 pub mod shifts_reg; // Section 3: sll, srl, sra // Section 16: div, divu, rem, remu
 
 crate::opcode_components! {
-    // 16 opcode families
-    base_alu_reg,
+    auipc,
     base_alu_imm,
-    shifts_reg,
-    shifts_imm,
-    lt_reg,
-    lt_imm,
+    base_alu_reg,
     branch_eq,
     branch_lt,
-    lui,
-    auipc,
-    jalr,
+    div,
     jal,
+    jalr,
     load_store,
+    lt_imm,
+    lt_reg,
+    lui,
     mul,
     mulh,
-    div,
+    shifts_imm,
+    shifts_reg,
 }
