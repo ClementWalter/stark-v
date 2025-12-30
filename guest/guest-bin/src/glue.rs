@@ -41,6 +41,19 @@ _start:
 );
 
 // -----------------------------------------------------------------------------
+// Halt function (for opcode tests that don't produce output)
+// -----------------------------------------------------------------------------
+
+/// Halt the VM by spinning forever.
+/// The runner will detect the PC not changing and stop execution.
+/// Used by opcode test binaries that only need to generate traces.
+#[inline(never)]
+pub fn halt() -> ! {
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
+// -----------------------------------------------------------------------------
 // Output functions
 // -----------------------------------------------------------------------------
 

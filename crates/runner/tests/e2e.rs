@@ -10,52 +10,11 @@
 //! with a `test_call()` function that returns a serializable result.
 
 use guest_lib::get_test_bytes;
+use prover::e2e::run_guest_raw;
 use prover::prove_rv32im;
 use runner::run;
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::Once;
 use stwo::core::fri::FriConfig;
 use stwo::core::pcs::PcsConfig;
-
-static BUILD_GUEST: Once = Once::new();
-
-/// Build guest binaries once before running tests.
-fn ensure_guest_built() {
-    BUILD_GUEST.call_once(|| {
-        let guest_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../guest/guest-bin");
-
-        let status = Command::new("cargo")
-            .args(["build", "--release"])
-            .current_dir(&guest_bin_dir)
-            .status()
-            .expect("Failed to execute cargo build for guest-bin");
-
-        assert!(status.success(), "Failed to build guest binaries");
-    });
-}
-
-/// Path to the guest binary directory.
-fn guest_bin_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../guest/guest-bin/target/riscv32im-unknown-none-elf/release")
-}
-
-/// Run a guest binary and return the raw output bytes.
-fn run_guest_raw(name: &str) -> Vec<u8> {
-    ensure_guest_built();
-
-    let elf_path = guest_bin_dir().join(name);
-    let elf_bytes =
-        std::fs::read(&elf_path).unwrap_or_else(|e| panic!("Failed to read ELF {elf_path:?}: {e}"));
-
-    let result =
-        run(&elf_bytes, 10_000_000).unwrap_or_else(|e| panic!("Failed to run {name}: {e}"));
-
-    result
-        .output
-        .unwrap_or_else(|| panic!("No output from {name}"))
-}
 
 /// Test a single example by comparing guest output bytes with native output bytes.
 fn test_example(name: &str) {
@@ -83,12 +42,14 @@ fn test_pcs_config() -> PcsConfig {
 #[test]
 #[ignore = "Proving is slow, run with --ignored"]
 fn test_prove_fibonacci() {
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+
     ensure_guest_built();
 
-    let elf_path = guest_bin_dir().join("fibonacci");
-    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read fibonacci ELF");
+    let elf_path = guest_bin_dir().join("fib");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read fib ELF");
 
-    let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fibonacci");
+    let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
     // Generate proof
     let _proof = prove_rv32im(run_result, test_pcs_config());

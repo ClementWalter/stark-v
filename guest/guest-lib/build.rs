@@ -44,8 +44,7 @@ fn main() {
     for name in &programs {
         match_arms.push_str(&format!(
             r#"        "{name}" => postcard::to_allocvec(&crate::programs::{name}::test_call()).ok()?,
-"#,
-            name = name
+"#
         ));
     }
 
@@ -68,7 +67,7 @@ pub fn list_programs() -> &'static [&'static str] {{
         match_arms = match_arms,
         program_list = programs
             .iter()
-            .map(|s| format!("\"{}\"", s))
+            .map(|s| format!("\"{s}\""))
             .collect::<Vec<_>>()
             .join(", ")
     );
@@ -90,10 +89,9 @@ fn main() {{
     std::io::stdout().write_all(&bytes).unwrap();
 }}
 "#,
-            name = name
         );
 
-        let example_path = examples_dir.join(format!("{}.rs", name));
+        let example_path = examples_dir.join(format!("{name}.rs"));
 
         // Only write if content changed to avoid unnecessary rebuilds
         let should_write = match fs::read_to_string(&example_path) {
