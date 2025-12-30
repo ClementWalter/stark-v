@@ -131,14 +131,20 @@ check carries
 - `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
 - `opcode_sub_flag * carry_sub[i] * (1 - carry_sub[i])`
 
-perform bitwise operation and RC rd (`rd[i]` is determined by `rs1[i]`,
-`rs2[i]`, `carry[i-1]`, `carry[i]` i.e. 8 + 8 + 1 + 1 = 20 bits so `log_size` of
-bitwise is 21 to avoid 4 extra columns of RC_8_8 for rd, test if worth it)
+perform bitwise operation (could also be used to RC rd: `rd[i]` is determined by
+`rs1[i]`, `rs2[i]`, `carry[i-1]`, `carry[i]` i.e. 8 + 8 + 1 + 1 = 20 bits so
+`log_size` of bitwise would be 21 to avoid 4 extra columns of RC_8_8 for rd, not
+worth it)
 
 - `- is_bitwise * Bitwise(rs1[0], rs2[0], rd[0], bitwise_id)`
 - `- is_bitwise * Bitwise(rs1[1], rs2[1], rd[1], bitwise_id)`
 - `- is_bitwise * Bitwise(rs1[2], rs2[2], rd[2], bitwise_id)`
 - `- is_bitwise * Bitwise(rs1[3], rs2[3], rd[3], bitwise_id)`
+
+range check rd
+
+- `- RC_8_8(rd[0], rd[1])`
+- `- RC_8_8(rd[2], rd[3])`
 
 write to rd
 
@@ -207,7 +213,7 @@ read instruction from the Program segment (I-type)
 
 range check imm (range checks sext_imm too)
 
-- `- RC_8_3(imm_0, imm_1)`
+- `- RC_8_11(imm_0, 2^8 * imm_1)`
 - `imm_msb * (1 - imm_msb)`
 
 registers update
@@ -334,7 +340,7 @@ read from rs2
 
 the 5 first bits of `rs2[0]` shift `limb_shift` full limbs and `bit_shift` bits
 
-- `- RC_20(2^3 - 1 - (rs2[0] - shift_amount) / 2^5)`
+- `- RC_20(2^17 * (rs2[0] - shift_amount) / 2^5)`
 
 left shift constraints, for i in [0..3] and for j in [0..3]:
 
@@ -355,8 +361,8 @@ right shift constraints, for i in [0..3] and for j in [0..3]:
 
 shift carries should not exceed `2^bit_shift`
 
-- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry[0], bit_multiplier - enabler - bit_shift_carry[1])`
-- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry[2], bit_multiplier - enabler - bit_shift_carry[3])`
+- `- enabler * RC_8_8(2^8/bit_multiplier * bit_shift_carry[0], 2^8/bit_multiplier * bit_shift_carry[1])`
+- `- enabler * RC_8_8(2^8/bit_multiplier * bit_shift_carry[2], 2^8/bit_multiplier * bit_shift_carry[3])`
 
 range check rd
 
@@ -472,8 +478,8 @@ right shift constraints, for i in [0..3] and for j in [0..3]:
 
 shift carries should no exceed 2^bit_shift
 
-- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry[0], bit_multiplier - enabler - bit_shift_carry[1])`
-- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry[2], bit_multiplier - enabler - bit_shift_carry[3])`
+- `- RC_8_8(2^8/bit_multiplier * bit_shift_carry[0], 2^8/bit_multiplier * bit_shift_carry[1])`
+- `- RC_8_8(2^8/bit_multiplier * bit_shift_carry[2], 2^8/bit_multiplier * bit_shift_carry[3])`
 
 range check rd
 
@@ -579,7 +585,7 @@ range check msl felts with sign consideration (`opcode_slt_flag = 1`,
 
 diff_val is > 0
 
-- `- prefix_sum * RC_8_8(diff_val - 1, 0)`
+- `- prefix_sum * RC_20(diff_val - 1)`
 
 write to rd
 
@@ -641,7 +647,7 @@ read instruction from the Program segment (I-type)
 
 range check imm and range check `rs1_msl_felt` with sign consideration
 
-- `- RC_8_8_3(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, imm_1)`
+- `- RC_8_8_4(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, 2*imm_1)`
 - `imm_msb * (1 - imm_msb)`
 
 registers update
@@ -681,7 +687,7 @@ if equal, result is 0
 
 range check diff_val is non-zero when prefix_sum = 1
 
-- `- prefix_sum * RC_8_8(diff_val - 1, 0)`
+- `- prefix_sum * RC_20(diff_val - 1)`
 
 result is boolean
 
@@ -866,7 +872,7 @@ range check msl felts with sign consideration
 
 diff_val is > 0
 
-- `- prefix_sum * RC_8_8(diff_val - 1, 0)`
+- `- prefix_sum * RC_20(diff_val - 1)`
 
 check `cmp_lt`
 
@@ -911,7 +917,7 @@ registers update
 
 range check imm limbs:
 
-- `- RC_4_8_8(imm_0, imm_1, imm_2)`
+- `- RC_8_8_4(imm_1, imm_2, imm_0)`
 
 write to rd
 
@@ -1215,7 +1221,7 @@ check shift amount
 
 check that `base[0] - shift_amount` is a multiple of 4
 
-- `- RC_6((base[0] - shift_amount)/2^2)`
+- `- RC_20(2^14 * (base[0] - shift_amount) / 2^2)`
 
 check that base is a M31:
 
@@ -1596,7 +1602,7 @@ compare `|r|` with `|c|` from the most significant byte
 
 `lt_diff` is non-zero whenever the comparison is executed
 
-- `- (enabler - special_case) * RC_8(lt_diff - 1)`
+- `- (enabler - special_case) * RC_20(lt_diff - 1)`
 
 write to rd (`a[i]` selects `q` for div/divu and `r` for rem/remu)
 
