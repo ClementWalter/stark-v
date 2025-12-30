@@ -96,7 +96,7 @@ Extra cost compared to having 2 components: add/sub - xor/or/and
 - `carry_sub[i+1] = (rd[i+1] + rs2[i+1] - rs1[i+1] + carry_sub[i]) / 2^8` with
   `carry_sub[0] = 0`.
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
-- `bitwise_id = opcode_xor_flag + 2 * opcode_or_flag + 3 * opcode_and_flag + 4 * (opcode_add_flag + opcode_sub_flag)`.
+- `bitwise_id = opcode_or_flag + 2 * opcode_xor_flag`.
 
 ### 1.3 Constraints
 
@@ -199,7 +199,7 @@ Same as 1.0
 - `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^8` with
   `carry_add[-1] = 0`
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`
-- `bitwise_id = opcode_xor_flag + 2 * opcode_or_flag + 3 * opcode_and_flag`.
+- `bitwise_id =  opcode_or_flag + 2 * opcode_xor_flag`.
 
 ### 2.3 Constraints
 
@@ -232,14 +232,14 @@ check carries
 
 - `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
 
-perform bitwise operation and RC rd (same tradeoff as 1.3)
+perform bitwise operation
 
 - `- is_bitwise * Bitwise(rs1[0], sext_imm_0, rd[0], bitwise_id)`
 - `- is_bitwise * Bitwise(rs1[1], sext_imm_1, rd[1], bitwise_id)`
 - `- is_bitwise * Bitwise(rs1[2], sext_imm_2, rd[2], bitwise_id)`
 - `- is_bitwise * Bitwise(rs1[3], sext_imm_3, rd[3], bitwise_id)`
 
-range check a (redundant for bitwise)
+range check rd (redundant for bitwise)
 
 - `- RC_8_8(rd[0], rd[1])`
 - `- RC_8_8(rd[2], rd[3])`
