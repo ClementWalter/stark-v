@@ -16,5 +16,6 @@ pub mod relations;
 
 pub use prover::prove_rv32im;
 
-#[cfg(test)]
-pub mod test_utils;
+/// E2E test infrastructure (building and running guest binaries).
+#[doc(hidden)]
+pub mod e2e;

@@ -6,6 +6,9 @@
 
 pub mod glue;
 
+// Re-export halt for opcode test binaries
+pub use glue::halt;
+
 /// Macro to define the guest entry point with minimal boilerplate.
 ///
 /// # Example

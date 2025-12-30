@@ -1,0 +1,121 @@
+//! Test binary for BLTU (Branch if Less Than Unsigned) instruction.
+//!
+//! Executes the BLTU instruction multiple times to generate trace data.
+
+#![no_std]
+#![no_main]
+
+use core::arch::asm;
+
+#[unsafe(no_mangle)]
+pub extern "C" fn __zkvm_start() -> ! {
+    unsafe {
+        // Execute BLTU instruction 32 times (ensures log_size >= 5)
+        // BLTU: if rs1 < rs2 (unsigned) then pc += imm
+        // Using t1=5, t2=10 so branch is taken (unsigned comparison)
+        asm!(
+            // Load test values into registers
+            "li t1, 5",
+            "li t2, 10",
+            // Execute BLTU 32 times (branch taken each time)
+            "bltu t1, t2, 1f",
+            "nop",
+            "1:",
+            "bltu t1, t2, 2f",
+            "nop",
+            "2:",
+            "bltu t1, t2, 3f",
+            "nop",
+            "3:",
+            "bltu t1, t2, 4f",
+            "nop",
+            "4:",
+            "bltu t1, t2, 5f",
+            "nop",
+            "5:",
+            "bltu t1, t2, 6f",
+            "nop",
+            "6:",
+            "bltu t1, t2, 7f",
+            "nop",
+            "7:",
+            "bltu t1, t2, 8f",
+            "nop",
+            "8:",
+            "bltu t1, t2, 9f",
+            "nop",
+            "9:",
+            "bltu t1, t2, 10f",
+            "nop",
+            "10:",
+            "bltu t1, t2, 11f",
+            "nop",
+            "11:",
+            "bltu t1, t2, 12f",
+            "nop",
+            "12:",
+            "bltu t1, t2, 13f",
+            "nop",
+            "13:",
+            "bltu t1, t2, 14f",
+            "nop",
+            "14:",
+            "bltu t1, t2, 15f",
+            "nop",
+            "15:",
+            "bltu t1, t2, 16f",
+            "nop",
+            "16:",
+            "bltu t1, t2, 17f",
+            "nop",
+            "17:",
+            "bltu t1, t2, 18f",
+            "nop",
+            "18:",
+            "bltu t1, t2, 19f",
+            "nop",
+            "19:",
+            "bltu t1, t2, 20f",
+            "nop",
+            "20:",
+            "bltu t1, t2, 21f",
+            "nop",
+            "21:",
+            "bltu t1, t2, 22f",
+            "nop",
+            "22:",
+            "bltu t1, t2, 23f",
+            "nop",
+            "23:",
+            "bltu t1, t2, 24f",
+            "nop",
+            "24:",
+            "bltu t1, t2, 25f",
+            "nop",
+            "25:",
+            "bltu t1, t2, 26f",
+            "nop",
+            "26:",
+            "bltu t1, t2, 27f",
+            "nop",
+            "27:",
+            "bltu t1, t2, 28f",
+            "nop",
+            "28:",
+            "bltu t1, t2, 29f",
+            "nop",
+            "29:",
+            "bltu t1, t2, 30f",
+            "nop",
+            "30:",
+            "bltu t1, t2, 31f",
+            "nop",
+            "31:",
+            "bltu t1, t2, 32f",
+            "nop",
+            "32:",
+            options(nostack, nomem)
+        );
+    }
+    guest_bin::halt()
+}
