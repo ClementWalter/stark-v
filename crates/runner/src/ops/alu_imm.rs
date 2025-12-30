@@ -34,10 +34,10 @@ pub fn addi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
-    // opcode flags: add=1, sub=0, xor=0, or=0, and=0
+    // opcode flags: add=1, xor=0, or=0, and=0
     trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
         imm_0, imm_1, imm_msb,
-        1, 0, 0, 0, 0
+        1, 0, 0, 0
     );
 }
 
@@ -48,10 +48,10 @@ pub fn xori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
-    // opcode flags: add=0, sub=0, xor=1, or=0, and=0
+    // opcode flags: add=0, xor=1, or=0, and=0
     trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
         imm_0, imm_1, imm_msb,
-        0, 0, 1, 0, 0
+        0, 1, 0, 0
     );
 }
 
@@ -62,10 +62,10 @@ pub fn ori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
-    // opcode flags: add=0, sub=0, xor=0, or=1, and=0
+    // opcode flags: add=0, xor=0, or=1, and=0
     trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
         imm_0, imm_1, imm_msb,
-        0, 0, 0, 1, 0
+        0, 0, 1, 0
     );
 }
 
@@ -76,10 +76,10 @@ pub fn andi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
-    // opcode flags: add=0, sub=0, xor=0, or=0, and=1
+    // opcode flags: add=0, xor=0, or=0, and=1
     trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
         imm_0, imm_1, imm_msb,
-        0, 0, 0, 0, 1
+        0, 0, 0, 1
     );
 }
 

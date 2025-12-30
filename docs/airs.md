@@ -176,14 +176,13 @@ Same as 1.0
 - imm_msb (imm[11])
 
 - opcode_add_flag
-- opcode_sub_flag
 - opcode_xor_flag
 - opcode_or_flag
 - opcode_and_flag
 
 ### 2.2 Variables
 
-- `enabler = opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
+- `enabler = opcode_add_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
 - `imm = imm_0 + imm_1 * 2^8 + imm_msb * 2^11`
 - `sext_imm_0 = imm_0`

@@ -30,15 +30,12 @@ impl FrameworkEval for Eval {
 
         // Section 2.2: Variables
         let enabler = cols.opcode_add_flag.clone()
-            + cols.opcode_sub_flag.clone()
             + cols.opcode_xor_flag.clone()
             + cols.opcode_or_flag.clone()
             + cols.opcode_and_flag.clone();
 
         let expected_opcode_id = cols.opcode_add_flag.clone()
             * E::F::from(BaseField::from_u32_unchecked(Opcode::Addi as u32))
-            + cols.opcode_sub_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Sub as u32))
             + cols.opcode_xor_flag.clone()
                 * E::F::from(BaseField::from_u32_unchecked(Opcode::Xori as u32))
             + cols.opcode_or_flag.clone()
@@ -113,9 +110,6 @@ impl FrameworkEval for Eval {
         // opcode flags are booleans
         eval.add_constraint(
             cols.opcode_add_flag.clone() * (E::F::one() - cols.opcode_add_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_sub_flag.clone() * (E::F::one() - cols.opcode_sub_flag.clone()),
         );
         eval.add_constraint(
             cols.opcode_xor_flag.clone() * (E::F::one() - cols.opcode_xor_flag.clone()),

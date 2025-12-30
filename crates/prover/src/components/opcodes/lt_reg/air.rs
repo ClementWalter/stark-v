@@ -61,7 +61,7 @@ impl FrameworkEval for Eval {
 
         // Section 5.3: Constraints
 
-        // enabler, opcode_*_flags and diff_markers are booleans
+        // enabler, opcode_*_flags, cmp_result and diff_markers are booleans
         eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
         eval.add_constraint(
             cols.opcode_slt_flag.clone() * (E::F::one() - cols.opcode_slt_flag.clone()),
@@ -69,6 +69,7 @@ impl FrameworkEval for Eval {
         eval.add_constraint(
             cols.opcode_sltu_flag.clone() * (E::F::one() - cols.opcode_sltu_flag.clone()),
         );
+        eval.add_constraint(cols.cmp_result.clone() * (E::F::one() - cols.cmp_result.clone()));
 
         for marker in diff_markers.iter() {
             eval.add_constraint(marker.clone() * (E::F::one() - marker.clone()));
