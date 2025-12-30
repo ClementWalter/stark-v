@@ -4,7 +4,6 @@ use num_traits::Zero;
 use prover::components::opcodes::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
 use prover::relations::{Counters, Relations};
 use runner::trace::Tracer;
-use stwo::core::fri::FriConfig;
 use stwo::core::pcs::PcsConfig;
 
 #[test]
@@ -79,13 +78,10 @@ fn test_prove_fibonacci() {
 /// This helps identify which specific component's constraints are failing.
 #[test_log::test]
 fn test_fibonacci_constraints() {
-    use prover::components::opcodes;
+    use prover::components::{self, Components};
     use prover::e2e::{ensure_guest_built, guest_bin_dir};
-    use prover::relations::{Counters, Relations};
+    use prover::relations::Relations;
     use runner::run;
-    use stwo::core::pcs::TreeVec;
-    use stwo::core::poly::circle::CanonicCoset;
-    use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
 
     ensure_guest_built();
 
@@ -93,76 +89,9 @@ fn test_fibonacci_constraints() {
     let elf_bytes = std::fs::read(&elf_path).expect("Failed to read fib ELF");
 
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
-    let tracer = run_result.tracer;
 
-    // Generate opcode traces
-    let mut counters = Counters::new();
-    let traces = opcodes::gen_trace(tracer, &mut counters);
-
+    let traces = components::gen_trace(run_result.tracer);
     let relations = Relations::dummy();
 
-    // Helper macro to test a single component
-    macro_rules! test_component {
-        ($name:ident, $module:ident) => {
-            if !traces.$name.is_empty() {
-                let log_size = traces
-                    .$name
-                    .first()
-                    .map(|t| t.domain.log_size())
-                    .unwrap_or(0);
-                if log_size > 0 {
-                    let (interaction_trace, claimed_sum) =
-                        opcodes::$module::witness::gen_interaction_trace(&traces.$name, &relations);
-
-                    let trace_tree = TreeVec::new(vec![
-                        vec![], // preprocessed (empty for now)
-                        traces.$name.clone(),
-                        interaction_trace,
-                    ]);
-
-                    let trace_polys = trace_tree.map_cols(|c| c.interpolate());
-
-                    let eval = opcodes::$module::air::Eval {
-                        log_size,
-                        relations: relations.clone(),
-                    };
-
-                    println!(
-                        "Testing {} constraints (log_size={})",
-                        stringify!($name),
-                        log_size
-                    );
-                    assert_constraints_on_polys(
-                        &trace_polys,
-                        CanonicCoset::new(log_size),
-                        |assert_eval| {
-                            eval.evaluate(assert_eval);
-                        },
-                        claimed_sum,
-                    );
-                    println!("{} constraints OK", stringify!($name));
-                }
-            }
-        };
-    }
-
-    // Test each component's constraints
-    test_component!(base_alu_reg, base_alu_reg);
-    test_component!(base_alu_imm, base_alu_imm);
-    test_component!(shifts_reg, shifts_reg);
-    test_component!(shifts_imm, shifts_imm);
-    test_component!(lt_reg, lt_reg);
-    test_component!(lt_imm, lt_imm);
-    test_component!(branch_eq, branch_eq);
-    test_component!(branch_lt, branch_lt);
-    test_component!(lui, lui);
-    test_component!(auipc, auipc);
-    test_component!(jalr, jalr);
-    test_component!(jal, jal);
-    test_component!(load_store, load_store);
-    test_component!(mul, mul);
-    test_component!(mulh, mulh);
-    test_component!(div, div);
-
-    println!("All component constraints satisfied!");
+    Components::assert_constraints_on_polys(&traces, &relations);
 }
