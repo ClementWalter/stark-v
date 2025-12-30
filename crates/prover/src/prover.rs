@@ -125,16 +125,6 @@ pub fn prove_rv32im(
     let components = Components::new(&claim, &mut location_allocator, relations, &claimed_sum);
     span.exit();
 
-    // Debug: log column counts
-    let num_provers = components.provers().len();
-    info!("Number of provers: {num_provers}");
-
-    // Log the trace_log_degree_bounds for each prover
-    for (i, prover) in components.provers().iter().enumerate() {
-        let bounds = prover.trace_log_degree_bounds();
-        info!("Prover {i}: bounds = {:?}", bounds);
-    }
-
     // 12. Generate proof
     let span = span!(Level::INFO, "Prove").entered();
     let proof =
