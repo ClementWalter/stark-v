@@ -18,7 +18,7 @@ pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
 pub use execute::execute;
 pub use memory::Memory;
-pub use trace::{Access, Trace, Tracer};
+pub use trace::{Access, Tracer};
 
 /// Errors that can occur during program execution.
 #[derive(Error, Debug)]

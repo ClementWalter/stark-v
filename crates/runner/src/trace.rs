@@ -5,13 +5,6 @@
 //! Registers and memory use a unified Access structure that gets flattened into columns.
 
 use simd::AlignedVec;
-use stwo::core::fields::m31::BaseField;
-use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::BitReversedOrder;
-use stwo::prover::poly::circle::CircleEvaluation;
-
-/// Type alias for a trace column evaluation.
-pub type Trace = Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>;
 
 /// Default maximum clock difference allowed between accesses.
 /// Must be consistent with max range-check in the prover.
