@@ -517,7 +517,14 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             ///
             /// The `counters` parameter is for preprocessed multiplicity tracking
             /// (will be populated when LogUp is implemented).
-            pub fn into_witness<C>(self, _counters: &mut C) -> crate::Trace {
+            pub fn into_witness<C>(
+                self,
+                _counters: &mut C,
+            ) -> Vec<stwo::prover::poly::circle::CircleEvaluation<
+                stwo::prover::backend::simd::SimdBackend,
+                stwo::core::fields::m31::BaseField,
+                stwo::prover::poly::BitReversedOrder,
+            >> {
                 use stwo::core::poly::circle::CanonicCoset;
                 use stwo::prover::backend::simd::column::BaseColumn;
                 use stwo::prover::poly::circle::CircleEvaluation;
