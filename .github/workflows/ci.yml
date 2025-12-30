@@ -27,6 +27,9 @@ jobs:
         with:
           toolchain: nightly-2025-07-14
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Build (release)
         run: cargo build --release
 
@@ -44,6 +47,9 @@ jobs:
         with:
           targets: riscv32im-unknown-none-elf
           toolchain: nightly-2025-07-14
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
 
       - name: Run tests (release)
         run: cargo test --release
