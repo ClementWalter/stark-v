@@ -46,9 +46,12 @@ impl FrameworkEval for Eval {
         // enabler is boolean
         eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
 
-        // rd is pc + 4
+        // rd is pc + 4 (gated by enabler for padding rows and rd_addr for x0 writes)
+        // When rd_addr = 0 (x0), the write is discarded and rd_next = 0, so skip this constraint
         eval.add_constraint(
-            rd_felt - (cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4))),
+            cols.enabler.clone()
+                * cols.rd_addr.clone()
+                * (rd_felt - (cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)))),
         );
 
         eval

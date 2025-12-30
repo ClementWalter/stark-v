@@ -457,6 +457,44 @@ macro_rules! opcode_components {
                     $( self.$opcode.trace_log_degree_bounds(), )*
                 ]
             }
+
+            /// Assert constraints on polynomials for all opcode components.
+            /// Useful for debugging constraint failures.
+            pub fn assert_constraints_on_polys(
+                traces: &Traces,
+                relations: &$crate::relations::Relations,
+            ) {
+                use stwo::core::pcs::TreeVec;
+                use stwo::core::poly::circle::CanonicCoset;
+                use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
+                use tracing::info;
+
+                $(
+                    if !traces.$opcode.is_empty() {
+                        let log_size = traces.$opcode.first()
+                            .map(|t| t.domain.log_size())
+                            .unwrap_or(0);
+                        if log_size > 0 {
+                            let (interaction_trace, claimed_sum) =
+                                $opcode::witness::gen_interaction_trace(&traces.$opcode, relations);
+                            let trace_tree = TreeVec::new(vec![
+                                vec![], // preprocessed
+                                traces.$opcode.clone(),
+                                interaction_trace,
+                            ]);
+                            let trace_polys = trace_tree.map_cols(|c| c.interpolate());
+                            let eval = $opcode::air::Eval {
+                                log_size,
+                                relations: relations.clone(),
+                            };
+                            info!("Testing {} constraints (log_size={})", stringify!($opcode), log_size);
+                            assert_constraints_on_polys(&trace_polys, CanonicCoset::new(log_size),
+                                |assert_eval| { eval.evaluate(assert_eval); }, claimed_sum);
+                            info!("{} constraints OK", stringify!($opcode));
+                        }
+                    }
+                )*
+            }
         }
     };
 }
@@ -667,6 +705,44 @@ macro_rules! preprocessed_components {
                 vec![
                     $( self.$table.trace_log_degree_bounds(), )*
                 ]
+            }
+
+            /// Assert constraints on polynomials for all preprocessed components.
+            /// Useful for debugging constraint failures.
+            pub fn assert_constraints_on_polys(
+                traces: &Traces,
+                relations: &$crate::relations::Relations,
+            ) {
+                use stwo::core::pcs::TreeVec;
+                use stwo::core::poly::circle::CanonicCoset;
+                use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
+                use tracing::info;
+
+                $(
+                    if !traces.$table.is_empty() {
+                        let log_size = traces.$table.first()
+                            .map(|t| t.domain.log_size())
+                            .unwrap_or(0);
+                        if log_size > 0 {
+                            let (interaction_trace, claimed_sum) =
+                                $table::witness::gen_interaction_trace(&traces.$table, relations);
+                            let trace_tree = TreeVec::new(vec![
+                                vec![], // preprocessed
+                                traces.$table.clone(),
+                                interaction_trace,
+                            ]);
+                            let trace_polys = trace_tree.map_cols(|c| c.interpolate());
+                            let eval = $table::air::Eval {
+                                log_size,
+                                relations: relations.clone(),
+                            };
+                            info!("Testing {} constraints (log_size={})", stringify!($table), log_size);
+                            assert_constraints_on_polys(&trace_polys, CanonicCoset::new(log_size),
+                                |assert_eval| { eval.evaluate(assert_eval); }, claimed_sum);
+                            info!("{} constraints OK", stringify!($table));
+                        }
+                    }
+                )*
             }
         }
     };

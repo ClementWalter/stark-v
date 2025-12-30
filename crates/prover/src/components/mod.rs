@@ -150,6 +150,13 @@ impl Components {
         bounds.extend(self.preprocessed.trace_log_degree_bounds());
         bounds
     }
+
+    /// Assert constraints on polynomials for all components (opcodes + preprocessed).
+    /// Useful for debugging constraint failures.
+    pub fn assert_constraints_on_polys(traces: &Traces, relations: &Relations) {
+        opcodes::Components::assert_constraints_on_polys(&traces.opcodes, relations);
+        preprocessed::Components::assert_constraints_on_polys(&traces.preprocessed, relations);
+    }
 }
 
 /// Generate all traces from execution.

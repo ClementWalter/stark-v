@@ -4,7 +4,6 @@ use num_traits::Zero;
 use prover::components::opcodes::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
 use prover::relations::{Counters, Relations};
 use runner::trace::Tracer;
-use stwo::core::fri::FriConfig;
 use stwo::core::pcs::PcsConfig;
 
 #[test]
@@ -57,17 +56,8 @@ fn test_traces_struct_has_all_opcodes() {
     assert!(!traces.div.is_empty());
 }
 
-/// PCS config for testing.
-fn test_pcs_config() -> PcsConfig {
-    PcsConfig {
-        pow_bits: 10,
-        fri_config: FriConfig::new(5, 1, 64),
-    }
-}
-
 /// Test proving a small example (scaffolding - no real constraints yet).
 #[test_log::test]
-#[ignore = "To be fixed"]
 fn test_prove_fibonacci() {
     use prover::e2e::{ensure_guest_built, guest_bin_dir};
     use prover::prove_rv32im;
@@ -81,5 +71,27 @@ fn test_prove_fibonacci() {
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
     // Generate proof
-    let _proof = prove_rv32im(run_result, test_pcs_config());
+    let _proof = prove_rv32im(run_result, PcsConfig::default());
+}
+
+/// Test constraint satisfaction using assert_constraints_on_polys for each component.
+/// This helps identify which specific component's constraints are failing.
+#[test_log::test]
+fn test_fibonacci_constraints() {
+    use prover::components::{self, Components};
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::relations::Relations;
+    use runner::run;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("fib");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read fib ELF");
+
+    let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
+
+    let traces = components::gen_trace(run_result.tracer);
+    let relations = Relations::dummy();
+
+    Components::assert_constraints_on_polys(&traces, &relations);
 }

@@ -108,6 +108,9 @@ impl FrameworkEval for Eval {
             + cols.opcode_sh_flag.clone();
         let opcode_w_flag = cols.opcode_lw_flag.clone() + cols.opcode_sw_flag.clone();
         let is_signed = cols.opcode_lb_flag.clone() + cols.opcode_lh_flag.clone();
+        // Load-only flags for sign extension constraints (stores don't sign-extend)
+        let load_b_flag = cols.opcode_lb_flag.clone() + cols.opcode_lbu_flag.clone();
+        let load_h_flag = cols.opcode_lh_flag.clone() + cols.opcode_lhu_flag.clone();
         let is_store =
             cols.opcode_sb_flag.clone() + cols.opcode_sh_flag.clone() + cols.opcode_sw_flag.clone();
         let is_load = enabler.clone() - is_store.clone();
@@ -153,11 +156,14 @@ impl FrameworkEval for Eval {
         }
 
         // check shift amount
-        let half_inv = BaseField::from_u32_unchecked(2).inverse();
+        // For bytes: shift_amount = shift_id (0-3)
+        // For half-words: shift_id is 1 ([1,1,0,0]) or 5 ([0,0,1,1])
+        //   shift_amount = (shift_id - 1) / 4, so 0 or 1
+        let quarter_inv = BaseField::from_u32_unchecked(4).inverse();
         eval.add_constraint(
             cols.shift_amount.clone()
                 - (opcode_b_flag.clone() * shift_id.clone()
-                    + opcode_h_flag.clone() * (shift_id.clone() - E::F::one()) * half_inv),
+                    + opcode_h_flag.clone() * (shift_id.clone() - E::F::one()) * quarter_inv),
         );
 
         // check src/dst addresses (load/store dependent)
@@ -188,19 +194,24 @@ impl FrameworkEval for Eval {
 
         let signed_mask = is_signed.clone() * cols.src_msb.clone() * (pow2(8) - E::F::one());
 
-        // check that lbu/sb loads the correct byte
-        eval.add_constraint(opcode_b_flag.clone() * (signed_mask.clone() - dst[1].clone()));
-        eval.add_constraint(opcode_b_flag.clone() * (signed_mask.clone() - dst[2].clone()));
-        eval.add_constraint(opcode_b_flag.clone() * (signed_mask.clone() - dst[3].clone()));
+        // check that lb/lbu loads the correct byte (sign extension for loads only)
+        eval.add_constraint(load_b_flag.clone() * (signed_mask.clone() - dst[1].clone()));
+        eval.add_constraint(load_b_flag.clone() * (signed_mask.clone() - dst[2].clone()));
+        eval.add_constraint(load_b_flag.clone() * (signed_mask.clone() - dst[3].clone()));
+        // For loads: dst[0] = src[i] (load memory byte i into register byte 0)
+        // For stores: dst[i] = src[0] (store register byte 0 into memory byte i)
         for (i, marker) in markers.iter().enumerate() {
             eval.add_constraint(
-                opcode_b_flag.clone() * (dst[0].clone() - src[i].clone()) * marker.clone(),
+                load_b_flag.clone() * (dst[0].clone() - src[i].clone()) * marker.clone(),
+            );
+            eval.add_constraint(
+                cols.opcode_sb_flag.clone() * (dst[i].clone() - src[0].clone()) * marker.clone(),
             );
         }
 
-        // check that lhu/sh loads the correct half word
-        eval.add_constraint(opcode_h_flag.clone() * (signed_mask.clone() - dst[2].clone()));
-        eval.add_constraint(opcode_h_flag.clone() * (signed_mask - dst[3].clone()));
+        // check that lh/lhu loads the correct half word (sign extension for loads only)
+        eval.add_constraint(load_h_flag.clone() * (signed_mask.clone() - dst[2].clone()));
+        eval.add_constraint(load_h_flag.clone() * (signed_mask - dst[3].clone()));
 
         let inv_four = BaseField::from_u32_unchecked(4).inverse();
         eval.add_constraint(

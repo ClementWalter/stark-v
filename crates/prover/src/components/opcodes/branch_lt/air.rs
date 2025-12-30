@@ -95,12 +95,13 @@ impl FrameworkEval for Eval {
             eval.add_constraint(marker.clone() * (E::F::one() - marker.clone()));
         }
 
-        // check branch target
+        // check branch target (gated by enabler for padding rows)
         eval.add_constraint(
-            cols.branch_target.clone()
-                - (cols.pc.clone()
-                    + cols.imm_felt.clone() * cols.cmp_result.clone()
-                    + four * (E::F::one() - cols.cmp_result.clone())),
+            enabler.clone()
+                * (cols.branch_target.clone()
+                    - (cols.pc.clone()
+                        + cols.imm_felt.clone() * cols.cmp_result.clone()
+                        + four * (E::F::one() - cols.cmp_result.clone()))),
         );
 
         // msl felt must match actual msl
