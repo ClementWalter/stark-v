@@ -6,7 +6,7 @@ use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_base_alu_imm_witness_gen_empty() {
-    let table = runner::trace::Base_alu_immTable::new();
+    let table = runner::trace::BaseAluImmTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
     assert!(trace.is_empty());
@@ -14,7 +14,7 @@ fn test_base_alu_imm_witness_gen_empty() {
 
 #[test]
 fn test_base_alu_imm_interaction_trace() {
-    let table = runner::trace::Base_alu_immTable::new();
+    let table = runner::trace::BaseAluImmTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
     let relations = crate::relations::Relations::dummy();

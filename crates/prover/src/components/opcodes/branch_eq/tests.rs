@@ -6,7 +6,7 @@ use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_branch_eq_witness_gen_empty() {
-    let table = runner::trace::Branch_eqTable::new();
+    let table = runner::trace::BranchEqTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
     assert!(trace.is_empty());
@@ -14,7 +14,7 @@ fn test_branch_eq_witness_gen_empty() {
 
 #[test]
 fn test_branch_eq_interaction_trace() {
-    let table = runner::trace::Branch_eqTable::new();
+    let table = runner::trace::BranchEqTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
     let relations = crate::relations::Relations::dummy();

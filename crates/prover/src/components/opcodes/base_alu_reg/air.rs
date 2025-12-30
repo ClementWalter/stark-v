@@ -5,7 +5,7 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::Base_alu_regColumns;
+use super::columns::BaseAluRegColumns;
 use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
@@ -26,7 +26,7 @@ impl FrameworkEval for Eval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let cols = Base_alu_regColumns::from_eval(&mut eval);
+        let cols = BaseAluRegColumns::from_eval(&mut eval);
 
         // Section 1.2: Variables
         let enabler = cols.opcode_add_flag.clone()

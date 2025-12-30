@@ -10,11 +10,11 @@ use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 
-use runner::trace::Lt_immTable;
+use runner::trace::LtImmTable;
 
 /// Generate trace columns from the lt_imm table.
 pub fn gen_trace(
-    table: Lt_immTable,
+    table: LtImmTable,
     _counters: &mut crate::relations::Counters,
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
     if table.is_empty() {

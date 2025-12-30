@@ -6,7 +6,7 @@ use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_shifts_reg_witness_gen_empty() {
-    let table = runner::trace::Shifts_regTable::new();
+    let table = runner::trace::ShiftsRegTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
     assert!(trace.is_empty());
@@ -14,7 +14,7 @@ fn test_shifts_reg_witness_gen_empty() {
 
 #[test]
 fn test_shifts_reg_interaction_trace() {
-    let table = runner::trace::Shifts_regTable::new();
+    let table = runner::trace::ShiftsRegTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
     let relations = crate::relations::Relations::dummy();

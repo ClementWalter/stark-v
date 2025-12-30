@@ -5,7 +5,7 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::Branch_eqColumns;
+use super::columns::BranchEqColumns;
 use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
@@ -26,7 +26,7 @@ impl FrameworkEval for Eval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let cols = Branch_eqColumns::from_eval(&mut eval);
+        let cols = BranchEqColumns::from_eval(&mut eval);
 
         // Section 7.2: Variables
         let enabler = cols.opcode_beq_flag.clone() + cols.opcode_bne_flag.clone();

@@ -1,3 +1,3 @@
 //! Column definitions for lt_imm component.
 
-pub use runner::trace::prover_columns::Lt_immColumns;
+pub use runner::trace::prover_columns::LtImmColumns;

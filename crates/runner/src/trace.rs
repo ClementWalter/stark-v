@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 //! Trace capture for zkVM execution.
 //!
 //! Each opcode defines its own columnar trace table.
@@ -729,7 +730,7 @@ mod tests {
 
     #[test]
     fn test_base_alu_reg_table_push() {
-        let mut table = Base_alu_regTable::new();
+        let mut table = BaseAluRegTable::new();
 
         let rd = Access {
             addr: 1,
@@ -825,14 +826,14 @@ mod tests {
         fn test_base_alu_reg_columns_size() {
             // base_alu_reg: clk, pc, rd (10), rs1 (10), rs2 (10),
             // + 5 opcode flags = 37 total (no enabler - has flags)
-            assert_eq!(Base_alu_regColumns::<()>::SIZE, 37);
+            assert_eq!(BaseAluRegColumns::<()>::SIZE, 37);
         }
 
         #[test]
         fn test_base_alu_imm_columns_size() {
             // base_alu_imm: clk, pc, rd (10), rs1 (10),
             // + imm_0, imm_1, imm_msb (3) + 5 opcode flags = 30 total (no enabler - has flags)
-            assert_eq!(Base_alu_immColumns::<()>::SIZE, 30);
+            assert_eq!(BaseAluImmColumns::<()>::SIZE, 30);
         }
 
         #[test]
@@ -847,14 +848,14 @@ mod tests {
             // + r2_idx, imm_felt, src_msb, shift_amount (4)
             // + src_addr_selector, dst_addr_selector (2)
             // + marker_0..3 (4) + 8 opcode flags = 50 total (no enabler - has flags)
-            assert_eq!(Load_storeColumns::<()>::SIZE, 50);
+            assert_eq!(LoadStoreColumns::<()>::SIZE, 50);
         }
 
         #[test]
         fn test_branch_eq_columns_size() {
             // branch_eq: clk (1), pc (1), rs1 (10), rs2 (10),
             // + imm_felt (1), cmp_result (1) + diff_inv_marker_0..3 (4) + 2 opcode flags = 30 total (no enabler - has flags)
-            assert_eq!(Branch_eqColumns::<()>::SIZE, 30);
+            assert_eq!(BranchEqColumns::<()>::SIZE, 30);
         }
 
         #[test]
