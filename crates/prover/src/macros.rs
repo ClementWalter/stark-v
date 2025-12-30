@@ -413,7 +413,7 @@ macro_rules! opcode_components {
 
         impl Components {
             /// Create all AIR components.
-            /// Each component gets its log_size from the claim.
+            /// Each component gets its log_size from the claim (minimum 4).
             pub fn new(
                 claim: &Claim,
                 location_allocator: &mut stwo_constraint_framework::TraceLocationAllocator,

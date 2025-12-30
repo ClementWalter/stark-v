@@ -39,22 +39,22 @@ fn test_traces_struct_has_all_opcodes() {
     let traces: Traces = gen_trace(tracer, &mut counters);
 
     // Verify we can access each opcode family trace (16 families total).
-    assert!(traces.base_alu_reg.is_empty());
-    assert!(traces.base_alu_imm.is_empty());
-    assert!(traces.shifts_reg.is_empty());
-    assert!(traces.shifts_imm.is_empty());
-    assert!(traces.lt_reg.is_empty());
-    assert!(traces.lt_imm.is_empty());
-    assert!(traces.branch_eq.is_empty());
-    assert!(traces.branch_lt.is_empty());
-    assert!(traces.lui.is_empty());
-    assert!(traces.auipc.is_empty());
-    assert!(traces.jalr.is_empty());
-    assert!(traces.jal.is_empty());
-    assert!(traces.load_store.is_empty());
-    assert!(traces.mul.is_empty());
-    assert!(traces.mulh.is_empty());
-    assert!(traces.div.is_empty());
+    assert!(!traces.base_alu_reg.is_empty());
+    assert!(!traces.base_alu_imm.is_empty());
+    assert!(!traces.shifts_reg.is_empty());
+    assert!(!traces.shifts_imm.is_empty());
+    assert!(!traces.lt_reg.is_empty());
+    assert!(!traces.lt_imm.is_empty());
+    assert!(!traces.branch_eq.is_empty());
+    assert!(!traces.branch_lt.is_empty());
+    assert!(!traces.lui.is_empty());
+    assert!(!traces.auipc.is_empty());
+    assert!(!traces.jalr.is_empty());
+    assert!(!traces.jal.is_empty());
+    assert!(!traces.load_store.is_empty());
+    assert!(!traces.mul.is_empty());
+    assert!(!traces.mulh.is_empty());
+    assert!(!traces.div.is_empty());
 }
 
 /// PCS config for testing.
@@ -66,8 +66,8 @@ fn test_pcs_config() -> PcsConfig {
 }
 
 /// Test proving a small example (scaffolding - no real constraints yet).
-#[test]
-#[ignore = "Proving is slow, run with --ignored"]
+#[test_log::test]
+#[ignore = "To be fixed"]
 fn test_prove_fibonacci() {
     use prover::e2e::{ensure_guest_built, guest_bin_dir};
     use prover::prove_rv32im;

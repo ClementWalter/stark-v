@@ -5,15 +5,20 @@ use num_traits::Zero;
 use stwo::core::fields::qm31::QM31;
 
 #[test]
-fn test_lui_witness_gen_empty() {
+fn test_lui_witness_gen_empty_table() {
     let table = runner::trace::LuiTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
-    assert!(trace.is_empty());
+    // Empty table produces minimal log_size = 4 (16 rows)
+    assert!(!trace.is_empty());
+    assert_eq!(
+        trace.first().expect("trace has columns").domain.log_size(),
+        4
+    );
 }
 
 #[test]
-fn test_lui_interaction_trace() {
+fn test_lui_interaction_trace_empty_table() {
     let table = runner::trace::LuiTable::new();
     let mut counters = crate::relations::Counters::new();
     let trace = witness::gen_trace(table, &mut counters);
