@@ -57,17 +57,8 @@ fn test_traces_struct_has_all_opcodes() {
     assert!(!traces.div.is_empty());
 }
 
-/// PCS config for testing.
-fn test_pcs_config() -> PcsConfig {
-    PcsConfig {
-        pow_bits: 10,
-        fri_config: FriConfig::new(5, 1, 64),
-    }
-}
-
 /// Test proving a small example (scaffolding - no real constraints yet).
 #[test_log::test]
-#[ignore = "To be fixed"]
 fn test_prove_fibonacci() {
     use prover::e2e::{ensure_guest_built, guest_bin_dir};
     use prover::prove_rv32im;
@@ -81,5 +72,5 @@ fn test_prove_fibonacci() {
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
     // Generate proof
-    let _proof = prove_rv32im(run_result, test_pcs_config());
+    let _proof = prove_rv32im(run_result, PcsConfig::default());
 }

@@ -64,6 +64,7 @@ pub fn prove_rv32im(
     let span = span!(Level::INFO, "Preprocessed trace").entered();
     let preprocessed_trace = PreProcessedTrace::new();
     let preprocessed_ids = preprocessed_trace.ids.clone();
+
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(preprocessed_trace.trace);
     tree_builder.commit(channel);
@@ -99,12 +100,14 @@ pub fn prove_rv32im(
     // 8. Draw lookup elements
     let relations = Relations::draw(channel);
 
-    // 9. Interaction trace (LogUp fractions)
+    // 9. Interaction trace (LogUp fractions) - only commit if non-empty
     let span = span!(Level::INFO, "Interaction trace").entered();
     let (interaction_trace, claimed_sum) = gen_interaction_trace(&traces, &relations);
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(interaction_trace);
-    tree_builder.commit(channel);
+    if !interaction_trace.is_empty() {
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(interaction_trace);
+        tree_builder.commit(channel);
+    }
     span.exit();
 
     // 10. Verify claimed sum is zero (all lookups balanced)
