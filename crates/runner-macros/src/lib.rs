@@ -68,15 +68,24 @@ fn count_opcode_flags(fields: &[Ident]) -> usize {
         .count()
 }
 
-/// Generate the table struct name from opcode name (e.g., "add" -> "AddTable")
+/// Convert a snake_case identifier to PascalCase.
+/// E.g., "base_alu_imm" -> "BaseAluImm"
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+            }
+        })
+        .collect()
+}
+
+/// Generate the table struct name from opcode name (e.g., "base_alu_imm" -> "BaseAluImmTable")
 fn table_name(opcode: &Ident) -> Ident {
-    let name = opcode.to_string();
-    let capitalized = name
-        .chars()
-        .enumerate()
-        .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
-        .collect::<String>();
-    format_ident!("{}Table", capitalized)
+    let pascal = to_pascal_case(&opcode.to_string());
+    format_ident!("{}Table", pascal)
 }
 
 /// Generate columnar field declarations for a single field
@@ -308,15 +317,10 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
     }
 }
 
-/// Generate column struct name (e.g., "add" -> "AddColumns")
+/// Generate column struct name (e.g., "base_alu_imm" -> "BaseAluImmColumns")
 fn column_struct_name(opcode: &Ident) -> Ident {
-    let name = opcode.to_string();
-    let capitalized = name
-        .chars()
-        .enumerate()
-        .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
-        .collect::<String>();
-    format_ident!("{}Columns", capitalized)
+    let pascal = to_pascal_case(&opcode.to_string());
+    format_ident!("{}Columns", pascal)
 }
 
 /// Generate prover column struct for AIR evaluation
