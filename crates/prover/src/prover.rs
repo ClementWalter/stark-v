@@ -16,6 +16,10 @@ use tracing::{Level, info, span};
 use crate::components::{Components, gen_interaction_trace, gen_trace};
 use crate::relations::{PreProcessedTrace, Relations};
 
+// Use lower POW bits in debug builds to speed up tests.
+#[cfg(debug_assertions)]
+const INTERACTION_POW_BITS: u32 = 1;
+#[cfg(not(debug_assertions))]
 const INTERACTION_POW_BITS: u32 = 10;
 
 /// Prove execution of an RV32IM program.
@@ -32,7 +36,11 @@ pub fn prove_rv32im(
 ) -> StarkProof<Blake2sMerkleHasher> {
     // 1. Generate traces from execution
     let span = span!(Level::INFO, "Generate traces").entered();
-    let traces = gen_trace(run_result.tracer);
+    let tracer = run_result.tracer;
+    info!("Tracer total_traces: {}", tracer.total_traces());
+    info!("Tracer base_alu_imm len: {}", tracer.base_alu_imm.len());
+    info!("Tracer load_store len: {}", tracer.load_store.len());
+    let traces = gen_trace(tracer);
     let log_size = traces.max_log_size();
     info!("Max trace log_size: {log_size}");
     span.exit();
@@ -64,8 +72,19 @@ pub fn prove_rv32im(
     // 5. Main execution trace (opcode + multiplicity columns)
     let span = span!(Level::INFO, "Main trace").entered();
     let claim: crate::components::Claim = (&traces).into();
+    let columns = traces.columns_cloned();
+    info!("Main trace columns committed: {}", columns.len());
+
+    // Log the actual log_sizes of committed columns
+    let mut log_size_counts: std::collections::HashMap<u32, usize> =
+        std::collections::HashMap::new();
+    for col in &columns {
+        *log_size_counts.entry(col.domain.log_size()).or_insert(0) += 1;
+    }
+    info!("Committed column log_sizes: {:?}", log_size_counts);
+
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(traces.columns_cloned());
+    tree_builder.extend_evals(columns);
     tree_builder.commit(channel);
     span.exit();
 
@@ -102,6 +121,16 @@ pub fn prove_rv32im(
         TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_ids);
     let components = Components::new(&claim, &mut location_allocator, relations, &claimed_sum);
     span.exit();
+
+    // Debug: log column counts
+    let num_provers = components.provers().len();
+    info!("Number of provers: {num_provers}");
+
+    // Log the trace_log_degree_bounds for each prover
+    for (i, prover) in components.provers().iter().enumerate() {
+        let bounds = prover.trace_log_degree_bounds();
+        info!("Prover {i}: bounds = {:?}", bounds);
+    }
 
     // 12. Generate proof
     let span = span!(Level::INFO, "Prove").entered();

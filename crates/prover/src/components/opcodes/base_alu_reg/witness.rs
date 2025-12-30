@@ -13,22 +13,14 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use runner::trace::BaseAluRegTable;
 
 /// Generate trace columns from the base_alu_reg table.
+/// Always produces columns with minimum log_size of 4, even for empty tables.
 pub fn gen_trace(
     table: BaseAluRegTable,
     _counters: &mut crate::relations::Counters,
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    if table.is_empty() {
-        return vec![];
-    }
-
     // Pad to power of 2 (minimum 2^4 = 16)
     let len = table.len() as u32;
-    let log_size = if len.is_power_of_two() {
-        len.trailing_zeros()
-    } else {
-        len.next_power_of_two().trailing_zeros()
-    };
-    let log_size = log_size.max(4); // Minimum size
+    let log_size = len.next_power_of_two().ilog2().max(4);
     let padded_len = 1 << log_size;
 
     let columns = table.into_columns();

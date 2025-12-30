@@ -17,18 +17,9 @@ pub fn gen_trace(
     table: ShiftsRegTable,
     _counters: &mut crate::relations::Counters,
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    if table.is_empty() {
-        return vec![];
-    }
-
     // Pad to power of 2 (minimum 2^4 = 16)
     let len = table.len() as u32;
-    let log_size = if len.is_power_of_two() {
-        len.trailing_zeros()
-    } else {
-        len.next_power_of_two().trailing_zeros()
-    };
-    let log_size = log_size.max(4); // Minimum size
+    let log_size = len.next_power_of_two().ilog2().max(4);
     let padded_len = 1 << log_size;
 
     let columns = table.into_columns();
