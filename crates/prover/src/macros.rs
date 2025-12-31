@@ -505,11 +505,14 @@ macro_rules! opcode_components {
 /// ```ignore
 /// preprocessed_components! {
 ///     range_check_20,
-///     // xor_8,
+///     bitwise,
 /// }
 /// ```
 ///
-/// Generates:
+/// Generates for each table:
+/// - Module with `air`, `columns`, `witness` submodules
+///
+/// Generates at aggregate level:
 /// - `Traces` struct with one field per preprocessed table (multiplicity columns)
 /// - `ClaimedSum` struct with one QM31 field per table + `sum()` method
 /// - `Components` struct with one air::Component field per table
@@ -524,6 +527,111 @@ macro_rules! preprocessed_components {
         use stwo::prover::backend::simd::SimdBackend;
         use stwo::prover::poly::circle::CircleEvaluation;
         use stwo::prover::poly::BitReversedOrder;
+
+        // Generate inner modules for each preprocessed component
+        $(
+            pub mod $table {
+                //! Preprocessed multiplicity component.
+                //!
+                //! Tracks how many times each value is used by opcode traces.
+                //! Provides the "preprocessed side" of the LogUp relation.
+
+                pub mod columns {
+                    //! Column definitions for multiplicity component.
+
+                    use stwo_constraint_framework::EvalAtRow;
+
+                    /// Number of trace columns for this component.
+                    pub const N_COLUMNS: usize = 1;
+
+                    /// Column offsets.
+                    pub const MULTIPLICITY: usize = 0;
+
+                    /// Columns for multiplicity tracking.
+                    pub struct Columns<E: EvalAtRow> {
+                        pub multiplicity: E::F,
+                    }
+
+                    impl<E: EvalAtRow> Columns<E> {
+                        pub fn from_eval(eval: &mut E) -> Self {
+                            Self {
+                                multiplicity: eval.next_trace_mask(),
+                            }
+                        }
+                    }
+                }
+
+                pub mod air {
+                    //! AIR component for multiplicity.
+                    //!
+                    //! Provides the preprocessed side of the LogUp relation:
+                    //! Σ (multiplicity[i] / (value[i] - z))
+
+                    use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+
+                    use super::columns::Columns;
+                    use crate::relations::Relations;
+
+                    pub type Component = FrameworkComponent<Eval>;
+
+                    #[derive(Clone)]
+                    pub struct Eval {
+                        pub log_size: u32,
+                        pub relations: Relations,
+                    }
+
+                    impl FrameworkEval for Eval {
+                        fn log_size(&self) -> u32 {
+                            self.log_size
+                        }
+
+                        fn max_constraint_log_degree_bound(&self) -> u32 {
+                            self.log_size + 1
+                        }
+
+                        fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+                            let cols = Columns::from_eval(&mut eval);
+
+                            // TODO: Add LogUp constraint
+                            // For now, dummy constraint (multiplicity - multiplicity = 0)
+                            eval.add_constraint(cols.multiplicity.clone() - cols.multiplicity.clone());
+
+                            eval
+                        }
+                    }
+                }
+
+                pub mod witness {
+                    //! Witness generation for multiplicity component.
+
+                    use num_traits::Zero;
+                    use stwo::core::ColumnVec;
+                    use stwo::core::fields::m31::BaseField;
+                    use stwo::core::fields::qm31::QM31;
+                    use stwo::prover::backend::simd::SimdBackend;
+                    use stwo::prover::poly::BitReversedOrder;
+                    use stwo::prover::poly::circle::CircleEvaluation;
+
+                    use crate::relations::Relations;
+
+                    /// Generate interaction trace for LogUp.
+                    ///
+                    /// Creates LogUp fractions: multiplicity / (value - z)
+                    /// where `value` comes from the preprocessed column.
+                    pub fn gen_interaction_trace(
+                        _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                        _relations: &Relations,
+                    ) -> (
+                        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                        QM31,
+                    ) {
+                        // TODO: Implement LogUp interaction trace
+                        // For now, return empty (scaffolding)
+                        (vec![], QM31::zero())
+                    }
+                }
+            }
+        )*
 
         /// Trace columns for preprocessed multiplicity components.
         pub struct Traces {

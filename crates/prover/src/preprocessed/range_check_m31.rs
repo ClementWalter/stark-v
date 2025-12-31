@@ -57,10 +57,10 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
     fn column_ids() -> Vec<PreProcessedColumnId> {
         vec![
             PreProcessedColumnId {
-                id: "rc_m31_lsl".into(),
+                id: "range_check_m31_lsl".into(),
             },
             PreProcessedColumnId {
-                id: "rc_m31_msl".into(),
+                id: "range_check_m31_msl".into(),
             },
         ]
     }
