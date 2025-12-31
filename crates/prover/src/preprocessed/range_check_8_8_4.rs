@@ -4,7 +4,8 @@
 //! - `limb_0 ∈ [0, 2^8)`
 //! - `limb_1 ∈ [0, 2^8)`
 //! - `limb_2 ∈ [0, 2^4)`
-//! for a total size of `2^20`.
+//!
+//! Total size: `2^20`.
 
 use std::marker::PhantomData;
 

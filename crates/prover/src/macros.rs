@@ -570,7 +570,7 @@ macro_rules! preprocessed_components {
                     use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
                     use super::columns::Columns;
-                    use crate::relations::Relations;
+                    use $crate::relations::Relations;
 
                     pub type Component = FrameworkComponent<Eval>;
 
@@ -612,7 +612,7 @@ macro_rules! preprocessed_components {
                     use stwo::prover::poly::BitReversedOrder;
                     use stwo::prover::poly::circle::CircleEvaluation;
 
-                    use crate::relations::Relations;
+                    use $crate::relations::Relations;
 
                     /// Generate interaction trace for LogUp.
                     ///

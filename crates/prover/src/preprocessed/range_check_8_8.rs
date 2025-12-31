@@ -3,7 +3,8 @@
 //! Two columns covering the cartesian product of:
 //! - `limb_0 ∈ [0, 2^8)`
 //! - `limb_1 ∈ [0, 2^8)`
-//! for a total size of `2^16`.
+//!
+//! Total size: `2^16`.
 
 use std::marker::PhantomData;
 
