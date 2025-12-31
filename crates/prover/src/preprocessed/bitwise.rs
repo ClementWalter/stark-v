@@ -12,11 +12,12 @@
 
 use std::marker::PhantomData;
 
+use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::{Col, Column};
+use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -42,15 +43,15 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
         let domain = CanonicCoset::new(Self::LOG_SIZE).circle_domain();
         let size = 1 << Self::LOG_SIZE;
 
-        let mut limb_0 = Col::<SimdBackend, BaseField>::zeros(size);
-        let mut limb_1 = Col::<SimdBackend, BaseField>::zeros(size);
-        let mut result = Col::<SimdBackend, BaseField>::zeros(size);
-        let mut bitwise_id = Col::<SimdBackend, BaseField>::zeros(size);
+        let mut limb_0 = aligned_vec![0u32; size];
+        let mut limb_1 = aligned_vec![0u32; size];
+        let mut result = aligned_vec![0u32; size];
+        let mut bitwise_id = aligned_vec![0u32; size];
 
         for op_id in 0..4u32 {
             for lhs in 0..256u32 {
                 for rhs in 0..256u32 {
-                    let idx = (lhs) | (rhs << 8) | (op_id << 16);
+                    let idx = (lhs | (rhs << 8) | (op_id << 16)) as usize;
                     let res = match op_id {
                         0 => lhs & rhs,
                         1 => lhs | rhs,
@@ -58,19 +59,19 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
                         _ => 0,
                     };
 
-                    limb_0.set(idx as usize, BaseField::from(lhs));
-                    limb_1.set(idx as usize, BaseField::from(rhs));
-                    result.set(idx as usize, BaseField::from(res));
-                    bitwise_id.set(idx as usize, BaseField::from(op_id));
+                    limb_0[idx] = lhs;
+                    limb_1[idx] = rhs;
+                    result[idx] = res;
+                    bitwise_id[idx] = op_id;
                 }
             }
         }
 
         vec![
-            CircleEvaluation::new(domain, limb_0),
-            CircleEvaluation::new(domain, limb_1),
-            CircleEvaluation::new(domain, result),
-            CircleEvaluation::new(domain, bitwise_id),
+            CircleEvaluation::new(domain, BaseColumn::from(limb_0)),
+            CircleEvaluation::new(domain, BaseColumn::from(limb_1)),
+            CircleEvaluation::new(domain, BaseColumn::from(result)),
+            CircleEvaluation::new(domain, BaseColumn::from(bitwise_id)),
         ]
     }
 

@@ -7,11 +7,12 @@
 
 use std::marker::PhantomData;
 
+use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::{Col, Column};
+use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -36,21 +37,17 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
         let domain = CanonicCoset::new(Self::LOG_SIZE).circle_domain();
         let size = 1 << Self::LOG_SIZE;
 
-        let mut lsl = Col::<SimdBackend, BaseField>::zeros(size);
-        let mut msl = Col::<SimdBackend, BaseField>::zeros(size);
+        let mut lsl = aligned_vec![0u32; size];
+        let mut msl = aligned_vec![0u32; size];
 
         for i in 0..size {
-            let idx = i as u32;
-            let lsl_val = idx & 0xff;
-            let msl_val = (idx >> 8) & 0x7f;
-
-            lsl.set(i, BaseField::from(lsl_val));
-            msl.set(i, BaseField::from(msl_val));
+            lsl[i] = (i & 0xff) as u32;
+            msl[i] = ((i >> 8) & 0x7f) as u32;
         }
 
         vec![
-            CircleEvaluation::new(domain, lsl),
-            CircleEvaluation::new(domain, msl),
+            CircleEvaluation::new(domain, BaseColumn::from(lsl)),
+            CircleEvaluation::new(domain, BaseColumn::from(msl)),
         ]
     }
 
