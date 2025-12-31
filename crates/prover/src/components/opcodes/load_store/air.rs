@@ -215,28 +215,52 @@ impl FrameworkEval for Eval {
 
         let inv_four = BaseField::from_u32_unchecked(4).inverse();
         eval.add_constraint(
-            opcode_h_flag.clone()
+            load_h_flag.clone()
                 * (E::F::from(BaseField::from_u32_unchecked(5)) - shift_id.clone())
                 * inv_four
                 * (dst[0].clone() - src[0].clone()),
         );
         eval.add_constraint(
-            opcode_h_flag.clone()
+            load_h_flag.clone()
                 * (E::F::from(BaseField::from_u32_unchecked(5)) - shift_id.clone())
                 * inv_four
                 * (dst[1].clone() - src[1].clone()),
         );
         eval.add_constraint(
-            opcode_h_flag.clone()
+            load_h_flag.clone()
                 * (shift_id.clone() - E::F::one())
                 * inv_four
                 * (dst[0].clone() - src[2].clone()),
         );
         eval.add_constraint(
-            opcode_h_flag.clone()
+            load_h_flag.clone()
                 * (shift_id.clone() - E::F::one())
                 * inv_four
                 * (dst[1].clone() - src[3].clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_sh_flag.clone()
+                * (E::F::from(BaseField::from_u32_unchecked(5)) - shift_id.clone())
+                * inv_four
+                * (dst[0].clone() - src[0].clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_sh_flag.clone()
+                * (E::F::from(BaseField::from_u32_unchecked(5)) - shift_id.clone())
+                * inv_four
+                * (dst[1].clone() - src[1].clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_sh_flag.clone()
+                * (shift_id.clone() - E::F::one())
+                * inv_four
+                * (dst[2].clone() - src[0].clone()),
+        );
+        eval.add_constraint(
+            cols.opcode_sh_flag.clone()
+                * (shift_id.clone() - E::F::one())
+                * inv_four
+                * (dst[3].clone() - src[1].clone()),
         );
 
         // check that lw/sw loads all the bytes
