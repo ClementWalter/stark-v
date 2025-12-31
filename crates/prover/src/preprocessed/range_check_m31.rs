@@ -3,6 +3,8 @@
 //! Two columns containing all possible pairs of:
 //! - least significant limb (8 bits)
 //! - most significant limb (7 bits, since M31 < 2^31)
+//! bin(2**31 - 1) = 01111111 11111111 11111111 11111111
+//! max(BaseField) = 2**31 - 2 = 01111111 11111111 11111111 11111110
 //! for a total size of `2^15`.
 
 use std::marker::PhantomData;
@@ -41,8 +43,18 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
         let mut msl = aligned_vec![0u32; size];
 
         for i in 0..size {
-            lsl[i] = (i & 0xff) as u32;
-            msl[i] = ((i >> 8) & 0x7f) as u32;
+            let lsl_val = (i & 0xff) as u32;
+            let msl_val = ((i >> 8) & 0x7f) as u32;
+
+            // Exclude (lsl=255, msl=127) which corresponds to 2^31-1 (invalid M31).
+            // Use a duplicate entry (0, 0) at index 32767 instead.
+            if lsl_val == 255 && msl_val == 127 {
+                lsl[i] = 0;
+                msl[i] = 0;
+            } else {
+                lsl[i] = lsl_val;
+                msl[i] = msl_val;
+            }
         }
 
         vec![
