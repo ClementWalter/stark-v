@@ -78,8 +78,7 @@ impl FrameworkEval for Eval {
             cols.src_next_0.clone(),
             cols.src_next_1.clone(),
             cols.src_next_2.clone(),
-            cols.src_next_3.clone()
-                + cols.src_msb.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+            cols.src_next_3.clone(),
         ];
 
         let pow2 = |exp: u32| E::F::from(BaseField::from_u32_unchecked(1 << exp));
