@@ -10,45 +10,22 @@ use core::arch::asm;
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
     unsafe {
-        // Execute LH instruction 32 times (ensures log_size >= 5)
-        // LH: rd = sign_extend(mem[rs1 + imm][15:0])
         asm!(
-            // Store a test value to memory first
-            "li t1, 0x12345678",
-            "sw t1, 0(sp)",
-            // Execute LH 32 times
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
-            "lh t0, 0(sp)",
+            "addi t3, sp, -32",
+            "li t1, 0x8001",
+            "sh t1, 0(t3)",
+            "li t1, 0x7FFF",
+            "sh t1, 2(t3)",
+            "li t1, 0x0000",
+            "sh t1, 4(t3)",
+            "li t1, 0xFFFF",
+            "sh t1, 6(t3)",
+            "lh t0, 0(t3)",
+            "lh t0, 2(t3)",
+            "lh t0, 4(t3)",
+            "lh t0, 6(t3)",
+            "lh t0, 0(t3)",
+            "lh t0, 2(t3)",
             options(nostack)
         );
     }

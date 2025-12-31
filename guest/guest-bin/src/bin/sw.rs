@@ -10,44 +10,20 @@ use core::arch::asm;
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
     unsafe {
-        // Execute SW instruction 32 times (ensures log_size >= 5)
-        // SW: mem[rs1 + imm][31:0] = rs2[31:0]
         asm!(
-            // Load test value into register
+            "addi t3, sp, -32",
             "li t1, 0x12345678",
-            // Execute SW 32 times
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
-            "sw t1, 0(sp)",
+            "sw t1, 0(t3)",
+            "li t1, 0x89ABCDEF",
+            "sw t1, 4(t3)",
+            "li t1, 0xFFFFFFFF",
+            "sw t1, 8(t3)",
+            "li t1, 0x00000000",
+            "sw t1, 12(t3)",
+            "li t1, 0xDEADBEEF",
+            "sw t1, 0(t3)",
+            "li t1, 0xCAFEBABE",
+            "sw t1, 4(t3)",
             options(nostack)
         );
     }
