@@ -10,45 +10,22 @@ use core::arch::asm;
 #[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
     unsafe {
-        // Execute LB instruction 32 times (ensures log_size >= 5)
-        // LB: rd = sign_extend(mem[rs1 + imm][7:0])
         asm!(
-            // Store a test value to memory first
-            "li t1, 0x12345678",
-            "sw t1, 0(sp)",
-            // Execute LB 32 times
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
-            "lb t0, 0(sp)",
+            "addi t3, sp, -32",
+            "li t1, 0x80",
+            "sb t1, 0(t3)",
+            "li t1, 0x7F",
+            "sb t1, 1(t3)",
+            "li t1, 0x00",
+            "sb t1, 2(t3)",
+            "li t1, 0xFF",
+            "sb t1, 3(t3)",
+            "lb t0, 0(t3)",
+            "lb t0, 1(t3)",
+            "lb t0, 2(t3)",
+            "lb t0, 3(t3)",
+            "lb t0, 0(t3)",
+            "lb t0, 3(t3)",
             options(nostack)
         );
     }

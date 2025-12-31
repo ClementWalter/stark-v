@@ -17,17 +17,10 @@ pub fn byte_to_signed_felt(byte: u8) -> u32 {
 }
 
 /// Convert a signed i32 immediate to its M31 field representation.
-/// For a negative value, the M31 representation is P + imm.
-/// For a non-negative value, just return imm as u32.
+/// Uses canonical reduction modulo P to safely handle edge cases like i32::MIN.
 #[inline]
 pub fn imm_to_felt(imm: i32) -> u32 {
-    if imm < 0 {
-        // Negative value: M31 representation is P + imm
-        // Since imm is negative, this is P - |imm|
-        ((M31_P as i64) + (imm as i64)) as u32
-    } else {
-        imm as u32
-    }
+    (imm as i64).rem_euclid(M31_P as i64) as u32
 }
 
 /// Compute the multiplicative inverse of a value in M31.

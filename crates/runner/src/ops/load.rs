@@ -144,6 +144,7 @@ pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
 
     let w = compute_load_store_witness(addr, true, false);
     let imm_felt = imm_to_felt(inst.imm);
+    let src_msb = (mem.next >> 31) & 1;
 
     // opcode flags: lb=0, lh=0, lbu=1, lhu=0, lw=0, sb=0, sh=0, sw=0
     // For loads: dst=rd, src=mem, r2_idx=rd_addr
@@ -151,7 +152,7 @@ pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
     trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
-        inst.rd as u32, imm_felt, 0, // src_msb not needed for unsigned
+        inst.rd as u32, imm_felt, src_msb, // needed to reconstruct top byte in AIR
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
         w.marker[0], w.marker[1], w.marker[2], w.marker[3],
@@ -169,6 +170,7 @@ pub fn lhu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
 
     let w = compute_load_store_witness(addr, false, true);
     let imm_felt = imm_to_felt(inst.imm);
+    let src_msb = (mem.next >> 31) & 1;
 
     // opcode flags: lb=0, lh=0, lbu=0, lhu=1, lw=0, sb=0, sh=0, sw=0
     // For loads: dst=rd, src=mem, r2_idx=rd_addr
@@ -176,7 +178,7 @@ pub fn lhu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
     trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
-        inst.rd as u32, imm_felt, 0, // src_msb not needed for unsigned
+        inst.rd as u32, imm_felt, src_msb, // needed to reconstruct top byte in AIR
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
         w.marker[0], w.marker[1], w.marker[2], w.marker[3],

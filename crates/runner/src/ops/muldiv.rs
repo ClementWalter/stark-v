@@ -5,7 +5,7 @@
 //! - mulh family: mulh, mulhsu, mulhu (airs.md Section 15)
 //! - div family: div, divu, rem, remu (airs.md Section 16)
 
-use super::utils::m31_inverse;
+use super::utils::{M31_P, m31_inverse};
 use crate::trace::Tracer;
 use crate::{Cpu, DecodedInst};
 
@@ -126,98 +126,85 @@ pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 
 /// Compute division witness columns
 fn compute_div_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> DivWitness {
-    let zero_divisor = if rs2_val == 0 { 1 } else { 0 };
+    const LIMB_BITS: u32 = 8;
+    const LIMB_BASE: u32 = 1 << LIMB_BITS;
+    const LIMB_MASK: u32 = LIMB_BASE - 1;
+    const MSB_MASK: u32 = 1 << (LIMB_BITS - 1);
 
-    let (q, r, b_sign, c_sign, q_sign, sign_xor);
+    let b_limbs = rs1_val.to_le_bytes().map(|b| b as u32);
+    let c_limbs = rs2_val.to_le_bytes().map(|b| b as u32);
 
-    if is_signed {
+    let b_sign = (is_signed && (b_limbs[3] & MSB_MASK) != 0) as u32;
+    let c_sign = (is_signed && (c_limbs[3] & MSB_MASK) != 0) as u32;
+    let zero_divisor = (rs2_val == 0) as u32;
+    let overflow = is_signed && rs1_val == 0x8000_0000 && rs2_val == 0xFFFF_FFFF;
+
+    let (q, r, q_sign) = if zero_divisor == 1 {
+        (u32::MAX, rs1_val, is_signed as u32)
+    } else if overflow {
+        (rs1_val, 0, 0)
+    } else if is_signed {
         let a = rs1_val as i32;
         let b = rs2_val as i32;
-        b_sign = if a < 0 { 1 } else { 0 };
-        c_sign = if b < 0 { 1 } else { 0 };
-
-        if b == 0 {
-            q = u32::MAX;
-            r = rs1_val;
-            q_sign = 1; // -1 is negative
-            sign_xor = 0;
-        } else if a == i32::MIN && b == -1 {
-            q = a as u32; // Overflow: result is MIN
-            r = 0;
-            q_sign = 1;
-            sign_xor = 0;
-        } else {
-            let quot = a.wrapping_div(b);
-            let rem = a.wrapping_rem(b);
-            q = quot as u32;
-            r = rem as u32;
-            q_sign = if quot < 0 { 1 } else { 0 };
-            sign_xor = b_sign ^ c_sign;
-        }
+        let quot = a.wrapping_div(b);
+        let rem = a.wrapping_rem(b);
+        let q_val = quot as u32;
+        let q_sign = (q_val >> 31) & 1;
+        (q_val, rem as u32, q_sign)
     } else {
-        b_sign = 0;
-        c_sign = 0;
-        if rs2_val == 0 {
-            q = u32::MAX;
-            r = rs1_val;
-        } else {
-            q = rs1_val.wrapping_div(rs2_val);
-            r = rs1_val.wrapping_rem(rs2_val);
-        }
-        q_sign = 0;
-        sign_xor = 0;
+        (
+            rs1_val.wrapping_div(rs2_val),
+            rs1_val.wrapping_rem(rs2_val),
+            0,
+        )
     };
 
-    let r_zero = if r == 0 { 1 } else { 0 };
+    let sign_xor = b_sign ^ c_sign;
+    let r_zero = (r == 0 && zero_divisor == 0) as u32;
 
-    // Compute limbs for q and r
     let q_limbs = [
-        (q & 0xFF),
-        ((q >> 8) & 0xFF),
-        ((q >> 16) & 0xFF),
-        ((q >> 24) & 0xFF),
+        (q & LIMB_MASK),
+        ((q >> 8) & LIMB_MASK),
+        ((q >> 16) & LIMB_MASK),
+        ((q >> 24) & LIMB_MASK),
     ];
     let r_limbs = [
-        (r & 0xFF),
-        ((r >> 8) & 0xFF),
-        ((r >> 16) & 0xFF),
-        ((r >> 24) & 0xFF),
+        (r & LIMB_MASK),
+        ((r >> 8) & LIMB_MASK),
+        ((r >> 16) & LIMB_MASK),
+        ((r >> 24) & LIMB_MASK),
     ];
 
-    // For the less-than check: r < c (divisor)
-    // We need to find the first differing byte
-    let c = rs2_val;
-    let mut c_bytes = c.to_le_bytes();
-    let r_bytes = r.to_le_bytes();
+    let r_prime = if sign_xor == 1 {
+        negate_limbs(&r_limbs)
+    } else {
+        r_limbs
+    };
 
-    let mut lt_marker = [0u32; 4];
-    let mut lt_diff = 0u32;
-    for i in (0..4).rev() {
-        if r_bytes[i] != c_bytes[i] {
-            lt_marker[i] = 1;
-            lt_diff = if c_bytes[i] > r_bytes[i] {
-                c_bytes[i] as u32 - r_bytes[i] as u32
+    let r_inv = r_prime.map(|limb| m31_inverse(M31_P - LIMB_BASE + limb));
+
+    let (lt_marker, lt_diff) = if zero_divisor == 0 && r_zero == 0 && !overflow {
+        let idx = run_sltu_diff_idx(&c_limbs, &r_prime, c_sign == 1);
+        let mut marker = [0u32; 4];
+        let mut diff = 0u32;
+        if idx < 4 {
+            marker[idx] = 1;
+            diff = if c_sign == 1 {
+                r_prime[idx].wrapping_sub(c_limbs[idx])
             } else {
-                r_bytes[i] as u32 - c_bytes[i] as u32
+                c_limbs[idx].wrapping_sub(r_prime[idx])
             };
-            break;
         }
-    }
+        (marker, diff)
+    } else {
+        ([0u32; 4], 0)
+    };
 
-    // Inverses for non-zero checks
-    if c_sign == 1 {
-        // match AIR's c[3] = c[3] + c_sign * 2^7
-        c_bytes[3] = c_bytes[3].wrapping_add(1 << 7);
-    }
-    let c_sum: u32 = c_bytes.iter().map(|&x| x as u32).sum();
+    let c_sum: u32 = c_limbs.iter().sum();
     let c_sum_inv = if c_sum == 0 { 0 } else { m31_inverse(c_sum) };
 
-    let r_sum: u32 = r_bytes.iter().map(|&x| x as u32).sum();
+    let r_sum: u32 = r_limbs.iter().sum();
     let r_sum_inv = if r_sum == 0 { 0 } else { m31_inverse(r_sum) };
-
-    // r_abs and r_inv for signed remainder
-    let r_abs = r_limbs; // For unsigned, r_abs = r
-    let r_inv = [0u32; 4]; // Placeholder
 
     DivWitness {
         zero_divisor,
@@ -230,7 +217,7 @@ fn compute_div_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> DivWitnes
         sign_xor,
         c_sum_inv,
         r_sum_inv,
-        r_abs,
+        r_abs: r_prime,
         r_inv,
         lt_marker,
         lt_diff,
@@ -252,6 +239,28 @@ struct DivWitness {
     r_inv: [u32; 4],
     lt_marker: [u32; 4],
     lt_diff: u32,
+}
+
+fn negate_limbs(limbs: &[u32; 4]) -> [u32; 4] {
+    let mut carry = 1u32;
+    let mut out = [0u32; 4];
+    for (i, limb) in limbs.iter().enumerate() {
+        let val = 256 + carry - 1 - limb;
+        carry = val >> 8;
+        out[i] = val & 0xFF;
+    }
+    out
+}
+
+fn run_sltu_diff_idx(c: &[u32; 4], r_prime: &[u32; 4], cmp: bool) -> usize {
+    for i in (0..4).rev() {
+        if c[i] != r_prime[i] {
+            debug_assert!((c[i] < r_prime[i]) == cmp);
+            return i;
+        }
+    }
+    debug_assert!(!cmp);
+    4
 }
 
 pub fn div(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {

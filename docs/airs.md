@@ -68,18 +68,20 @@ Extra cost compared to having 2 components: add/sub - xor/or/and
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
 
 - opcode_add_flag
 - opcode_sub_flag
@@ -91,10 +93,12 @@ Extra cost compared to having 2 components: add/sub - xor/or/and
 
 - `enabler = opcode_add_flag + opcode_sub_flag + opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
 - `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-- `carry_add[i+1] = (rs1[i+1] + rs2[i+1] + carry_add[i] - rd[i+1]) / 2^8` with
-  `carry_add[0] = 0`.
-- `carry_sub[i+1] = (rd[i+1] + rs2[i+1] - rs1[i+1] + carry_sub[i]) / 2^8` with
-  `carry_sub[0] = 0`.
+- `carry_add[0] = (rs1[0] + rs2[0] - rd[0]) / 2^8`.
+- `carry_add[i] = (rs1[i] + rs2[i] + carry_add[i - 1] - rd[i]) / 2^8` for i in
+  [1..3].
+- `carry_sub[0] = (rd[0] + rs2[0] - rs1[0]) / 2^8`.
+- `carry_sub[i] = (rd[i] + rs2[i] - rs1[i] + carry_sub[i - 1]) / 2^8` for i in
+  [1..3].
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`.
 - `bitwise_id = opcode_or_flag + 2 * opcode_xor_flag`.
 
@@ -105,9 +109,14 @@ Extra cost compared to having 2 components: add/sub - xor/or/and
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
 
+check carries
+
+- `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
+- `opcode_sub_flag * carry_sub[i] * (1 - carry_sub[i])`
+
 read instruction from the Program segment (R-type)
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr)`
 
 registers update
 
@@ -116,30 +125,22 @@ registers update
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
 
-check carries
+perform bitwise operation and RC rd (same tradeoff as 1.3)
 
-- `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
-- `opcode_sub_flag * carry_sub[i] * (1 - carry_sub[i])`
-
-perform bitwise operation (could also be used to RC rd: `rd[i]` is determined by
-`rs1[i]`, `rs2[i]`, `carry[i-1]`, `carry[i]` i.e. 8 + 8 + 1 + 1 = 20 bits so
-`log_size` of bitwise would be 21 to avoid 4 extra columns of RC_8_8 for rd, not
-worth it)
-
-- `- is_bitwise * Bitwise(rs1[0], rs2[0], rd[0], bitwise_id)`
-- `- is_bitwise * Bitwise(rs1[1], rs2[1], rd[1], bitwise_id)`
-- `- is_bitwise * Bitwise(rs1[2], rs2[2], rd[2], bitwise_id)`
-- `- is_bitwise * Bitwise(rs1[3], rs2[3], rd[3], bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_0, rs2_next_0, rd_next_0, bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_1, rs2_next_1, rd_next_1, bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_2, rs2_next_2, rd_next_2, bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_3, rs2_next_3, rd_next_3, bitwise_id)`
 
 range check rd
 
@@ -148,9 +149,9 @@ range check rd
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 2. Base ALU Imm (addi/xori/ori/andi)
 
@@ -168,14 +169,15 @@ Same as 1.0
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
 - imm_0 (imm[0:7])
 - imm_1 (imm[8:10])
@@ -195,8 +197,9 @@ Same as 1.0
 - `sext_imm_1 = imm_1 + 2^3 * (2^5 - 1) * imm_msb`
 - `sext_imm_2 = (2^8 - 1) * imm_msb`
 - `sext_imm_3 = (2^8 - 1) * imm_msb`
-- `carry_add[i] = (b_i + sext_imm_i + carry_add[i - 1] - a_i) / 2^8` with
-  `carry_add[-1] = 0`
+- `carry_add[0] = (rs1[0] + sext_imm_0 - rd[0]) / 2^8`
+- `carry_add[i] = (rs1[i] + sext_imm_i + carry_add[i - 1] - rd[i]) / 2^8` for i
+  in [1..3]
 - `is_bitwise = opcode_xor_flag + opcode_or_flag + opcode_and_flag`
 - `bitwise_id =  opcode_or_flag + 2 * opcode_xor_flag`.
 
@@ -207,14 +210,21 @@ Same as 1.0
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
 
+`imm_msb` is boolean
+
+- `imm_msb * (1 - imm_msb)`
+
+check carries
+
+- `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
+
 read instruction from the Program segment (I-type)
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, imm)`
 
 range check imm (range checks sext_imm too)
 
-- `- RC_8_11(imm_0, 2^8 * imm_1)`
-- `imm_msb * (1 - imm_msb)`
+- `- RC_8_3(imm_0, imm_1)`
 
 registers update
 
@@ -223,31 +233,27 @@ registers update
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-check carries
-
-- `opcode_add_flag * carry_add[i] * (1 - carry_add[i])`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
 perform bitwise operation
 
-- `- is_bitwise * Bitwise(rs1[0], sext_imm_0, rd[0], bitwise_id)`
-- `- is_bitwise * Bitwise(rs1[1], sext_imm_1, rd[1], bitwise_id)`
-- `- is_bitwise * Bitwise(rs1[2], sext_imm_2, rd[2], bitwise_id)`
-- `- is_bitwise * Bitwise(rs1[3], sext_imm_3, rd[3], bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_0, sext_imm_0, rd_next_0, bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_1, sext_imm_1, rd_next_1, bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_2, sext_imm_2, rd_next_2, bitwise_id)`
+- `- is_bitwise * Bitwise(rs1_next_3, sext_imm_3, rd_next_3, bitwise_id)`
 
 range check rd (redundant for bitwise)
 
-- `- RC_8_8(rd[0], rd[1])`
-- `- RC_8_8(rd[2], rd[3])`
+- `- RC_8_8(rd_next_0, rd_next_1)`
+- `- RC_8_8(rd_next_2, rd_next_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 3. Shifts Reg (sll/srl/sra)
 
@@ -260,20 +266,21 @@ write to rd
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3] - `rs1[3]` stores the unsigned magnitude while `rs1_sign` carries
-  the sign bit
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 - rs1_sign
 
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
 
 - opcode_sll_flag
 - opcode_srl_flag
@@ -281,9 +288,9 @@ write to rd
 
 - bit_multiplier_left
 - bit_multiplier_right
-- bit_shift_marker[0..7]
-- limb_shift_marker[0..3]
-- bit_shift_carry[0..3]
+- bit_shift_marker_0..7
+- limb_shift_marker_0..3
+- bit_shift_carry_0..3
 
 ### 3.2 Variables
 
@@ -294,8 +301,8 @@ write to rd
 - `bit_multiplier = Σ 2^i * bit_shift_marker[i]`
 - `bit_shift = Σ i * bit_shift_marker[i]`.
 - `limb_shift = Σ i * limb_shift_marker[i]`.
-- `shift_amount = limb_shift * 8 + bit_shift`.
-- `rs1[3] = rs1[3] + 2^7 * rs1_sign`.
+- `shift_amount = limb_shift * 2^3 + bit_shift`.
+- `rs1_msl = rs1[3] + 2^7 * rs1_sign`.
 
 ### 3.3 Constraints
 
@@ -317,31 +324,6 @@ bit_multipliers are correctly formed
 - `bit_multiplier_left - left_shift * bit_multiplier`
 - `bit_multiplier_right - right_shift * bit_multiplier`
 
-read instruction from the Program segment (R-type)
-
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
-
-registers update
-
-- `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(pc + 4, clk + 1)`
-
-read from rs1
-
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-read from rs2
-
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
-
-the 5 first bits of `rs2[0]` shift `limb_shift` full limbs and `bit_shift` bits
-
-- `- RC_20(2^17 * (rs2[0] - shift_amount) / 2^5)`
-
 left shift constraints, for i in [0..3] and for j in [0..3]:
 
 - `left_shift * limb_shift_marker[i] * rd[j]` for `j < i`.
@@ -354,26 +336,52 @@ right shift constraints, for i in [0..3] and for j in [0..3]:
 
 - `right_shift * limb_shift_marker[i] * (rd[j] - rs1_sign * (2^8 - 1))` for
   `j > 3 - i`.
-- `rs1_sign * (bit_multiplier_right - 1) * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right`
-  if `j == 3 - i`
-- `bit_shift_carry[j + i + 1] * right_shift * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right`
-  if `j < 3 - i`
+- `limb_shift_marker[i] * (rs1_sign * (bit_multiplier_right - 1) * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right)`
+  for `j == 3 - i`
+- `limb_shift_marker[i] * (bit_shift_carry[j + i + 1] * right_shift * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right)`
+  for `j < 3 - i`
+
+read instruction from the Program segment (R-type)
+
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr)`
+
+registers update
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
+
+read from rs2
+
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
+
+the 5 first bits of `rs2_next_0` shift `limb_shift` full limbs and `bit_shift`
+bits
+
+- `- RC_20(2^3 - 1 - (rs2_next_0 - shift_amount) / 2^5)`
 
 shift carries should not exceed `2^bit_shift`
 
-- `- enabler * RC_8_8(2^8/bit_multiplier * bit_shift_carry[0], 2^8/bit_multiplier * bit_shift_carry[1])`
-- `- enabler * RC_8_8(2^8/bit_multiplier * bit_shift_carry[2], 2^8/bit_multiplier * bit_shift_carry[3])`
+- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry_0, bit_multiplier - enabler - bit_shift_carry_1)`
+- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry_2, bit_multiplier - enabler - bit_shift_carry_3)`
 
 range check rd
 
-- `- RC_8_8(rd[0], rd[1])`
-- `- RC_8_8(rd[2], rd[3])`
+- `- RC_8_8(rd_next_0, rd_next_1)`
+- `- RC_8_8(rd_next_2, rd_next_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 4. Shifts Imm (slli/srli/srai)
 
@@ -386,14 +394,15 @@ write to rd
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 - rs1_sign
 
 - imm_truncated (imm[0:4])
@@ -404,9 +413,9 @@ write to rd
 
 - bit_multiplier_left
 - bit_multiplier_right
-- bit_shift_marker[0..7]
-- limb_shift_marker[0..3]
-- bit_shift_carry[0..3]
+- bit_shift_marker_0..7
+- limb_shift_marker_0..3
+- bit_shift_carry_0..3
 
 ### 4.2 Variables
 
@@ -417,8 +426,8 @@ write to rd
 - `bit_multiplier = Σ 2^i * bit_shift_marker[i]`
 - `bit_shift = Σ i * bit_shift_marker[i]`.
 - `limb_shift = Σ i * limb_shift_marker[i]`.
-- `shift_amount = limb_shift * 8 + bit_shift`.
-- `rs1[3] = rs1[3] + 2^7 * rs1_sign`.
+- `shift_amount = limb_shift * 2^3 + bit_shift`.
+- `rs1_msl = rs1[3] + 2^7 * rs1_sign`.
 
 ### 4.3 Constraints
 
@@ -435,27 +444,12 @@ hot-one encodings must contain at most one activation
 - `Σ bit_shift_marker[i] = enabler`
 - `Σ limb_shift_marker[i] = enabler`
 
-bit_multiplier are correctly formed
+bit_multipliers are correctly formed
 
 - `bit_multiplier_left - left_shift * bit_multiplier`
 - `bit_multiplier_right - right_shift * bit_multiplier`
 
-read instruction from the Program segment (I-type)
-
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm_truncated)`
-
-registers update
-
-- `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(pc + 4, clk + 1)`
-
-read from rs1
-
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-`imm_truncated` shift `limb_shift` full limbs and `bit_shift` bits
+`imm_truncated` shifts `limb_shift` full limbs and `bit_shift` bits
 
 - `imm_truncated - shift_amount`
 
@@ -471,74 +465,14 @@ right shift constraints, for i in [0..3] and for j in [0..3]:
 
 - `right_shift * limb_shift_marker[i] * (rd[j] - rs1_sign * (2^8 - 1))` for
   `j > 3 - i`.
-- `rs1_sign * (bit_multiplier_right - 1) * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right`
-  if `j == 3 - i`
-- `bit_shift_carry[j + i + 1] * right_shift * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right`
-  if `j < 3 - i`
+- `limb_shift_marker[i] * (rs1_sign * (bit_multiplier_right - 1) * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right)`
+  for `j == 3 - i`
+- `limb_shift_marker[i] * (bit_shift_carry[j + i + 1] * right_shift * 2^8 + right_shift * (rs1[j + i] - bit_shift_carry[j + i]) - rd[j] * bit_multiplier_right)`
+  for `j < 3 - i`
 
-shift carries should no exceed 2^bit_shift
+read instruction from the Program segment (I-type)
 
-- `- RC_8_8(2^8/bit_multiplier * bit_shift_carry[0], 2^8/bit_multiplier * bit_shift_carry[1])`
-- `- RC_8_8(2^8/bit_multiplier * bit_shift_carry[2], 2^8/bit_multiplier * bit_shift_carry[3])`
-
-range check rd
-
-- `- RC_8_8(rd[0], rd[1])`
-- `- RC_8_8(rd[2], rd[3])`
-
-write to rd
-
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
-
-## 5. Less Than Reg (slt/sltu)
-
-- `slt`: `x[rd] = (x[rs1] <s x[rs2]) ? 1 : 0`
-- `sltu`: `x[rd] = (x[rs1] <u x[rs2]) ? 1 : 0`
-
-### 5.1 Columns
-
-- pc
-- clk
-
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- cmp_result
-
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
-- rs1_msl_felt
-
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
-- rs2_msl_felt
-
-- opcode_slt_flag
-- opcode_sltu_flag
-
-- diff_marker[0..3]
-- diff_val
-
-### 5.2 Variables
-
-- `enabler = opcode_slt_flag + opcode_sltu_flag`.
-- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
-
-### 5.3 Constraints
-
-`enabler`, `opcode_*_flags` and `cmp_result` are booleans
-
-- `enabler * (1 - enabler)`
-- `opcode_*_flag * (1 - opcode_*_flag)`
-- `diff_marker_i * (1 - diff_marker_i)`
-
-read instruction from the Program segment (R-type)
-
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, imm_truncated)`
 
 registers update
 
@@ -547,20 +481,82 @@ registers update
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
-read from rs2
+shift carries should not exceed `2^bit_shift`
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
+- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry_0, bit_multiplier - enabler - bit_shift_carry_1)`
+- `- RC_8_8(bit_multiplier - enabler - bit_shift_carry_2, bit_multiplier - enabler - bit_shift_carry_3)`
 
-`msl` are the most significant limbs as felts
+range check rd
 
-- `(rs1[3] - rs1_msl_felt) * (2^8 - (rs1[3] - rs1_msl_felt) )`
-- `(rs2[3] - rs2_msl_felt) * (2^8 - (rs2[3] - rs2_msl_felt) )`
+- `- RC_8_8(rd_next_0, rd_next_1)`
+- `- RC_8_8(rd_next_2, rd_next_3)`
+
+write to rd
+
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
+
+## 5. Less Than Reg (slt/sltu)
+
+- `slt`: `x[rd] = 1 if x[rs1] <s x[rs2], 0 otherwise`
+- `sltu`: `x[rd] = 1 if x[rs1] <u x[rs2], 0 otherwise`
+
+### 5.1 Columns
+
+- pc
+- clk
+
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
+
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
+- rs1_msl_felt
+
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
+- rs2_msl_felt
+
+- cmp_result
+
+- opcode_slt_flag
+- opcode_sltu_flag
+
+- diff_marker_0..3
+- diff_val
+
+### 5.2 Variables
+
+- `enabler = opcode_slt_flag + opcode_sltu_flag`.
+- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
+- `diff_markers = [diff_marker_0..3]`.
+
+### 5.3 Constraints
+
+`enabler`, `opcode_*_flags`, `cmp_result`, and `diff_marker[i]` are booleans
+
+- `enabler * (1 - enabler)`
+- `opcode_*_flag * (1 - opcode_*_flag)`
+- `cmp_result * (1 - cmp_result)`
+- `diff_marker[i] * (1 - diff_marker[i])`
+
+msl felts match the most-significant limb
+
+- `rs1_msl_gap = rs1[3] - rs1_msl_felt`
+- `rs1_msl_gap * (2^8 - rs1_msl_gap)`
+- `rs2_msl_gap = rs2[3] - rs2_msl_felt`
+- `rs2_msl_gap * (2^8 - rs2_msl_gap)`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
@@ -577,9 +573,28 @@ if equal, result is 0
 
 - `(1 - prefix_sum) * cmp_result`
 
-range check msl felts with sign consideration (`opcode_slt_flag = 1`,
-`cmp_result` = 0, `rs1[3] = 32`, `rs1_msl_felt = 32 - 256`, `rs2[3] = 64` and
-`rs2_msl_felt = 64` would pass without this check)
+read instruction from the Program segment (R-type)
+
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr)`
+
+registers update
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
+
+read from rs2
+
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
+
+range check msl felts with sign consideration
 
 - `- RC_8_8(rs1_msl_felt + opcode_slt_flag * 2^(8-1), rs2_msl_felt + opcode_slt_flag * 2^(8-1))`
 
@@ -589,29 +604,32 @@ diff_val is > 0
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, cmp_result, 0, 0, 0)`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 6. Less Than Imm (slti/sltiu)
 
-- `slti`: `x[rd] = (x[rs1] <s sext(immediate)) ? 1 : 0`
-- `sltiu`: `x[rd] = (x[rs1] <u sext(immediate)) ? 1 : 0`
+- `slti`: `x[rd] = 1 if x[rs1] <s sext(imm), 0 otherwise`
+- `sltiu`: `x[rd] = 1 if x[rs1] <u sext(imm), 0 otherwise`
 
 ### 6.1 Columns
 
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- cmp_result
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 - rs1_msl_felt
+
+- cmp_result
 
 - imm_0 (imm[0:7])
 - imm_1 (imm[8:10])
@@ -620,7 +638,7 @@ write to rd
 - opcode_slti_flag
 - opcode_sltiu_flag
 
-- diff_marker[0..3]
+- diff_marker_0..3
 - diff_val
 
 ### 6.2 Variables
@@ -633,6 +651,7 @@ write to rd
 - `sext_imm_2 = (2^8 - 1) * imm_msb`
 - `sext_imm_3 = (2^8 - 1) * imm_msb`
 - `sext_imm_msl_felt = opcode_sltiu_flag * sext_imm_3 - opcode_slti_flag * imm_msb`
+- `diff_markers = [diff_marker_0..3]`.
 
 ### 6.3 Constraints
 
@@ -641,38 +660,22 @@ write to rd
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
 
-read instruction from the Program segment (I-type)
+`imm_msb` is boolean
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, imm)`
-
-range check imm and range check `rs1_msl_felt` with sign consideration
-
-- `- RC_8_8_4(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, 2*imm_1)`
 - `imm_msb * (1 - imm_msb)`
 
-registers update
+msl felts match the most-significant limb
 
-- `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(pc + 4, clk + 1)`
+- `rs1_msl_gap = rs1[3] - rs1_msl_felt`
+- `rs1_msl_gap * (2^8 - rs1_msl_gap)`
 
-read from rs1
+`diff_marker[i]` are booleans
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-`msl` are the most significant limbs as felts
-
-- `(rs1[3] - rs1_msl_felt) * (2^8 - (rs1[3] - rs1_msl_felt) )`
-
-diff markers are boolean and sum correctly
-
-- `diff_marker_i * (1 - diff_marker_i)`
-- `prefix_sum * (1 - prefix_sum)`
+- `diff_marker[i] * (1 - diff_marker[i])`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
-`diff = (2 * cmp_result - 1) * ( if i == 3 {sext_imm_msl_felt - rs1_msl_felt} else {sext_imm_i - rs1[i]} )`
+`diff = (2 * cmp_result - 1) * ( if i == 3 {sext_imm_msl_felt - rs1_msl_felt} else {sext_imm[i] - rs1[i]} )`
 
 - `(1 - prefix_sum) * diff`
 - `diff_marker_i * (diff_val - diff)`
@@ -685,19 +688,38 @@ if equal, result is 0
 
 - `(1 - prefix_sum) * cmp_result`
 
+`cmp_result` is boolean
+
+- `cmp_result * (1 - cmp_result)`
+
+read instruction from the Program segment (I-type)
+
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, imm)`
+
+range check imm and range check `rs1_msl_felt` with sign consideration
+
+- `- RC_8_8_3(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, imm_1)`
+
+registers update
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
+
 range check diff_val is non-zero when prefix_sum = 1
 
 - `- prefix_sum * RC_20(diff_val - 1)`
 
-result is boolean
-
-- `cmp_result * (1 - cmp_result)`
-
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, cmp_result, 0, 0, 0)`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 7. Branch Equal (beq/bne)
 
@@ -709,19 +731,20 @@ write to rd
 - pc
 - clk
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
 
 - imm_felt
 
-- cmp_result - jump branch if cmp_result is 1
-- diff_inv_marker[0..3] - 0 everywhere but for i where `rs1[i] != rs2[i]` if
-  such i exists, `diff_inv_marker[i] = (rs1[i] - rs2[i])^-1`
+- cmp_result
+- diff_inv_marker_0..3
 
 - opcode_beq_flag
 - opcode_bne_flag
@@ -741,26 +764,26 @@ write to rd
 - `opcode_*_flag * (1 - opcode_*_flag)`
 - `cmp_result * (1 - cmp_result)`
 
+check `cmp_eq`
+
+- for i in [0..3]: `cmp_eq * (rs1[i] - rs2[i])`
+- `enabler * (1 - diff_inv_sum)`
+
 read instruction from the Program segment (B-type)
 
-- `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm_felt)`
+- `- enabler * Program(pc, expected_opcode_id, rs1_addr, rs2_addr, imm_felt)`
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
-
-check `cmp_eq`
-
-- for i in [0..3]: `cmp_eq * ( rs1[i] - rs2[i] )`
-- `enabler * (1 - diff_inv_sum)`
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
 
 registers update (conditional branch), since there's an odd number of lookups,
 we can `to_pc` with degree 2 by putting it at the end
@@ -780,22 +803,24 @@ we can `to_pc` with degree 2 by putting it at the end
 - pc
 - clk
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 - rs1_msl_felt
 
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
 - rs2_msl_felt
 
 - imm_felt
 
-- cmp_result - jump branch if cmp_result is 1
-- cmp_lt - 1 if a < b, 0 otherwise
-- diff_marker[0..3] - 0 everywhere but for i where `a[i] != b[i]` if such i
-  exists, `diff_marker[i] = (a[i] - b[i])^-1`
+- cmp_result
+- cmp_lt
+
+- diff_marker_0..3
 - diff_val
 - branch_target
 
@@ -814,42 +839,23 @@ we can `to_pc` with degree 2 by putting it at the end
 
 ### 8.3 Constraints
 
-`enabler`, `opcode_*_flags` and `cmp_result` are booleans
+`enabler`, `opcode_*_flags`, `cmp_result`, and `diff_marker[i]` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
 - `cmp_result * (1 - cmp_result)`
 - `diff_marker[i] * (1 - diff_marker[i])`
 
-read instruction from the Program segment (B-type)
-
-- `- enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm_felt)`
-
 check branch target
 
-- `branch_target - ( pc + imm_felt * cmp_result + 4 * (1 - cmp_result) )`
+- `enabler * (branch_target - (pc + imm_felt * cmp_result + 4 * (1 - cmp_result)))`
 
-registers update (conditional branch)
+msl felts match the most-significant limb
 
-- `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(branch_target, clk + 1)`
-
-read from rs1
-
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-read from rs2
-
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
-
-msl felt must match actual msl
-
-- `(rs1[3] - rs1_msl_felt) * (2^8 - (rs1[3] - rs1_msl_felt))`
-- `(rs2[3] - rs2_msl_felt) * (2^8 - (rs2[3] - rs2_msl_felt))`
+- `rs1_msl_gap = rs1[3] - rs1_msl_felt`
+- `rs1_msl_gap * (2^8 - rs1_msl_gap)`
+- `rs2_msl_gap = rs2[3] - rs2_msl_felt`
+- `rs2_msl_gap * (2^8 - rs2_msl_gap)`
 
 comparison logic for each limb i (from 3 down to 0), `prefix_sum` is the running
 sum of `diff_marker_i` and
@@ -866,6 +872,31 @@ if equal, result is 0
 
 - `(1 - prefix_sum) * cmp_lt`
 
+check `cmp_lt`
+
+- `cmp_lt - (cmp_result * lt + (1 - cmp_result) * ge)`
+
+read instruction from the Program segment (B-type)
+
+- `- enabler * Program(pc, expected_opcode_id, rs1_addr, rs2_addr, imm_felt)`
+
+registers update (conditional branch)
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(branch_target, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
+
+read from rs2
+
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
+
 range check msl felts with sign consideration
 
 - `- RC_8_8(rs1_msl_felt + signed * 2^(8-1), rs2_msl_felt + signed * 2^(8-1))`
@@ -873,10 +904,6 @@ range check msl felts with sign consideration
 diff_val is > 0
 
 - `- prefix_sum * RC_20(diff_val - 1)`
-
-check `cmp_lt`
-
-- `cmp_lt - ( cmp_result * lt + (1 - cmp_result) * ge )`
 
 ## 9. LUI
 
@@ -888,9 +915,10 @@ check `cmp_lt`
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
 - imm_0 (decoded_imm[0..3])
 - imm_1 (decoded_imm[4:11])
@@ -908,22 +936,22 @@ check `cmp_lt`
 
 read instruction from the Program segment (U-type)
 
-- `- enabler * Program(pc, opcode_lui_id, rd_idx, imm, 0)`
+- `- enabler * Program(pc, opcode_lui_id, rd_addr, imm, 0)`
 
 registers update
 
 - `- enabler * Registers(pc, clk)`
 - `+ enabler * Registers(pc + 4, clk + 1)`
 
-range check imm limbs:
+range check imm limbs
 
 - `- RC_8_8_4(imm_1, imm_2, imm_0)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, 0, imm_0 * 2^4, imm_1, imm_2)`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 10. AUIPC
 
@@ -935,10 +963,10 @@ write to rd
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
 - imm_felt
 
@@ -952,29 +980,29 @@ write to rd
 
 - `enabler * (1 - enabler)`
 
+check that rd is pc + imm
+
+- `rd_felt - (pc + imm_felt)`
+
 read instruction from the Program segment (U-type)
 
-- `- enabler * Program(pc, opcode_auipc_id, rd_idx, imm_felt, 0)`
+- `- enabler * Program(pc, opcode_auipc_id, rd_addr, imm_felt, 0)`
 
 registers update
 
 - `- enabler * Registers(pc, clk)`
 - `+ enabler * Registers(pc + 4, clk + 1)`
 
-check that rd is pc + imm
-
-- `rd_felt - (pc + imm_felt)`
-
 range check rd
 
-- `- RC_8_8(rd[1], rd[2])`
-- `- RC_M31(rd[0], rd[3])`
+- `- RC_8_8(rd_next_1, rd_next_2)`
+- `- RC_M31(rd_next_0, rd_next_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 11. JALR
 
@@ -984,19 +1012,20 @@ write to rd
 
 - enabler
 - pc
-- to_pc_over_two
-- to_pc_lsb
 - clk
 
-- rs1_prev_clk
-- rs1_idx
-- rs1[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rd_prev_clk
-- rd_idx
-- rd_prev[0..3]
-- rd[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
+- to_pc_over_two
+- to_pc_lsb
 - imm_felt
 
 ### 11.2 Variables
@@ -1011,23 +1040,27 @@ write to rd
 - `enabler * (1 - enabler)`
 - `to_pc_lsb * (1 - to_pc_lsb)`
 
-read instruction from the Program segment (I-type)
-
-- `- enabler * Program(pc, opcode_jalr_id, rd_idx, rs1_idx, imm_felt)`
-
-read from rs1
-
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-check that rs1 is a M31
-
-- `- RC_M31(rs1[0], rs1[3])`
-
 check next pc
 
 - `2 * to_pc_over_two + to_pc_lsb - (rs1_felt + imm_felt)`
+
+rd is pc + 4
+
+- `enabler * (rd_felt - (pc + 4))`
+
+read instruction from the Program segment (I-type)
+
+- `- enabler * Program(pc, opcode_jalr_id, rd_addr, rs1_addr, imm_felt)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
+
+check that rs1 is a M31
+
+- `- RC_M31(rs1_next_0, rs1_next_3)`
 
 update registers
 
@@ -1036,22 +1069,18 @@ update registers
 
 check that rd is a M31
 
-- `- RC_8_8(rd[1], rd[2])`
-- `- RC_M31(rd[0], rd[3])`
-
-rd is pc+4
-
-- `rd_felt - (pc + 4)`
+- `- RC_8_8(rd_next_1, rd_next_2)`
+- `- RC_M31(rd_next_0, rd_next_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 12. JAL
 
-- `jal`: `x[rd] = pc + 4; pc += sext(offset)`
+- `jal`: `x[rd] = pc + 4; pc = pc + sext(offset)`
 
 ### 12.1 Columns
 
@@ -1059,10 +1088,10 @@ write to rd
 - pc
 - clk
 
-- rd_prev_clk
-- rd_idx
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
 - imm_felt
 
@@ -1076,9 +1105,13 @@ write to rd
 
 - `enabler * (1 - enabler)`
 
+rd is pc + 4 (skip when rd_addr = 0)
+
+- `enabler * rd_addr * (rd_felt - (pc + 4))`
+
 read instruction from the Program segment (U-type)
 
-- `- enabler * Program(pc, opcode_jal_id, rd_idx, imm_felt, 0)`
+- `- enabler * Program(pc, opcode_jal_id, rd_addr, imm_felt, 0)`
 
 update registers
 
@@ -1087,83 +1120,56 @@ update registers
 
 check that rd is a M31
 
-- `- RC_8_8(rd[1], rd[2])`
-- `- RC_M31(rd[0], rd[3])`
-
-rd is pc+4
-
-- `rd_felt - (pc + 4)`
+- `- RC_8_8(rd_next_1, rd_next_2)`
+- `- RC_M31(rd_next_0, rd_next_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 13. Load/store (lb/lbu/lh/lhu/lw/sb/sh/sw)
 
-- `lb`: `x[rd] = sext(M[x[rs1] + sext(offset)][7:0])`
-- `lbu`: `x[rd] = sext(M[x[rs1] + sext(offset)][7:0])`
-- `lh`: `x[rd] = sext(M[x[rs1] + sext(offset)][15:0])`
-- `lhu`: `x[rd] = sext(M[x[rs1] + sext(offset)][15:0])`
-- `lw`: `x[rd] = M[x[rs1] + sext(offset)][31:0]`
-- `sb`: `M[x[rs1] + sext(offset)][7:0] = x[rs2][7:0]`
-- `sh`: `M[x[rs1] + sext(offset)][15:0] = x[rs2][15:0]`
-- `sw`: `M[x[rs1] + sext(offset)][31:0] = x[rs2][31:0]`
-
-### 13.0 Factorization cost
-
-Extra cost compared to having 3 components: lbu/lhu/lw - lb/lh - sb/sh/sw
-
-- for load-u : 5T (lb/lh/sb/sh/sw flags) + 2T (src/dst_addr) + 1T (src_msb)
-- for load-s : 6T (lbu/lhu/lw/sb/sh/sw flags) + 2T (src/dst_addr)
-- for store: 5T (lbu/lb/lhu/lh/lw) + 2T (src/dst_addr) + 1T (src_msb)
-
-=> 8 unused cells per opcode
-
-Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
-
-- for load : 3T (sb/sh/sw flags) + 2T (src/dst_addr)
-- for store: 5T (lbu/lb/lhu/lh/lw) + 2T (src/dst_addr) + 1T (src_msb)
-
-=> 8 unused cells per store and 5 per load
+- `lb`: `x[rd] = sext(Mem[x[rs1] + offset][7:0])`
+- `lbu`: `x[rd] = Mem[x[rs1] + offset][7:0]`
+- `lh`: `x[rd] = sext(Mem[x[rs1] + offset][15:0])`
+- `lhu`: `x[rd] = Mem[x[rs1] + offset][15:0]`
+- `lw`: `x[rd] = Mem[x[rs1] + offset][31:0]`
+- `sb`: `Mem[x[rs1] + offset][7:0] = x[rs2][7:0]`
+- `sh`: `Mem[x[rs1] + offset][15:0] = x[rs2][15:0]`
+- `sw`: `Mem[x[rs1] + offset][31:0] = x[rs2][31:0]`
 
 ### 13.1 Columns
 
 - pc
 - clk
 
-<!-- destination columns -->
-
 - dst_addr
-- dst_prev_clk (rd_prev_clk - mem_prev_clk)
-- dst_prev_val[0..3] (rd_prev_val[0..3] - mem_prev_val[0..3])
-- dst[0..3] (rd[0..3] - mem_val[0..3])
+- dst_prev_0..3
+- dst_clk_prev
+- dst_next_0..3
 
-<!-- columns for byte/halfword/word address -->
-
-- rs1_prev_clk
-- rs1_idx
-- base[0..3]
-- imm_felt
-
-<!-- second register index -->
-
-- r2_idx (rd_idx - rs2_idx)
-
-<!-- source columns (3rd byte of src val is src[3]+2^7*src_msb)-->
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
 - src_addr
-- src_prev_clk (mem_prev_clk - rs2_prev_clk)
-- src[0..3] (mem_val[0..3] - rs2[0..3])
+- src_prev_0..3
+- src_clk_prev
+- src_next_0..3
+
+- r2_idx
+- imm_felt
 - src_msb
-
-<!-- columns for address shifting -->
-
 - shift_amount
-- markers[0..3] - one-hot encoding of the loaded bytes position (LE)
-
-<!-- flags -->
+- src_addr_selector
+- dst_addr_selector
+- marker_0
+- marker_1
+- marker_2
+- marker_3
 
 - opcode_lb_flag
 - opcode_lh_flag
@@ -1176,33 +1182,77 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 
 ### 13.2 Variables
 
-- `enabler = Σ opcode_i_flag`
-- `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
-- `mem_addr = base[0] + base[1] * 2^8 + base[2] * 2^16 + base[3] * 2^24 + imm_felt`
-- `sum_markers = Σ markers[i]`
-- `shift_id = Σ i * markers[i]`
-- `opcode_b_flag = opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag`
-- `opcode_h_flag = opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag`
-- `opcode_w_flag = opcode_lw_flag + opcode_sw_flag`
-- `is_signed = opcode_lb_flag + opcode_lh_flag`
-- `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`
-- `is_load = enabler - is_store`
-- `src_as = REG_AS * is_store + RW_AS * is_load`
-- `dst_as = REG_AS * is_load + RW_AS * is_store`
-- `src[3] = src[3] + src_msb * 2^7`
+- `enabler = opcode_lb_flag + opcode_lh_flag + opcode_lbu_flag + opcode_lhu_flag + opcode_lw_flag + opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`.
+- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
+- `mem_addr = rs1 + imm_felt` (rs1 as 4 limbs, little-endian).
+- `sum_markers = Σ marker_i`.
+- `shift_id = Σ i * marker_i`.
+- `opcode_b_flag = opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag`.
+- `opcode_h_flag = opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag`.
+- `opcode_w_flag = opcode_lw_flag + opcode_sw_flag`.
+- `is_signed = opcode_lb_flag + opcode_lh_flag`.
+- `load_b_flag = opcode_lb_flag + opcode_lbu_flag`.
+- `load_h_flag = opcode_lh_flag + opcode_lhu_flag`.
+- `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`.
+- `is_load = enabler - is_store`.
+- `src_as = REG_AS * is_store + RW_AS * is_load`.
+- `dst_as = REG_AS * is_load + RW_AS * is_store`.
 
 ### 13.3 Constraints
 
-`enabler`, `opcode_*_flags` and `markers[i]` are booleans
+`enabler`, `opcode_*_flags` and `marker_i` are booleans
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
-- `markers[i] * (1 - markers[i])`
+- `marker_i * (1 - marker_i)`
+
+check shift amount
+
+- `shift_amount - (opcode_b_flag * shift_id + opcode_h_flag * (shift_id - 1) / 4)`
+
+check src/dst address selectors
+
+- `src_addr_selector - (is_load * (mem_addr - shift_amount) + is_store * r2_idx)`
+- `dst_addr_selector - (is_load * r2_idx + is_store * (mem_addr - shift_amount))`
+
+marker structure
+
+- `opcode_b_flag * (1 - sum_markers)`
+- `opcode_h_flag * (2 - sum_markers)`
+- `opcode_h_flag * (1 - shift_id) * (5 - shift_id)`
+
+byte loads/stores (sign extension for loads only)
+
+- `load_b_flag * (signed_mask - dst[1])`
+- `load_b_flag * (signed_mask - dst[2])`
+- `load_b_flag * (signed_mask - dst[3])`
+- `load_b_flag * (dst[0] - src[i]) * marker_i`
+- `opcode_sb_flag * (dst[i] - src[0]) * marker_i`
+
+half-word loads/stores (sign extension for loads only)
+
+- `load_h_flag * (signed_mask - dst[2])`
+- `load_h_flag * (signed_mask - dst[3])`
+- `load_h_flag * (5 - shift_id) / 4 * (dst[0] - src[0])`
+- `load_h_flag * (5 - shift_id) / 4 * (dst[1] - src[1])`
+- `load_h_flag * (shift_id - 1) / 4 * (dst[0] - src[2])`
+- `load_h_flag * (shift_id - 1) / 4 * (dst[1] - src[3])`
+- `opcode_sh_flag * (5 - shift_id) / 4 * (dst[0] - src[0])`
+- `opcode_sh_flag * (5 - shift_id) / 4 * (dst[1] - src[1])`
+- `opcode_sh_flag * (shift_id - 1) / 4 * (dst[2] - src[0])`
+- `opcode_sh_flag * (shift_id - 1) / 4 * (dst[3] - src[1])`
+
+word loads/stores
+
+- `opcode_w_flag * (dst[i] - src[i])`
+
+where `signed_mask = is_signed * src_msb * (2^8 - 1)` and for constraints over
+i, `i` ranges over [0..3].
 
 read instruction from the Program segment (I-type for loads and S-type for
 stores)
 
-- `- enabler * Program(pc, expected_opcode_id, rs1_idx, r2_idx, imm_felt)`
+- `- enabler * Program(pc, expected_opcode_id, rs1_addr, r2_idx, imm_felt)`
 
 registers update
 
@@ -1211,74 +1261,33 @@ registers update
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, base[0], base[1], base[2], base[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, base[0], base[1], base[2], base[3])`
-- `- RC_20(clk - rs1_prev_clk)`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
-check shift amount
+check that `rs1_next_0 - shift_amount` is a multiple of 4
 
-- `shift_amount - ( opcode_b_flag * shift_id + opcode_h_flag * ( (shift_id - 1) / 2 ) + opcode_w_flag * 0 )`
+- `- RC_6((rs1_next_0 - shift_amount) / 2^2)`
 
-check that `base[0] - shift_amount` is a multiple of 4
+check that rs1 is a M31
 
-- `- RC_20(2^14 * (base[0] - shift_amount) / 2^2)`
-
-check that base is a M31:
-
-- `- RC_M31(base[0], base[3])`
-
-check src/dst addresses (load/store dependent)
-
-- `src_addr_selector - ( is_load * (mem_addr - shift_amount) + is_store * r2_idx )`
-- `dst_addr_selector - ( is_load * r2_idx + is_store * (mem_addr - shift_amount) )`
+- `- RC_M31(rs1_next_0, rs1_next_3)`
 
 read src
 
-- `- enabler * Memory(src_as, src_addr, src_prev_clk, src[0], src[1], src[2], src[3])`
-- `+ enabler * Memory(src_as, src_addr, clk, src[0], src[1], src[2], src[3])`
-- `- RC_20(clk - src_prev_clk)`
-
-for lbu/sb `markers` contains a single one when row is enabled
-
-- `opcode_b_flag * (1 - sum_markers)`
-
-for lhu/sh `markers` is either `[1,1,0,0]` or `[0,0,1,1]`
-
-- `opcode_h_flag * (2 - sum_markers)`
-- `opcode_h_flag * (1 - shift_id) * (5 - shift_id)`
-
-check that lbu/sb loads the correct byte
-
-- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[1])`
-- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
-- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
-- for i in [0..3] `opcode_b_flag * (dst[0] - src[i]) * markers[i]`
-
-check that lhu/sh loads the correct half word
-
-- `opcode_h_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
-- `opcode_h_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
-- `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst[0] - src[0])`
-- `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst[1] - src[1])`
-- `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst[0] - src[2])`
-- `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst[1] - src[3])`
-
-check that lw/sw loads all the bytes
-
-- `opcode_w_flag * (dst[0] - src[0])`
-- `opcode_w_flag * (dst[1] - src[1])`
-- `opcode_w_flag * (dst[2] - src[2])`
-- `opcode_w_flag * (dst[3] - src[3])`
+- `- enabler * Memory(src_as, src_addr, src_clk_prev, src_prev_0, src_prev_1, src_prev_2, src_prev_3)`
+- `+ enabler * Memory(src_as, src_addr, clk, src_next_0, src_next_1, src_next_2, src_next_3)`
+- `- RC_20(clk - src_clk_prev)`
 
 write into dst
 
-- `- enabler * Memory(dst_as, dst_addr, dst_prev_clk, dst_prev_val[0], dst_prev_val[1], dst_prev_val[2], dst_prev_val[3])`
-- `+ enabler * Memory(dst_as, dst_addr, clk, dst[0], dst[1], dst[2], dst[3])`
-- `- RC_20(clk - dst_prev_clk)`
+- `- enabler * Memory(dst_as, dst_addr, dst_clk_prev, dst_prev_0, dst_prev_1, dst_prev_2, dst_prev_3)`
+- `+ enabler * Memory(dst_as, dst_addr, clk, dst_next_0, dst_next_1, dst_next_2, dst_next_3)`
+- `- RC_20(clk - dst_clk_prev)`
 
 ## 14. MUL
 
-- `mul`: `x[rd] = x[rs1] x x[rs2]`
+- `mul`: `x[rd] = x[rs1] * x[rs2]`
 
 ### 14.1 Columns
 
@@ -1286,23 +1295,24 @@ write into dst
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
 
 ### 14.2 Variables
 
-- `carry[i] = ( carry[i - 1] - rd[i] + Σ{k=0..i} rs1[k] * rs2[i - k] ) / 2^8`
-  with `carry[-1]=0`
+- `carry` from limb-wise partial sums (unused in constraints)
 
 ### 14.3 Constraints
 
@@ -1312,7 +1322,7 @@ write into dst
 
 read instruction from the Program segment (R-type)
 
-- `- enabler * Program(pc, opcode_mul_id, rd_idx, rs1_idx, rs2_idx)`
+- `- enabler * Program(pc, opcode_mul_id, rd_addr, rs1_addr, rs2_addr)`
 
 registers update
 
@@ -1321,15 +1331,15 @@ registers update
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
 
 check carries
 
@@ -1338,39 +1348,47 @@ check carries
 
 range check rd
 
-- `- RC_8_8(rd[0], rd[1])`
-- `- RC_8_8(rd[2], rd[3])`
+- `- RC_8_8(rd_next_0, rd_next_1)`
+- `- RC_8_8(rd_next_2, rd_next_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[0], rd[1], rd[2], rd[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
-## 15. MULH (mulh/mulhu/mulhsu)
+## 15. MULH (mulh/mulhsu/mulhu)
 
-- `mulh`: `x[rd] = (x[rs1] s×s x[rs2]) >>s 32`
-- `mulhsu`: `x[rd] = (x[rs1] sx x[rs2]) >>s 32`
-- `mulhu`: `x[rd] = (x[rs1] ux x[rs2]) >>u 32`
+- `mulh`: `x[rd] = (x[rs1] *s x[rs2]) >> 32`
+- `mulhsu`: `x[rd] = (x[rs1] *s x[rs2]) >> 32`, rs2 unsigned
+- `mulhu`: `x[rd] = (x[rs1] *u x[rs2]) >> 32`
 
 ### 15.1 Columns
 
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
-- rd[0..7]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- rs1[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
+
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
+
+- rd_high_0
+- rd_high_1
+- rd_high_2
+- rd_high_3
+
 - rs1_sign
-
-- rs2_idx
-- rs2_prev_clk
-- rs2[0..3]
 - rs2_sign
 
 - opcode_mulh_flag
@@ -1379,27 +1397,29 @@ write to rd
 
 ### 15.2 Variables
 
-- `enabler = Σ opcode_i_flag`
-- `expected_opcode_id =  Σ opcode_i_flag * opcode_id_i`
-- `rs1[3] = rs1[3] + rs1_sign * 2^7`
-- `rs2[3] = rs2[3] + rs2_sign * 2^7`
-- `rs1[4] = rs1[5] = rs1[6] = rs1[7] = rs1_sign * (2^8 - 1)`
-- `rs2[4] = rs2[5] = rs2[6] = rs2[7] = rs2_sign * (2^8 - 1)`
-- `carry[i] = ( carry[i - 1] - rd[i] + Σ{k=0..i} rs1[k] * rs2[i - k] ) / 2^8`
-  with `carry[-1]=0`
+- `enabler = opcode_mulh_flag + opcode_mulhsu_flag + opcode_mulhu_flag`.
+- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
+- `rs1[3] = rs1_next_3 + rs1_sign * 2^7`
+- `rs2[3] = rs2_next_3 + rs2_sign * 2^7`
+- `carry[0..7]` from limb-wise partial sums (unused in constraints).
 
 ### 15.3 Constraints
 
-`enabler`, `opcode_i_flag` and `rs_signs` are booleans
+`enabler`, `opcode_i_flag`, and `rs*_sign` are booleans
 
 - `enabler * (1 - enabler)`
-- `opcode_i_flag * (1 - opcode_i_flag)`
+- `opcode_*_flag * (1 - opcode_*_flag)`
 - `rs1_sign * (1 - rs1_sign)`
 - `rs2_sign * (1 - rs2_sign)`
 
+check the signs of the operand extensions
+
+- `(opcode_mulhsu_flag + opcode_mulhu_flag) * rs2_sign`
+- `opcode_mulhu_flag * rs1_sign`
+
 read instruction from the Program segment (R-type)
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr)`
 
 registers update
 
@@ -1408,15 +1428,15 @@ registers update
 
 read from rs1
 
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, rs1[0], rs1[1], rs1[2], rs1[3])`
-- `- RC_20(clk - rs1_prev_clk)`
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
 
 read from rs2
 
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, rs2[0], rs2[1], rs2[2], rs2[3])`
-- `- RC_20(clk - rs2_prev_clk)`
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
 
 check carries
 
@@ -1427,21 +1447,16 @@ check carries
 
 range check rd
 
-- `- RC_8_8(rd[0], rd[1])`
-- `- RC_8_8(rd[2], rd[3])`
-- `- RC_8_8(rd[4], rd[5])`
-- `- RC_8_8(rd[6], rd[7])`
-
-check the signs of the operand extensions
-
-- `(opcode_mulhsu_flag + opcode_mulhu_flag) * rs2_sign`
-- `opcode_mulhu_flag * rs1_sign`
+- `- RC_8_8(rd_next_0, rd_next_1)`
+- `- RC_8_8(rd_next_2, rd_next_3)`
+- `- RC_8_8(rd_high_0, rd_high_1)`
+- `- RC_8_8(rd_high_2, rd_high_3)`
 
 write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, rd[4], rd[5], rd[6], rd[7])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
 
 ## 16. DIV (div/divu/rem/remu)
 
@@ -1455,23 +1470,32 @@ write to rd
 - pc
 - clk
 
-- rd_idx
-- rd_prev_clk
-- rd_prev[0..3]
+- rd_addr
+- rd_prev_0..3
+- rd_clk_prev
+- rd_next_0..3
 
-- rs1_idx
-- rs1_prev_clk
-- b[0..3]
+- rs1_addr
+- rs1_prev_0..3
+- rs1_clk_prev
+- rs1_next_0..3
 
-- rs2_idx
-- rs2_prev_clk
-- c[0..3]
+- rs2_addr
+- rs2_prev_0..3
+- rs2_clk_prev
+- rs2_next_0..3
 
 - zero_divisor
 - r_zero
 
-- q[0..3]
-- r[0..3]
+- q_0
+- q_1
+- q_2
+- q_3
+- r_0
+- r_1
+- r_2
+- r_3
 
 - b_sign
 - c_sign
@@ -1481,9 +1505,20 @@ write to rd
 - c_sum_inv
 - r_sum_inv
 
-- r_abs[0..3]
-- r_inv[0..3]
-- lt_marker[0..3]
+- r_abs_0
+- r_abs_1
+- r_abs_2
+- r_abs_3
+
+- r_inv_0
+- r_inv_1
+- r_inv_2
+- r_inv_3
+
+- lt_marker_0
+- lt_marker_1
+- lt_marker_2
+- lt_marker_3
 - lt_diff
 
 - opcode_div_flag
@@ -1493,37 +1528,24 @@ write to rd
 
 ### 16.2 Variables
 
-- `enabler = Σ opcode_i_flag`
-- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`
-- `is_div = opcode_div_flag + opcode_divu_flag`
-- `is_signed = opcode_div_flag + opcode_rem_flag`
-- `special_case = zero_divisor + r_zero`
-- `valid_and_not_zero_divisor = enabler - zero_divisor`
-- `valid_and_not_special_case = enabler - special_case`
-- `q_sum = q[0] + q[1] + q[2] + q[3]`
-- `c_sum = c[0] + c[1] + c[2] + c[3]`
-- `r_sum = r[0] + r[1] + r[2] + r[3]`
-- `b[3] = b[3] + b_sign * 2^7`
-- `c[3] = c[3] + c_sign * 2^7`
-- `q[3] = q[3] + q_sign * 2^7`
-- `b[4,5,6,7] = b_sign * (2^8 - 1)`
-- `c[4,5,6,7] = c_sign * (2^8 - 1)`
-- `q[4,5,6,7] = q_sign * (2^8 - 1)`
-- `r[4,5,6,7] = (1 - r_zero) * b_sign * (2^8 - 1)`
-- `carry[i] = (carry[i - 1] + r[i] + Σ_{k = 0..i} c[k] * q[i - k] - b[i]) / 2^8`
-  with `carry[-1] = 0`
-- `carry_lt[i] = (carry_lt[i - 1] + r[i] + r_abs[i]) / 2^8` with
-  `carry_lt[-1] = 0`
-- `diff[i] = (1 - 2 * c_sign) * (c[i] - r_abs[i])` for `i ∈ [0, 3]`
-- `prefix_sum[i+1] = prefix_sum[i] + lt_marker[i]` for `i ∈ [0, 3]` and
-  `prefix_sum[0] = special_case`
-- `a[i] = is_div * q[i] + (1 - is_div) * r[i]`
+- `enabler = opcode_div_flag + opcode_divu_flag + opcode_rem_flag + opcode_remu_flag`.
+- `expected_opcode_id = Σ opcode_i_flag * opcode_id_i`.
+- `is_div = opcode_div_flag + opcode_divu_flag`.
+- `is_signed = opcode_div_flag + opcode_rem_flag`.
+- `special_case = zero_divisor + r_zero`.
+- `valid_and_not_zero_divisor = enabler - zero_divisor`.
+- `valid_and_not_special_case = enabler - special_case`.
+- `q_sum = q_0 + q_1 + q_2 + q_3`.
+- `c_sum = rs2_next_0 + rs2_next_1 + rs2_next_2 + rs2_next_3`.
+- `r_sum = r_0 + r_1 + r_2 + r_3`.
+- `diff[i] = (1 - 2 * c_sign) * (rs2_next[i] - r_abs[i])`.
+- `carry[0..7]` from limb-wise partial sums (used by RC_8_11 lookups).
+- `carry_lt[0] = (r_0 + r_abs_0) / 2^8`.
+- `carry_lt[i] = (carry_lt[i - 1] + r_i + r_abs_i) / 2^8` for i in [1..3].
 
 ### 16.3 Constraints
 
-`enabler`, `opcode_*_flag`, `zero_divisor`, `r_zero`, `b_sign`, `c_sign`,
-`q_sign`, `sign_xor`, `lt_marker[i]`, `special_case`,
-`valid_and_not_zero_divisor`, and `valid_and_not_special_case` are booleans
+boolean constraints
 
 - `enabler * (1 - enabler)`
 - `opcode_*_flag * (1 - opcode_*_flag)`
@@ -1533,46 +1555,20 @@ write to rd
 - `c_sign * (1 - c_sign)`
 - `q_sign * (1 - q_sign)`
 - `sign_xor * (1 - sign_xor)`
-- `lt_marker[i] * (1 - lt_marker[i])` for `i ∈ [0, 3]`
+- `lt_marker_i * (1 - lt_marker_i)`
 - `special_case * (1 - special_case)`
 - `valid_and_not_zero_divisor * (1 - valid_and_not_zero_divisor)`
 - `valid_and_not_special_case * (1 - valid_and_not_special_case)`
 
-read instruction from the Program segment (R-type)
+zero divisor detection
 
-- `- enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)`
-
-registers update
-
-- `- enabler * Registers(pc, clk)`
-- `+ enabler * Registers(pc + 4, clk + 1)`
-
-read from rs1
-
-- `- enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, b[0], b[1], b[2], b[3])`
-- `+ enabler * Memory(REG_AS, rs1_idx, clk, b[0], b[1], b[2], b[3])`
-- `- RC_20(clk - rs1_prev_clk)`
-
-read from rs2
-
-- `- enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, c[0], c[1], c[2], c[3])`
-- `+ enabler * Memory(REG_AS, rs2_idx, clk, c[0], c[1], c[2], c[3])`
-- `- RC_20(clk - rs2_prev_clk)`
-
-check carries to ensure that `b = c * q + r`
-
-- `- enabler * RC_8_11(q[i], carry[i])` for `i ∈ [0, 3]`
-- `- enabler * RC_8_11(r[i], carry[4+i])` for `i ∈ [0, 3]`
-
-zero divisor detection (`zero_divisor=1 <=> c=0`)
-
-- `zero_divisor * c[i]` for `i ∈ [0, 3]`
-- `zero_divisor * (q[i] - (2^8 - 1))` for `i ∈ [0, 3]`
+- `zero_divisor * rs2_next[i]`
+- `zero_divisor * (q_i - (2^8 - 1))`
 - `valid_and_not_zero_divisor * (c_sum * c_sum_inv - 1)`
 
 remainder-zero detection
 
-- `r_zero * r[i]` for `i ∈ [0, 3]`
+- `r_zero * r_i`
 - `valid_and_not_special_case * (r_sum * r_sum_inv - 1)`
 
 signed and sign xor
@@ -1581,31 +1577,79 @@ signed and sign xor
 - `(1 - is_signed) * c_sign`
 - `enabler * (sign_xor - b_sign - c_sign + 2 * b_sign * c_sign)`
 
-quotient sign selection (when `zero_divisor = 1`, `q = -1`)
+quotient sign selection
 
 - `(1 - zero_divisor) * q_sum * (q_sign - sign_xor)`
 - `(1 - zero_divisor) * (q_sign - sign_xor) * q_sign`
 
-absolute remainder construction (`carry_lt[-1] = 0`)
+absolute remainder construction
 
-- `(1 - sign_xor) * (r_abs[i] - r[i])` for `i ∈ [0, 3]`
-- `sign_xor * (carry_lt[i] - carry_lt[i - 1]) * (carry_lt[i] - 1)` for
-  `i ∈ [0, 3]`
-- `sign_xor * (1 - carry_lt[i]) * r_abs[i]` for `i ∈ [0, 3]`
-- `sign_xor * ((r_abs[i] - 2^8) * r_inv[i] - 1)` for `i ∈ [0, 3]`
+- `(1 - sign_xor) * (r_abs[i] - r_i)`
+- `sign_xor * (carry_lt[i] - carry_lt[i - 1]) * (carry_lt[i] - 1)`
+- `sign_xor * (1 - carry_lt[i]) * r_abs[i]`
+- `sign_xor * ((r_abs[i] - 2^8) * r_inv[i] - 1)`
 
-compare `|r|` with `|c|` from the most significant byte
+compare |r| with |c| from the most significant byte, `prefix_sum` starts at
+`special_case`
 
-- `enabler * (1 - prefix_sum[i+1]) * diff[i]` for `i ∈ [3, 0]`, i decreases
-- `enabler * lt_marker[i] * (lt_diff - diff[i])` for `i ∈ [3, 0]`, i decreases
-- `enabler * (1 - prefix_sum[4])`
+- `enabler * (1 - prefix_sum) * diff[i]`
+- `enabler * lt_marker_i * (lt_diff - diff[i])`
+- `enabler * (1 - prefix_sum)`
+
+where for constraints over i, `i` ranges over [0..3] in descending order and
+`carry_lt[-1] = 0`.
+
+read instruction from the Program segment (R-type)
+
+- `- enabler * Program(pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr)`
+
+registers update
+
+- `- enabler * Registers(pc, clk)`
+- `+ enabler * Registers(pc + 4, clk + 1)`
+
+read from rs1
+
+- `- enabler * Memory(REG_AS, rs1_addr, rs1_clk_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3)`
+- `+ enabler * Memory(REG_AS, rs1_addr, clk, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3)`
+- `- RC_20(clk - rs1_clk_prev)`
+
+read from rs2
+
+- `- enabler * Memory(REG_AS, rs2_addr, rs2_clk_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3)`
+- `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
+- `- RC_20(clk - rs2_clk_prev)`
+
+check carries to ensure that `rs1 = rs2 * q + r`
+
+- `- enabler * RC_8_11(q_0, carry[0])`
+- `- enabler * RC_8_11(q_1, carry[1])`
+- `- enabler * RC_8_11(q_2, carry[2])`
+- `- enabler * RC_8_11(q_3, carry[3])`
+- `- enabler * RC_8_11(r_0, carry[4])`
+- `- enabler * RC_8_11(r_1, carry[5])`
+- `- enabler * RC_8_11(r_2, carry[6])`
+- `- enabler * RC_8_11(r_3, carry[7])`
 
 `lt_diff` is non-zero whenever the comparison is executed
 
 - `- (enabler - special_case) * RC_20(lt_diff - 1)`
 
-write to rd (`a[i]` selects `q` for div/divu and `r` for rem/remu)
+write to rd
 
-- `- enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0], rd_prev[1], rd_prev[2], rd_prev[3])`
-- `+ enabler * Memory(REG_AS, rd_idx, clk, a[0], a[1], a[2], a[3])`
-- `- RC_20(clk - rd_prev_clk)`
+- `- enabler * Memory(REG_AS, rd_addr, rd_clk_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3)`
+- `+ enabler * Memory(REG_AS, rd_addr, clk, rd_next_0, rd_next_1, rd_next_2, rd_next_3)`
+- `- RC_20(clk - rd_clk_prev)`
+
+## 17. Preprocessed Range Check 20 (multiplicity)
+
+The preprocessed side of the range_check_20 LogUp relation. Currently uses a
+dummy constraint.
+
+### 17.1 Columns
+
+- multiplicity
+
+### 17.2 Constraints
+
+- `multiplicity - multiplicity`
