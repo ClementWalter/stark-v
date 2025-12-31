@@ -48,6 +48,16 @@ impl FrameworkEval for Eval {
         // check that rd is pc + imm
         eval.add_constraint(rd_felt - (cols.pc.clone() + cols.imm_felt.clone()));
 
+        // =====================================================================
+        // LogUp Relations (from airs.md)
+        // TODO: Implement using add_to_relation! macro
+        //
+        // Example usage:
+        // add_to_relation!(eval, self.relations.program_access, -cols.enabler.clone(),
+        //     cols.pc, opcode_id, cols.rd_addr, cols.rs1_addr, cols.rs2_addr);
+        //
+        // See base_alu_reg/air.rs for detailed examples.
+        // =====================================================================
         eval
     }
 }

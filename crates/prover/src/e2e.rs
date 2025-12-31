@@ -106,7 +106,7 @@ macro_rules! test_bin_e2e {
                 );
 
                 let mut counters = $crate::relations::Counters::new();
-                let trace = tracer.$component.into_witness(&mut counters);
+                let trace = tracer.$component.to_witness(&mut counters);
 
                 let log_size = trace.first()
                     .map(|t| t.domain.log_size())
@@ -114,7 +114,7 @@ macro_rules! test_bin_e2e {
 
                 let relations = $crate::relations::Relations::dummy();
                 let (interaction_trace, claimed_sum) =
-                    witness::gen_interaction_trace(&trace, &relations);
+                    witness::gen_interaction_trace(&tracer.$component, &relations);
 
                 let traces = TreeVec::new(vec![
                     vec![],

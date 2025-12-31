@@ -370,15 +370,15 @@ macro_rules! opcode_components {
         }
 
         /// Generate all trace columns from tracer.
-        /// Consumes the tracer and calls into_witness() on each table.
+        /// Takes `&Tracer` to keep it alive for interaction trace generation.
         /// Counters are populated during trace generation for preprocessed lookups.
         pub fn gen_trace(
-            tracer: runner::trace::Tracer,
+            tracer: &runner::trace::Tracer,
             counters: &mut $crate::relations::Counters,
         ) -> Traces {
             Traces {
                 $(
-                    $opcode: tracer.$opcode.into_witness(counters),
+                    $opcode: tracer.$opcode.to_witness(counters),
                 )*
             }
         }
@@ -386,7 +386,7 @@ macro_rules! opcode_components {
         /// Generate all interaction traces.
         /// Returns interaction trace columns and claimed sums for all components.
         pub fn gen_interaction_trace(
-            traces: &Traces,
+            tracer: &runner::trace::Tracer,
             relations: &$crate::relations::Relations,
         ) -> (
             ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -395,7 +395,7 @@ macro_rules! opcode_components {
             let mut all_columns = vec![];
             $(
                 let (cols, claimed) = $opcode::witness::gen_interaction_trace(
-                    &traces.$opcode,
+                    &tracer.$opcode,
                     relations,
                 );
                 all_columns.extend(cols);
@@ -461,6 +461,7 @@ macro_rules! opcode_components {
             /// Assert constraints on polynomials for all opcode components.
             /// Useful for debugging constraint failures.
             pub fn assert_constraints_on_polys(
+                tracer: &runner::trace::Tracer,
                 traces: &Traces,
                 relations: &$crate::relations::Relations,
             ) {
@@ -476,7 +477,7 @@ macro_rules! opcode_components {
                             .unwrap_or(0);
                         if log_size > 0 {
                             let (interaction_trace, claimed_sum) =
-                                $opcode::witness::gen_interaction_trace(&traces.$opcode, relations);
+                                $opcode::witness::gen_interaction_trace(&tracer.$opcode, relations);
                             let trace_tree = TreeVec::new(vec![
                                 vec![], // preprocessed
                                 traces.$opcode.clone(),

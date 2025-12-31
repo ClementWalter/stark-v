@@ -153,8 +153,12 @@ impl Components {
 
     /// Assert constraints on polynomials for all components (opcodes + preprocessed).
     /// Useful for debugging constraint failures.
-    pub fn assert_constraints_on_polys(traces: &Traces, relations: &Relations) {
-        opcodes::Components::assert_constraints_on_polys(&traces.opcodes, relations);
+    pub fn assert_constraints_on_polys(
+        tracer: &runner::trace::Tracer,
+        traces: &Traces,
+        relations: &Relations,
+    ) {
+        opcodes::Components::assert_constraints_on_polys(tracer, &traces.opcodes, relations);
         preprocessed::Components::assert_constraints_on_polys(&traces.preprocessed, relations);
     }
 }
@@ -165,7 +169,9 @@ impl Components {
 /// 1. Creates counters for preprocessed multiplicity tracking
 /// 2. Generates opcode traces (populates counters during generation)
 /// 3. Converts counters to preprocessed multiplicity traces
-pub fn gen_trace(tracer: runner::trace::Tracer) -> Traces {
+///
+/// Takes `&Tracer` to allow keeping tracer alive for interaction trace.
+pub fn gen_trace(tracer: &runner::trace::Tracer) -> Traces {
     // Create counters for preprocessed multiplicity tracking
     let mut counters = crate::relations::Counters::new();
 
@@ -183,17 +189,18 @@ pub fn gen_trace(tracer: runner::trace::Tracer) -> Traces {
 
 /// Generate all interaction traces (opcodes + preprocessed).
 pub fn gen_interaction_trace(
+    tracer: &runner::trace::Tracer,
     traces: &Traces,
     relations: &Relations,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     ClaimedSum,
 ) {
-    // Generate opcode interaction traces
+    // Generate opcode interaction traces (using tables from tracer)
     let (mut all_columns, opcodes_claimed) =
-        opcodes::gen_interaction_trace(&traces.opcodes, relations);
+        opcodes::gen_interaction_trace(tracer, relations);
 
-    // Generate preprocessed interaction traces
+    // Generate preprocessed interaction traces (using preprocessed traces)
     let (preprocessed_columns, preprocessed_claimed) =
         preprocessed::gen_interaction_trace(&traces.preprocessed, relations);
     all_columns.extend(preprocessed_columns);

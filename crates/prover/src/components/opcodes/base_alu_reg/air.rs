@@ -129,6 +129,38 @@ impl FrameworkEval for Eval {
             );
         }
 
+        // =====================================================================
+        // LogUp Relations (Section 1.3 from airs.md)
+        // TODO: Implement these using add_to_relation! macro
+        //
+        // Example usage pattern:
+        //
+        // // Program access (consume)
+        // add_to_relation!(eval, self.relations.program_access, -enabler.clone(),
+        //     cols.pc, expected_opcode_id, cols.rd_addr, cols.rs1_addr, cols.rs2_addr);
+        //
+        // // Register state transition (consume old, emit new)
+        // add_to_relation!(eval, self.relations.registers_state, -enabler.clone(),
+        //     cols.pc, cols.clk);
+        // add_to_relation!(eval, self.relations.registers_state, enabler.clone(),
+        //     cols.pc + E::F::from(BaseField::from_u32_unchecked(4)),
+        //     cols.clk + E::F::one());
+        //
+        // // Register rs1 access (consume prev, emit next)
+        // add_to_relation!(eval, self.relations.register_access, -enabler.clone(),
+        //     cols.rs1_addr, cols.rs1_prev_0, cols.rs1_prev_1, cols.rs1_prev_2, cols.rs1_prev_3);
+        // add_to_relation!(eval, self.relations.register_access, enabler.clone(),
+        //     cols.rs1_addr, cols.rs1_next_0, cols.rs1_next_1, cols.rs1_next_2, cols.rs1_next_3);
+        //
+        // // Range check clock difference
+        // add_to_relation!(eval, self.relations.range_check_20, -E::EF::one(),
+        //     cols.clk - cols.rs1_clk_prev);
+        //
+        // // Bitwise relation (for xor/or/and)
+        // add_to_relation!(eval, self.relations.bitwise, -is_bitwise.clone(),
+        //     cols.rs1_next_0, cols.rs2_next_0, cols.rd_next_0, bitwise_id.clone());
+        // =====================================================================
+
         eval
     }
 }

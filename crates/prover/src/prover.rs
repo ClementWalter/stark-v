@@ -40,7 +40,7 @@ pub fn prove_rv32im(
     info!("Tracer total_traces: {}", tracer.total_traces());
     info!("Tracer base_alu_imm len: {}", tracer.base_alu_imm.len());
     info!("Tracer load_store len: {}", tracer.load_store.len());
-    let traces = gen_trace(tracer);
+    let traces = gen_trace(&tracer);
     let log_size = traces.max_log_size();
     info!("Max trace log_size: {log_size}");
     span.exit();
@@ -102,7 +102,7 @@ pub fn prove_rv32im(
 
     // 9. Interaction trace (LogUp fractions) - only commit if non-empty
     let span = span!(Level::INFO, "Interaction trace").entered();
-    let (interaction_trace, claimed_sum) = gen_interaction_trace(&traces, &relations);
+    let (interaction_trace, claimed_sum) = gen_interaction_trace(&tracer, &traces, &relations);
     if !interaction_trace.is_empty() {
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(interaction_trace);

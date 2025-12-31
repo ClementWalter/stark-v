@@ -251,16 +251,17 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
     result
 }
 
-/// Generate the into_columns body that splits u32 values into limbs.
+/// Generate the to_columns body that splits u32 values into limbs.
 /// This handles the conversion from the trace table's u32 storage to
-/// the prover's limbed representation.
+/// the prover's limbed representation. Clones internal data to allow
+/// keeping the table alive for interaction trace generation.
 /// Enabler is the first column only if `include_enabler` is true.
-fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_macro2::TokenStream {
+fn generate_to_columns_body(fields: &[Ident], include_enabler: bool) -> proc_macro2::TokenStream {
     let mut column_exprs = Vec::new();
 
     // Enabler is the first column only if no opcode flags are present
     if include_enabler {
-        column_exprs.push(quote! { self.enabler });
+        column_exprs.push(quote! { self.enabler.clone() });
     }
 
     for field in fields {
@@ -271,8 +272,8 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
             let clk_prev = format_ident!("{}_clk_prev", name);
             let next = format_ident!("{}_next", name);
 
-            // addr column
-            column_exprs.push(quote! { self.#addr });
+            // addr column (clone)
+            column_exprs.push(quote! { self.#addr.clone() });
 
             // prev as 4 limbs (little-endian: limb 0 is least significant byte)
             for i in 0u8..4 {
@@ -288,8 +289,8 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
                 });
             }
 
-            // clk_prev column
-            column_exprs.push(quote! { self.#clk_prev });
+            // clk_prev column (clone)
+            column_exprs.push(quote! { self.#clk_prev.clone() });
 
             // next as 4 limbs (little-endian: limb 0 is least significant byte)
             for i in 0u8..4 {
@@ -305,8 +306,8 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
                 });
             }
         } else {
-            // Scalar field (clk, pc) - return directly
-            column_exprs.push(quote! { self.#field });
+            // Scalar field (clk, pc) - clone
+            column_exprs.push(quote! { self.#field.clone() });
         }
     }
 
@@ -376,8 +377,8 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let push_stmts: Vec<_> = opcode.fields.iter().map(generate_push_stmt).collect();
     let debug_fields: Vec<_> = opcode.fields.iter().map(generate_debug_field).collect();
 
-    // Generate into_columns body that splits u32 values into limbs
-    let into_columns_body = generate_into_columns_body(&opcode.fields, include_enabler);
+    // Generate to_columns body that splits u32 values into limbs (clones data)
+    let to_columns_body = generate_to_columns_body(&opcode.fields, include_enabler);
 
     // Get the first field name for len/is_empty when no enabler
     // We need to find the first actual column name after expansion
@@ -503,12 +504,12 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 #(#push_stmts)*
             }
 
-            /// Consumes the table and returns columns as a Vec in canonical order.
+            /// Returns columns as a Vec in canonical order (clones internal data).
             /// Order matches the column struct field order.
             #[doc = #into_columns_doc]
             /// Access fields have prev/next split into 4 u8 limbs (little-endian).
-            pub fn into_columns(self) -> Vec<simd::AlignedVec<u32>> {
-                #into_columns_body
+            pub fn to_columns(&self) -> Vec<simd::AlignedVec<u32>> {
+                #to_columns_body
             }
 
             /// Convert table to trace columns, padding to power of 2.
@@ -517,8 +518,10 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             ///
             /// The `counters` parameter is for preprocessed multiplicity tracking
             /// (will be populated when LogUp is implemented).
-            pub fn into_witness<C>(
-                self,
+            ///
+            /// Takes `&self` to allow keeping the table alive for interaction trace.
+            pub fn to_witness<C>(
+                &self,
                 _counters: &mut C,
             ) -> Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo::prover::backend::simd::SimdBackend,
@@ -532,13 +535,13 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 let len = self.len() as u32;
                 let log_size = len.next_power_of_two().ilog2().max(4);
                 let padded_len = 1 << log_size;
-                let columns = self.into_columns();
+                let columns = self.to_columns();
                 let domain = CanonicCoset::new(log_size).circle_domain();
 
                 columns
                     .into_iter()
                     .map(|mut col| {
-                        col.resize(padded_len, 0);
+                        col.resize(padded_len as usize, 0);
                         let base_col: BaseColumn = col.into();
                         CircleEvaluation::new(domain, base_col)
                     })

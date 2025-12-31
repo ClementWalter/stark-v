@@ -8,7 +8,7 @@ use stwo::core::fields::qm31::QM31;
 fn test_mulh_witness_gen_empty_table() {
     let table = runner::trace::MulhTable::new();
     let mut counters = crate::relations::Counters::new();
-    let trace = table.into_witness(&mut counters);
+    let trace = table.to_witness(&mut counters);
     // Empty table produces minimal log_size = 4 (16 rows)
     assert!(!trace.is_empty());
     assert_eq!(
@@ -21,9 +21,9 @@ fn test_mulh_witness_gen_empty_table() {
 fn test_mulh_interaction_trace_empty_table() {
     let table = runner::trace::MulhTable::new();
     let mut counters = crate::relations::Counters::new();
-    let trace = table.into_witness(&mut counters);
+    let _trace = table.to_witness(&mut counters);
     let relations = crate::relations::Relations::dummy();
-    let (interaction_trace, claimed_sum) = witness::gen_interaction_trace(&trace, &relations);
+    let (interaction_trace, claimed_sum) = witness::gen_interaction_trace(&table, &relations);
     assert!(interaction_trace.is_empty());
     assert_eq!(claimed_sum, QM31::zero());
 }

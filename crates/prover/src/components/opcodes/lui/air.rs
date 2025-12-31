@@ -38,6 +38,16 @@ impl FrameworkEval for Eval {
         // enabler is boolean (single opcode family)
         eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
 
+        // =====================================================================
+        // LogUp Relations (from airs.md)
+        // TODO: Implement using add_to_relation! macro
+        //
+        // Example usage:
+        // add_to_relation!(eval, self.relations.program_access, -cols.enabler.clone(),
+        //     cols.pc, opcode_id, cols.rd_addr, cols.rs1_addr, cols.rs2_addr);
+        //
+        // See base_alu_reg/air.rs for detailed examples.
+        // =====================================================================
         eval
     }
 }
