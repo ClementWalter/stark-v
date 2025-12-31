@@ -53,22 +53,19 @@ impl FrameworkEval for Eval {
             cols.rs1_next_0.clone(),
             cols.rs1_next_1.clone(),
             cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone()
-                + cols.b_sign.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+            cols.rs1_next_3.clone(),
         ];
         let c = [
             cols.rs2_next_0.clone(),
             cols.rs2_next_1.clone(),
             cols.rs2_next_2.clone(),
-            cols.rs2_next_3.clone()
-                + cols.c_sign.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+            cols.rs2_next_3.clone(),
         ];
         let q = [
             cols.q_0.clone(),
             cols.q_1.clone(),
             cols.q_2.clone(),
-            cols.q_3.clone()
-                + cols.q_sign.clone() * E::F::from(BaseField::from_u32_unchecked(1 << 7)),
+            cols.q_3.clone(),
         ];
         let r = [
             cols.r_0.clone(),
