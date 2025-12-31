@@ -1185,6 +1185,8 @@ Extra cost compared to having 2 components: lbu/lhu/lw/lb/lh - sb/sh/sw
 - `opcode_h_flag = opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag`
 - `opcode_w_flag = opcode_lw_flag + opcode_sw_flag`
 - `is_signed = opcode_lb_flag + opcode_lh_flag`
+- `load_b_flag = opcode_lb_flag + opcode_lbu_flag`
+- `load_h_flag = opcode_lh_flag + opcode_lhu_flag`
 - `is_store = opcode_sb_flag + opcode_sh_flag + opcode_sw_flag`
 - `is_load = enabler - is_store`
 - `src_as = REG_AS * is_store + RW_AS * is_load`
@@ -1217,7 +1219,7 @@ read from rs1
 
 check shift amount
 
-- `shift_amount - ( opcode_b_flag * shift_id + opcode_h_flag * ( (shift_id - 1) / 2 ) + opcode_w_flag * 0 )`
+- `shift_amount - ( opcode_b_flag * shift_id + opcode_h_flag * ( (shift_id - 1) / 4 ) )`
 
 check that `base[0] - shift_amount` is a multiple of 4
 
@@ -1238,30 +1240,41 @@ read src
 - `+ enabler * Memory(src_as, src_addr, clk, src[0], src[1], src[2], src[3])`
 - `- RC_20(clk - src_prev_clk)`
 
-for lbu/sb `markers` contains a single one when row is enabled
+for lb/lbu/sb `markers` contains a single one when row is enabled
 
 - `opcode_b_flag * (1 - sum_markers)`
 
-for lhu/sh `markers` is either `[1,1,0,0]` or `[0,0,1,1]`
+for lh/lhu/sh `markers` is either `[1,1,0,0]` or `[0,0,1,1]`
 
 - `opcode_h_flag * (2 - sum_markers)`
 - `opcode_h_flag * (1 - shift_id) * (5 - shift_id)`
 
-check that lbu/sb loads the correct byte
+check that lb/lbu loads the correct byte
 
-- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[1])`
-- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
-- `opcode_b_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
-- for i in [0..3] `opcode_b_flag * (dst[0] - src[i]) * markers[i]`
+- `load_b_flag * (is_signed * src_msb * (2^8-1) - dst[1])`
+- `load_b_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
+- `load_b_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
+- for i in [0..3] `load_b_flag * (dst[0] - src[i]) * markers[i]`
 
-check that lhu/sh loads the correct half word
+check that sb stores the correct byte
 
-- `opcode_h_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
-- `opcode_h_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
-- `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst[0] - src[0])`
-- `opcode_h_flag * ( (5 - shift_id) / 4 ) * (dst[1] - src[1])`
-- `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst[0] - src[2])`
-- `opcode_h_flag * ( (shift_id - 1) / 4 ) * (dst[1] - src[3])`
+- for i in [0..3] `opcode_sb_flag * (dst[i] - src[0]) * markers[i]`
+
+check that lh/lhu loads the correct half word
+
+- `load_h_flag * (is_signed * src_msb * (2^8-1) - dst[2])`
+- `load_h_flag * (is_signed * src_msb * (2^8-1) - dst[3])`
+- `load_h_flag * ( (5 - shift_id) / 4 ) * (dst[0] - src[0])`
+- `load_h_flag * ( (5 - shift_id) / 4 ) * (dst[1] - src[1])`
+- `load_h_flag * ( (shift_id - 1) / 4 ) * (dst[0] - src[2])`
+- `load_h_flag * ( (shift_id - 1) / 4 ) * (dst[1] - src[3])`
+
+check that sh stores the correct half word
+
+- `opcode_sh_flag * ( (5 - shift_id) / 4 ) * (dst[0] - src[0])`
+- `opcode_sh_flag * ( (5 - shift_id) / 4 ) * (dst[1] - src[1])`
+- `opcode_sh_flag * ( (shift_id - 1) / 4 ) * (dst[2] - src[0])`
+- `opcode_sh_flag * ( (shift_id - 1) / 4 ) * (dst[3] - src[1])`
 
 check that lw/sw loads all the bytes
 
@@ -1511,7 +1524,7 @@ write to rd
 - `q[4,5,6,7] = q_sign * (2^8 - 1)`
 - `r[4,5,6,7] = (1 - r_zero) * b_sign * (2^8 - 1)`
 - `carry[i] = (carry[i - 1] + r[i] + Σ_{k = 0..i} c[k] * q[i - k] - b[i]) / 2^8`
-  with `carry[-1] = 0`
+  with `carry[-1] = 0` for `i ∈ [0, 7]`
 - `carry_lt[i] = (carry_lt[i - 1] + r[i] + r_abs[i]) / 2^8` with
   `carry_lt[-1] = 0`
 - `diff[i] = (1 - 2 * c_sign) * (c[i] - r_abs[i])` for `i ∈ [0, 3]`

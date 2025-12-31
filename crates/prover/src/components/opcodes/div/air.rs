@@ -100,9 +100,27 @@ impl FrameworkEval for Eval {
         let pow2_8 = E::F::from(BaseField::from_u32_unchecked(1 << 8));
         let pow2_8_minus_one = pow2_8.clone() - E::F::one();
         let two = E::F::one() + E::F::one();
+        let inv_pow2_8 = BaseField::from_u32_unchecked(1 << 8).inverse();
+
+        let mut carry: [E::F; 7] = std::array::from_fn(|_| E::F::zero());
+        for i in 0..7 {
+            let prev = if i == 0 {
+                E::F::zero()
+            } else {
+                carry[i - 1].clone()
+            };
+            let b_limb = if i < 4 { b[i].clone() } else { E::F::zero() };
+            let r_limb = if i < 4 { r[i].clone() } else { E::F::zero() };
+            let mut mul_sum = E::F::zero();
+            let k_min = i.saturating_sub(3);
+            let k_max = i.min(3);
+            for k in k_min..=k_max {
+                mul_sum += c[k].clone() * q[i - k].clone();
+            }
+            carry[i] = (prev + r_limb + mul_sum - b_limb) * inv_pow2_8;
+        }
 
         let mut carry_lt: [E::F; 4] = std::array::from_fn(|_| E::F::zero());
-        let inv_pow2_8 = BaseField::from_u32_unchecked(1 << 8).inverse();
         for i in 0..4 {
             let prev = if i == 0 {
                 E::F::zero()
@@ -126,7 +144,7 @@ impl FrameworkEval for Eval {
             is_div.clone() * q[3].clone() + (E::F::one() - is_div.clone()) * r[3].clone(),
         ];
 
-        let _ = (expected_opcode_id, a, b);
+        let _ = (expected_opcode_id, a, b, carry);
 
         // Section 16.3: Constraints
 

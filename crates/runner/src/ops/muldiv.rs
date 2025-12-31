@@ -5,7 +5,7 @@
 //! - mulh family: mulh, mulhsu, mulhu (airs.md Section 15)
 //! - div family: div, divu, rem, remu (airs.md Section 16)
 
-use super::utils::{m31_inverse, M31_P};
+use super::utils::{M31_P, m31_inverse};
 use crate::trace::Tracer;
 use crate::{Cpu, DecodedInst};
 
@@ -149,7 +149,7 @@ fn compute_div_witness(rs1_val: u32, rs2_val: u32, is_signed: bool) -> DivWitnes
         let quot = a.wrapping_div(b);
         let rem = a.wrapping_rem(b);
         let q_val = quot as u32;
-        let q_sign = ((q_val >> 31) & 1) as u32;
+        let q_sign = (q_val >> 31) & 1;
         (q_val, rem as u32, q_sign)
     } else {
         (
