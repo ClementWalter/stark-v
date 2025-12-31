@@ -1,11 +1,40 @@
-//! Range check table for M31 limb endpoints.
+//! Range check table for safe u32 → M31 casting.
 //!
-//! Two columns containing all possible pairs of:
-//! - least significant limb (8 bits)
-//! - most significant limb (7 bits, since M31 < 2^31)
-//! bin(2**31 - 1) = 01111111 11111111 11111111 11111111
-//! max(BaseField) = 2**31 - 2 = 01111111 11111111 11111111 11111110
-//! for a total size of `2^15`.
+//! # Purpose
+//!
+//! Validates that a u32 value can be safely cast to M31 by checking the
+//! boundary condition on the least and most significant limbs.
+//!
+//! # M31 Field Bounds
+//!
+//! - M31 modulus: p = 2³¹ - 1 = 0x7FFFFFFF
+//! - Valid range: [0, 2³¹ - 2] (since 2³¹ - 1 ≡ 0 mod p)
+//!
+//! # Limb Decomposition
+//!
+//! A u32 is decomposed into 4 limbs (8-8-8-7 bits, little-endian):
+//! ```text
+//! v = lsl + (limb1 << 8) + (limb2 << 16) + (msl << 24)
+//!     [0,255]  [0,255]      [0,255]        [0,127]
+//! ```
+//!
+//! # Boundary Analysis
+//!
+//! ```text
+//! max(M31)     = 2³¹ - 2 = 0x7FFFFFFE → limbs: (254, 255, 255, 127) ✓ valid
+//! invalid      = 2³¹ - 1 = 0x7FFFFFFF → limbs: (255, 255, 255, 127) ✗ equals modulus
+//! ```
+//!
+//! When msl = 127 and all middle limbs are 255, lsl must be ≤ 254.
+//! This table uses a conservative check: reject (lsl=255, msl=127) regardless
+//! of middle limbs, which is safe but may reject some technically valid values.
+//!
+//! # Table Contents
+//!
+//! Contains 2¹⁵ entries covering all valid (lsl, msl) pairs:
+//! - All pairs where msl ∈ [0, 126]: 127 × 256 = 32,512 entries
+//! - Pairs where msl = 127 and lsl ∈ [0, 254]: 255 entries
+//! - Entry at index 32767 is a duplicate (0, 0) to exclude (255, 127)
 
 use std::marker::PhantomData;
 
@@ -21,9 +50,10 @@ use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 
 use crate::preprocessed::PreprocessedTable;
 
-/// Range check table for M31 limb endpoints.
+/// Range check table for safe u32 → M31 casting.
 ///
-/// Enumerates all `(lsl, msl)` pairs where `lsl ∈ [0, 2^8)` and `msl ∈ [0, 2^7)`.
+/// Enumerates all valid `(lsl, msl)` pairs excluding `(255, 127)` which
+/// would allow the invalid value 2³¹ - 1 (the M31 modulus).
 pub struct Table<const N: usize>(PhantomData<[(); N]>);
 
 impl<const N: usize> PreprocessedTable<N> for Table<N> {
