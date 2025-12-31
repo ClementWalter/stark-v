@@ -5,11 +5,12 @@
 
 use std::marker::PhantomData;
 
+use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::{Col, Column};
+use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -36,12 +37,12 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
         let size = 1 << Self::LOG_SIZE;
 
         // Generate values [0, 1, 2, ..., 2^20 - 1]
-        let mut col = Col::<SimdBackend, BaseField>::zeros(size);
+        let mut col = aligned_vec![0u32; size];
         for i in 0..size {
-            col.set(i, BaseField::from(i as u32));
+            col[i] = i as u32;
         }
 
-        vec![CircleEvaluation::new(domain, col)]
+        vec![CircleEvaluation::new(domain, BaseColumn::from(col))]
     }
 
     fn column_ids() -> Vec<PreProcessedColumnId> {
