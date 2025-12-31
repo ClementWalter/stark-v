@@ -73,13 +73,13 @@ pub fn compute_shift_witness(
     rs1_val: u32,
     shamt: u32,
     is_left: bool,
-    is_sra: bool,
+    _is_sra: bool,
 ) -> ShiftWitness {
     let limb_shift = (shamt / 8) as usize;
     let bit_shift = (shamt % 8) as usize;
 
-    // rs1_sign is the sign bit of rs1[3] (most significant byte)
-    let rs1_sign = if is_sra { (rs1_val >> 31) & 1 } else { 0 };
+    // rs1_sign is the MSB of rs1 (bit 31), provided separately from the top limb.
+    let rs1_sign = (rs1_val >> 31) & 1;
 
     // Compute bit_shift_carry for each limb
     let rs1_bytes = rs1_val.to_le_bytes();
@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn test_shift_witness_left() {
         let w = compute_shift_witness(0x12345678, 5, true, false);
-        assert_eq!(w.rs1_sign, 0); // not sra
+        assert_eq!(w.rs1_sign, 0); // msb is 0
         assert_eq!(w.bit_shift_marker, [0, 0, 0, 0, 0, 1, 0, 0]); // bit 5
         assert_eq!(w.limb_shift_marker, [1, 0, 0, 0]); // limb 0
     }

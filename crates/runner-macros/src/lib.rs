@@ -49,9 +49,23 @@ impl Parse for TraceTablesDef {
     }
 }
 
+/// Access field base name and whether its `next_3` limb should be masked.
+fn access_field_info(name: &str) -> Option<(&str, bool)> {
+    if matches!(name, "rd" | "rs1" | "rs2" | "mem" | "dst" | "src") {
+        return Some((name, false));
+    }
+    if let Some(base) = name
+        .strip_suffix("_lo")
+        .filter(|base| ["rd", "rs1", "rs2", "mem", "dst", "src"].contains(base))
+    {
+        return Some((base, true));
+    }
+    None
+}
+
 /// Check if a field name represents an Access type (needs flattening)
 fn is_access_field(name: &str) -> bool {
-    matches!(name, "rd" | "rs1" | "rs2" | "mem" | "dst" | "src")
+    access_field_info(name).is_some()
 }
 
 /// Check if a field name is an opcode flag (matches pattern `opcode_*_flag`)
@@ -91,13 +105,13 @@ fn table_name(opcode: &Ident) -> Ident {
 /// Generate columnar field declarations for a single field
 fn generate_field_decls(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
-    if is_access_field(&name) {
+    if let Some((base, _mask_next_3)) = access_field_info(&name) {
         // Access fields expand to 4 columns: addr, prev, clk_prev, next
         // Note: clk is NOT stored - it's redundant with tracer.clk at call site
-        let addr = format_ident!("{}_addr", name);
-        let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
-        let next = format_ident!("{}_next", name);
+        let addr = format_ident!("{}_addr", base);
+        let prev = format_ident!("{}_prev", base);
+        let clk_prev = format_ident!("{}_clk_prev", base);
+        let next = format_ident!("{}_next", base);
         quote! {
             pub #addr: simd::AlignedVec<u32>,
             pub #prev: simd::AlignedVec<u32>,
@@ -115,12 +129,12 @@ fn generate_field_decls(field: &Ident) -> proc_macro2::TokenStream {
 /// Generate field initialization for new()
 fn generate_field_init(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
-    if is_access_field(&name) {
+    if let Some((base, _mask_next_3)) = access_field_info(&name) {
         // Access fields expand to 4 columns (no clk)
-        let addr = format_ident!("{}_addr", name);
-        let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
-        let next = format_ident!("{}_next", name);
+        let addr = format_ident!("{}_addr", base);
+        let prev = format_ident!("{}_prev", base);
+        let clk_prev = format_ident!("{}_clk_prev", base);
+        let next = format_ident!("{}_next", base);
         quote! {
             #addr: simd::AlignedVec::new(),
             #prev: simd::AlignedVec::new(),
@@ -137,12 +151,12 @@ fn generate_field_init(field: &Ident) -> proc_macro2::TokenStream {
 /// Generate field initialization with capacity
 fn generate_field_init_cap(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
-    if is_access_field(&name) {
+    if let Some((base, _mask_next_3)) = access_field_info(&name) {
         // Access fields expand to 4 columns (no clk)
-        let addr = format_ident!("{}_addr", name);
-        let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
-        let next = format_ident!("{}_next", name);
+        let addr = format_ident!("{}_addr", base);
+        let prev = format_ident!("{}_prev", base);
+        let clk_prev = format_ident!("{}_clk_prev", base);
+        let next = format_ident!("{}_next", base);
         quote! {
             #addr: simd::AlignedVec::with_capacity(cap),
             #prev: simd::AlignedVec::with_capacity(cap),
@@ -169,12 +183,12 @@ fn generate_push_param(field: &Ident) -> proc_macro2::TokenStream {
 /// Generate push statements for a field
 fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
-    if is_access_field(&name) {
+    if let Some((base, _mask_next_3)) = access_field_info(&name) {
         // Access fields expand to 4 columns (no clk - it's available from tracer.clk)
-        let addr = format_ident!("{}_addr", name);
-        let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
-        let next = format_ident!("{}_next", name);
+        let addr = format_ident!("{}_addr", base);
+        let prev = format_ident!("{}_prev", base);
+        let clk_prev = format_ident!("{}_clk_prev", base);
+        let next = format_ident!("{}_next", base);
         quote! {
             self.#addr.push(#field.addr);
             self.#prev.push(#field.prev);
@@ -191,12 +205,12 @@ fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
 /// Generate debug field entries for a single row
 fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
-    if is_access_field(&name) {
+    if let Some((base, _mask_next_3)) = access_field_info(&name) {
         // Access fields expand to 4 columns (no clk)
-        let addr = format_ident!("{}_addr", name);
-        let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
-        let next = format_ident!("{}_next", name);
+        let addr = format_ident!("{}_addr", base);
+        let prev = format_ident!("{}_prev", base);
+        let clk_prev = format_ident!("{}_clk_prev", base);
+        let next = format_ident!("{}_next", base);
         let field_name = &name;
         quote! {
             .field(#field_name, &format_args!(
@@ -221,7 +235,7 @@ fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
 /// - addr (1 column)
 /// - prev_0..prev_3 (4 limbs for u32 value)
 /// - clk_prev (1 column)
-/// - next_0..next_3 (4 limbs for u32 value)
+/// - next_0..next_3 (4 limbs for u32 value, `*_lo` masks next_3 to 7 bits)
 fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
     let mut result = Vec::new();
 
@@ -232,17 +246,17 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
 
     for field in fields {
         let name = field.to_string();
-        if is_access_field(&name) {
+        if let Some((base, _mask_next_3)) = access_field_info(&name) {
             // Access fields expand to 10 columns with limbed prev/next
-            result.push(format_ident!("{}_addr", name));
+            result.push(format_ident!("{}_addr", base));
             // prev as 4 u8 limbs (little-endian)
             for i in 0usize..4 {
-                result.push(format_ident!("{}_prev_{}", name, i));
+                result.push(format_ident!("{}_prev_{}", base, i));
             }
-            result.push(format_ident!("{}_clk_prev", name));
+            result.push(format_ident!("{}_clk_prev", base));
             // next as 4 u8 limbs (little-endian)
             for i in 0usize..4 {
-                result.push(format_ident!("{}_next_{}", name, i));
+                result.push(format_ident!("{}_next_{}", base, i));
             }
         } else {
             result.push(field.clone());
@@ -255,6 +269,7 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
 /// This handles the conversion from the trace table's u32 storage to
 /// the prover's limbed representation.
 /// Enabler is the first column only if `include_enabler` is true.
+/// For `*_lo` access fields, next_3 is masked to 7 bits.
 fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_macro2::TokenStream {
     let mut column_exprs = Vec::new();
 
@@ -265,11 +280,11 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
 
     for field in fields {
         let name = field.to_string();
-        if is_access_field(&name) {
-            let addr = format_ident!("{}_addr", name);
-            let prev = format_ident!("{}_prev", name);
-            let clk_prev = format_ident!("{}_clk_prev", name);
-            let next = format_ident!("{}_next", name);
+        if let Some((base, mask_next_3)) = access_field_info(&name) {
+            let addr = format_ident!("{}_addr", base);
+            let prev = format_ident!("{}_prev", base);
+            let clk_prev = format_ident!("{}_clk_prev", base);
+            let next = format_ident!("{}_next", base);
 
             // addr column
             column_exprs.push(quote! { self.#addr });
@@ -294,11 +309,16 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
             // next as 4 limbs (little-endian: limb 0 is least significant byte)
             for i in 0u8..4 {
                 let shift = i * 8;
+                let mask = if mask_next_3 && i == 3 {
+                    0x7Fu32
+                } else {
+                    0xFFu32
+                };
                 column_exprs.push(quote! {
                     {
                         let mut v = simd::AlignedVec::with_capacity(self.#next.len());
                         for val in self.#next.iter() {
-                            v.push(((val >> #shift) & 0xFF) as u32);
+                            v.push(((val >> #shift) & #mask) as u32);
                         }
                         v
                     }
@@ -383,8 +403,8 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     // We need to find the first actual column name after expansion
     let first_field = &opcode.fields[0];
     let first_field_name = first_field.to_string();
-    let len_field = if is_access_field(&first_field_name) {
-        format_ident!("{}_addr", first_field_name)
+    let len_field = if let Some((base, _mask_next_3)) = access_field_info(&first_field_name) {
+        format_ident!("{}_addr", base)
     } else {
         first_field.clone()
     };

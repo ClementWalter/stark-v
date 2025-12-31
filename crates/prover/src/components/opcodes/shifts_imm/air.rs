@@ -42,6 +42,9 @@ impl FrameworkEval for Eval {
 
         let left_shift = cols.opcode_sll_flag.clone();
         let right_shift = cols.opcode_srl_flag.clone() + cols.opcode_sra_flag.clone();
+        let sign_fill = cols.opcode_sra_flag.clone() * cols.rs1_sign.clone();
+
+        let pow2 = |exp: u32| E::F::from(BaseField::from_u32_unchecked(1 << exp));
 
         let bit_shift_markers = [
             cols.bit_shift_marker_0.clone(),
@@ -71,14 +74,13 @@ impl FrameworkEval for Eval {
             cols.rd_next_2.clone(),
             cols.rd_next_3.clone(),
         ];
+        let rs1_msl = cols.rs1_next_3.clone() + pow2(7) * cols.rs1_sign.clone();
         let rs1 = [
             cols.rs1_next_0.clone(),
             cols.rs1_next_1.clone(),
             cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone(),
+            rs1_msl.clone(),
         ];
-
-        let pow2 = |exp: u32| E::F::from(BaseField::from_u32_unchecked(1 << exp));
 
         let bit_multiplier = bit_shift_markers
             .iter()
@@ -104,12 +106,11 @@ impl FrameworkEval for Eval {
                 });
 
         let shift_amount = limb_shift.clone() * pow2(3) + bit_shift.clone();
-        let rs1_msl = rs1[3].clone() + pow2(7) * cols.rs1_sign.clone();
 
         let two_pow_8 = pow2(8);
         let two_pow_8_minus_one = two_pow_8.clone() - E::F::one();
 
-        let _ = (expected_opcode_id, rs1_msl);
+        let _ = expected_opcode_id;
 
         // Section 4.3: Constraints
 
@@ -191,11 +192,11 @@ impl FrameworkEval for Eval {
                     eval.add_constraint(
                         right_shift.clone()
                             * limb_marker.clone()
-                            * (rd[j].clone() - cols.rs1_sign.clone() * two_pow_8_minus_one.clone()),
+                            * (rd[j].clone() - sign_fill.clone() * two_pow_8_minus_one.clone()),
                     );
                 } else if j == 3 - i {
                     let expr = limb_marker.clone()
-                        * (cols.rs1_sign.clone()
+                        * (sign_fill.clone()
                             * (cols.bit_multiplier_right.clone() - E::F::one())
                             * two_pow_8.clone()
                             + right_shift.clone()

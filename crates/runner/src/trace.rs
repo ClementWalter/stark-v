@@ -37,7 +37,7 @@ runner_macros::define_trace_tables! {
     // 3. Shifts Reg (sll/srl/sra) - airs.md Section 3
     // ==========================================================================
     shifts_reg: {
-        clk, pc, rd, rs1, rs2,
+        clk, pc, rd, rs1_lo, rs2,
         rs1_sign,
         opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
         bit_multiplier_left, bit_multiplier_right,
@@ -51,7 +51,7 @@ runner_macros::define_trace_tables! {
     // 4. Shifts Imm (slli/srli/srai) - airs.md Section 4
     // ==========================================================================
     shifts_imm: {
-        clk, pc, rd, rs1,
+        clk, pc, rd, rs1_lo,
         rs1_sign, imm_truncated,
         opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
         bit_multiplier_left, bit_multiplier_right,
@@ -143,7 +143,7 @@ runner_macros::define_trace_tables! {
     // 13. Load/Store (lb/lbu/lh/lhu/lw/sb/sh/sw) - airs.md Section 13
     // ==========================================================================
     load_store: {
-        clk, pc, dst, rs1, src,
+        clk, pc, dst, rs1, src_lo,
         r2_idx, imm_felt, src_msb,
         shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -163,7 +163,7 @@ runner_macros::define_trace_tables! {
     // 15. MULH (mulh/mulhsu/mulhu) - airs.md Section 15
     // ==========================================================================
     mulh: {
-        clk, pc, rd, rs1, rs2,
+        clk, pc, rd, rs1_lo, rs2_lo,
         rd_high_0, rd_high_1, rd_high_2, rd_high_3,
         rs1_sign, rs2_sign,
         opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag
@@ -173,7 +173,7 @@ runner_macros::define_trace_tables! {
     // 16. DIV (div/divu/rem/remu) - airs.md Section 16
     // ==========================================================================
     div: {
-        clk, pc, rd, rs1, rs2,
+        clk, pc, rd, rs1_lo, rs2_lo,
         zero_divisor, r_zero,
         q_0, q_1, q_2, q_3,
         r_0, r_1, r_2, r_3,
@@ -763,6 +763,43 @@ mod tests {
         assert_eq!(table.rs2_addr[0], 3);
         assert_eq!(table.opcode_add_flag[0], 1);
         assert_eq!(table.opcode_sub_flag[0], 0);
+    }
+
+    #[test]
+    fn test_access_next_limb_mask_lo() {
+        let mut table = MulhTable::new();
+
+        let rd = Access {
+            addr: 1,
+            prev: 0,
+            clk_prev: 0,
+            next: 0xFF00_0000,
+        };
+        let rs1 = Access {
+            addr: 2,
+            prev: 0,
+            clk_prev: 0,
+            next: 0xFF00_0000,
+        };
+        let rs2 = Access {
+            addr: 3,
+            prev: 0,
+            clk_prev: 0,
+            next: 0xFF00_0000,
+        };
+
+        table.push(1, 0x1000, rd, rs1, rs2, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+
+        let columns = table.into_columns();
+
+        // Column order: clk, pc, rd(10), rs1(10), rs2(10), ...
+        let rd_next_3_idx = 2 + 9;
+        let rs1_next_3_idx = rd_next_3_idx + 10;
+        let rs2_next_3_idx = rs1_next_3_idx + 10;
+
+        assert_eq!(columns[rd_next_3_idx][0], 0xFF);
+        assert_eq!(columns[rs1_next_3_idx][0], 0x7F);
+        assert_eq!(columns[rs2_next_3_idx][0], 0x7F);
     }
 
     #[test]
