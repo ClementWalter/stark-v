@@ -1,6 +1,7 @@
 //! AIR component for Branch Equal (beq/bne) - airs.md Section 7
 
-use num_traits::One;
+use crate::add_to_relation;
+use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
@@ -65,7 +66,14 @@ impl FrameworkEval for Eval {
                 acc + (a.clone() - b.clone()) * marker.clone()
             });
 
-        let _ = expected_opcode_id;
+        // REG_AS = 0 for register address space
+        let reg_as = E::F::zero();
+
+        // to_pc for conditional branch
+        let four = E::F::from(BaseField::from_u32_unchecked(4));
+        let to_pc = cols.pc.clone()
+            + cols.imm_felt.clone() * cols.cmp_result.clone()
+            + four * (E::F::one() - cols.cmp_result.clone());
 
         // Section 7.3: Constraints
 
@@ -86,15 +94,110 @@ impl FrameworkEval for Eval {
         eval.add_constraint(enabler.clone() * (E::F::one() - diff_inv_sum));
 
         // =====================================================================
-        // LogUp Relations (from airs.md)
-        // TODO: Implement using add_to_relation! macro
-        //
-        // Example usage:
-        // add_to_relation!(eval, self.relations.program_access, -cols.enabler.clone(),
-        //     cols.pc, opcode_id, cols.rd_addr, cols.rs1_addr, cols.rs2_addr);
-        //
-        // See base_alu_reg/air.rs for detailed examples.
+        // LogUp Relations (Section 7.3 from airs.md)
         // =====================================================================
+
+        // Program access (B-type): - enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm_felt)
+        add_to_relation!(
+            eval,
+            self.relations.program_access,
+            -enabler.clone(),
+            cols.pc,
+            expected_opcode_id.clone(),
+            cols.rs1_addr,
+            cols.rs2_addr,
+            cols.imm_felt
+        );
+
+        // Read from rs1
+        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.rs1_clk_prev,
+            cols.rs1_prev_0,
+            cols.rs1_prev_1,
+            cols.rs1_prev_2,
+            cols.rs1_prev_3
+        );
+        // + enabler * Memory(REG_AS, rs1_idx, clk, rs1[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.clk,
+            cols.rs1_next_0,
+            cols.rs1_next_1,
+            cols.rs1_next_2,
+            cols.rs1_next_3
+        );
+        // - RC_20(clk - rs1_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs1_clk_prev.clone()
+        );
+
+        // Read from rs2
+        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs2_addr,
+            cols.rs2_clk_prev,
+            cols.rs2_prev_0,
+            cols.rs2_prev_1,
+            cols.rs2_prev_2,
+            cols.rs2_prev_3
+        );
+        // + enabler * Memory(REG_AS, rs2_idx, clk, rs2[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs2_addr,
+            cols.clk,
+            cols.rs2_next_0,
+            cols.rs2_next_1,
+            cols.rs2_next_2,
+            cols.rs2_next_3
+        );
+        // - RC_20(clk - rs2_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs2_clk_prev.clone()
+        );
+
+        // Register state transition (conditional branch)
+        // - enabler * Registers(pc, clk)
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            -enabler.clone(),
+            cols.pc,
+            cols.clk
+        );
+        // + enabler * Registers(to_pc, clk + 1)
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            enabler.clone(),
+            to_pc,
+            cols.clk.clone() + E::F::one()
+        );
+
+        eval.finalize_logup_in_pairs();
         eval
     }
 }

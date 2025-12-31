@@ -13,12 +13,12 @@ fn test_all_components_aggregate() {
 
     // Generate traces for all components
     let mut counters = Counters::new();
-    let traces: Traces = gen_trace(&tracer, &mut counters);
+    let traces: Traces = gen_trace(tracer, &mut counters);
 
     // Generate interaction traces with default relations
     let relations = Relations::dummy();
     let (_interaction_columns, claimed_sum): (_, ClaimedSum) =
-        gen_interaction_trace(&tracer, &relations);
+        gen_interaction_trace(&traces, &relations);
 
     // All claimed sums should be zero for empty traces
     assert!(claimed_sum.sum().is_zero());
@@ -35,7 +35,7 @@ fn test_traces_struct_has_all_opcodes() {
 
     // Generate traces for all components
     let mut counters = Counters::new();
-    let traces: Traces = gen_trace(&tracer, &mut counters);
+    let traces: Traces = gen_trace(tracer, &mut counters);
 
     // Verify we can access each opcode family trace (16 families total).
     assert!(!traces.base_alu_reg.is_empty());
@@ -90,9 +90,8 @@ fn test_fibonacci_constraints() {
 
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
-    let tracer = run_result.tracer;
-    let traces = components::gen_trace(&tracer);
+    let traces = components::gen_trace(run_result.tracer);
     let relations = Relations::dummy();
 
-    Components::assert_constraints_on_polys(&tracer, &traces, &relations);
+    Components::assert_constraints_on_polys(&traces, &relations);
 }
