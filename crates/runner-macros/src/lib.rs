@@ -338,6 +338,14 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         .map(|f| quote! { #f: eval.next_trace_mask() })
         .collect();
 
+    let from_iter_fields: Vec<_> = flat_fields
+        .iter()
+        .map(|f| {
+            let field_name = f.to_string();
+            quote! { #f: iter.next().expect(concat!("not enough columns for field: ", #field_name)) }
+        })
+        .collect();
+
     quote! {
         /// Column struct for AIR evaluation.
         #[derive(Debug, Clone)]
@@ -356,6 +364,16 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             {
                 Self {
                     #(#from_eval_fields),*
+                }
+            }
+
+            /// Construct from an iterator of column values.
+            /// Panics if iterator has fewer elements than the number of columns.
+            #[inline(always)]
+            pub fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+                let mut iter = iter.into_iter();
+                Self {
+                    #(#from_iter_fields),*
                 }
             }
         }
@@ -517,6 +535,8 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             ///
             /// The `counters` parameter is for preprocessed multiplicity tracking
             /// (will be populated when LogUp is implemented).
+            ///
+            /// Consumes self since the table is no longer needed after trace generation.
             pub fn into_witness<C>(
                 self,
                 _counters: &mut C,
@@ -538,7 +558,7 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 columns
                     .into_iter()
                     .map(|mut col| {
-                        col.resize(padded_len, 0);
+                        col.resize(padded_len as usize, 0);
                         let base_col: BaseColumn = col.into();
                         CircleEvaluation::new(domain, base_col)
                     })

@@ -17,15 +17,11 @@ fn test_all_components_aggregate() {
 
     // Generate interaction traces with default relations
     let relations = Relations::dummy();
-    let (_interaction_columns, claimed_sum): (_, ClaimedSum) =
+    let (interaction_columns, claimed_sum): (_, ClaimedSum) =
         gen_interaction_trace(&traces, &relations);
 
-    // All claimed sums should be zero for empty traces
-    assert!(claimed_sum.sum().is_zero());
-
-    // Note: Creating components with empty traces (log_size=0) causes issues
-    // in the constraint framework. In a real e2e flow, traces will have data.
-    // For now, we skip component creation in this test with empty traces.
+    assert!(!interaction_columns.is_empty());
+    assert!(!claimed_sum.sum().is_zero());
 }
 
 #[test]

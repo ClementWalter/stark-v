@@ -1,12 +1,13 @@
 //! AIR component for Shifts Imm (slli/srli/srai) - airs.md Section 4
 
+use crate::add_to_relation;
+use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use super::columns::ShiftsImmColumns;
-use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -109,7 +110,7 @@ impl FrameworkEval for Eval {
         let two_pow_8 = pow2(8);
         let two_pow_8_minus_one = two_pow_8.clone() - E::F::one();
 
-        let _ = (expected_opcode_id, rs1_msl);
+        let _ = rs1_msl;
 
         // Section 4.3: Constraints
 
@@ -215,6 +216,124 @@ impl FrameworkEval for Eval {
             }
         }
 
+        // =====================================================================
+        // LogUp Relations (Section 4.3 from airs.md)
+        // =====================================================================
+
+        let reg_as = E::F::zero();
+
+        // Program access (consume): I-type
+        add_to_relation!(
+            eval,
+            self.relations.program_access,
+            -enabler.clone(),
+            cols.pc,
+            expected_opcode_id.clone(),
+            cols.rd_addr,
+            cols.rs1_addr,
+            cols.imm_truncated
+        );
+
+        // Register state transition
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            -enabler.clone(),
+            cols.pc,
+            cols.clk
+        );
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            enabler.clone(),
+            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
+            cols.clk.clone() + E::F::one()
+        );
+
+        // Read from rs1
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.rs1_clk_prev,
+            cols.rs1_prev_0,
+            cols.rs1_prev_1,
+            cols.rs1_prev_2,
+            cols.rs1_prev_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.clk,
+            cols.rs1_next_0,
+            cols.rs1_next_1,
+            cols.rs1_next_2,
+            cols.rs1_next_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs1_clk_prev.clone()
+        );
+
+        // TODO: Range check shift carries (scaled by 2^8 / bit_multiplier)
+        let _ = bit_shift_carry;
+
+        // Range check rd
+        add_to_relation!(
+            eval,
+            self.relations.range_check_8_8,
+            -E::F::one(),
+            rd[0].clone(),
+            rd[1].clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_8_8,
+            -E::F::one(),
+            rd[2].clone(),
+            rd[3].clone()
+        );
+
+        // Write to rd
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rd_addr,
+            cols.rd_clk_prev,
+            cols.rd_prev_0,
+            cols.rd_prev_1,
+            cols.rd_prev_2,
+            cols.rd_prev_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rd_addr,
+            cols.clk,
+            rd[0].clone(),
+            rd[1].clone(),
+            rd[2].clone(),
+            rd[3].clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rd_clk_prev.clone()
+        );
+
+        eval.finalize_logup_in_pairs();
         eval
     }
 }

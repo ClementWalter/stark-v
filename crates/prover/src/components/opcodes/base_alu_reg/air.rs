@@ -1,12 +1,13 @@
 //! AIR component for Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
 
+use crate::add_to_relation;
+use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use super::columns::BaseAluRegColumns;
-use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -91,9 +92,6 @@ impl FrameworkEval for Eval {
             + three.clone() * cols.opcode_and_flag.clone()
             + four * (cols.opcode_add_flag.clone() + cols.opcode_sub_flag.clone());
 
-        // Avoid unused-variable warnings for values only used by lookup constraints.
-        let _ = (expected_opcode_id, is_bitwise, bitwise_id);
-
         // Section 1.3: Constraints
 
         // enabler is boolean
@@ -129,6 +127,189 @@ impl FrameworkEval for Eval {
             );
         }
 
+        // =====================================================================
+        // LogUp Relations (Section 1.3 from airs.md)
+        // =====================================================================
+
+        // REG_AS = 0 for register address space
+        let reg_as = E::F::zero();
+
+        // Program access (consume): read instruction from Program segment (R-type)
+        // - enabler * Program(pc, expected_opcode_id, rd_idx, rs1_idx, rs2_idx)
+        add_to_relation!(
+            eval,
+            self.relations.program_access,
+            -enabler.clone(),
+            cols.pc,
+            expected_opcode_id.clone(),
+            cols.rd_addr,
+            cols.rs1_addr,
+            cols.rs2_addr
+        );
+
+        // Register state transition
+        // - enabler * Registers(pc, clk)
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            -enabler.clone(),
+            cols.pc,
+            cols.clk
+        );
+        // + enabler * Registers(pc + 4, clk + 1)
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            enabler.clone(),
+            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
+            cols.clk.clone() + E::F::one()
+        );
+
+        // Read from rs1
+        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.rs1_clk_prev,
+            cols.rs1_prev_0,
+            cols.rs1_prev_1,
+            cols.rs1_prev_2,
+            cols.rs1_prev_3
+        );
+        // + enabler * Memory(REG_AS, rs1_idx, clk, rs1[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.clk,
+            cols.rs1_next_0,
+            cols.rs1_next_1,
+            cols.rs1_next_2,
+            cols.rs1_next_3
+        );
+        // - RC_20(clk - rs1_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs1_clk_prev.clone()
+        );
+
+        // Read from rs2
+        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs2_addr,
+            cols.rs2_clk_prev,
+            cols.rs2_prev_0,
+            cols.rs2_prev_1,
+            cols.rs2_prev_2,
+            cols.rs2_prev_3
+        );
+        // + enabler * Memory(REG_AS, rs2_idx, clk, rs2[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs2_addr,
+            cols.clk,
+            cols.rs2_next_0,
+            cols.rs2_next_1,
+            cols.rs2_next_2,
+            cols.rs2_next_3
+        );
+        // - RC_20(clk - rs2_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs2_clk_prev.clone()
+        );
+
+        // Bitwise operations (for xor/or/and)
+        // - is_bitwise * Bitwise(rs1[i], rs2[i], rd[i], bitwise_id) for each limb
+        add_to_relation!(
+            eval,
+            self.relations.bitwise,
+            -is_bitwise.clone(),
+            rs1[0].clone(),
+            rs2[0].clone(),
+            rd[0].clone(),
+            bitwise_id.clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.bitwise,
+            -is_bitwise.clone(),
+            rs1[1].clone(),
+            rs2[1].clone(),
+            rd[1].clone(),
+            bitwise_id.clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.bitwise,
+            -is_bitwise.clone(),
+            rs1[2].clone(),
+            rs2[2].clone(),
+            rd[2].clone(),
+            bitwise_id.clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.bitwise,
+            -is_bitwise.clone(),
+            rs1[3].clone(),
+            rs2[3].clone(),
+            rd[3].clone(),
+            bitwise_id.clone()
+        );
+
+        // Write to rd
+        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rd_addr,
+            cols.rd_clk_prev,
+            cols.rd_prev_0,
+            cols.rd_prev_1,
+            cols.rd_prev_2,
+            cols.rd_prev_3
+        );
+        // + enabler * Memory(REG_AS, rd_idx, clk, rd[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rd_addr,
+            cols.clk,
+            rd[0].clone(),
+            rd[1].clone(),
+            rd[2].clone(),
+            rd[3].clone()
+        );
+        // - RC_20(clk - rd_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rd_clk_prev.clone()
+        );
+
+        eval.finalize_logup_in_pairs();
         eval
     }
 }

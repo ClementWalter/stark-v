@@ -1,12 +1,13 @@
 //! AIR component for Shifts Reg (sll/srl/sra) - airs.md Section 3
 
+use crate::add_to_relation;
+use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use super::columns::ShiftsRegColumns;
-use crate::relations::Relations;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -115,7 +116,8 @@ impl FrameworkEval for Eval {
         let two_pow_8 = pow2(8);
         let two_pow_8_minus_one = two_pow_8.clone() - E::F::one();
 
-        let _ = (expected_opcode_id, rs1_msl, rs2, shift_amount);
+        // Avoid unused-variable warnings for values only used by lookup constraints.
+        let _ = rs1_msl;
 
         // Section 3.3: Constraints
 
@@ -220,6 +222,169 @@ impl FrameworkEval for Eval {
             }
         }
 
+        // =====================================================================
+        // LogUp Relations (Section 3.3 from airs.md)
+        // =====================================================================
+
+        // REG_AS = 0 for register address space
+        let reg_as = E::F::zero();
+
+        // Program access (consume): R-type
+        add_to_relation!(
+            eval,
+            self.relations.program_access,
+            -enabler.clone(),
+            cols.pc,
+            expected_opcode_id.clone(),
+            cols.rd_addr,
+            cols.rs1_addr,
+            cols.rs2_addr
+        );
+
+        // Register state transition
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            -enabler.clone(),
+            cols.pc,
+            cols.clk
+        );
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            enabler.clone(),
+            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
+            cols.clk.clone() + E::F::one()
+        );
+
+        // Read from rs1
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.rs1_clk_prev,
+            cols.rs1_prev_0,
+            cols.rs1_prev_1,
+            cols.rs1_prev_2,
+            cols.rs1_prev_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.clk,
+            cols.rs1_next_0,
+            cols.rs1_next_1,
+            cols.rs1_next_2,
+            cols.rs1_next_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs1_clk_prev.clone()
+        );
+
+        // Read from rs2
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs2_addr,
+            cols.rs2_clk_prev,
+            cols.rs2_prev_0,
+            cols.rs2_prev_1,
+            cols.rs2_prev_2,
+            cols.rs2_prev_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs2_addr,
+            cols.clk,
+            cols.rs2_next_0,
+            cols.rs2_next_1,
+            cols.rs2_next_2,
+            cols.rs2_next_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs2_clk_prev.clone()
+        );
+
+        // Check shift amount: - RC_20(2^17 * (rs2[0] - shift_amount) / 2^5)
+        // This simplifies to: - RC_20(2^12 * (rs2[0] - shift_amount))
+        let shift_check = pow2(12) * (rs2[0].clone() - shift_amount.clone());
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            shift_check
+        );
+
+        // TODO: Range check shift carries (scaled by 2^8 / bit_multiplier)
+        // This requires witness-computed scaled values, skipped for now.
+        // - enabler * RC_8_8(2^8/bit_multiplier * bit_shift_carry[0], ...)
+        let _ = bit_shift_carry;
+
+        // Range check rd
+        add_to_relation!(
+            eval,
+            self.relations.range_check_8_8,
+            -E::F::one(),
+            rd[0].clone(),
+            rd[1].clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_8_8,
+            -E::F::one(),
+            rd[2].clone(),
+            rd[3].clone()
+        );
+
+        // Write to rd
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rd_addr,
+            cols.rd_clk_prev,
+            cols.rd_prev_0,
+            cols.rd_prev_1,
+            cols.rd_prev_2,
+            cols.rd_prev_3
+        );
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rd_addr,
+            cols.clk,
+            rd[0].clone(),
+            rd[1].clone(),
+            rd[2].clone(),
+            rd[3].clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rd_clk_prev.clone()
+        );
+
+        eval.finalize_logup_in_pairs();
         eval
     }
 }

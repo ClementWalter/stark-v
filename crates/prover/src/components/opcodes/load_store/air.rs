@@ -1,5 +1,6 @@
 //! AIR component for Load/Store (lb/lbu/lh/lhu/lw/sb/sh/sw) - airs.md Section 13
 
+use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
@@ -119,7 +120,7 @@ impl FrameworkEval for Eval {
         let src_as = reg_as.clone() * is_store.clone() + rw_as.clone() * is_load.clone();
         let dst_as = reg_as * is_load.clone() + rw_as * is_store.clone();
 
-        let _ = (expected_opcode_id, src_as, dst_as, mem_addr.clone());
+        let _ = mem_addr;
 
         // Section 13.3: Constraints
 
@@ -267,6 +268,173 @@ impl FrameworkEval for Eval {
             eval.add_constraint(opcode_w_flag.clone() * (dst[i].clone() - src[i].clone()));
         }
 
+        // =====================================================================
+        // LogUp Relations (Section 13.3 from airs.md)
+        // =====================================================================
+
+        let four = E::F::from(BaseField::from_u32_unchecked(4));
+
+        // Program access (I-type for loads, S-type for stores)
+        // - enabler * Program(pc, expected_opcode_id, rs1_idx, r2_idx, imm_felt)
+        add_to_relation!(
+            eval,
+            self.relations.program_access,
+            -enabler.clone(),
+            cols.pc,
+            expected_opcode_id.clone(),
+            cols.rs1_addr,
+            cols.r2_idx,
+            cols.imm_felt
+        );
+
+        // Register state transition
+        // - enabler * Registers(pc, clk)
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            -enabler.clone(),
+            cols.pc,
+            cols.clk
+        );
+        // + enabler * Registers(pc + 4, clk + 1)
+        add_to_relation!(
+            eval,
+            self.relations.registers_state,
+            enabler.clone(),
+            cols.pc.clone() + four.clone(),
+            cols.clk.clone() + E::F::one()
+        );
+
+        // Read from rs1 (base address)
+        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, base[0..3])
+        let reg_as = E::F::zero();
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.rs1_clk_prev,
+            cols.rs1_prev_0,
+            cols.rs1_prev_1,
+            cols.rs1_prev_2,
+            cols.rs1_prev_3
+        );
+        // + enabler * Memory(REG_AS, rs1_idx, clk, base[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            reg_as.clone(),
+            cols.rs1_addr,
+            cols.clk,
+            cols.rs1_next_0,
+            cols.rs1_next_1,
+            cols.rs1_next_2,
+            cols.rs1_next_3
+        );
+        // - RC_20(clk - rs1_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.rs1_clk_prev.clone()
+        );
+
+        // Check that (base[0] - shift_amount) is a multiple of 4
+        // - RC_20(2^14 * (base[0] - shift_amount) / 2^2)
+        // This simplifies to checking (base[0] - shift_amount) / 4 is in range
+        let quarter_inv = BaseField::from_u32_unchecked(4).inverse();
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            (base[0].clone() - cols.shift_amount.clone())
+                * quarter_inv
+                * E::F::from(BaseField::from_u32_unchecked(1 << 14))
+        );
+
+        // Check that base is a M31
+        // - RC_M31(base[0], base[3])
+        add_to_relation!(
+            eval,
+            self.relations.range_check_m31,
+            -E::F::one(),
+            base[0].clone(),
+            base[3].clone()
+        );
+
+        // Read src
+        // - enabler * Memory(src_as, src_addr, src_prev_clk, src[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            src_as.clone(),
+            cols.src_addr_selector,
+            cols.src_clk_prev,
+            cols.src_prev_0,
+            cols.src_prev_1,
+            cols.src_prev_2,
+            cols.src_prev_3
+        );
+        // + enabler * Memory(src_as, src_addr, clk, src[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            src_as.clone(),
+            cols.src_addr_selector,
+            cols.clk,
+            cols.src_next_0,
+            cols.src_next_1,
+            cols.src_next_2,
+            src[3].clone()
+        );
+        // - RC_20(clk - src_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.src_clk_prev.clone()
+        );
+
+        // Write into dst
+        // - enabler * Memory(dst_as, dst_addr, dst_prev_clk, dst_prev[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            -enabler.clone(),
+            dst_as.clone(),
+            cols.dst_addr_selector,
+            cols.dst_clk_prev,
+            cols.dst_prev_0,
+            cols.dst_prev_1,
+            cols.dst_prev_2,
+            cols.dst_prev_3
+        );
+        // + enabler * Memory(dst_as, dst_addr, clk, dst[0..3])
+        add_to_relation!(
+            eval,
+            self.relations.memory_access,
+            enabler.clone(),
+            dst_as.clone(),
+            cols.dst_addr_selector,
+            cols.clk,
+            dst[0].clone(),
+            dst[1].clone(),
+            dst[2].clone(),
+            dst[3].clone()
+        );
+        // - RC_20(clk - dst_prev_clk)
+        add_to_relation!(
+            eval,
+            self.relations.range_check_20,
+            -E::F::one(),
+            cols.clk.clone() - cols.dst_clk_prev.clone()
+        );
+
+        eval.finalize_logup_in_pairs();
         eval
     }
 }

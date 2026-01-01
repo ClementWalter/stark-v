@@ -165,6 +165,8 @@ impl Components {
 /// 1. Creates counters for preprocessed multiplicity tracking
 /// 2. Generates opcode traces (populates counters during generation)
 /// 3. Converts counters to preprocessed multiplicity traces
+///
+/// Consumes the tracer since it's no longer needed after trace generation.
 pub fn gen_trace(tracer: runner::trace::Tracer) -> Traces {
     // Create counters for preprocessed multiplicity tracking
     let mut counters = crate::relations::Counters::new();

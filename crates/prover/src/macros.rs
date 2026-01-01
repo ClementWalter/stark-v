@@ -23,7 +23,8 @@ macro_rules! count_idents {
 /// ```
 ///
 /// Generates:
-/// - `Relations` struct with `LookupElements<N>` for ALL relations (both regular and preprocessed)
+/// - Wrapper types for each relation that implement `Relation<F, EF>` trait
+/// - `Relations` struct with wrapper types for ALL relations (both regular and preprocessed)
 /// - `PreProcessedTrace` struct for constant table data
 /// - `Counters` struct for multiplicity tracking
 #[macro_export]
@@ -31,11 +32,13 @@ macro_rules! relations {
     (
         relations {
             $(
+                $(#[$rel_meta:meta])*
                 $rel_name:ident: $($rel_field:ident),+ $(,)?
             );* $(;)?
         }
         preprocessed {
             $(
+                $(#[$prep_meta:meta])*
                 $prep_name:ident: $($prep_col:ident),+ $(,)?
             );* $(;)?
         }
@@ -51,23 +54,98 @@ macro_rules! relations {
         use stwo::prover::poly::circle::CircleEvaluation;
         use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 
-        // ==================== Relations ====================
+        // ==================== Relation Wrapper Types ====================
+        // Each relation gets a wrapper type that implements Relation<F, EF>
+
+        pub mod relation_types {
+            // Generate wrapper type for each regular relation
+            $(
+                $(#[$rel_meta])*
+                #[derive(Clone, Debug, PartialEq)]
+                pub struct $rel_name(
+                    pub stwo_constraint_framework::logup::LookupElements<
+                        { $crate::count_idents!($($rel_field),+) }
+                    >
+                );
+
+                impl $rel_name {
+                    pub fn dummy() -> Self {
+                        Self(stwo_constraint_framework::logup::LookupElements::dummy())
+                    }
+
+                    pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
+                        Self(stwo_constraint_framework::logup::LookupElements::draw(channel))
+                    }
+                }
+
+                impl<F: Clone, EF: stwo_constraint_framework::RelationEFTraitBound<F>>
+                    stwo_constraint_framework::Relation<F, EF> for $rel_name
+                {
+                    fn combine(&self, values: &[F]) -> EF {
+                        self.0.combine(values)
+                    }
+
+                    fn get_name(&self) -> &str {
+                        stringify!($rel_name)
+                    }
+
+                    fn get_size(&self) -> usize {
+                        $crate::count_idents!($($rel_field),+)
+                    }
+                }
+            )*
+
+            // Generate wrapper type for each preprocessed relation
+            $(
+                $(#[$prep_meta])*
+                #[derive(Clone, Debug, PartialEq)]
+                pub struct $prep_name(
+                    pub stwo_constraint_framework::logup::LookupElements<
+                        { $crate::count_idents!($($prep_col),+) }
+                    >
+                );
+
+                impl $prep_name {
+                    pub fn dummy() -> Self {
+                        Self(stwo_constraint_framework::logup::LookupElements::dummy())
+                    }
+
+                    pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
+                        Self(stwo_constraint_framework::logup::LookupElements::draw(channel))
+                    }
+                }
+
+                impl<F: Clone, EF: stwo_constraint_framework::RelationEFTraitBound<F>>
+                    stwo_constraint_framework::Relation<F, EF> for $prep_name
+                {
+                    fn combine(&self, values: &[F]) -> EF {
+                        self.0.combine(values)
+                    }
+
+                    fn get_name(&self) -> &str {
+                        stringify!($prep_name)
+                    }
+
+                    fn get_size(&self) -> usize {
+                        $crate::count_idents!($($prep_col),+)
+                    }
+                }
+            )*
+        }
+
+        // ==================== Relations Struct ====================
 
         #[derive(Clone)]
         pub struct Relations {
             // Regular relations
             $(
                 #[doc = concat!("Relation: (", $(stringify!($rel_field), ", ",)+ ")")]
-                pub $rel_name: stwo_constraint_framework::logup::LookupElements<
-                    { $crate::count_idents!($($rel_field),+) }
-                >,
+                pub $rel_name: relation_types::$rel_name,
             )*
             // Preprocessed relations
             $(
                 #[doc = concat!("Preprocessed relation: (", $(stringify!($prep_col), ", ",)+ ")")]
-                pub $prep_name: stwo_constraint_framework::logup::LookupElements<
-                    { $crate::count_idents!($($prep_col),+) }
-                >,
+                pub $prep_name: relation_types::$prep_name,
             )*
         }
 
@@ -75,10 +153,10 @@ macro_rules! relations {
             pub fn dummy() -> Self {
                 Self {
                     $(
-                        $rel_name: stwo_constraint_framework::logup::LookupElements::dummy(),
+                        $rel_name: relation_types::$rel_name::dummy(),
                     )*
                     $(
-                        $prep_name: stwo_constraint_framework::logup::LookupElements::dummy(),
+                        $prep_name: relation_types::$prep_name::dummy(),
                     )*
                 }
             }
@@ -86,10 +164,10 @@ macro_rules! relations {
             pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
                 Self {
                     $(
-                        $rel_name: stwo_constraint_framework::logup::LookupElements::draw(channel),
+                        $rel_name: relation_types::$rel_name::draw(channel),
                     )*
                     $(
-                        $prep_name: stwo_constraint_framework::logup::LookupElements::draw(channel),
+                        $prep_name: relation_types::$prep_name::draw(channel),
                     )*
                 }
             }
@@ -370,7 +448,7 @@ macro_rules! opcode_components {
         }
 
         /// Generate all trace columns from tracer.
-        /// Consumes the tracer and calls into_witness() on each table.
+        /// Consumes the tracer since it's no longer needed after trace generation.
         /// Counters are populated during trace generation for preprocessed lookups.
         pub fn gen_trace(
             tracer: runner::trace::Tracer,
@@ -395,7 +473,7 @@ macro_rules! opcode_components {
             let mut all_columns = vec![];
             $(
                 let (cols, claimed) = $opcode::witness::gen_interaction_trace(
-                    &traces.$opcode,
+                    traces.$opcode.as_slice(),
                     relations,
                 );
                 all_columns.extend(cols);
@@ -476,7 +554,7 @@ macro_rules! opcode_components {
                             .unwrap_or(0);
                         if log_size > 0 {
                             let (interaction_trace, claimed_sum) =
-                                $opcode::witness::gen_interaction_trace(&traces.$opcode, relations);
+                                $opcode::witness::gen_interaction_trace(traces.$opcode.as_slice(), relations);
                             let trace_tree = TreeVec::new(vec![
                                 vec![], // preprocessed
                                 traces.$opcode.clone(),
