@@ -5,13 +5,14 @@ use stwo::core::ColumnVec;
 use stwo::core::fields::m31::{BaseField, M31};
 use stwo::core::fields::qm31::QM31;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedM31};
+use stwo::prover::backend::simd::m31::PackedM31;
 use stwo::prover::backend::simd::qm31::PackedQM31;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
-use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry};
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
+use crate::add_to_relation;
 use crate::commitment::{PROGRAM_BASE, PROGRAM_TREE_HEIGHT};
 use crate::relations::Relations;
 
@@ -59,49 +60,54 @@ pub mod air {
 
             eval.add_constraint(enabler.clone() * (one.clone() - enabler));
 
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.program,
-                E::EF::from(multiplicity.clone()),
-                &[
-                    addr.clone(),
-                    value0.clone(),
-                    value1.clone(),
-                    value2.clone(),
-                    value3.clone(),
-                ],
-            ));
+            add_to_relation!(
+                eval,
+                self.relations.program_access,
+                multiplicity.clone(),
+                addr,
+                value0,
+                value1,
+                value2,
+                value3
+            );
 
             let index_base = addr - base;
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                -E::EF::from(multiplicity.clone()),
-                &[index_base.clone(), leaf_depth.clone(), value0, root.clone()],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                -E::EF::from(multiplicity.clone()),
-                &[
-                    index_base.clone() + one.clone(),
-                    leaf_depth.clone(),
-                    value1,
-                    root.clone(),
-                ],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                -E::EF::from(multiplicity.clone()),
-                &[
-                    index_base.clone() + two.clone(),
-                    leaf_depth.clone(),
-                    value2,
-                    root.clone(),
-                ],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                -E::EF::from(multiplicity),
-                &[index_base + three, leaf_depth, value3, root],
-            ));
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                -multiplicity.clone(),
+                index_base.clone(),
+                leaf_depth.clone(),
+                value0,
+                root.clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                -multiplicity.clone(),
+                index_base.clone() + one.clone(),
+                leaf_depth.clone(),
+                value1,
+                root.clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                -multiplicity.clone(),
+                index_base.clone() + two.clone(),
+                leaf_depth.clone(),
+                value2,
+                root.clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                -multiplicity,
+                index_base + three,
+                leaf_depth,
+                value3,
+                root
+            );
             eval.finalize_logup_in_pairs();
             eval
         }
@@ -110,6 +116,7 @@ pub mod air {
 
 pub mod witness {
     use super::*;
+    use crate::{combine, write_col, write_pair};
 
     pub fn gen_interaction_trace(
         trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -121,9 +128,6 @@ pub mod witness {
         if trace.is_empty() {
             return (vec![], QM31::zero());
         }
-
-        let log_size = trace[0].domain.log_size();
-        let packed_len = 1usize << (log_size - LOG_N_LANES) as usize;
 
         // Column order matches ProgramColumns.
         let addr = &trace[1].data;
@@ -140,81 +144,55 @@ pub mod witness {
         let two = one + one;
         let three = two + one;
 
+        let simd_size = addr.len();
+        let log_size = trace[0].domain.log_size();
         let mut interaction_trace = LogupTraceGenerator::new(log_size);
 
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let addr_row = addr[row];
-            let v0 = value0[row];
-            let v1 = value1[row];
-            let v2 = value2[row];
-            let v3 = value3[row];
-            let mult_row = multiplicity[row];
-            let root_row = root[row];
+        let leaf_depth_col = vec![leaf_depth; simd_size];
+        let index_base: Vec<PackedM31> = (0..simd_size).map(|i| addr[i] - base).collect();
+        let index_base_plus_one: Vec<PackedM31> =
+            (0..simd_size).map(|i| index_base[i] + one).collect();
+        let index_base_plus_two: Vec<PackedM31> =
+            (0..simd_size).map(|i| index_base[i] + two).collect();
+        let index_base_plus_three: Vec<PackedM31> =
+            (0..simd_size).map(|i| index_base[i] + three).collect();
 
-            let index_base = addr_row - base;
+        let pos_mult: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(multiplicity[i]))
+            .collect();
+        let neg_mult: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| -PackedQM31::from(multiplicity[i]))
+            .collect();
 
-            let num0: PackedQM31 = PackedQM31::from(mult_row);
-            let denom0: PackedQM31 = relations.program.combine(&[addr_row, v0, v1, v2, v3]);
+        let program_denom = combine!(
+            relations.program_access,
+            [addr, value0, value1, value2, value3]
+        );
+        let merkle_0_denom =
+            combine!(relations.merkle, [&index_base, &leaf_depth_col, value0, root]);
+        let merkle_1_denom =
+            combine!(relations.merkle, [&index_base_plus_one, &leaf_depth_col, value1, root]);
+        let merkle_2_denom =
+            combine!(relations.merkle, [&index_base_plus_two, &leaf_depth_col, value2, root]);
+        let merkle_3_denom =
+            combine!(relations.merkle, [&index_base_plus_three, &leaf_depth_col, value3, root]);
 
-            let num1: PackedQM31 = -PackedQM31::from(mult_row);
-            let denom1: PackedQM31 = relations
-                .merkle
-                .combine(&[index_base, leaf_depth, v0, root_row]);
+        write_pair!(
+            &pos_mult,
+            &program_denom,
+            &neg_mult,
+            &merkle_0_denom,
+            interaction_trace
+        );
+        write_pair!(
+            &neg_mult,
+            &merkle_1_denom,
+            &neg_mult,
+            &merkle_2_denom,
+            interaction_trace
+        );
+        write_col!(&neg_mult, &merkle_3_denom, interaction_trace);
 
-            let numerator = num0 * denom1 + num1 * denom0;
-            let denom = denom0 * denom1;
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
-
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let addr_row = addr[row];
-            let v1 = value1[row];
-            let v2 = value2[row];
-            let mult_row = multiplicity[row];
-            let root_row = root[row];
-
-            let index_base = addr_row - base;
-
-            let num0: PackedQM31 = -PackedQM31::from(mult_row);
-            let denom0: PackedQM31 =
-                relations
-                    .merkle
-                    .combine(&[index_base + one, leaf_depth, v1, root_row]);
-
-            let num1: PackedQM31 = -PackedQM31::from(mult_row);
-            let denom1: PackedQM31 =
-                relations
-                    .merkle
-                    .combine(&[index_base + two, leaf_depth, v2, root_row]);
-
-            let numerator = num0 * denom1 + num1 * denom0;
-            let denom = denom0 * denom1;
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
-
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let addr_row = addr[row];
-            let v3 = value3[row];
-            let mult_row = multiplicity[row];
-            let root_row = root[row];
-
-            let index_base = addr_row - base;
-
-            let numerator: PackedQM31 = -PackedQM31::from(mult_row);
-            let denom: PackedQM31 =
-                relations
-                    .merkle
-                    .combine(&[index_base + three, leaf_depth, v3, root_row]);
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
-
-        let (trace, claimed_sum) = interaction_trace.finalize_last();
-        (trace, claimed_sum)
+        interaction_trace.finalize_last()
     }
 }

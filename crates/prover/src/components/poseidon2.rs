@@ -8,13 +8,13 @@ use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::m31::{BaseField, M31};
 use stwo::core::fields::qm31::QM31;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedM31};
 use stwo::prover::backend::simd::qm31::PackedQM31;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
-use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry};
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
+use crate::add_to_relation;
 use crate::relations::Relations;
 
 const T: usize = 16;
@@ -378,16 +378,33 @@ pub mod air {
                 });
             }
 
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.poseidon2,
-                -E::EF::from(enabler.clone()),
-                &initial_state,
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.poseidon2,
-                E::EF::from(enabler),
-                &[state[0].clone()],
-            ));
+            add_to_relation!(
+                eval,
+                self.relations.poseidon2,
+                -enabler.clone(),
+                initial_state[0].clone(),
+                initial_state[1].clone(),
+                initial_state[2].clone(),
+                initial_state[3].clone(),
+                initial_state[4].clone(),
+                initial_state[5].clone(),
+                initial_state[6].clone(),
+                initial_state[7].clone(),
+                initial_state[8].clone(),
+                initial_state[9].clone(),
+                initial_state[10].clone(),
+                initial_state[11].clone(),
+                initial_state[12].clone(),
+                initial_state[13].clone(),
+                initial_state[14].clone(),
+                initial_state[15].clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.poseidon2,
+                enabler,
+                state[0].clone()
+            );
             eval.finalize_logup_in_pairs();
             eval
         }
@@ -396,6 +413,7 @@ pub mod air {
 
 pub mod witness {
     use super::*;
+    use crate::{combine, write_pair};
 
     pub fn gen_interaction_trace(
         trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -408,34 +426,49 @@ pub mod witness {
             return (vec![], QM31::zero());
         }
 
-        let log_size = trace[0].domain.log_size();
-        let packed_len = 1usize << (log_size - LOG_N_LANES) as usize;
-
         let enabler = &trace[0].data;
-        let initial_state_cols = &trace[1..1 + T];
-        let output_col = &trace[FINAL_STATE_START];
-
+        let simd_size = enabler.len();
+        let log_size = trace[0].domain.log_size();
         let mut interaction_trace = LogupTraceGenerator::new(log_size);
-        let mut col = interaction_trace.new_col();
 
-        for (row, enabler_row) in enabler.iter().take(packed_len).enumerate() {
-            let init_state: [PackedM31; T] =
-                std::array::from_fn(|i| initial_state_cols[i].data[row]);
-            let output = output_col.data[row];
+        let neg_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| -PackedQM31::from(enabler[i]))
+            .collect();
+        let pos_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(enabler[i]))
+            .collect();
 
-            let num0: PackedQM31 = -PackedQM31::from(*enabler_row);
-            let denom0: PackedQM31 = relations.poseidon2.combine(&init_state);
-            let num1: PackedQM31 = PackedQM31::from(*enabler_row);
-            let denom1: PackedQM31 = relations.poseidon2.combine(&[output]);
+        let init_state_denom = combine!(
+            relations.poseidon2,
+            [
+                &trace[1].data,
+                &trace[2].data,
+                &trace[3].data,
+                &trace[4].data,
+                &trace[5].data,
+                &trace[6].data,
+                &trace[7].data,
+                &trace[8].data,
+                &trace[9].data,
+                &trace[10].data,
+                &trace[11].data,
+                &trace[12].data,
+                &trace[13].data,
+                &trace[14].data,
+                &trace[15].data,
+                &trace[16].data
+            ]
+        );
+        let output_denom = combine!(relations.poseidon2, [&trace[FINAL_STATE_START].data]);
 
-            let numerator = num0 * denom1 + num1 * denom0;
-            let denom = denom0 * denom1;
+        write_pair!(
+            &neg_enabler,
+            &init_state_denom,
+            &pos_enabler,
+            &output_denom,
+            interaction_trace
+        );
 
-            col.write_frac(row, numerator, denom);
-        }
-
-        col.finalize_col();
-        let (trace, claimed_sum) = interaction_trace.finalize_last();
-        (trace, claimed_sum)
+        interaction_trace.finalize_last()
     }
 }

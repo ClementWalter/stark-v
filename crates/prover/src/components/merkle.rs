@@ -5,13 +5,14 @@ use stwo::core::ColumnVec;
 use stwo::core::fields::m31::{BaseField, M31};
 use stwo::core::fields::qm31::QM31;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedM31};
+use stwo::prover::backend::simd::m31::PackedM31;
 use stwo::prover::backend::simd::qm31::PackedQM31;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
-use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry};
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
+use crate::add_to_relation;
 use crate::relations::Relations;
 
 pub mod columns {
@@ -73,47 +74,47 @@ pub mod air {
                     * (parent_multiplicity.clone() - two.clone()),
             );
 
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                E::EF::from(left_multiplicity),
-                &[
-                    index.clone(),
-                    depth.clone(),
-                    left_value.clone(),
-                    root.clone(),
-                ],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                E::EF::from(right_multiplicity),
-                &[
-                    index.clone() + one.clone(),
-                    depth.clone(),
-                    right_value.clone(),
-                    root.clone(),
-                ],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.merkle,
-                -E::EF::from(parent_multiplicity),
-                &[
-                    index * inv2,
-                    depth - one.clone(),
-                    parent_value.clone(),
-                    root,
-                ],
-            ));
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                left_multiplicity,
+                index.clone(),
+                depth.clone(),
+                left_value.clone(),
+                root.clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                right_multiplicity,
+                index.clone() + one.clone(),
+                depth.clone(),
+                right_value.clone(),
+                root.clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.merkle,
+                -parent_multiplicity,
+                index * inv2,
+                depth - one.clone(),
+                parent_value.clone(),
+                root
+            );
 
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.poseidon2,
-                E::EF::from(enabler.clone()),
-                &[left_value, right_value],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.poseidon2,
-                -E::EF::from(enabler),
-                &[parent_value],
-            ));
+            add_to_relation!(
+                eval,
+                self.relations.poseidon2,
+                enabler.clone(),
+                left_value,
+                right_value
+            );
+            add_to_relation!(
+                eval,
+                self.relations.poseidon2,
+                -enabler,
+                parent_value
+            );
             eval.finalize_logup_in_pairs();
             eval
         }
@@ -122,6 +123,7 @@ pub mod air {
 
 pub mod witness {
     use super::*;
+    use crate::{combine, write_col, write_pair};
 
     pub fn gen_interaction_trace(
         trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -133,9 +135,6 @@ pub mod witness {
         if trace.is_empty() {
             return (vec![], QM31::zero());
         }
-
-        let log_size = trace[0].domain.log_size();
-        let packed_len = 1usize << (log_size - LOG_N_LANES) as usize;
 
         // Column order matches MerkleColumns.
         let enabler = &trace[0].data;
@@ -152,75 +151,61 @@ pub mod witness {
         let one = PackedM31::broadcast(M31::one());
         let inv2 = PackedM31::broadcast(M31::inverse(&M31::from(2)));
 
+        let simd_size = enabler.len();
+        let log_size = trace[0].domain.log_size();
         let mut interaction_trace = LogupTraceGenerator::new(log_size);
 
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let index_row = index[row];
-            let depth_row = depth[row];
-            let left_row = left_value[row];
-            let right_row = right_value[row];
-            let left_mult = left_multiplicity[row];
-            let right_mult = right_multiplicity[row];
-            let root_row = root[row];
+        let index_plus_one: Vec<PackedM31> = (0..simd_size).map(|i| index[i] + one).collect();
+        let index_div2: Vec<PackedM31> = (0..simd_size).map(|i| index[i] * inv2).collect();
+        let depth_minus_one: Vec<PackedM31> =
+            (0..simd_size).map(|i| depth[i] - one).collect();
 
-            let num0: PackedQM31 = PackedQM31::from(left_mult);
-            let denom0: PackedQM31 = relations
-                .merkle
-                .combine(&[index_row, depth_row, left_row, root_row]);
+        let left_mult: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(left_multiplicity[i]))
+            .collect();
+        let right_mult: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(right_multiplicity[i]))
+            .collect();
+        let neg_parent_mult: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| -PackedQM31::from(parent_multiplicity[i]))
+            .collect();
+        let pos_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(enabler[i]))
+            .collect();
+        let neg_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| -PackedQM31::from(enabler[i]))
+            .collect();
 
-            let num1: PackedQM31 = PackedQM31::from(right_mult);
-            let denom1: PackedQM31 =
-                relations
-                    .merkle
-                    .combine(&[index_row + one, depth_row, right_row, root_row]);
+        let left_denom = combine!(relations.merkle, [index, depth, left_value, root]);
+        let right_denom =
+            combine!(relations.merkle, [&index_plus_one, depth, right_value, root]);
+        let parent_denom = combine!(
+            relations.merkle,
+            [&index_div2, &depth_minus_one, parent_value, root]
+        );
+        let poseidon_in_denom = combine!(relations.poseidon2, [left_value, right_value]);
+        let poseidon_out_denom = combine!(relations.poseidon2, [parent_value]);
 
-            let numerator = num0 * denom1 + num1 * denom0;
-            let denom = denom0 * denom1;
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
+        write_pair!(
+            &left_mult,
+            &left_denom,
+            &right_mult,
+            &right_denom,
+            interaction_trace
+        );
+        write_pair!(
+            &neg_parent_mult,
+            &parent_denom,
+            &pos_enabler,
+            &poseidon_in_denom,
+            interaction_trace
+        );
+        write_col!(
+            &neg_enabler,
+            &poseidon_out_denom,
+            interaction_trace
+        );
 
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let enabler_row = enabler[row];
-            let index_row = index[row];
-            let depth_row = depth[row];
-            let left_row = left_value[row];
-            let right_row = right_value[row];
-            let parent_row = parent_value[row];
-            let parent_mult = parent_multiplicity[row];
-            let root_row = root[row];
-
-            let num0: PackedQM31 = -PackedQM31::from(parent_mult);
-            let denom0: PackedQM31 = relations.merkle.combine(&[
-                index_row * inv2,
-                depth_row - one,
-                parent_row,
-                root_row,
-            ]);
-
-            let num1: PackedQM31 = PackedQM31::from(enabler_row);
-            let denom1: PackedQM31 = relations.poseidon2.combine(&[left_row, right_row]);
-
-            let numerator = num0 * denom1 + num1 * denom0;
-            let denom = denom0 * denom1;
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
-
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let enabler_row = enabler[row];
-            let parent_row = parent_value[row];
-
-            let numerator: PackedQM31 = -PackedQM31::from(enabler_row);
-            let denom: PackedQM31 = relations.poseidon2.combine(&[parent_row]);
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
-
-        let (trace, claimed_sum) = interaction_trace.finalize_last();
-        (trace, claimed_sum)
+        interaction_trace.finalize_last()
     }
 }

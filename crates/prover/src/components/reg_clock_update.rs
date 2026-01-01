@@ -5,13 +5,14 @@ use stwo::core::ColumnVec;
 use stwo::core::fields::m31::{BaseField, M31};
 use stwo::core::fields::qm31::QM31;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::simd::m31::{LOG_N_LANES, PackedM31};
+use stwo::prover::backend::simd::m31::PackedM31;
 use stwo::prover::backend::simd::qm31::PackedQM31;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
-use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry};
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
+use crate::add_to_relation;
 use crate::relations::Relations;
 use runner::trace::DEFAULT_MAX_CLOCK_DIFF;
 
@@ -82,23 +83,31 @@ pub mod air {
 
             eval.add_constraint(enabler.clone() * (one - enabler.clone()));
 
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.memory,
-                -E::EF::from(enabler.clone()),
-                &[
-                    addr.clone(),
-                    clk_prev.clone(),
-                    value0.clone(),
-                    value1.clone(),
-                    value2.clone(),
-                    value3.clone(),
-                ],
-            ));
-            eval.add_to_relation(RelationEntry::new(
-                &self.relations.memory,
-                E::EF::from(enabler),
-                &[addr, clk_prev + diff, value0, value1, value2, value3],
-            ));
+            let reg_as = E::F::zero();
+            add_to_relation!(
+                eval,
+                self.relations.memory_access,
+                -enabler.clone(),
+                reg_as.clone(),
+                addr.clone(),
+                clk_prev.clone(),
+                value0.clone(),
+                value1.clone(),
+                value2.clone(),
+                value3.clone()
+            );
+            add_to_relation!(
+                eval,
+                self.relations.memory_access,
+                enabler,
+                reg_as,
+                addr,
+                clk_prev + diff,
+                value0,
+                value1,
+                value2,
+                value3
+            );
             eval.finalize_logup_in_pairs();
             eval
         }
@@ -107,6 +116,7 @@ pub mod air {
 
 pub mod witness {
     use super::*;
+    use crate::{combine, write_pair};
 
     pub fn gen_interaction_trace(
         trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -119,9 +129,6 @@ pub mod witness {
             return (vec![], QM31::zero());
         }
 
-        let log_size = trace[0].domain.log_size();
-        let packed_len = 1usize << (log_size - LOG_N_LANES) as usize;
-
         // Column order matches RegClockUpdateColumns.
         let enabler = &trace[0].data;
         let addr = &trace[1].data;
@@ -133,36 +140,47 @@ pub mod witness {
 
         let diff = PackedM31::broadcast(M31::from(DEFAULT_MAX_CLOCK_DIFF));
 
+        let simd_size = enabler.len();
+        let log_size = trace[0].domain.log_size();
         let mut interaction_trace = LogupTraceGenerator::new(log_size);
-        let mut col = interaction_trace.new_col();
-        for row in 0..packed_len {
-            let enabler_row = enabler[row];
-            let addr_row = addr[row];
-            let clk_prev_row = clk_prev[row];
-            let v0 = value0[row];
-            let v1 = value1[row];
-            let v2 = value2[row];
-            let v3 = value3[row];
 
-            let num0: PackedQM31 = -PackedQM31::from(enabler_row);
-            let denom0: PackedQM31 =
-                relations
-                    .memory
-                    .combine(&[addr_row, clk_prev_row, v0, v1, v2, v3]);
+        let reg_as = PackedM31::zero();
+        let reg_as_col = vec![reg_as; simd_size];
+        let clk_prev_plus_diff: Vec<PackedM31> =
+            (0..simd_size).map(|i| clk_prev[i] + diff).collect();
 
-            let num1: PackedQM31 = PackedQM31::from(enabler_row);
-            let denom1: PackedQM31 =
-                relations
-                    .memory
-                    .combine(&[addr_row, clk_prev_row + diff, v0, v1, v2, v3]);
+        let neg_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| -PackedQM31::from(enabler[i]))
+            .collect();
+        let pos_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(enabler[i]))
+            .collect();
 
-            let numerator = num0 * denom1 + num1 * denom0;
-            let denom = denom0 * denom1;
-            col.write_frac(row, numerator, denom);
-        }
-        col.finalize_col();
+        let prev_denom = combine!(
+            relations.memory_access,
+            [&reg_as_col, addr, clk_prev, value0, value1, value2, value3]
+        );
+        let next_denom = combine!(
+            relations.memory_access,
+            [
+                &reg_as_col,
+                addr,
+                &clk_prev_plus_diff,
+                value0,
+                value1,
+                value2,
+                value3
+            ]
+        );
 
-        let (trace, claimed_sum) = interaction_trace.finalize_last();
-        (trace, claimed_sum)
+        write_pair!(
+            &neg_enabler,
+            &prev_denom,
+            &pos_enabler,
+            &next_denom,
+            interaction_trace
+        );
+
+        interaction_trace.finalize_last()
     }
 }
