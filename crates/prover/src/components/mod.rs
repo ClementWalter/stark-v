@@ -105,7 +105,6 @@ impl Components {
         relations: Relations,
         claimed_sum: &ClaimedSum,
     ) -> Self {
-        // Create opcode components first
         let opcodes = opcodes::Components::new(
             &claim.opcodes,
             location_allocator,

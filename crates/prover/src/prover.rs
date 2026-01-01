@@ -37,8 +37,6 @@ pub fn prove_rv32im(
     let span = span!(Level::INFO, "Generate traces").entered();
     let tracer = run_result.tracer;
     info!("Tracer total_traces: {}", tracer.total_traces());
-    info!("Tracer base_alu_imm len: {}", tracer.base_alu_imm.len());
-    info!("Tracer load_store len: {}", tracer.load_store.len());
     let traces = gen_trace(tracer);
     let log_size = traces.max_log_size();
     info!("Max trace log_size: {log_size}");
@@ -63,6 +61,7 @@ pub fn prove_rv32im(
     let span = span!(Level::INFO, "Preprocessed trace").entered();
     let preprocessed_trace = PreProcessedTrace::new();
     let preprocessed_ids = preprocessed_trace.ids.clone();
+    info!("Preprocessed trace ids len: {}", preprocessed_ids.len());
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(preprocessed_trace.trace);
@@ -74,14 +73,6 @@ pub fn prove_rv32im(
     let claim: crate::components::Claim = (&traces).into();
     let columns = traces.columns_cloned();
     info!("Main trace columns committed: {}", columns.len());
-
-    // Log the actual log_sizes of committed columns
-    let mut log_size_counts: std::collections::HashMap<u32, usize> =
-        std::collections::HashMap::new();
-    for col in &columns {
-        *log_size_counts.entry(col.domain.log_size()).or_insert(0) += 1;
-    }
-    info!("Committed column log_sizes: {:?}", log_size_counts);
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(columns);
