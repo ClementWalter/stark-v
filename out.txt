@@ -1,0 +1,1917 @@
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 77 filtered out; finished in 0.00s
+
+
+running 1 test
+[crates/prover/tests/integration.rs:89:5] &run_result.tracer.program = [
+     {
+        enabler: 1,
+        addr: 1024,
+        value0: 36,
+        value1: 3,
+        value2: 2097152,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1028,
+        value0: 10,
+        value1: 3,
+        value2: 3,
+        value3: 1024,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1032,
+        value0: 36,
+        value1: 2,
+        value2: 2097152,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1036,
+        value0: 10,
+        value1: 2,
+        value2: 2,
+        value3: 4294966264,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1040,
+        value0: 36,
+        value1: 1,
+        value2: 0,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1044,
+        value0: 34,
+        value1: 1,
+        value2: 1,
+        value3: 148,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1048,
+        value0: 35,
+        value1: 12,
+        value2: 512,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1052,
+        value0: 10,
+        value1: 12,
+        value2: 12,
+        value3: 4294966272,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1056,
+        value0: 35,
+        value1: 11,
+        value2: 256,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1060,
+        value0: 10,
+        value1: 11,
+        value2: 11,
+        value3: 8,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1064,
+        value0: 32,
+        value1: 11,
+        value2: 12,
+        value3: 96,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1068,
+        value0: 10,
+        value1: 2,
+        value2: 2,
+        value3: 4294967280,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1072,
+        value0: 10,
+        value1: 10,
+        value2: 0,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1076,
+        value0: 35,
+        value1: 13,
+        value2: 256,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1080,
+        value0: 10,
+        value1: 14,
+        value2: 0,
+        value3: 20,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1084,
+        value0: 24,
+        value1: 13,
+        value2: 14,
+        value3: 8,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1088,
+        value0: 35,
+        value1: 14,
+        value2: 3,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1092,
+        value0: 10,
+        value1: 13,
+        value2: 13,
+        value3: 8,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1096,
+        value0: 13,
+        value1: 13,
+        value2: 13,
+        value3: 4294967295,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1100,
+        value0: 0,
+        value1: 12,
+        value2: 13,
+        value3: 12,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1104,
+        value0: 10,
+        value1: 13,
+        value2: 0,
+        value3: 2,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1108,
+        value0: 10,
+        value1: 14,
+        value2: 14,
+        value3: 1261,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1112,
+        value0: 25,
+        value1: 2,
+        value2: 14,
+        value3: 10,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1116,
+        value0: 24,
+        value1: 2,
+        value2: 0,
+        value3: 12,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1120,
+        value0: 24,
+        value1: 2,
+        value2: 0,
+        value3: 13,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1124,
+        value0: 24,
+        value1: 2,
+        value2: 0,
+        value3: 14,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1128,
+        value0: 31,
+        value1: 12,
+        value2: 13,
+        value3: 24,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1132,
+        value0: 20,
+        value1: 2,
+        value2: 10,
+        value3: 10,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1136,
+        value0: 17,
+        value1: 12,
+        value2: 10,
+        value3: 8,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1140,
+        value0: 24,
+        value1: 11,
+        value2: 10,
+        value3: 1,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1144,
+        value0: 24,
+        value1: 11,
+        value2: 12,
+        value3: 2,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1148,
+        value0: 10,
+        value1: 10,
+        value2: 0,
+        value3: 3,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1152,
+        value0: 10,
+        value1: 2,
+        value2: 2,
+        value3: 16,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1156,
+        value0: 33,
+        value1: 0,
+        value2: 8,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1160,
+        value0: 10,
+        value1: 10,
+        value2: 0,
+        value3: 0,
+        multiplicity: 0,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1164,
+        value0: 35,
+        value1: 11,
+        value2: 256,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1168,
+        value0: 26,
+        value1: 11,
+        value2: 10,
+        value3: 4,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1172,
+        value0: 35,
+        value1: 10,
+        value2: 256,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1176,
+        value0: 10,
+        value1: 11,
+        value2: 0,
+        value3: 1,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1180,
+        value0: 26,
+        value1: 10,
+        value2: 11,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1184,
+        value0: 33,
+        value1: 0,
+        value2: 0,
+        value3: 0,
+        multiplicity: 0,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1188,
+        value0: 36,
+        value1: 1,
+        value2: 0,
+        value3: 0,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+     {
+        enabler: 1,
+        addr: 1192,
+        value0: 34,
+        value1: 1,
+        value2: 1,
+        value3: 2147483507,
+        multiplicity: 1,
+        root: 1007790569,
+    },
+]
+[2m2026-01-01T22:39:35.145504Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing auipc constraints (log_size=4)
+[2m2026-01-01T22:39:35.146410Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m auipc constraints OK
+[2m2026-01-01T22:39:35.147897Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing base_alu_imm constraints (log_size=4)
+[2m2026-01-01T22:39:35.149315Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m base_alu_imm constraints OK
+[2m2026-01-01T22:39:35.150805Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing base_alu_reg constraints (log_size=4)
+[2m2026-01-01T22:39:35.152332Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m base_alu_reg constraints OK
+[2m2026-01-01T22:39:35.153323Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing branch_eq constraints (log_size=4)
+[2m2026-01-01T22:39:35.154362Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m branch_eq constraints OK
+[2m2026-01-01T22:39:35.155563Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing branch_lt constraints (log_size=4)
+[2m2026-01-01T22:39:35.156843Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m branch_lt constraints OK
+[2m2026-01-01T22:39:35.158723Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing div constraints (log_size=4)
+[2m2026-01-01T22:39:35.160785Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m div constraints OK
+[2m2026-01-01T22:39:35.161466Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing jal constraints (log_size=4)
+[2m2026-01-01T22:39:35.162179Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m jal constraints OK
+[2m2026-01-01T22:39:35.163236Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing jalr constraints (log_size=4)
+[2m2026-01-01T22:39:35.164397Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m jalr constraints OK
+[2m2026-01-01T22:39:35.165814Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing load_store constraints (log_size=4)
+[2m2026-01-01T22:39:35.167363Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m load_store constraints OK
+[2m2026-01-01T22:39:35.168435Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing lt_imm constraints (log_size=4)
+[2m2026-01-01T22:39:35.169582Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m lt_imm constraints OK
+[2m2026-01-01T22:39:35.170884Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing lt_reg constraints (log_size=4)
+[2m2026-01-01T22:39:35.172257Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m lt_reg constraints OK
+[2m2026-01-01T22:39:35.172886Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing lui constraints (log_size=4)
+[2m2026-01-01T22:39:35.173588Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m lui constraints OK
+[2m2026-01-01T22:39:35.174904Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing mul constraints (log_size=4)
+[2m2026-01-01T22:39:35.176300Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m mul constraints OK
+[2m2026-01-01T22:39:35.177925Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing mulh constraints (log_size=4)
+[2m2026-01-01T22:39:35.179644Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m mulh constraints OK
+[2m2026-01-01T22:39:35.180850Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing shifts_imm constraints (log_size=4)
+[2m2026-01-01T22:39:35.182251Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m shifts_imm constraints OK
+[2m2026-01-01T22:39:35.183806Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m Testing shifts_reg constraints (log_size=4)
+[2m2026-01-01T22:39:35.185559Z[0m [32m INFO[0m [2mprover::components::opcodes[0m[2m:[0m shifts_reg constraints OK
+[crates/prover/src/components/program.rs:199:9] &cols.enabler = [
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:200:9] &cols.addr = [
+    PackedM31(
+        [
+            1024,
+            1152,
+            1088,
+            0,
+            1056,
+            1184,
+            1120,
+            0,
+            1040,
+            1168,
+            1104,
+            0,
+            1072,
+            0,
+            1136,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1032,
+            1160,
+            1096,
+            0,
+            1064,
+            1192,
+            1128,
+            0,
+            1048,
+            1176,
+            1112,
+            0,
+            1080,
+            0,
+            1144,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1028,
+            1156,
+            1092,
+            0,
+            1060,
+            1188,
+            1124,
+            0,
+            1044,
+            1172,
+            1108,
+            0,
+            1076,
+            0,
+            1140,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1036,
+            1164,
+            1100,
+            0,
+            1068,
+            0,
+            1132,
+            0,
+            1052,
+            1180,
+            1116,
+            0,
+            1084,
+            0,
+            1148,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:201:9] &cols.value0 = [
+    PackedM31(
+        [
+            36,
+            10,
+            35,
+            0,
+            35,
+            33,
+            24,
+            0,
+            36,
+            26,
+            10,
+            0,
+            10,
+            0,
+            17,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            36,
+            10,
+            13,
+            0,
+            32,
+            34,
+            31,
+            0,
+            35,
+            10,
+            25,
+            0,
+            10,
+            0,
+            24,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            10,
+            33,
+            10,
+            0,
+            10,
+            36,
+            24,
+            0,
+            34,
+            35,
+            10,
+            0,
+            35,
+            0,
+            24,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            10,
+            35,
+            0,
+            0,
+            10,
+            0,
+            20,
+            0,
+            10,
+            26,
+            24,
+            0,
+            24,
+            0,
+            10,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:202:9] &cols.value1 = [
+    PackedM31(
+        [
+            3,
+            2,
+            14,
+            0,
+            11,
+            0,
+            2,
+            0,
+            1,
+            11,
+            13,
+            0,
+            10,
+            0,
+            12,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            2,
+            10,
+            13,
+            0,
+            11,
+            1,
+            12,
+            0,
+            12,
+            11,
+            2,
+            0,
+            14,
+            0,
+            11,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            3,
+            0,
+            13,
+            0,
+            11,
+            1,
+            2,
+            0,
+            1,
+            10,
+            14,
+            0,
+            13,
+            0,
+            11,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            2,
+            11,
+            12,
+            0,
+            2,
+            0,
+            2,
+            0,
+            12,
+            10,
+            2,
+            0,
+            13,
+            0,
+            10,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:203:9] &cols.value2 = [
+    PackedM31(
+        [
+            2097152,
+            2,
+            3,
+            0,
+            256,
+            0,
+            0,
+            0,
+            0,
+            10,
+            0,
+            0,
+            0,
+            0,
+            10,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            2097152,
+            0,
+            13,
+            0,
+            12,
+            1,
+            13,
+            0,
+            512,
+            0,
+            14,
+            0,
+            0,
+            0,
+            12,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            3,
+            8,
+            13,
+            0,
+            11,
+            0,
+            0,
+            0,
+            1,
+            256,
+            14,
+            0,
+            256,
+            0,
+            10,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            2,
+            256,
+            13,
+            0,
+            2,
+            0,
+            10,
+            0,
+            12,
+            11,
+            0,
+            0,
+            14,
+            0,
+            0,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:204:9] &cols.value3 = [
+    PackedM31(
+        [
+            0,
+            16,
+            0,
+            0,
+            0,
+            0,
+            13,
+            0,
+            0,
+            4,
+            2,
+            0,
+            0,
+            0,
+            8,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            0,
+            0,
+            4294967295,
+            0,
+            96,
+            2147483507,
+            24,
+            0,
+            0,
+            1,
+            10,
+            0,
+            20,
+            0,
+            2,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1024,
+            0,
+            8,
+            0,
+            8,
+            0,
+            14,
+            0,
+            148,
+            0,
+            1261,
+            0,
+            0,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            4294966264,
+            0,
+            12,
+            0,
+            4294967280,
+            0,
+            10,
+            0,
+            4294966272,
+            0,
+            12,
+            0,
+            8,
+            0,
+            3,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:205:9] &cols.multiplicity = [
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:206:9] &index_base = [
+    PackedM31(
+        [
+            0,
+            128,
+            64,
+            2147482623,
+            32,
+            160,
+            96,
+            2147482623,
+            16,
+            144,
+            80,
+            2147482623,
+            48,
+            2147482623,
+            112,
+            2147482623,
+        ],
+    ),
+    PackedM31(
+        [
+            8,
+            136,
+            72,
+            2147482623,
+            40,
+            168,
+            104,
+            2147482623,
+            24,
+            152,
+            88,
+            2147482623,
+            56,
+            2147482623,
+            120,
+            2147482623,
+        ],
+    ),
+    PackedM31(
+        [
+            4,
+            132,
+            68,
+            2147482623,
+            36,
+            164,
+            100,
+            2147482623,
+            20,
+            148,
+            84,
+            2147482623,
+            52,
+            2147482623,
+            116,
+            2147482623,
+        ],
+    ),
+    PackedM31(
+        [
+            12,
+            140,
+            76,
+            2147482623,
+            44,
+            2147482623,
+            108,
+            2147482623,
+            28,
+            156,
+            92,
+            2147482623,
+            60,
+            2147482623,
+            124,
+            2147482623,
+        ],
+    ),
+]
+[crates/prover/src/components/program.rs:207:9] &leaf_depth = PackedM31(
+    [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+    ],
+)
+[crates/prover/src/components/program.rs:208:9] &cols.root = [
+    PackedM31(
+        [
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            0,
+            1007790569,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            0,
+            1007790569,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            0,
+            1007790569,
+            0,
+        ],
+    ),
+    PackedM31(
+        [
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            0,
+            1007790569,
+            0,
+            1007790569,
+            1007790569,
+            1007790569,
+            0,
+            1007790569,
+            0,
+            1007790569,
+            0,
+        ],
+    ),
+]
+[2m2026-01-01T22:39:35.186999Z[0m [32m INFO[0m [2mprover::components[0m[2m:[0m Testing program constraints (log_size=6)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1024,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    36,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    3,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    2097152,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    16,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1152,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    10,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    2,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    2,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    16,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    128,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1088,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    35,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    14,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    3,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    64,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    2147482623,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1056,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    35,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    11,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    256,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    32,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1184,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    33,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    160,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    13,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1120,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    24,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    2,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    13,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    96,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    2147482623,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1040,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    36,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    16,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    4,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1168,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    26,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    11,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    10,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    4,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    144,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    2,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1104,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    10,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    13,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    2,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    80,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    2147482623,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1072,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    10,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    10,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    48,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    2147482623,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    8,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1136,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    17,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    12,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    10,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    8,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    112,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    2147482623,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    0,
+)
+[crates/prover/src/components/program.rs:63:13] &value3 = M31(
+    1073741824,
+)
+[crates/prover/src/components/program.rs:75:13] &enabler = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:76:13] &addr = M31(
+    1032,
+)
+[crates/prover/src/components/program.rs:78:13] &value0 = M31(
+    36,
+)
+[crates/prover/src/components/program.rs:79:13] &value1 = M31(
+    2,
+)
+[crates/prover/src/components/program.rs:80:13] &value2 = M31(
+    2097152,
+)
+[crates/prover/src/components/program.rs:81:13] &value3 = M31(
+    1073741824,
+)
+[crates/prover/src/components/program.rs:82:13] &multiplicity = M31(
+    1,
+)
+[crates/prover/src/components/program.rs:83:13] &index_base = M31(
+    8,
+)
+[crates/prover/src/components/program.rs:84:13] &leaf_depth = M31(
+    20,
+)
+[crates/prover/src/components/program.rs:85:13] &root = M31(
+    1007790569,
+)
+
+thread 'test_fibonacci_constraints' panicked at external/stwo/crates/constraint-framework/src/prover/assert.rs:85:9:
+assertion `left == right` failed: row: #16, constraint #1
+  left: (1256131130 + 524653108i) + (1584804805 + 463242189i)u
+ right: (0 + 0i) + (0 + 0i)u
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'test_fibonacci_constraints' panicked at /Users/antoine/Documents/stark-v/external/stwo/crates/constraint-framework/src/logup.rs:58:9:
+LogupAtRow was not finalized
+stack backtrace:
+   0:        0x10126b834 - std::backtrace_rs::backtrace::libunwind::trace::hc823ec0ede23524c
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/../../backtrace/src/backtrace/libunwind.rs:117:9
+   1:        0x10126b834 - std::backtrace_rs::backtrace::trace_unsynchronized::hd8eae502b4edca69
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/../../backtrace/src/backtrace/mod.rs:66:14
+   2:        0x10126b834 - std::sys::backtrace::_print_fmt::hc2faaabc487c939d
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/sys/backtrace.rs:66:9
+   3:        0x10126b834 - <std::sys::backtrace::BacktraceLock::print::DisplayBacktrace as core::fmt::Display>::fmt::h626cb85a4a1e2934
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/sys/backtrace.rs:39:26
+   4:        0x101287230 - core::fmt::rt::Argument::fmt::h363c04ca579a9fb0
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/fmt/rt.rs:173:76
+   5:        0x101287230 - core::fmt::write::h2ee79a6856db9187
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/fmt/mod.rs:1469:25
+   6:        0x101269420 - std::io::default_write_fmt::hf66a36371f942eaf
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/io/mod.rs:639:11
+   7:        0x101269420 - std::io::Write::write_fmt::hadae63f5563f03c6
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/io/mod.rs:1954:13
+   8:        0x10126b6e8 - std::sys::backtrace::BacktraceLock::print::hd3034c4fc6aff16a
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/sys/backtrace.rs:42:9
+   9:        0x10126cc5c - std::panicking::default_hook::{{closure}}::h9583c2c675f078c8
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:300:27
+  10:        0x10126ca58 - std::panicking::default_hook::h69cf1464f7dba6ef
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:324:9
+  11:        0x100a98a00 - <alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call::h0d019a6cb86842e7
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/alloc/src/boxed.rs:1985:9
+  12:        0x100a98a00 - test::test_main_with_exit_callback::{{closure}}::h42c9ddbffdf35edb
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/test/src/lib.rs:145:21
+  13:        0x10126d738 - <alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call::h4bb32e6588d3f88d
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/alloc/src/boxed.rs:1985:9
+  14:        0x10126d738 - std::panicking::rust_panic_with_hook::h98342b0d988343f0
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:841:13
+  15:        0x10126d2f0 - std::panicking::begin_panic_handler::{{closure}}::h9218f2e5278d5f4e
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:699:13
+  16:        0x10126bcec - std::sys::backtrace::__rust_end_short_backtrace::h97abef850fede663
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/sys/backtrace.rs:168:18
+  17:        0x10126cff4 - __rustc[5029ac2abca9fd30]::rust_begin_unwind
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:697:5
+  18:        0x1012a5df8 - core::panicking::panic_fmt::h0b4ddd086fad64bd
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/panicking.rs:75:14
+  19:        0x100bfb348 - <stwo_constraint_framework::logup::LogupAtRow<E> as core::ops::drop::Drop>::drop::h01319c97b1d6d76d
+                               at /Users/antoine/Documents/stark-v/external/stwo/crates/constraint-framework/src/logup.rs:58:9
+  20:        0x100bd17a4 - core::ptr::drop_in_place<stwo_constraint_framework::logup::LogupAtRow<stwo_constraint_framework::prover::assert::AssertEvaluator>>::h85f95f5ccc5c676b
+                               at /Users/antoine/.rustup/toolchains/nightly-2025-07-14-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mod.rs:799:1
+  21:        0x100bf1abc - core::ptr::drop_in_place<stwo_constraint_framework::prover::assert::AssertEvaluator>::h414b5d86a5f9152c
+                               at /Users/antoine/.rustup/toolchains/nightly-2025-07-14-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ptr/mod.rs:799:1
+  22:        0x100cd3a40 - <prover::components::program::air::Eval as stwo_constraint_framework::component::FrameworkEval>::evaluate::h381343cf8979a9bb
+                               at /Users/antoine/Documents/stark-v/crates/prover/src/components/program.rs:125:9
+  23:        0x100b77c30 - prover::components::Components::assert_constraints_on_polys::{{closure}}::h912a57a511ab4f6f
+                               at /Users/antoine/Documents/stark-v/crates/prover/src/components/mod.rs:395:38
+  24:        0x100d66f3c - stwo_constraint_framework::prover::assert::assert_constraints_on_trace::{{closure}}::h46e16cb6112f8127
+                               at /Users/antoine/Documents/stark-v/external/stwo/crates/constraint-framework/src/prover/assert.rs:129:9
+  25:        0x100e94c5c - core::iter::traits::iterator::Iterator::for_each::call::{{closure}}::h29e20fa74751d0bd
+                               at /Users/antoine/.rustup/toolchains/nightly-2025-07-14-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:824:29
+  26:        0x100ea8f54 - core::iter::traits::iterator::Iterator::fold::h47cc19ce0002ccec
+                               at /Users/antoine/.rustup/toolchains/nightly-2025-07-14-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2602:21
+  27:        0x100eb0da4 - core::iter::traits::iterator::Iterator::for_each::h293f2d36402cdde8
+                               at /Users/antoine/.rustup/toolchains/nightly-2025-07-14-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:827:14
+  28:        0x100d65ae0 - stwo_constraint_framework::prover::assert::assert_constraints_on_trace::h8f42e85ff1f0033b
+                               at /Users/antoine/Documents/stark-v/external/stwo/crates/constraint-framework/src/prover/assert.rs:127:10
+  29:        0x100d6296c - stwo_constraint_framework::prover::assert::assert_constraints_on_polys::h97cf78d3e70cd2c1
+                               at /Users/antoine/Documents/stark-v/external/stwo/crates/constraint-framework/src/prover/assert.rs:115:5
+  30:        0x100ff7dec - prover::components::Components::assert_constraints_on_polys::hbb3c6d9278f0585e
+                               at /Users/antoine/Documents/stark-v/crates/prover/src/components/mod.rs:391:25
+  31:        0x1009133c0 - integration::test_fibonacci_constraints::hee144c176913da6e
+                               at /Users/antoine/Documents/stark-v/crates/prover/tests/integration.rs:93:5
+  32:        0x10090e428 - integration::test_fibonacci_constraints::{{closure}}::haf6a78562be76f13
+                               at /Users/antoine/Documents/stark-v/crates/prover/tests/integration.rs:76:32
+  33:        0x10090ded8 - core::ops::function::FnOnce::call_once::h15fc7a741b934817
+                               at /Users/antoine/.rustup/toolchains/nightly-2025-07-14-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:253:5
+  34:        0x100a9ce08 - core::ops::function::FnOnce::call_once::h8e8e76a3e7e8231d
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/ops/function.rs:253:5
+  35:        0x100a9ce08 - test::__rust_begin_short_backtrace::hf34e6b9420b71aed
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/test/src/lib.rs:648:18
+  36:        0x100a9c0c8 - test::run_test_in_process::{{closure}}::h4b2411108fde0a49
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/test/src/lib.rs:671:74
+  37:        0x100a9c0c8 - <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once::he815924131f6e9fe
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/panic/unwind_safe.rs:272:9
+  38:        0x100a9c0c8 - std::panicking::catch_unwind::do_call::hf25e7ac4a44f0c8e
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:589:40
+  39:        0x100a9c0c8 - std::panicking::catch_unwind::ha44cba6e6fcb4d8d
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:552:19
+  40:        0x100a9c0c8 - std::panic::catch_unwind::hb16c3c9f96f543c6
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panic.rs:359:14
+  41:        0x100a9c0c8 - test::run_test_in_process::he6c5c067faea128b
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/test/src/lib.rs:671:27
+  42:        0x100a9c0c8 - test::run_test::{{closure}}::h885ee0c925d12302
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/test/src/lib.rs:592:43
+  43:        0x100a6c3bc - test::run_test::{{closure}}::hd8c6495fa287aea6
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/test/src/lib.rs:622:41
+  44:        0x100a6c3bc - std::sys::backtrace::__rust_begin_short_backtrace::he3a280a5f392e690
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/sys/backtrace.rs:152:18
+  45:        0x100a6f444 - std::thread::Builder::spawn_unchecked_::{{closure}}::{{closure}}::h03fe846c348fa314
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/thread/mod.rs:559:17
+  46:        0x100a6f444 - <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once::h5f7d8ed8fc413e6d
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/panic/unwind_safe.rs:272:9
+  47:        0x100a6f444 - std::panicking::catch_unwind::do_call::ha8bef17accea7607
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:589:40
+  48:        0x100a6f444 - std::panicking::catch_unwind::hdb0dbd0f69bcf2c3
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panicking.rs:552:19
+  49:        0x100a6f444 - std::panic::catch_unwind::hba86623c6a698fc6
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/panic.rs:359:14
+  50:        0x100a6f444 - std::thread::Builder::spawn_unchecked_::{{closure}}::hf044134525f7a130
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/thread/mod.rs:557:30
+  51:        0x100a6f444 - core::ops::function::FnOnce::call_once{{vtable.shim}}::hed327cfd34ce5f65
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/core/src/ops/function.rs:253:5
+  52:        0x10126fa64 - <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once::ha727fde909b01c7a
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/alloc/src/boxed.rs:1971:9
+  53:        0x10126fa64 - <alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once::h6095e95943248e8f
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/alloc/src/boxed.rs:1971:9
+  54:        0x10126fa64 - std::sys::pal::unix::thread::Thread::new::thread_start::hc7e001481d9ac191
+                               at /rustc/e9182f195b8505c87c4bd055b9f6e114ccda0981/library/std/src/sys/pal/unix/thread.rs:97:17
+  55:        0x195cc3c0c - __pthread_cond_wait

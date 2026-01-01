@@ -109,12 +109,7 @@ pub mod air {
                 left_value,
                 right_value
             );
-            add_to_relation!(
-                eval,
-                self.relations.poseidon2,
-                -enabler,
-                parent_value
-            );
+            add_to_relation!(eval, self.relations.poseidon2, -enabler, parent_value);
             eval.finalize_logup_in_pairs();
             eval
         }
@@ -157,8 +152,7 @@ pub mod witness {
 
         let index_plus_one: Vec<PackedM31> = (0..simd_size).map(|i| index[i] + one).collect();
         let index_div2: Vec<PackedM31> = (0..simd_size).map(|i| index[i] * inv2).collect();
-        let depth_minus_one: Vec<PackedM31> =
-            (0..simd_size).map(|i| depth[i] - one).collect();
+        let depth_minus_one: Vec<PackedM31> = (0..simd_size).map(|i| depth[i] - one).collect();
 
         let left_mult: Vec<PackedQM31> = (0..simd_size)
             .map(|i| PackedQM31::from(left_multiplicity[i]))
@@ -177,8 +171,10 @@ pub mod witness {
             .collect();
 
         let left_denom = combine!(relations.merkle, [index, depth, left_value, root]);
-        let right_denom =
-            combine!(relations.merkle, [&index_plus_one, depth, right_value, root]);
+        let right_denom = combine!(
+            relations.merkle,
+            [&index_plus_one, depth, right_value, root]
+        );
         let parent_denom = combine!(
             relations.merkle,
             [&index_div2, &depth_minus_one, parent_value, root]
@@ -200,11 +196,7 @@ pub mod witness {
             &poseidon_in_denom,
             interaction_trace
         );
-        write_col!(
-            &neg_enabler,
-            &poseidon_out_denom,
-            interaction_trace
-        );
+        write_col!(&neg_enabler, &poseidon_out_denom, interaction_trace);
 
         interaction_trace.finalize_last()
     }

@@ -399,12 +399,7 @@ pub mod air {
                 initial_state[14].clone(),
                 initial_state[15].clone()
             );
-            add_to_relation!(
-                eval,
-                self.relations.poseidon2,
-                enabler,
-                state[0].clone()
-            );
+            add_to_relation!(eval, self.relations.poseidon2, enabler, state[0].clone());
             eval.finalize_logup_in_pairs();
             eval
         }

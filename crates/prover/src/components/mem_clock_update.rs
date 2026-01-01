@@ -158,15 +158,7 @@ pub mod witness {
 
         let prev_denom = combine!(
             relations.memory_access,
-            [
-                &rw_as_col,
-                addr,
-                clk_prev,
-                value0,
-                value1,
-                value2,
-                value3
-            ]
+            [&rw_as_col, addr, clk_prev, value0, value1, value2, value3]
         );
         let next_denom = combine!(
             relations.memory_access,
