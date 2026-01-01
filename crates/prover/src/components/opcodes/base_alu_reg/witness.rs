@@ -326,3 +326,75 @@ pub fn gen_interaction_trace(
 
     logup_gen.finalize_last()
 }
+
+/// Register multiplicities for preprocessed lookups.
+pub fn register_multiplicities(
+    trace: &runner::trace::BaseAluRegTable,
+    counters: &mut crate::relations::Counters,
+) {
+    // Compute clock differences
+    let clk_minus_rs1_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs1_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    let clk_minus_rs2_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs2_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    let clk_minus_rd_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rd_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Register range_check_20 for all three clock diffs
+    counters
+        .range_check_20
+        .register_many([&clk_minus_rs1_clk_prev]);
+    counters
+        .range_check_20
+        .register_many([&clk_minus_rs2_clk_prev]);
+    counters
+        .range_check_20
+        .register_many([&clk_minus_rd_clk_prev]);
+
+    // Register bitwise lookups for xor/or/and operations
+    // bitwise_id encoding: xor=1, or=2, and=3
+    for i in 0..trace.clk.len() {
+        let is_xor = trace.opcode_xor_flag[i] == 1;
+        let is_or = trace.opcode_or_flag[i] == 1;
+        let is_and = trace.opcode_and_flag[i] == 1;
+
+        if is_xor || is_or || is_and {
+            let bitwise_id = if is_xor {
+                1
+            } else if is_or {
+                2
+            } else {
+                3
+            };
+
+            // Split rs1_next, rs2_next, rd_next into limbs and register 4 bitwise lookups
+            let rs1 = trace.rs1_next[i];
+            let rs2 = trace.rs2_next[i];
+            let rd = trace.rd_next[i];
+
+            for limb_idx in 0..4 {
+                let shift = limb_idx * 8;
+                let rs1_limb = (rs1 >> shift) & 0xFF;
+                let rs2_limb = (rs2 >> shift) & 0xFF;
+                let rd_limb = (rd >> shift) & 0xFF;
+                counters
+                    .bitwise
+                    .register([rs1_limb, rs2_limb, rd_limb, bitwise_id]);
+            }
+        }
+    }
+}

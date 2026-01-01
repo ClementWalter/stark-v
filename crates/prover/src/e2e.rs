@@ -105,8 +105,7 @@ macro_rules! test_bin_e2e {
                     concat!("Expected ", stringify!($opcode), " trace entries in ", stringify!($component), ", got none.")
                 );
 
-                let mut counters = $crate::relations::Counters::new();
-                let trace = tracer.$component.into_witness(&mut counters);
+                let trace = tracer.$component.into_witness();
 
                 let log_size = trace.first()
                     .map(|t| t.domain.log_size())

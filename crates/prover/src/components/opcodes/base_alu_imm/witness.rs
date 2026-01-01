@@ -297,3 +297,110 @@ pub fn gen_interaction_trace(
 
     logup_gen.finalize_last()
 }
+
+/// Register multiplicities for preprocessed lookups.
+pub fn register_multiplicities(
+    trace: &runner::trace::BaseAluImmTable,
+    counters: &mut crate::relations::Counters,
+) {
+    // Register range_check_8_11 for immediate decomposition
+    // imm_1 * 256 is the encoding used in gen_interaction_trace
+    let imm_1_times_256: Vec<u32> = trace.imm_1.iter().map(|v| v * 256).collect();
+    counters
+        .range_check_8_11
+        .register_many([&trace.imm_0[..], &imm_1_times_256]);
+
+    // Compute clock differences
+    let clk_minus_rs1_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs1_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    let clk_minus_rd_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rd_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Register range_check_20 for clock diffs
+    counters
+        .range_check_20
+        .register_many([&clk_minus_rs1_clk_prev]);
+    counters
+        .range_check_20
+        .register_many([&clk_minus_rd_clk_prev]);
+
+    // Constants for sign extension masks
+    let sext_mask_1 = (1u32 << 3) * ((1u32 << 5) - 1); // For imm_1 sign extension
+    let sext_mask_2 = (1u32 << 8) - 1; // 0xFF for imm_2 and imm_3
+
+    // Register bitwise lookups for xor/or/and operations
+    // bitwise_id encoding: xor=1, or=2, and=3
+    for i in 0..trace.clk.len() {
+        let is_xor = trace.opcode_xor_flag[i] == 1;
+        let is_or = trace.opcode_or_flag[i] == 1;
+        let is_and = trace.opcode_and_flag[i] == 1;
+
+        if is_xor || is_or || is_and {
+            let bitwise_id = if is_xor {
+                1
+            } else if is_or {
+                2
+            } else {
+                3
+            };
+
+            // Sign-extended immediate limbs
+            let imm_msb = trace.imm_msb[i];
+            let sext_imm_0 = trace.imm_0[i];
+            let sext_imm_1 = trace.imm_1[i] + sext_mask_1 * imm_msb;
+            let sext_imm_2 = sext_mask_2 * imm_msb;
+            let sext_imm_3 = sext_imm_2;
+
+            // Split rs1_next and rd_next into limbs
+            let rs1 = trace.rs1_next[i];
+            let rd = trace.rd_next[i];
+
+            // Register 4 bitwise lookups (one per limb)
+            let rs1_limbs = [
+                (rs1 & 0xFF),
+                ((rs1 >> 8) & 0xFF),
+                ((rs1 >> 16) & 0xFF),
+                ((rs1 >> 24) & 0xFF),
+            ];
+            let rd_limbs = [
+                (rd & 0xFF),
+                ((rd >> 8) & 0xFF),
+                ((rd >> 16) & 0xFF),
+                ((rd >> 24) & 0xFF),
+            ];
+            let sext_imm_limbs = [sext_imm_0, sext_imm_1, sext_imm_2, sext_imm_3];
+
+            for limb_idx in 0..4 {
+                counters.bitwise.register([
+                    rs1_limbs[limb_idx],
+                    sext_imm_limbs[limb_idx],
+                    rd_limbs[limb_idx],
+                    bitwise_id,
+                ]);
+            }
+        }
+    }
+
+    // Register range_check_8_8 for rd limbs (all rows, not just bitwise)
+    // Split rd_next into limbs
+    let rd_next_0: Vec<u32> = trace.rd_next.iter().map(|v| v & 0xFF).collect();
+    let rd_next_1: Vec<u32> = trace.rd_next.iter().map(|v| (v >> 8) & 0xFF).collect();
+    let rd_next_2: Vec<u32> = trace.rd_next.iter().map(|v| (v >> 16) & 0xFF).collect();
+    let rd_next_3: Vec<u32> = trace.rd_next.iter().map(|v| (v >> 24) & 0xFF).collect();
+
+    counters
+        .range_check_8_8
+        .register_many([&rd_next_0, &rd_next_1]);
+    counters
+        .range_check_8_8
+        .register_many([&rd_next_2, &rd_next_3]);
+}

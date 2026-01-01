@@ -454,9 +454,12 @@ macro_rules! opcode_components {
             tracer: runner::trace::Tracer,
             counters: &mut $crate::relations::Counters,
         ) -> Traces {
+            $(
+                $opcode::witness::register_multiplicities(&tracer.$opcode, counters);
+            )*
             Traces {
                 $(
-                    $opcode: tracer.$opcode.into_witness(counters),
+                    $opcode: tracer.$opcode.into_witness(),
                 )*
             }
         }

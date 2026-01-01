@@ -5,8 +5,7 @@ use super::*;
 #[test]
 fn test_base_alu_imm_witness_gen_empty_table() {
     let table = runner::trace::BaseAluImmTable::new();
-    let mut counters = crate::relations::Counters::new();
-    let trace = table.into_witness(&mut counters);
+    let trace = table.into_witness();
     // Empty table produces minimal log_size = 4 (16 rows)
     assert!(!trace.is_empty());
     assert_eq!(
@@ -18,8 +17,7 @@ fn test_base_alu_imm_witness_gen_empty_table() {
 #[test]
 fn test_base_alu_imm_interaction_trace_empty_table() {
     let table = runner::trace::BaseAluImmTable::new();
-    let mut counters = crate::relations::Counters::new();
-    let trace = table.into_witness(&mut counters);
+    let trace = table.into_witness();
     let relations = crate::relations::Relations::dummy();
     let (interaction_trace, claimed_sum) =
         witness::gen_interaction_trace(trace.as_slice(), &relations);
