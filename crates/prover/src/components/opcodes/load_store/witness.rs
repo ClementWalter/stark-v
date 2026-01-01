@@ -30,21 +30,6 @@ pub fn gen_interaction_trace(
     let cols = LoadStoreColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Check for real data
-    let has_real_data = (0..simd_size).any(|i| {
-        !(cols.opcode_lb_flag[i].is_zero()
-            && cols.opcode_lh_flag[i].is_zero()
-            && cols.opcode_lbu_flag[i].is_zero()
-            && cols.opcode_lhu_flag[i].is_zero()
-            && cols.opcode_lw_flag[i].is_zero()
-            && cols.opcode_sb_flag[i].is_zero()
-            && cols.opcode_sh_flag[i].is_zero()
-            && cols.opcode_sw_flag[i].is_zero())
-    });
-    if !has_real_data {
-        return (vec![], QM31::zero());
-    }
-
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
@@ -52,7 +37,6 @@ pub fn gen_interaction_trace(
     let zero = PackedM31::zero();
     let one = PackedM31::broadcast(BaseField::one());
     let four = PackedM31::broadcast(BaseField::from_u32_unchecked(4));
-    let pow2_7 = PackedM31::broadcast(BaseField::from_u32_unchecked(128));
     let pow2_14 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 14));
     let quarter_inv = PackedM31::broadcast(BaseField::from_u32_unchecked(4).inverse());
 
@@ -104,11 +88,6 @@ pub fn gen_interaction_trace(
     // dst_as = 0 * is_load + 1 * is_store = is_store
     let src_as = is_load.clone();
     let dst_as = is_store.clone();
-
-    // src[3] with sign bit
-    let src_3_with_sign: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.src_next_3[i] + cols.src_msb[i] * pow2_7)
-        .collect();
 
     // dst[3] with sign handling from msb constraint
     let dst_3: Vec<PackedM31> = cols.dst_next_3.to_vec();
@@ -237,7 +216,7 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 10. memory_access: +enabler * (src_as, src_addr_selector, clk, src_next_0..2, src_3_with_sign)
+    // 10. memory_access: +enabler * (src_as, src_addr_selector, clk, src_next_0..3)
     let src_write_denom = combine!(
         relations.memory_access,
         [
@@ -247,7 +226,7 @@ pub fn gen_interaction_trace(
             cols.src_next_0,
             cols.src_next_1,
             cols.src_next_2,
-            &src_3_with_sign
+            cols.src_next_3
         ]
     );
 

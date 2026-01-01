@@ -34,13 +34,6 @@ pub fn gen_interaction_trace(
     let cols = LuiColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Check if the trace has any real data by checking if enabler column has any non-zero values.
-    // Empty tables have enabler=0 for all rows (including padding).
-    let has_real_data = cols.enabler.iter().any(|&packed| !packed.is_zero());
-    if !has_real_data {
-        return (vec![], QM31::zero());
-    }
-
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 

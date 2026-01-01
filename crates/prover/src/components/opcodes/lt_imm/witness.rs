@@ -30,13 +30,6 @@ pub fn gen_interaction_trace(
     let cols = LtImmColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Check for real data
-    let has_real_data = (0..simd_size)
-        .any(|i| !(cols.opcode_slti_flag[i].is_zero() && cols.opcode_sltiu_flag[i].is_zero()));
-    if !has_real_data {
-        return (vec![], QM31::zero());
-    }
-
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 

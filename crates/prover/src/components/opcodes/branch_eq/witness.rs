@@ -1,6 +1,6 @@
 //! Witness generation for branch_eq component.
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -29,13 +29,6 @@ pub fn gen_interaction_trace(
 
     let cols = BranchEqColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
-
-    // Check for real data
-    let has_real_data = (0..simd_size)
-        .any(|i| !(cols.opcode_beq_flag[i].is_zero() && cols.opcode_bne_flag[i].is_zero()));
-    if !has_real_data {
-        return (vec![], QM31::zero());
-    }
 
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
@@ -195,7 +188,7 @@ pub fn gen_interaction_trace(
     // 9. registers_state: +enabler * (to_pc, clk + 1)
     let registers_write_denom = combine!(relations.registers_state, [&to_pc, &clk_plus_1]);
 
-    crate::emit_col!(registers_write_denom, logup_gen);
+    crate::write_col!(&pos_enabler, &registers_write_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

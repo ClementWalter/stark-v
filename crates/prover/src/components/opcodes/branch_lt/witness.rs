@@ -1,6 +1,6 @@
 //! Witness generation for branch_lt component.
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -29,17 +29,6 @@ pub fn gen_interaction_trace(
 
     let cols = BranchLtColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
-
-    // Check for real data
-    let has_real_data = (0..simd_size).any(|i| {
-        !(cols.opcode_blt_flag[i].is_zero()
-            && cols.opcode_bltu_flag[i].is_zero()
-            && cols.opcode_bge_flag[i].is_zero()
-            && cols.opcode_bgeu_flag[i].is_zero())
-    });
-    if !has_real_data {
-        return (vec![], QM31::zero());
-    }
 
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
@@ -95,6 +84,16 @@ pub fn gen_interaction_trace(
         .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
         .collect();
     let diff_val_minus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.diff_val[i] - one).collect();
+
+    // prefix_sum = sum of diff_markers
+    let prefix_sum: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            cols.diff_marker_0[i]
+                + cols.diff_marker_1[i]
+                + cols.diff_marker_2[i]
+                + cols.diff_marker_3[i]
+        })
+        .collect();
 
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
@@ -234,8 +233,10 @@ pub fn gen_interaction_trace(
 
     // 11. range_check_20: -prefix_sum * (diff_val - 1)
     let rc_20_diff_denom = combine!(relations.range_check_20, [&diff_val_minus_1]);
+    let neg_prefix_sum: Vec<PackedQM31> =
+        prefix_sum.iter().map(|&p| -PackedQM31::from(p)).collect();
 
-    crate::consume_col!(rc_20_diff_denom, logup_gen);
+    crate::write_col!(&neg_prefix_sum, &rc_20_diff_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

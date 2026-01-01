@@ -34,12 +34,6 @@ pub fn gen_interaction_trace(
     let cols = AuipcColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Check if trace has real data
-    let has_real_data = cols.enabler.iter().any(|&packed| !packed.is_zero());
-    if !has_real_data {
-        return (vec![], QM31::zero());
-    }
-
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
