@@ -128,8 +128,8 @@ fn apply_internal_round_matrix(state: &mut [u32; 16]) {
         sum = add_m31(sum, *val);
     }
 
-    for i in 0..T {
-        state[i] = add_m31(mul_m31(state[i], INTERNAL_MATRIX[i]), sum);
+    for (state_i, matrix_i) in state.iter_mut().zip(INTERNAL_MATRIX.iter()) {
+        *state_i = add_m31(mul_m31(*state_i, *matrix_i), sum);
     }
 }
 
@@ -144,40 +144,40 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
     state[0] = M31::from(left).0;
     state[1] = M31::from(right).0;
 
-    for i in 0..T {
-        row[idx] = state[i];
+    for value in state.iter() {
+        row[idx] = *value;
         idx += 1;
     }
 
     apply_external_round_matrix(&mut state);
 
-    for round in 0..(FULL_ROUNDS / 2) {
-        for i in 0..T {
-            state[i] = add_m31(state[i], EXTERNAL_ROUND_CONSTS[round][i]);
+    for round_consts in EXTERNAL_ROUND_CONSTS.iter().take(FULL_ROUNDS / 2) {
+        for (state_i, round_const) in state.iter_mut().zip(round_consts.iter()) {
+            *state_i = add_m31(*state_i, *round_const);
         }
         let initial_state = state;
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-            row[idx] = state[i];
+        for state_i in state.iter_mut() {
+            *state_i = square_m31(*state_i);
+            row[idx] = *state_i;
             idx += 1;
         }
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-            row[idx] = state[i];
+        for state_i in state.iter_mut() {
+            *state_i = square_m31(*state_i);
+            row[idx] = *state_i;
             idx += 1;
         }
-        for i in 0..T {
-            state[i] = mul_m31(state[i], initial_state[i]);
+        for (state_i, init_i) in state.iter_mut().zip(initial_state.iter()) {
+            *state_i = mul_m31(*state_i, *init_i);
         }
         apply_external_round_matrix(&mut state);
-        for i in 0..T {
-            row[idx] = state[i];
+        for value in state.iter() {
+            row[idx] = *value;
             idx += 1;
         }
     }
 
-    for round in 0..PARTIAL_ROUNDS {
-        state[0] = add_m31(state[0], INTERNAL_ROUND_CONSTS[round]);
+    for round_const in INTERNAL_ROUND_CONSTS.iter() {
+        state[0] = add_m31(state[0], *round_const);
         let initial_state = state[0];
         state[0] = square_m31(state[0]);
         row[idx] = state[0];
@@ -191,28 +191,27 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
         apply_internal_round_matrix(&mut state);
     }
 
-    for round in 0..(FULL_ROUNDS / 2) {
-        let rc_round = round + FULL_ROUNDS / 2;
-        for i in 0..T {
-            state[i] = add_m31(state[i], EXTERNAL_ROUND_CONSTS[rc_round][i]);
+    for round_consts in EXTERNAL_ROUND_CONSTS.iter().skip(FULL_ROUNDS / 2) {
+        for (state_i, round_const) in state.iter_mut().zip(round_consts.iter()) {
+            *state_i = add_m31(*state_i, *round_const);
         }
         let initial_state = state;
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-            row[idx] = state[i];
+        for state_i in state.iter_mut() {
+            *state_i = square_m31(*state_i);
+            row[idx] = *state_i;
             idx += 1;
         }
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-            row[idx] = state[i];
+        for state_i in state.iter_mut() {
+            *state_i = square_m31(*state_i);
+            row[idx] = *state_i;
             idx += 1;
         }
-        for i in 0..T {
-            state[i] = mul_m31(state[i], initial_state[i]);
+        for (state_i, init_i) in state.iter_mut().zip(initial_state.iter()) {
+            *state_i = mul_m31(*state_i, *init_i);
         }
         apply_external_round_matrix(&mut state);
-        for i in 0..T {
-            row[idx] = state[i];
+        for value in state.iter() {
+            row[idx] = *value;
             idx += 1;
         }
     }

@@ -9,7 +9,7 @@ use crate::poseidon2::{
 use crate::program::decode_program;
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
 
-pub const RW_MEMORY_BASE: u32 = 0x001F_FC00;
+pub const RW_MEMORY_BASE: u32 = PROGRAM_BASE + PROGRAM_RANGE_SIZE;
 pub const RW_TREE_LEAVES: u32 = 1 << 21;
 pub const RW_TREE_HEIGHT: u32 = 22;
 
@@ -132,9 +132,11 @@ pub fn build_partial_merkle_tree(
 
 impl Tracer {
     pub fn finalize_commitments(&mut self, memory: &Memory) -> Result<(), CommitmentError> {
+        let rw_range = RW_MEMORY_BASE..RW_MEMORY_BASE + RW_TREE_LEAVES;
+
         // Sanity check: all memory addresses should be in the RW memory range
         for &addr in self.mem_clk.keys() {
-            if !(RW_MEMORY_BASE..RW_MEMORY_BASE + RW_TREE_LEAVES).contains(&addr) {
+            if !rw_range.contains(&addr) {
                 return Err(CommitmentError::RwAddressOutOfRange { addr });
             }
         }
@@ -161,7 +163,12 @@ impl Tracer {
         let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
 
-        let mut mem_addrs: Vec<u32> = self.mem_initial.keys().copied().collect();
+        let mut mem_addrs: Vec<u32> = self
+            .mem_initial
+            .keys()
+            .copied()
+            .filter(|addr| rw_range.contains(addr))
+            .collect();
         mem_addrs.sort_unstable();
 
         for addr in mem_addrs {

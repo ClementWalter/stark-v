@@ -405,6 +405,82 @@ impl AccessTable {
         self.value.push(access.prev);
         self.clk_prev.push(access.clk_prev);
     }
+
+    /// Consumes the table and returns columns in canonical order.
+    /// Order matches the ClockUpdateColumns layout in the prover.
+    pub fn into_columns(self) -> Vec<AlignedVec<u32>> {
+        let len = self.len();
+        let mut enabler = AlignedVec::with_capacity(len);
+        for _ in 0..len {
+            enabler.push(1);
+        }
+
+        let mut value0 = AlignedVec::with_capacity(len);
+        let mut value1 = AlignedVec::with_capacity(len);
+        let mut value2 = AlignedVec::with_capacity(len);
+        let mut value3 = AlignedVec::with_capacity(len);
+        for val in self.value.iter() {
+            let val = *val;
+            value0.push(val & 0xFF);
+            value1.push((val >> 8) & 0xFF);
+            value2.push((val >> 16) & 0xFF);
+            value3.push((val >> 24) & 0xFF);
+        }
+
+        vec![
+            enabler,
+            self.addr,
+            self.clk_prev,
+            value0,
+            value1,
+            value2,
+            value3,
+        ]
+    }
+
+    /// Convert table to trace columns, padding to power of 2.
+    /// Always produces columns with minimum log_size of 4 (16 rows),
+    /// even for empty tables.
+    pub fn into_witness(
+        self,
+    ) -> Vec<
+        stwo::prover::poly::circle::CircleEvaluation<
+            stwo::prover::backend::simd::SimdBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >,
+    > {
+        use stwo::core::poly::circle::CanonicCoset;
+        use stwo::prover::backend::simd::column::BaseColumn;
+        use stwo::prover::poly::circle::CircleEvaluation;
+
+        let len = self.len() as u32;
+        let log_size = len.next_power_of_two().ilog2().max(4);
+        let padded_len = 1 << log_size;
+        let columns = self.into_columns();
+        let domain = CanonicCoset::new(log_size).circle_domain();
+
+        columns
+            .into_iter()
+            .map(|mut col| {
+                col.resize(padded_len, 0);
+                let base_col: BaseColumn = col.into();
+                CircleEvaluation::new(domain, base_col)
+            })
+            .collect()
+    }
+
+    pub fn to_witness(
+        &self,
+    ) -> Vec<
+        stwo::prover::poly::circle::CircleEvaluation<
+            stwo::prover::backend::simd::SimdBackend,
+            stwo::core::fields::m31::BaseField,
+            stwo::prover::poly::BitReversedOrder,
+        >,
+    > {
+        self.clone().into_witness()
+    }
 }
 
 impl Poseidon2Table {
