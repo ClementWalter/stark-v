@@ -1,8 +1,6 @@
 //! Tests for load_store component.
 
 use super::*;
-use num_traits::Zero;
-use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_load_store_witness_gen_empty_table() {

@@ -1,8 +1,6 @@
 //! Tests for lui component.
 
 use super::*;
-use num_traits::Zero;
-use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_lui_witness_gen_empty_table() {

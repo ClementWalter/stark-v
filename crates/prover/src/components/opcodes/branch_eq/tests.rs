@@ -1,8 +1,6 @@
 //! Tests for branch_eq component.
 
 use super::*;
-use num_traits::Zero;
-use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_branch_eq_witness_gen_empty_table() {

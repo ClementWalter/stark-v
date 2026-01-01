@@ -1,8 +1,6 @@
 //! Tests for shifts_imm component.
 
 use super::*;
-use num_traits::Zero;
-use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_shifts_imm_witness_gen_empty_table() {

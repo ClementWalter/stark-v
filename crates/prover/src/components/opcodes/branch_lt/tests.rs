@@ -1,8 +1,6 @@
 //! Tests for branch_lt component.
 
 use super::*;
-use num_traits::Zero;
-use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_branch_lt_witness_gen_empty_table() {

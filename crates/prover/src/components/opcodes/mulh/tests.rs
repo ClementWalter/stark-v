@@ -1,8 +1,6 @@
 //! Tests for mulh component.
 
 use super::*;
-use num_traits::Zero;
-use stwo::core::fields::qm31::QM31;
 
 #[test]
 fn test_mulh_witness_gen_empty_table() {
