@@ -1,5 +1,7 @@
 //! Main proving function for RV32IM execution traces.
 
+#[cfg(feature = "track-relations")]
+use num_traits::Zero;
 use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
@@ -100,21 +102,33 @@ pub fn prove_rv32im(
     }
     span.exit();
 
-    // TODO: Re-enable this verification once all components are implemented
-    // // 10. Verify claimed sum is zero (all lookups balanced)
-    // let total_sum = claimed_sum.total();
-    // info!("Claimed sum: {total_sum:?}");
-    // assert!(
-    //     total_sum.is_zero(),
-    //     "Relation sum must be zero, got {total_sum:?}"
-    // );
-
-    // 11. Create components and prove
+    // 10. Create components
     let span = span!(Level::INFO, "Create components").entered();
     let mut location_allocator =
         TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_ids);
     let components = Components::new(&claim, &mut location_allocator, relations, &claimed_sum);
     span.exit();
+
+    #[cfg(feature = "track-relations")]
+    info!(
+        "Trace log degree bounds: {:?}",
+        components.trace_log_degree_bounds()
+    );
+
+    // 11. Verify claimed sum is zero (all lookups balanced)
+    // Only enabled with track-relations feature until all components are implemented
+    #[cfg(feature = "track-relations")]
+    {
+        let total_sum = claimed_sum.total();
+        info!("Claimed sum: {total_sum:?}");
+        if !total_sum.is_zero() {
+            info!(
+                "Relation summary: {:?}",
+                components.track_relations(&commitment_scheme)
+            );
+            panic!("Relation sum must be zero, got {total_sum:?}");
+        }
+    }
 
     // 12. Generate proof
     let span = span!(Level::INFO, "Prove").entered();

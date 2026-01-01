@@ -8,13 +8,16 @@ pub mod opcodes;
 pub mod preprocessed;
 
 use stwo::core::ColumnVec;
-use stwo::core::channel::Channel;
+use stwo::core::channel::{Channel, MerkleChannel};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::QM31;
+use stwo::prover::CommitmentSchemeProver;
+use stwo::prover::backend::BackendForChannel;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::TraceLocationAllocator;
+use stwo_constraint_framework::relation_tracker::RelationSummary;
 
 use crate::relations::Relations;
 
@@ -148,6 +151,27 @@ impl Components {
         let mut bounds = self.opcodes.trace_log_degree_bounds();
         bounds.extend(self.preprocessed.trace_log_degree_bounds());
         bounds
+    }
+
+    /// Track relations for debugging LogUp imbalances.
+    ///
+    /// Returns a summary showing which relations have mismatched counts.
+    pub fn track_relations<MC: MerkleChannel>(
+        &self,
+        commitment_scheme: &CommitmentSchemeProver<'_, SimdBackend, MC>,
+    ) -> RelationSummary
+    where
+        SimdBackend: BackendForChannel<MC>,
+    {
+        let evals = commitment_scheme
+            .trace()
+            .polys
+            .map(|tree| tree.iter().map(|poly| poly.evals.to_cpu().values).collect());
+        let evals = &evals.as_ref();
+        let trace = &evals.into();
+
+        let entries = self.relation_entries(trace);
+        RelationSummary::summarize_relations(&entries).cleaned()
     }
 
     /// Assert constraints on polynomials for all components (opcodes + preprocessed).
