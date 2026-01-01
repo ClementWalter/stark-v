@@ -6,6 +6,8 @@
 
 use simd::AlignedVec;
 
+use crate::poseidon2::POSEIDON2_TRACE_COLUMNS;
+
 /// Default maximum clock difference allowed between accesses.
 /// Must be consistent with max range-check in the prover.
 /// RangeCheck20 is an array of from 0 to u20::MAX, i.e. to 2^20 - 1.
@@ -185,6 +187,107 @@ runner_macros::define_trace_tables! {
         lt_diff,
         opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag
     },
+
+    // ==========================================================================
+    // 17. Program commitment table
+    // ==========================================================================
+    program: {
+        addr, value0, value1, value2, value3, multiplicity, root
+    },
+
+    // ==========================================================================
+    // 18. Memory commitment table (initial/final)
+    // ==========================================================================
+    memory: {
+        addr, clk,
+        value0, value1, value2, value3,
+        multiplicity, root
+    },
+
+    // ==========================================================================
+    // 19. Merkle tree nodes
+    // ==========================================================================
+    merkle: {
+        index, depth,
+        left_value, right_value, parent_value,
+        left_multiplicity, right_multiplicity, parent_multiplicity,
+        root
+    },
+
+    // ==========================================================================
+    // 20. Poseidon2 hash trace
+    // ==========================================================================
+    poseidon2: {
+        state0, state1, state2, state3, state4, state5, state6, state7, state8, state9, state10,
+        state11, state12, state13, state14, state15, full0_sq1_0, full0_sq1_1, full0_sq1_2,
+        full0_sq1_3, full0_sq1_4, full0_sq1_5, full0_sq1_6, full0_sq1_7, full0_sq1_8, full0_sq1_9,
+        full0_sq1_10, full0_sq1_11, full0_sq1_12, full0_sq1_13, full0_sq1_14, full0_sq1_15,
+        full0_sq2_0, full0_sq2_1, full0_sq2_2, full0_sq2_3, full0_sq2_4, full0_sq2_5, full0_sq2_6,
+        full0_sq2_7, full0_sq2_8, full0_sq2_9, full0_sq2_10, full0_sq2_11, full0_sq2_12,
+        full0_sq2_13, full0_sq2_14, full0_sq2_15, full0_mix_0, full0_mix_1, full0_mix_2,
+        full0_mix_3, full0_mix_4, full0_mix_5, full0_mix_6, full0_mix_7, full0_mix_8, full0_mix_9,
+        full0_mix_10, full0_mix_11, full0_mix_12, full0_mix_13, full0_mix_14, full0_mix_15,
+        full1_sq1_0, full1_sq1_1, full1_sq1_2, full1_sq1_3, full1_sq1_4, full1_sq1_5, full1_sq1_6,
+        full1_sq1_7, full1_sq1_8, full1_sq1_9, full1_sq1_10, full1_sq1_11, full1_sq1_12,
+        full1_sq1_13, full1_sq1_14, full1_sq1_15, full1_sq2_0, full1_sq2_1, full1_sq2_2,
+        full1_sq2_3, full1_sq2_4, full1_sq2_5, full1_sq2_6, full1_sq2_7, full1_sq2_8, full1_sq2_9,
+        full1_sq2_10, full1_sq2_11, full1_sq2_12, full1_sq2_13, full1_sq2_14, full1_sq2_15,
+        full1_mix_0, full1_mix_1, full1_mix_2, full1_mix_3, full1_mix_4, full1_mix_5, full1_mix_6,
+        full1_mix_7, full1_mix_8, full1_mix_9, full1_mix_10, full1_mix_11, full1_mix_12,
+        full1_mix_13, full1_mix_14, full1_mix_15, full2_sq1_0, full2_sq1_1, full2_sq1_2,
+        full2_sq1_3, full2_sq1_4, full2_sq1_5, full2_sq1_6, full2_sq1_7, full2_sq1_8, full2_sq1_9,
+        full2_sq1_10, full2_sq1_11, full2_sq1_12, full2_sq1_13, full2_sq1_14, full2_sq1_15,
+        full2_sq2_0, full2_sq2_1, full2_sq2_2, full2_sq2_3, full2_sq2_4, full2_sq2_5, full2_sq2_6,
+        full2_sq2_7, full2_sq2_8, full2_sq2_9, full2_sq2_10, full2_sq2_11, full2_sq2_12,
+        full2_sq2_13, full2_sq2_14, full2_sq2_15, full2_mix_0, full2_mix_1, full2_mix_2,
+        full2_mix_3, full2_mix_4, full2_mix_5, full2_mix_6, full2_mix_7, full2_mix_8, full2_mix_9,
+        full2_mix_10, full2_mix_11, full2_mix_12, full2_mix_13, full2_mix_14, full2_mix_15,
+        full3_sq1_0, full3_sq1_1, full3_sq1_2, full3_sq1_3, full3_sq1_4, full3_sq1_5, full3_sq1_6,
+        full3_sq1_7, full3_sq1_8, full3_sq1_9, full3_sq1_10, full3_sq1_11, full3_sq1_12,
+        full3_sq1_13, full3_sq1_14, full3_sq1_15, full3_sq2_0, full3_sq2_1, full3_sq2_2,
+        full3_sq2_3, full3_sq2_4, full3_sq2_5, full3_sq2_6, full3_sq2_7, full3_sq2_8, full3_sq2_9,
+        full3_sq2_10, full3_sq2_11, full3_sq2_12, full3_sq2_13, full3_sq2_14, full3_sq2_15,
+        full3_mix_0, full3_mix_1, full3_mix_2, full3_mix_3, full3_mix_4, full3_mix_5, full3_mix_6,
+        full3_mix_7, full3_mix_8, full3_mix_9, full3_mix_10, full3_mix_11, full3_mix_12,
+        full3_mix_13, full3_mix_14, full3_mix_15, partial0_sq1, partial0_sq2, partial0_mul,
+        partial1_sq1, partial1_sq2, partial1_mul, partial2_sq1, partial2_sq2, partial2_mul,
+        partial3_sq1, partial3_sq2, partial3_mul, partial4_sq1, partial4_sq2, partial4_mul,
+        partial5_sq1, partial5_sq2, partial5_mul, partial6_sq1, partial6_sq2, partial6_mul,
+        partial7_sq1, partial7_sq2, partial7_mul, partial8_sq1, partial8_sq2, partial8_mul,
+        partial9_sq1, partial9_sq2, partial9_mul, partial10_sq1, partial10_sq2, partial10_mul,
+        partial11_sq1, partial11_sq2, partial11_mul, partial12_sq1, partial12_sq2, partial12_mul,
+        partial13_sq1, partial13_sq2, partial13_mul, full4_sq1_0, full4_sq1_1, full4_sq1_2,
+        full4_sq1_3, full4_sq1_4, full4_sq1_5, full4_sq1_6, full4_sq1_7, full4_sq1_8, full4_sq1_9,
+        full4_sq1_10, full4_sq1_11, full4_sq1_12, full4_sq1_13, full4_sq1_14, full4_sq1_15,
+        full4_sq2_0, full4_sq2_1, full4_sq2_2, full4_sq2_3, full4_sq2_4, full4_sq2_5, full4_sq2_6,
+        full4_sq2_7, full4_sq2_8, full4_sq2_9, full4_sq2_10, full4_sq2_11, full4_sq2_12,
+        full4_sq2_13, full4_sq2_14, full4_sq2_15, full4_mix_0, full4_mix_1, full4_mix_2,
+        full4_mix_3, full4_mix_4, full4_mix_5, full4_mix_6, full4_mix_7, full4_mix_8, full4_mix_9,
+        full4_mix_10, full4_mix_11, full4_mix_12, full4_mix_13, full4_mix_14, full4_mix_15,
+        full5_sq1_0, full5_sq1_1, full5_sq1_2, full5_sq1_3, full5_sq1_4, full5_sq1_5, full5_sq1_6,
+        full5_sq1_7, full5_sq1_8, full5_sq1_9, full5_sq1_10, full5_sq1_11, full5_sq1_12,
+        full5_sq1_13, full5_sq1_14, full5_sq1_15, full5_sq2_0, full5_sq2_1, full5_sq2_2,
+        full5_sq2_3, full5_sq2_4, full5_sq2_5, full5_sq2_6, full5_sq2_7, full5_sq2_8, full5_sq2_9,
+        full5_sq2_10, full5_sq2_11, full5_sq2_12, full5_sq2_13, full5_sq2_14, full5_sq2_15,
+        full5_mix_0, full5_mix_1, full5_mix_2, full5_mix_3, full5_mix_4, full5_mix_5, full5_mix_6,
+        full5_mix_7, full5_mix_8, full5_mix_9, full5_mix_10, full5_mix_11, full5_mix_12,
+        full5_mix_13, full5_mix_14, full5_mix_15, full6_sq1_0, full6_sq1_1, full6_sq1_2,
+        full6_sq1_3, full6_sq1_4, full6_sq1_5, full6_sq1_6, full6_sq1_7, full6_sq1_8, full6_sq1_9,
+        full6_sq1_10, full6_sq1_11, full6_sq1_12, full6_sq1_13, full6_sq1_14, full6_sq1_15,
+        full6_sq2_0, full6_sq2_1, full6_sq2_2, full6_sq2_3, full6_sq2_4, full6_sq2_5, full6_sq2_6,
+        full6_sq2_7, full6_sq2_8, full6_sq2_9, full6_sq2_10, full6_sq2_11, full6_sq2_12,
+        full6_sq2_13, full6_sq2_14, full6_sq2_15, full6_mix_0, full6_mix_1, full6_mix_2,
+        full6_mix_3, full6_mix_4, full6_mix_5, full6_mix_6, full6_mix_7, full6_mix_8, full6_mix_9,
+        full6_mix_10, full6_mix_11, full6_mix_12, full6_mix_13, full6_mix_14, full6_mix_15,
+        full7_sq1_0, full7_sq1_1, full7_sq1_2, full7_sq1_3, full7_sq1_4, full7_sq1_5, full7_sq1_6,
+        full7_sq1_7, full7_sq1_8, full7_sq1_9, full7_sq1_10, full7_sq1_11, full7_sq1_12,
+        full7_sq1_13, full7_sq1_14, full7_sq1_15, full7_sq2_0, full7_sq2_1, full7_sq2_2,
+        full7_sq2_3, full7_sq2_4, full7_sq2_5, full7_sq2_6, full7_sq2_7, full7_sq2_8, full7_sq2_9,
+        full7_sq2_10, full7_sq2_11, full7_sq2_12, full7_sq2_13, full7_sq2_14, full7_sq2_15,
+        full7_mix_0, full7_mix_1, full7_mix_2, full7_mix_3, full7_mix_4, full7_mix_5, full7_mix_6,
+        full7_mix_7, full7_mix_8, full7_mix_9, full7_mix_10, full7_mix_11, full7_mix_12,
+        full7_mix_13, full7_mix_14, full7_mix_15,
+    },
 }
 
 // =============================================================================
@@ -304,6 +407,454 @@ impl AccessTable {
     }
 }
 
+impl Poseidon2Table {
+    pub fn push_row(&mut self, row: &[u32; POSEIDON2_TRACE_COLUMNS]) {
+        self.enabler.push(row[0]);
+        self.state0.push(row[1]);
+        self.state1.push(row[2]);
+        self.state2.push(row[3]);
+        self.state3.push(row[4]);
+        self.state4.push(row[5]);
+        self.state5.push(row[6]);
+        self.state6.push(row[7]);
+        self.state7.push(row[8]);
+        self.state8.push(row[9]);
+        self.state9.push(row[10]);
+        self.state10.push(row[11]);
+        self.state11.push(row[12]);
+        self.state12.push(row[13]);
+        self.state13.push(row[14]);
+        self.state14.push(row[15]);
+        self.state15.push(row[16]);
+        self.full0_sq1_0.push(row[17]);
+        self.full0_sq1_1.push(row[18]);
+        self.full0_sq1_2.push(row[19]);
+        self.full0_sq1_3.push(row[20]);
+        self.full0_sq1_4.push(row[21]);
+        self.full0_sq1_5.push(row[22]);
+        self.full0_sq1_6.push(row[23]);
+        self.full0_sq1_7.push(row[24]);
+        self.full0_sq1_8.push(row[25]);
+        self.full0_sq1_9.push(row[26]);
+        self.full0_sq1_10.push(row[27]);
+        self.full0_sq1_11.push(row[28]);
+        self.full0_sq1_12.push(row[29]);
+        self.full0_sq1_13.push(row[30]);
+        self.full0_sq1_14.push(row[31]);
+        self.full0_sq1_15.push(row[32]);
+        self.full0_sq2_0.push(row[33]);
+        self.full0_sq2_1.push(row[34]);
+        self.full0_sq2_2.push(row[35]);
+        self.full0_sq2_3.push(row[36]);
+        self.full0_sq2_4.push(row[37]);
+        self.full0_sq2_5.push(row[38]);
+        self.full0_sq2_6.push(row[39]);
+        self.full0_sq2_7.push(row[40]);
+        self.full0_sq2_8.push(row[41]);
+        self.full0_sq2_9.push(row[42]);
+        self.full0_sq2_10.push(row[43]);
+        self.full0_sq2_11.push(row[44]);
+        self.full0_sq2_12.push(row[45]);
+        self.full0_sq2_13.push(row[46]);
+        self.full0_sq2_14.push(row[47]);
+        self.full0_sq2_15.push(row[48]);
+        self.full0_mix_0.push(row[49]);
+        self.full0_mix_1.push(row[50]);
+        self.full0_mix_2.push(row[51]);
+        self.full0_mix_3.push(row[52]);
+        self.full0_mix_4.push(row[53]);
+        self.full0_mix_5.push(row[54]);
+        self.full0_mix_6.push(row[55]);
+        self.full0_mix_7.push(row[56]);
+        self.full0_mix_8.push(row[57]);
+        self.full0_mix_9.push(row[58]);
+        self.full0_mix_10.push(row[59]);
+        self.full0_mix_11.push(row[60]);
+        self.full0_mix_12.push(row[61]);
+        self.full0_mix_13.push(row[62]);
+        self.full0_mix_14.push(row[63]);
+        self.full0_mix_15.push(row[64]);
+        self.full1_sq1_0.push(row[65]);
+        self.full1_sq1_1.push(row[66]);
+        self.full1_sq1_2.push(row[67]);
+        self.full1_sq1_3.push(row[68]);
+        self.full1_sq1_4.push(row[69]);
+        self.full1_sq1_5.push(row[70]);
+        self.full1_sq1_6.push(row[71]);
+        self.full1_sq1_7.push(row[72]);
+        self.full1_sq1_8.push(row[73]);
+        self.full1_sq1_9.push(row[74]);
+        self.full1_sq1_10.push(row[75]);
+        self.full1_sq1_11.push(row[76]);
+        self.full1_sq1_12.push(row[77]);
+        self.full1_sq1_13.push(row[78]);
+        self.full1_sq1_14.push(row[79]);
+        self.full1_sq1_15.push(row[80]);
+        self.full1_sq2_0.push(row[81]);
+        self.full1_sq2_1.push(row[82]);
+        self.full1_sq2_2.push(row[83]);
+        self.full1_sq2_3.push(row[84]);
+        self.full1_sq2_4.push(row[85]);
+        self.full1_sq2_5.push(row[86]);
+        self.full1_sq2_6.push(row[87]);
+        self.full1_sq2_7.push(row[88]);
+        self.full1_sq2_8.push(row[89]);
+        self.full1_sq2_9.push(row[90]);
+        self.full1_sq2_10.push(row[91]);
+        self.full1_sq2_11.push(row[92]);
+        self.full1_sq2_12.push(row[93]);
+        self.full1_sq2_13.push(row[94]);
+        self.full1_sq2_14.push(row[95]);
+        self.full1_sq2_15.push(row[96]);
+        self.full1_mix_0.push(row[97]);
+        self.full1_mix_1.push(row[98]);
+        self.full1_mix_2.push(row[99]);
+        self.full1_mix_3.push(row[100]);
+        self.full1_mix_4.push(row[101]);
+        self.full1_mix_5.push(row[102]);
+        self.full1_mix_6.push(row[103]);
+        self.full1_mix_7.push(row[104]);
+        self.full1_mix_8.push(row[105]);
+        self.full1_mix_9.push(row[106]);
+        self.full1_mix_10.push(row[107]);
+        self.full1_mix_11.push(row[108]);
+        self.full1_mix_12.push(row[109]);
+        self.full1_mix_13.push(row[110]);
+        self.full1_mix_14.push(row[111]);
+        self.full1_mix_15.push(row[112]);
+        self.full2_sq1_0.push(row[113]);
+        self.full2_sq1_1.push(row[114]);
+        self.full2_sq1_2.push(row[115]);
+        self.full2_sq1_3.push(row[116]);
+        self.full2_sq1_4.push(row[117]);
+        self.full2_sq1_5.push(row[118]);
+        self.full2_sq1_6.push(row[119]);
+        self.full2_sq1_7.push(row[120]);
+        self.full2_sq1_8.push(row[121]);
+        self.full2_sq1_9.push(row[122]);
+        self.full2_sq1_10.push(row[123]);
+        self.full2_sq1_11.push(row[124]);
+        self.full2_sq1_12.push(row[125]);
+        self.full2_sq1_13.push(row[126]);
+        self.full2_sq1_14.push(row[127]);
+        self.full2_sq1_15.push(row[128]);
+        self.full2_sq2_0.push(row[129]);
+        self.full2_sq2_1.push(row[130]);
+        self.full2_sq2_2.push(row[131]);
+        self.full2_sq2_3.push(row[132]);
+        self.full2_sq2_4.push(row[133]);
+        self.full2_sq2_5.push(row[134]);
+        self.full2_sq2_6.push(row[135]);
+        self.full2_sq2_7.push(row[136]);
+        self.full2_sq2_8.push(row[137]);
+        self.full2_sq2_9.push(row[138]);
+        self.full2_sq2_10.push(row[139]);
+        self.full2_sq2_11.push(row[140]);
+        self.full2_sq2_12.push(row[141]);
+        self.full2_sq2_13.push(row[142]);
+        self.full2_sq2_14.push(row[143]);
+        self.full2_sq2_15.push(row[144]);
+        self.full2_mix_0.push(row[145]);
+        self.full2_mix_1.push(row[146]);
+        self.full2_mix_2.push(row[147]);
+        self.full2_mix_3.push(row[148]);
+        self.full2_mix_4.push(row[149]);
+        self.full2_mix_5.push(row[150]);
+        self.full2_mix_6.push(row[151]);
+        self.full2_mix_7.push(row[152]);
+        self.full2_mix_8.push(row[153]);
+        self.full2_mix_9.push(row[154]);
+        self.full2_mix_10.push(row[155]);
+        self.full2_mix_11.push(row[156]);
+        self.full2_mix_12.push(row[157]);
+        self.full2_mix_13.push(row[158]);
+        self.full2_mix_14.push(row[159]);
+        self.full2_mix_15.push(row[160]);
+        self.full3_sq1_0.push(row[161]);
+        self.full3_sq1_1.push(row[162]);
+        self.full3_sq1_2.push(row[163]);
+        self.full3_sq1_3.push(row[164]);
+        self.full3_sq1_4.push(row[165]);
+        self.full3_sq1_5.push(row[166]);
+        self.full3_sq1_6.push(row[167]);
+        self.full3_sq1_7.push(row[168]);
+        self.full3_sq1_8.push(row[169]);
+        self.full3_sq1_9.push(row[170]);
+        self.full3_sq1_10.push(row[171]);
+        self.full3_sq1_11.push(row[172]);
+        self.full3_sq1_12.push(row[173]);
+        self.full3_sq1_13.push(row[174]);
+        self.full3_sq1_14.push(row[175]);
+        self.full3_sq1_15.push(row[176]);
+        self.full3_sq2_0.push(row[177]);
+        self.full3_sq2_1.push(row[178]);
+        self.full3_sq2_2.push(row[179]);
+        self.full3_sq2_3.push(row[180]);
+        self.full3_sq2_4.push(row[181]);
+        self.full3_sq2_5.push(row[182]);
+        self.full3_sq2_6.push(row[183]);
+        self.full3_sq2_7.push(row[184]);
+        self.full3_sq2_8.push(row[185]);
+        self.full3_sq2_9.push(row[186]);
+        self.full3_sq2_10.push(row[187]);
+        self.full3_sq2_11.push(row[188]);
+        self.full3_sq2_12.push(row[189]);
+        self.full3_sq2_13.push(row[190]);
+        self.full3_sq2_14.push(row[191]);
+        self.full3_sq2_15.push(row[192]);
+        self.full3_mix_0.push(row[193]);
+        self.full3_mix_1.push(row[194]);
+        self.full3_mix_2.push(row[195]);
+        self.full3_mix_3.push(row[196]);
+        self.full3_mix_4.push(row[197]);
+        self.full3_mix_5.push(row[198]);
+        self.full3_mix_6.push(row[199]);
+        self.full3_mix_7.push(row[200]);
+        self.full3_mix_8.push(row[201]);
+        self.full3_mix_9.push(row[202]);
+        self.full3_mix_10.push(row[203]);
+        self.full3_mix_11.push(row[204]);
+        self.full3_mix_12.push(row[205]);
+        self.full3_mix_13.push(row[206]);
+        self.full3_mix_14.push(row[207]);
+        self.full3_mix_15.push(row[208]);
+        self.partial0_sq1.push(row[209]);
+        self.partial0_sq2.push(row[210]);
+        self.partial0_mul.push(row[211]);
+        self.partial1_sq1.push(row[212]);
+        self.partial1_sq2.push(row[213]);
+        self.partial1_mul.push(row[214]);
+        self.partial2_sq1.push(row[215]);
+        self.partial2_sq2.push(row[216]);
+        self.partial2_mul.push(row[217]);
+        self.partial3_sq1.push(row[218]);
+        self.partial3_sq2.push(row[219]);
+        self.partial3_mul.push(row[220]);
+        self.partial4_sq1.push(row[221]);
+        self.partial4_sq2.push(row[222]);
+        self.partial4_mul.push(row[223]);
+        self.partial5_sq1.push(row[224]);
+        self.partial5_sq2.push(row[225]);
+        self.partial5_mul.push(row[226]);
+        self.partial6_sq1.push(row[227]);
+        self.partial6_sq2.push(row[228]);
+        self.partial6_mul.push(row[229]);
+        self.partial7_sq1.push(row[230]);
+        self.partial7_sq2.push(row[231]);
+        self.partial7_mul.push(row[232]);
+        self.partial8_sq1.push(row[233]);
+        self.partial8_sq2.push(row[234]);
+        self.partial8_mul.push(row[235]);
+        self.partial9_sq1.push(row[236]);
+        self.partial9_sq2.push(row[237]);
+        self.partial9_mul.push(row[238]);
+        self.partial10_sq1.push(row[239]);
+        self.partial10_sq2.push(row[240]);
+        self.partial10_mul.push(row[241]);
+        self.partial11_sq1.push(row[242]);
+        self.partial11_sq2.push(row[243]);
+        self.partial11_mul.push(row[244]);
+        self.partial12_sq1.push(row[245]);
+        self.partial12_sq2.push(row[246]);
+        self.partial12_mul.push(row[247]);
+        self.partial13_sq1.push(row[248]);
+        self.partial13_sq2.push(row[249]);
+        self.partial13_mul.push(row[250]);
+        self.full4_sq1_0.push(row[251]);
+        self.full4_sq1_1.push(row[252]);
+        self.full4_sq1_2.push(row[253]);
+        self.full4_sq1_3.push(row[254]);
+        self.full4_sq1_4.push(row[255]);
+        self.full4_sq1_5.push(row[256]);
+        self.full4_sq1_6.push(row[257]);
+        self.full4_sq1_7.push(row[258]);
+        self.full4_sq1_8.push(row[259]);
+        self.full4_sq1_9.push(row[260]);
+        self.full4_sq1_10.push(row[261]);
+        self.full4_sq1_11.push(row[262]);
+        self.full4_sq1_12.push(row[263]);
+        self.full4_sq1_13.push(row[264]);
+        self.full4_sq1_14.push(row[265]);
+        self.full4_sq1_15.push(row[266]);
+        self.full4_sq2_0.push(row[267]);
+        self.full4_sq2_1.push(row[268]);
+        self.full4_sq2_2.push(row[269]);
+        self.full4_sq2_3.push(row[270]);
+        self.full4_sq2_4.push(row[271]);
+        self.full4_sq2_5.push(row[272]);
+        self.full4_sq2_6.push(row[273]);
+        self.full4_sq2_7.push(row[274]);
+        self.full4_sq2_8.push(row[275]);
+        self.full4_sq2_9.push(row[276]);
+        self.full4_sq2_10.push(row[277]);
+        self.full4_sq2_11.push(row[278]);
+        self.full4_sq2_12.push(row[279]);
+        self.full4_sq2_13.push(row[280]);
+        self.full4_sq2_14.push(row[281]);
+        self.full4_sq2_15.push(row[282]);
+        self.full4_mix_0.push(row[283]);
+        self.full4_mix_1.push(row[284]);
+        self.full4_mix_2.push(row[285]);
+        self.full4_mix_3.push(row[286]);
+        self.full4_mix_4.push(row[287]);
+        self.full4_mix_5.push(row[288]);
+        self.full4_mix_6.push(row[289]);
+        self.full4_mix_7.push(row[290]);
+        self.full4_mix_8.push(row[291]);
+        self.full4_mix_9.push(row[292]);
+        self.full4_mix_10.push(row[293]);
+        self.full4_mix_11.push(row[294]);
+        self.full4_mix_12.push(row[295]);
+        self.full4_mix_13.push(row[296]);
+        self.full4_mix_14.push(row[297]);
+        self.full4_mix_15.push(row[298]);
+        self.full5_sq1_0.push(row[299]);
+        self.full5_sq1_1.push(row[300]);
+        self.full5_sq1_2.push(row[301]);
+        self.full5_sq1_3.push(row[302]);
+        self.full5_sq1_4.push(row[303]);
+        self.full5_sq1_5.push(row[304]);
+        self.full5_sq1_6.push(row[305]);
+        self.full5_sq1_7.push(row[306]);
+        self.full5_sq1_8.push(row[307]);
+        self.full5_sq1_9.push(row[308]);
+        self.full5_sq1_10.push(row[309]);
+        self.full5_sq1_11.push(row[310]);
+        self.full5_sq1_12.push(row[311]);
+        self.full5_sq1_13.push(row[312]);
+        self.full5_sq1_14.push(row[313]);
+        self.full5_sq1_15.push(row[314]);
+        self.full5_sq2_0.push(row[315]);
+        self.full5_sq2_1.push(row[316]);
+        self.full5_sq2_2.push(row[317]);
+        self.full5_sq2_3.push(row[318]);
+        self.full5_sq2_4.push(row[319]);
+        self.full5_sq2_5.push(row[320]);
+        self.full5_sq2_6.push(row[321]);
+        self.full5_sq2_7.push(row[322]);
+        self.full5_sq2_8.push(row[323]);
+        self.full5_sq2_9.push(row[324]);
+        self.full5_sq2_10.push(row[325]);
+        self.full5_sq2_11.push(row[326]);
+        self.full5_sq2_12.push(row[327]);
+        self.full5_sq2_13.push(row[328]);
+        self.full5_sq2_14.push(row[329]);
+        self.full5_sq2_15.push(row[330]);
+        self.full5_mix_0.push(row[331]);
+        self.full5_mix_1.push(row[332]);
+        self.full5_mix_2.push(row[333]);
+        self.full5_mix_3.push(row[334]);
+        self.full5_mix_4.push(row[335]);
+        self.full5_mix_5.push(row[336]);
+        self.full5_mix_6.push(row[337]);
+        self.full5_mix_7.push(row[338]);
+        self.full5_mix_8.push(row[339]);
+        self.full5_mix_9.push(row[340]);
+        self.full5_mix_10.push(row[341]);
+        self.full5_mix_11.push(row[342]);
+        self.full5_mix_12.push(row[343]);
+        self.full5_mix_13.push(row[344]);
+        self.full5_mix_14.push(row[345]);
+        self.full5_mix_15.push(row[346]);
+        self.full6_sq1_0.push(row[347]);
+        self.full6_sq1_1.push(row[348]);
+        self.full6_sq1_2.push(row[349]);
+        self.full6_sq1_3.push(row[350]);
+        self.full6_sq1_4.push(row[351]);
+        self.full6_sq1_5.push(row[352]);
+        self.full6_sq1_6.push(row[353]);
+        self.full6_sq1_7.push(row[354]);
+        self.full6_sq1_8.push(row[355]);
+        self.full6_sq1_9.push(row[356]);
+        self.full6_sq1_10.push(row[357]);
+        self.full6_sq1_11.push(row[358]);
+        self.full6_sq1_12.push(row[359]);
+        self.full6_sq1_13.push(row[360]);
+        self.full6_sq1_14.push(row[361]);
+        self.full6_sq1_15.push(row[362]);
+        self.full6_sq2_0.push(row[363]);
+        self.full6_sq2_1.push(row[364]);
+        self.full6_sq2_2.push(row[365]);
+        self.full6_sq2_3.push(row[366]);
+        self.full6_sq2_4.push(row[367]);
+        self.full6_sq2_5.push(row[368]);
+        self.full6_sq2_6.push(row[369]);
+        self.full6_sq2_7.push(row[370]);
+        self.full6_sq2_8.push(row[371]);
+        self.full6_sq2_9.push(row[372]);
+        self.full6_sq2_10.push(row[373]);
+        self.full6_sq2_11.push(row[374]);
+        self.full6_sq2_12.push(row[375]);
+        self.full6_sq2_13.push(row[376]);
+        self.full6_sq2_14.push(row[377]);
+        self.full6_sq2_15.push(row[378]);
+        self.full6_mix_0.push(row[379]);
+        self.full6_mix_1.push(row[380]);
+        self.full6_mix_2.push(row[381]);
+        self.full6_mix_3.push(row[382]);
+        self.full6_mix_4.push(row[383]);
+        self.full6_mix_5.push(row[384]);
+        self.full6_mix_6.push(row[385]);
+        self.full6_mix_7.push(row[386]);
+        self.full6_mix_8.push(row[387]);
+        self.full6_mix_9.push(row[388]);
+        self.full6_mix_10.push(row[389]);
+        self.full6_mix_11.push(row[390]);
+        self.full6_mix_12.push(row[391]);
+        self.full6_mix_13.push(row[392]);
+        self.full6_mix_14.push(row[393]);
+        self.full6_mix_15.push(row[394]);
+        self.full7_sq1_0.push(row[395]);
+        self.full7_sq1_1.push(row[396]);
+        self.full7_sq1_2.push(row[397]);
+        self.full7_sq1_3.push(row[398]);
+        self.full7_sq1_4.push(row[399]);
+        self.full7_sq1_5.push(row[400]);
+        self.full7_sq1_6.push(row[401]);
+        self.full7_sq1_7.push(row[402]);
+        self.full7_sq1_8.push(row[403]);
+        self.full7_sq1_9.push(row[404]);
+        self.full7_sq1_10.push(row[405]);
+        self.full7_sq1_11.push(row[406]);
+        self.full7_sq1_12.push(row[407]);
+        self.full7_sq1_13.push(row[408]);
+        self.full7_sq1_14.push(row[409]);
+        self.full7_sq1_15.push(row[410]);
+        self.full7_sq2_0.push(row[411]);
+        self.full7_sq2_1.push(row[412]);
+        self.full7_sq2_2.push(row[413]);
+        self.full7_sq2_3.push(row[414]);
+        self.full7_sq2_4.push(row[415]);
+        self.full7_sq2_5.push(row[416]);
+        self.full7_sq2_6.push(row[417]);
+        self.full7_sq2_7.push(row[418]);
+        self.full7_sq2_8.push(row[419]);
+        self.full7_sq2_9.push(row[420]);
+        self.full7_sq2_10.push(row[421]);
+        self.full7_sq2_11.push(row[422]);
+        self.full7_sq2_12.push(row[423]);
+        self.full7_sq2_13.push(row[424]);
+        self.full7_sq2_14.push(row[425]);
+        self.full7_sq2_15.push(row[426]);
+        self.full7_mix_0.push(row[427]);
+        self.full7_mix_1.push(row[428]);
+        self.full7_mix_2.push(row[429]);
+        self.full7_mix_3.push(row[430]);
+        self.full7_mix_4.push(row[431]);
+        self.full7_mix_5.push(row[432]);
+        self.full7_mix_6.push(row[433]);
+        self.full7_mix_7.push(row[434]);
+        self.full7_mix_8.push(row[435]);
+        self.full7_mix_9.push(row[436]);
+        self.full7_mix_10.push(row[437]);
+        self.full7_mix_11.push(row[438]);
+        self.full7_mix_12.push(row[439]);
+        self.full7_mix_13.push(row[440]);
+        self.full7_mix_14.push(row[441]);
+        self.full7_mix_15.push(row[442]);
+    }
+}
+
 impl Tracer {
     /// Generate and store intermediate accesses for clock catch-up.
     fn fill_gap(
@@ -371,6 +922,8 @@ impl Tracer {
         // Always use 4-byte aligned address
         let aligned_addr = addr & !3;
 
+        self.mem_initial.entry(aligned_addr).or_insert(prev);
+
         let clk_prev = self.mem_clk.get(&aligned_addr).copied().unwrap_or(0);
 
         // Generate intermediate catch-up accesses and get final clk_prev
@@ -394,6 +947,10 @@ impl Tracer {
 
         final_access
     }
+
+    pub fn trace_instr_access(&mut self, pc: u32) {
+        *self.program_reads.entry(pc).or_insert(0) += 1;
+    }
 }
 
 /// Helper enum for gap-filling table selection.
@@ -406,6 +963,9 @@ enum GapTable {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
+    use crate::commitment::RW_MEMORY_BASE;
+
+    const MEM_ADDR: u32 = RW_MEMORY_BASE + 0x100;
 
     impl AccessTable {
         /// Returns an iterator over Access values (for backward compatibility).
@@ -471,6 +1031,8 @@ mod tests {
         assert_eq!(tracer.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
         assert_eq!(tracer.reg_clk, [0; 32]);
         assert!(tracer.mem_clk.is_empty());
+        assert!(tracer.mem_initial.is_empty());
+        assert!(tracer.program_reads.is_empty());
     }
 
     #[test]
@@ -489,9 +1051,9 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        let access = tracer.trace_mem_access(100, 0x42, 0x42);
+        let access = tracer.trace_mem_access(MEM_ADDR, 0x42, 0x42);
 
-        assert_eq!(access.addr, 100);
+        assert_eq!(access.addr, MEM_ADDR);
         assert_eq!(access.prev, 0x42);
         assert_eq!(access.next, 0x42);
         assert_eq!(access.clk_prev, 0);
@@ -504,10 +1066,10 @@ mod tests {
         let mut tracer = Tracer::default();
 
         tracer.clk = 1;
-        tracer.trace_mem_access(100, 0x11, 0x11);
+        tracer.trace_mem_access(MEM_ADDR, 0x11, 0x11);
 
         tracer.clk = 2;
-        let access = tracer.trace_mem_access(100, 0x11, 0x22);
+        let access = tracer.trace_mem_access(MEM_ADDR, 0x11, 0x22);
 
         assert_eq!(access.clk_prev, 1);
         // Note: access.clk is no longer stored; current clk is tracer.clk=2
@@ -521,10 +1083,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
         tracer.clk = 0;
-        tracer.trace_mem_access(100, 0x42, 0x42);
+        tracer.trace_mem_access(MEM_ADDR, 0x42, 0x42);
 
         tracer.clk = 350;
-        let access = tracer.trace_mem_access(100, 0x42, 0x42);
+        let access = tracer.trace_mem_access(MEM_ADDR, 0x42, 0x42);
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
@@ -551,10 +1113,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
         tracer.clk = 0;
-        tracer.trace_mem_access(100, 0, 0);
+        tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         tracer.clk = 100;
-        let access = tracer.trace_mem_access(100, 0, 0);
+        let access = tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // Exactly at max_clock_diff - no intermediate needed
         assert!(tracer.mem_clk_update.is_empty());
@@ -567,10 +1129,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(50);
 
         tracer.clk = 0;
-        tracer.trace_mem_access(100, 0xAB, 0xAB);
+        tracer.trace_mem_access(MEM_ADDR, 0xAB, 0xAB);
 
         tracer.clk = 200;
-        let access = tracer.trace_mem_access(100, 0xAB, 0xAB);
+        let access = tracer.trace_mem_access(MEM_ADDR, 0xAB, 0xAB);
 
         // All intermediate accesses should preserve the value
         for intermediate in &tracer.mem_clk_update {
@@ -587,9 +1149,9 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        tracer.trace_mem_access(100, 0, 0);
+        tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
-        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&10));
     }
 
     // =========================================================================
@@ -691,10 +1253,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(1);
 
         tracer.clk = 0;
-        tracer.trace_mem_access(100, 0, 0);
+        tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         tracer.clk = 5;
-        let access = tracer.trace_mem_access(100, 0, 0);
+        let access = tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // With max_clock_diff=1, gap of 5 needs 4 intermediates + 1 final
         assert_eq!(tracer.mem_clk_update.len(), 4);
@@ -715,10 +1277,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(u32::MAX);
 
         tracer.clk = 0;
-        tracer.trace_mem_access(100, 0, 0);
+        tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         tracer.clk = u32::MAX - 1;
-        tracer.trace_mem_access(100, 0, 0);
+        tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // No intermediate ever needed
         assert!(tracer.mem_clk_update.is_empty());

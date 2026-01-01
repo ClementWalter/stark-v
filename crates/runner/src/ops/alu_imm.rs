@@ -14,7 +14,7 @@ use crate::{Cpu, DecodedInst};
 // =============================================================================
 
 /// Decode a 12-bit signed immediate into its limbs for AIR columns
-fn decode_imm_limbs(imm: i32) -> (u32, u32, u32) {
+pub(crate) fn decode_imm_limbs(imm: i32) -> (u32, u32, u32) {
     // imm is a 12-bit signed value (-2048 to 2047)
     let imm_unsigned = (imm as u32) & 0xFFF; // 12 bits
     let imm_0 = imm_unsigned & 0xFF; // bits [0:7]

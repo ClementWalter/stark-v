@@ -695,6 +695,10 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
             pub reg_clk: [u32; 32],
             /// Last access clock for each memory address.
             pub mem_clk: rustc_hash::FxHashMap<u32, u32>,
+            /// Value at first access for each memory word (4-byte aligned address).
+            pub mem_initial: rustc_hash::FxHashMap<u32, u32>,
+            /// Program fetch counts per PC.
+            pub program_reads: rustc_hash::FxHashMap<u32, u32>,
 
             /// Intermediate register clock update accesses (gap-filling).
             pub reg_clk_update: AccessTable,
@@ -730,6 +734,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                     .field("max_clock_diff", &self.max_clock_diff)
                     .field("reg_clk", &self.reg_clk)
                     .field("mem_clk", &HexKeyMap(&self.mem_clk))
+                    .field("mem_initial", &HexKeyMap(&self.mem_initial))
+                    .field("program_reads", &HexKeyMap(&self.program_reads))
                     .field("reg_clk_update", &self.reg_clk_update)
                     .field("mem_clk_update", &self.mem_clk_update)
                     #(#debug_table_fields)*
@@ -744,6 +750,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                     max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
                     reg_clk: [0; 32],
                     mem_clk: rustc_hash::FxHashMap::default(),
+                    mem_initial: rustc_hash::FxHashMap::default(),
+                    program_reads: rustc_hash::FxHashMap::default(),
                     reg_clk_update: AccessTable::new(),
                     mem_clk_update: AccessTable::new(),
                     #(#table_inits,)*
@@ -752,6 +760,22 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
         }
 
         impl Tracer {
+            /// Create a new tracer with mem_initial initialized with memory values.
+            pub fn with_memory(memory: &crate::Memory) -> Self {
+                let mem_initial = memory.to_word_fx_hash_map();
+                Self {
+                    clk: 0,
+                    max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
+                    reg_clk: [0; 32],
+                    mem_clk: rustc_hash::FxHashMap::default(),
+                    mem_initial,
+                    program_reads: rustc_hash::FxHashMap::default(),
+                    reg_clk_update: AccessTable::new(),
+                    mem_clk_update: AccessTable::new(),
+                    #(#table_inits,)*
+                }
+            }
+
             /// Create a new tracer with custom max clock diff.
             pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
                 Self {
@@ -770,6 +794,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                     max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
                     reg_clk: [0; 32],
                     mem_clk: rustc_hash::FxHashMap::default(),
+                    mem_initial: rustc_hash::FxHashMap::default(),
+                    program_reads: rustc_hash::FxHashMap::default(),
                     reg_clk_update: AccessTable::new(),
                     mem_clk_update: AccessTable::new(),
                     #(#table_inits_cap,)*

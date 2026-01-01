@@ -1,10 +1,13 @@
 #![feature(allocator_api)]
+mod commitment;
 mod cpu;
 pub mod decode;
 mod elf;
 mod execute;
 mod io;
 mod memory;
+mod poseidon2;
+mod program;
 // trace module must come before ops so trace_op! macro is available
 #[macro_use]
 pub mod trace;
@@ -13,6 +16,7 @@ mod ops;
 use decode::get_or_decode;
 use thiserror::Error;
 
+pub use commitment::CommitmentError;
 pub use cpu::Cpu;
 pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
@@ -31,6 +35,9 @@ pub enum RunError {
 
     #[error("Exceeded maximum cycles ({max})")]
     MaxCyclesExceeded { cycles: u64, max: u64 },
+
+    #[error("Commitment error: {0}")]
+    Commitment(#[from] CommitmentError),
 }
 
 /// Result of a successful program execution.
@@ -70,8 +77,8 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
 
     let mut cpu = Cpu::new(loaded.entry, loaded.sp, loaded.gp);
     let mut mem = loaded.memory;
+    let mut tracer = Tracer::with_memory(&mem);
     let mut cache: InstCache = InstCache::default();
-    let mut tracer = Tracer::default();
 
     loop {
         // Check halt flag before executing next instruction
@@ -82,6 +89,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_data_addr,
                 loaded.output_end_addr,
             );
+            tracer.finalize_commitments(&mem)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
                 final_pc: cpu.pc,
@@ -94,6 +102,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
 
         let inst = get_or_decode(&mut cache, &mem, cpu.pc)
             .ok_or(RunError::InvalidInstruction { pc: cpu.pc })?;
+        tracer.trace_instr_access(cpu.pc);
 
         // Early-exit on explicit self-loop sentinels (e.g., `jal x0, 0` used to halt tests).
         // Avoid tracing this noop instruction so the final trace doesn't contain a bogus row.
@@ -112,6 +121,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_data_addr,
                 loaded.output_end_addr,
             );
+            tracer.finalize_commitments(&mem)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
                 final_pc: cpu.pc,
@@ -133,6 +143,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_data_addr,
                 loaded.output_end_addr,
             );
+            tracer.finalize_commitments(&mem)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
                 final_pc: prev_pc,
