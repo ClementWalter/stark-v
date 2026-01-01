@@ -217,8 +217,8 @@ pub fn register_multiplicities(
     // Register range_check_20 multiplicities
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rs2_clk_prev]);
+        .register_many(&[&clk_minus_rs2_clk_prev]);
 }

@@ -338,12 +338,12 @@ pub fn register_multiplicities(
     // Register all range_check_20 lookups
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
-    counters.range_check_20.register_many([&alignment_check]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
+    counters.range_check_20.register_many(&[&alignment_check]);
     counters
         .range_check_20
-        .register_many([&clk_minus_src_clk_prev]);
+        .register_many(&[&clk_minus_src_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_dst_clk_prev]);
+        .register_many(&[&clk_minus_dst_clk_prev]);
 }

@@ -357,13 +357,13 @@ pub fn register_multiplicities(
     // Register range_check_20 for all three clock diffs
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rs2_clk_prev]);
+        .register_many(&[&clk_minus_rs2_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rd_clk_prev]);
+        .register_many(&[&clk_minus_rd_clk_prev]);
 
     // Register bitwise lookups for xor/or/and operations
     // bitwise_id encoding: xor=1, or=2, and=3
@@ -393,7 +393,7 @@ pub fn register_multiplicities(
                 let rd_limb = (rd >> shift) & 0xFF;
                 counters
                     .bitwise
-                    .register([rs1_limb, rs2_limb, rd_limb, bitwise_id]);
+                    .register(&[rs1_limb, rs2_limb, rd_limb, bitwise_id]);
             }
         }
     }

@@ -328,12 +328,12 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rs2_clk_prev]);
+        .register_many(&[&clk_minus_rs2_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rd_clk_prev]);
-    counters.range_check_20.register_many([&lt_diff_minus_1]);
+        .register_many(&[&clk_minus_rd_clk_prev]);
+    counters.range_check_20.register_many(&[&lt_diff_minus_1]);
 }

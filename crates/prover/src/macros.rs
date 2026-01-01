@@ -176,20 +176,20 @@ macro_rules! relations {
         // ==================== Preprocessed Tables ====================
 
         /// Trait for preprocessed table generation.
-        pub trait PreprocessedTable<const N: usize> {
+        pub trait PreprocessedTable {
             const LOG_SIZE: u32;
-            fn index(values: [u32; N]) -> u32;
+            fn index(values: &[u32]) -> u32;
             fn gen_columns() -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>;
             fn column_ids() -> Vec<PreProcessedColumnId>;
         }
 
         /// Generic counter for tracking multiplicities.
-        pub struct Counter<T: PreprocessedTable<N>, const N: usize> {
+        pub struct Counter<T: PreprocessedTable> {
             counts: AlignedVec<u32>,
             _marker: PhantomData<T>,
         }
 
-        impl<T: PreprocessedTable<N>, const N: usize> Counter<T, N> {
+        impl<T: PreprocessedTable> Counter<T> {
             pub fn new() -> Self {
                 let size = 1 << T::LOG_SIZE;
                 let mut counts = AlignedVec::with_capacity(size);
@@ -201,7 +201,7 @@ macro_rules! relations {
             }
 
             #[inline]
-            pub fn register(&mut self, values: [u32; N]) {
+            pub fn register(&mut self, values: &[u32]) {
                 let idx = T::index(values) as usize;
                 debug_assert!(idx < self.counts.len(), "index {idx} out of bounds");
                 self.counts[idx] += 1;
@@ -210,16 +210,19 @@ macro_rules! relations {
             /// Register many values at once from column slices.
             /// Each row across the columns forms one lookup value.
             ///
-            /// Example for N=1 (range_check_20):
+            /// Example for range_check_20 (1 column):
             /// ```ignore
-            /// counters.range_check_20.register_many([&trace.value]);
+            /// counters.range_check_20.register_many(&[&trace.value]);
             /// ```
-            pub fn register_many(&mut self, columns: [&[u32]; N]) {
+            pub fn register_many(&mut self, columns: &[&[u32]]) {
+                if columns.is_empty() {
+                    return;
+                }
                 let len = columns[0].len();
                 debug_assert!(columns.iter().all(|c| c.len() == len), "column length mismatch");
                 for i in 0..len {
-                    let values: [u32; N] = std::array::from_fn(|j| columns[j][i]);
-                    let idx = T::index(values) as usize;
+                    let values: Vec<u32> = columns.iter().map(|c| c[i]).collect();
+                    let idx = T::index(&values) as usize;
                     debug_assert!(idx < self.counts.len(), "index {idx} out of bounds");
                     self.counts[idx] += 1;
                 }
@@ -247,7 +250,7 @@ macro_rules! relations {
             }
         }
 
-        impl<T: PreprocessedTable<N>, const N: usize> Default for Counter<T, N> {
+        impl<T: PreprocessedTable> Default for Counter<T> {
             fn default() -> Self {
                 Self::new()
             }
@@ -265,14 +268,8 @@ macro_rules! relations {
                 let mut ids = vec![];
 
                 $(
-                    trace.extend(
-                        <$crate::preprocessed::$prep_name::Table<{ $crate::count_idents!($($prep_col),+) }>
-                            as PreprocessedTable<{ $crate::count_idents!($($prep_col),+) }>>::gen_columns()
-                    );
-                    ids.extend(
-                        <$crate::preprocessed::$prep_name::Table<{ $crate::count_idents!($($prep_col),+) }>
-                            as PreprocessedTable<{ $crate::count_idents!($($prep_col),+) }>>::column_ids()
-                    );
+                    trace.extend($crate::preprocessed::$prep_name::Table::gen_columns());
+                    ids.extend($crate::preprocessed::$prep_name::Table::column_ids());
                 )*
 
                 Self { trace, ids }
@@ -289,10 +286,7 @@ macro_rules! relations {
         pub struct Counters {
             $(
                 #[doc = concat!("Counter for ", stringify!($prep_name), ": (", $(stringify!($prep_col), ", ",)+ ")")]
-                pub $prep_name: Counter<
-                    $crate::preprocessed::$prep_name::Table<{ $crate::count_idents!($($prep_col),+) }>,
-                    { $crate::count_idents!($($prep_col),+) }
-                >,
+                pub $prep_name: Counter<$crate::preprocessed::$prep_name::Table>,
             )*
         }
 
@@ -617,40 +611,17 @@ macro_rules! preprocessed_components {
                 //! Tracks how many times each value is used by opcode traces.
                 //! Provides the "preprocessed side" of the LogUp relation.
 
-                pub mod columns {
-                    //! Column definitions for multiplicity component.
-
-                    use stwo_constraint_framework::EvalAtRow;
-
-                    /// Number of trace columns for this component.
-                    pub const N_COLUMNS: usize = 1;
-
-                    /// Column offsets.
-                    pub const MULTIPLICITY: usize = 0;
-
-                    /// Columns for multiplicity tracking.
-                    pub struct Columns<E: EvalAtRow> {
-                        pub multiplicity: E::F,
-                    }
-
-                    impl<E: EvalAtRow> Columns<E> {
-                        pub fn from_eval(eval: &mut E) -> Self {
-                            Self {
-                                multiplicity: eval.next_trace_mask(),
-                            }
-                        }
-                    }
-                }
-
                 pub mod air {
                     //! AIR component for multiplicity.
                     //!
                     //! Provides the preprocessed side of the LogUp relation:
                     //! Σ (multiplicity[i] / (value[i] - z))
 
-                    use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+                    use stwo_constraint_framework::{
+                        EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
+                    };
 
-                    use super::columns::Columns;
+                    use $crate::preprocessed::PreprocessedTable;
                     use $crate::relations::Relations;
 
                     pub type Component = FrameworkComponent<Eval>;
@@ -671,11 +642,27 @@ macro_rules! preprocessed_components {
                         }
 
                         fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-                            let cols = Columns::from_eval(&mut eval);
+                            // Get multiplicity from trace
+                            let multiplicity = eval.next_trace_mask();
 
-                            // TODO: Add LogUp constraint
-                            // For now, dummy constraint (multiplicity - multiplicity = 0)
-                            eval.add_constraint(cols.multiplicity.clone() - cols.multiplicity.clone());
+                            // Get preprocessed column IDs for this table
+                            let column_ids = $crate::preprocessed::$table::Table::column_ids();
+
+                            // Get preprocessed column values
+                            let preprocessed_cols: Vec<E::F> = column_ids
+                                .iter()
+                                .map(|id| eval.get_preprocessed_column(id.clone()))
+                                .collect();
+
+                            // Add to relation with positive multiplicity (emit side)
+                            // Preprocessed tables emit their LogUp contributions
+                            eval.add_to_relation(RelationEntry::new(
+                                &self.relations.$table,
+                                E::EF::from(multiplicity),
+                                &preprocessed_cols,
+                            ));
+
+                            eval.finalize_logup_in_pairs();
 
                             eval
                         }
@@ -690,9 +677,13 @@ macro_rules! preprocessed_components {
                     use stwo::core::fields::m31::BaseField;
                     use stwo::core::fields::qm31::QM31;
                     use stwo::prover::backend::simd::SimdBackend;
+                    use stwo::prover::backend::simd::qm31::PackedQM31;
                     use stwo::prover::poly::BitReversedOrder;
                     use stwo::prover::poly::circle::CircleEvaluation;
+                    use stwo_constraint_framework::LogupTraceGenerator;
+                    use stwo_constraint_framework::Relation;
 
+                    use $crate::preprocessed::PreprocessedTable;
                     use $crate::relations::Relations;
 
                     /// Generate interaction trace for LogUp.
@@ -700,15 +691,48 @@ macro_rules! preprocessed_components {
                     /// Creates LogUp fractions: multiplicity / (value - z)
                     /// where `value` comes from the preprocessed column.
                     pub fn gen_interaction_trace(
-                        _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-                        _relations: &Relations,
+                        trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                        relations: &Relations,
                     ) -> (
                         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
                         QM31,
                     ) {
-                        // TODO: Implement LogUp interaction trace
-                        // For now, return empty (scaffolding)
-                        (vec![], QM31::zero())
+                        if trace.is_empty() {
+                            return (vec![], QM31::zero());
+                        }
+
+                        let log_size = trace[0].domain.log_size();
+                        let mut logup_gen = LogupTraceGenerator::new(log_size);
+
+                        // Get preprocessed columns (constant lookup table values)
+                        let preprocessed_cols = $crate::preprocessed::$table::Table::gen_columns();
+
+                        // Get multiplicity from trace (how many times each value was looked up)
+                        let multiplicity = &trace[0].values.data;
+
+                        // Convert multiplicity to PackedQM31 for write_col!
+                        let multiplicity_qm31: Vec<PackedQM31> = multiplicity
+                            .iter()
+                            .map(|&m| PackedQM31::from(m))
+                            .collect();
+
+                        // Collect preprocessed column data slices for combine!
+                        let col_data: Vec<&[stwo::prover::backend::simd::m31::PackedM31]> =
+                            preprocessed_cols.iter().map(|c| c.values.data.as_slice()).collect();
+
+                        // Compute denominator by combining preprocessed values with relation
+                        let simd_size = col_data[0].len();
+                        let mut denom: Vec<PackedQM31> = Vec::with_capacity(simd_size);
+                        for row in 0..simd_size {
+                            let packed_m31_values: Vec<stwo::prover::backend::simd::m31::PackedM31> =
+                                col_data.iter().map(|c| c[row]).collect();
+                            denom.push(relations.$table.combine(&packed_m31_values));
+                        }
+
+                        // Write multiplicity / denom fraction
+                        $crate::write_col!(&multiplicity_qm31, &denom, logup_gen);
+
+                        logup_gen.finalize_last()
                     }
                 }
             }
@@ -906,6 +930,7 @@ macro_rules! preprocessed_components {
                 use stwo::core::poly::circle::CanonicCoset;
                 use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
                 use tracing::info;
+                use $crate::preprocessed::PreprocessedTable;
 
                 $(
                     if !traces.$table.is_empty() {
@@ -915,8 +940,12 @@ macro_rules! preprocessed_components {
                         if log_size > 0 {
                             let (interaction_trace, claimed_sum) =
                                 $table::witness::gen_interaction_trace(&traces.$table, relations);
+
+                            // Get preprocessed columns for this table
+                            let preprocessed_cols = $crate::preprocessed::$table::Table::gen_columns();
+
                             let trace_tree = TreeVec::new(vec![
-                                vec![], // preprocessed
+                                preprocessed_cols,
                                 traces.$table.clone(),
                                 interaction_trace,
                             ]);

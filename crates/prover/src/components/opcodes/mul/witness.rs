@@ -320,13 +320,13 @@ pub fn register_multiplicities(
     // Register range_check_20 multiplicities (each call takes one column)
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rs2_clk_prev]);
+        .register_many(&[&clk_minus_rs2_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rd_clk_prev]);
+        .register_many(&[&clk_minus_rd_clk_prev]);
 
     // Compute carries and register range_check_8_8 multiplicities
     // Extract limbs from rs1_next, rs2_next, rd_next
@@ -376,15 +376,15 @@ pub fn register_multiplicities(
             >> 8;
 
         // Register range_check_8_8 for carries
-        counters.range_check_8_8.register([carry_0, carry_1]);
-        counters.range_check_8_8.register([carry_2, carry_3]);
+        counters.range_check_8_8.register(&[carry_0, carry_1]);
+        counters.range_check_8_8.register(&[carry_2, carry_3]);
 
         // Register range_check_8_8 for rd limbs
         counters
             .range_check_8_8
-            .register([rd_limbs[0], rd_limbs[1]]);
+            .register(&[rd_limbs[0], rd_limbs[1]]);
         counters
             .range_check_8_8
-            .register([rd_limbs[2], rd_limbs[3]]);
+            .register(&[rd_limbs[2], rd_limbs[3]]);
     }
 }

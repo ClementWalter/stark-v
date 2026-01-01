@@ -36,8 +36,6 @@
 //! - Pairs where msl = 127 and lsl ∈ [0, 254]: 255 entries
 //! - Entry at index 32767 is a duplicate (0, 0) to exclude (255, 127)
 
-use std::marker::PhantomData;
-
 use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -54,14 +52,13 @@ use crate::preprocessed::PreprocessedTable;
 ///
 /// Enumerates all valid `(lsl, msl)` pairs excluding `(255, 127)` which
 /// would allow the invalid value 2³¹ - 1 (the M31 modulus).
-pub struct Table<const N: usize>(PhantomData<[(); N]>);
+pub struct Table;
 
-impl<const N: usize> PreprocessedTable<N> for Table<N> {
+impl PreprocessedTable for Table {
     const LOG_SIZE: u32 = 15;
 
-    /// Index packs `(lsl, msl)` into 15 bits.
     #[inline]
-    fn index(values: [u32; N]) -> u32 {
+    fn index(values: &[u32]) -> u32 {
         values[0] + (values[1] << 8)
     }
 

@@ -7,8 +7,6 @@
 //!
 //! Total size: `2^20`.
 
-use std::marker::PhantomData;
-
 use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -24,14 +22,13 @@ use crate::preprocessed::PreprocessedTable;
 /// Range check (8, 8, 4) table.
 ///
 /// The table enumerates all tuples in `[0, 2^8) × [0, 2^8) × [0, 2^4)`.
-pub struct Table<const N: usize>(PhantomData<[(); N]>);
+pub struct Table;
 
-impl<const N: usize> PreprocessedTable<N> for Table<N> {
+impl PreprocessedTable for Table {
     const LOG_SIZE: u32 = 20;
 
-    /// Index packs the three limbs into 20 bits.
     #[inline]
-    fn index(values: [u32; N]) -> u32 {
+    fn index(values: &[u32]) -> u32 {
         values[0] + (values[1] << 8) + (values[2] << 16)
     }
 

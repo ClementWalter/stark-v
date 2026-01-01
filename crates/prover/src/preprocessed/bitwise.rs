@@ -10,8 +10,6 @@
 //! Valid rows correspond to ids 0, 1, and 2; id 3 is padded with zero results to reach a `2^18`
 //! domain size (3 * 2^16 meaningful entries).
 
-use std::marker::PhantomData;
-
 use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -28,14 +26,13 @@ use crate::preprocessed::PreprocessedTable;
 ///
 /// Enumerates `(limb_0, limb_1, result, bitwise_id)` tuples where result is derived from the
 /// selected operation. Rows with `bitwise_id = 3` are included only as padding.
-pub struct Table<const N: usize>(PhantomData<[(); N]>);
+pub struct Table;
 
-impl<const N: usize> PreprocessedTable<N> for Table<N> {
+impl PreprocessedTable for Table {
     const LOG_SIZE: u32 = 18;
 
-    /// Index packs `limb_0`, `limb_1`, and `bitwise_id` into 18 bits.
     #[inline]
-    fn index(values: [u32; N]) -> u32 {
+    fn index(values: &[u32]) -> u32 {
         values[0] + (values[1] << 8) + (values[3] << 16)
     }
 

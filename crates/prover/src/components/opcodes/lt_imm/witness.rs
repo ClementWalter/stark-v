@@ -275,15 +275,15 @@ pub fn register_multiplicities(
     // - (diff_val - 1) with multiplicity prefix_sum_final
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rd_clk_prev]);
+        .register_many(&[&clk_minus_rd_clk_prev]);
 
     // Register (diff_val - 1) with variable multiplicity
     for (i, &count) in prefix_sum_final.iter().enumerate() {
         for _ in 0..count {
-            counters.range_check_20.register([diff_val_minus_1[i]]);
+            counters.range_check_20.register(&[diff_val_minus_1[i]]);
         }
     }
 
@@ -302,5 +302,5 @@ pub fn register_multiplicities(
     // Register range_check_8_8_4 multiplicities: (rs1_msl_adjusted, imm_0, 2*imm_1)
     counters
         .range_check_8_8_4
-        .register_many([&rs1_msl_adjusted, &trace.imm_0, &imm_1_times_2]);
+        .register_many(&[&rs1_msl_adjusted, &trace.imm_0, &imm_1_times_2]);
 }

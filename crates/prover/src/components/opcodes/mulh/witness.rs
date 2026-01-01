@@ -393,13 +393,13 @@ pub fn register_multiplicities(
     // Register range_check_20 multiplicities (each call takes one column)
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rs2_clk_prev]);
+        .register_many(&[&clk_minus_rs2_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rd_clk_prev]);
+        .register_many(&[&clk_minus_rd_clk_prev]);
 
     // Constants for sign extension
     const SIGN_EXT: u32 = 0xFF; // 2^8 - 1
@@ -461,17 +461,17 @@ pub fn register_multiplicities(
         }
 
         // Register range_check_8_8 for carries
-        counters.range_check_8_8.register([carry[0], carry[1]]);
-        counters.range_check_8_8.register([carry[2], carry[3]]);
-        counters.range_check_8_8.register([carry[4], carry[5]]);
-        counters.range_check_8_8.register([carry[6], carry[7]]);
+        counters.range_check_8_8.register(&[carry[0], carry[1]]);
+        counters.range_check_8_8.register(&[carry[2], carry[3]]);
+        counters.range_check_8_8.register(&[carry[4], carry[5]]);
+        counters.range_check_8_8.register(&[carry[6], carry[7]]);
 
         // Register range_check_8_8 for rd_low limbs (rd_high_0..3)
-        counters.range_check_8_8.register([rd_full[0], rd_full[1]]);
-        counters.range_check_8_8.register([rd_full[2], rd_full[3]]);
+        counters.range_check_8_8.register(&[rd_full[0], rd_full[1]]);
+        counters.range_check_8_8.register(&[rd_full[2], rd_full[3]]);
 
         // Register range_check_8_8 for rd_high limbs (rd_next_0..3)
-        counters.range_check_8_8.register([rd_full[4], rd_full[5]]);
-        counters.range_check_8_8.register([rd_full[6], rd_full[7]]);
+        counters.range_check_8_8.register(&[rd_full[4], rd_full[5]]);
+        counters.range_check_8_8.register(&[rd_full[6], rd_full[7]]);
     }
 }

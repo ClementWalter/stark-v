@@ -308,7 +308,7 @@ pub fn register_multiplicities(
     let imm_1_times_256: Vec<u32> = trace.imm_1.iter().map(|v| v * 256).collect();
     counters
         .range_check_8_11
-        .register_many([&trace.imm_0[..], &imm_1_times_256]);
+        .register_many(&[&trace.imm_0[..], &imm_1_times_256]);
 
     // Compute clock differences
     let clk_minus_rs1_clk_prev: Vec<u32> = trace
@@ -328,10 +328,10 @@ pub fn register_multiplicities(
     // Register range_check_20 for clock diffs
     counters
         .range_check_20
-        .register_many([&clk_minus_rs1_clk_prev]);
+        .register_many(&[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many([&clk_minus_rd_clk_prev]);
+        .register_many(&[&clk_minus_rd_clk_prev]);
 
     // Constants for sign extension masks
     let sext_mask_1 = (1u32 << 3) * ((1u32 << 5) - 1); // For imm_1 sign extension
@@ -380,7 +380,7 @@ pub fn register_multiplicities(
             let sext_imm_limbs = [sext_imm_0, sext_imm_1, sext_imm_2, sext_imm_3];
 
             for limb_idx in 0..4 {
-                counters.bitwise.register([
+                counters.bitwise.register(&[
                     rs1_limbs[limb_idx],
                     sext_imm_limbs[limb_idx],
                     rd_limbs[limb_idx],
@@ -399,8 +399,8 @@ pub fn register_multiplicities(
 
     counters
         .range_check_8_8
-        .register_many([&rd_next_0, &rd_next_1]);
+        .register_many(&[&rd_next_0, &rd_next_1]);
     counters
         .range_check_8_8
-        .register_many([&rd_next_2, &rd_next_3]);
+        .register_many(&[&rd_next_2, &rd_next_3]);
 }
