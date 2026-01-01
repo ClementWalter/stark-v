@@ -1,4 +1,11 @@
-use crate::ops::utils::M31_P;
+use stwo::core::fields::m31::M31;
+
+// Default Poseidon2 Merkle hashes for leaf depth 21 (index = depth, depth 21 is 0).
+pub const POSEIDON2_DEFAULT_HASHES_DEPTH_21: [u32; 22] = [
+    1217577584, 378597429, 1556938811, 474559429, 423443822, 662201576, 1930942541, 2117464092,
+    770448190, 1902191074, 1556109289, 776362864, 1750512713, 1171333637, 1423473161, 372035035,
+    1457616685, 1303178213, 1563153690, 1383248003, 1183174448, 0,
+];
 
 pub const T: usize = 16;
 const FULL_ROUNDS: usize = 8;
@@ -57,18 +64,17 @@ const INTERNAL_MATRIX: [u32; 16] = [
 
 #[inline]
 fn add_m31(a: u32, b: u32) -> u32 {
-    let sum = a as u64 + b as u64;
-    (sum % M31_P as u64) as u32
+    (M31::from(a) + M31::from(b)).0
 }
 
 #[inline]
 fn mul_m31(a: u32, b: u32) -> u32 {
-    ((a as u64 * b as u64) % M31_P as u64) as u32
+    (M31::from(a) * M31::from(b)).0
 }
 
 #[inline]
 fn square_m31(x: u32) -> u32 {
-    mul_m31(x, x)
+    (M31::from(x) * M31::from(x)).0
 }
 
 #[inline]
@@ -127,60 +133,6 @@ fn apply_internal_round_matrix(state: &mut [u32; 16]) {
     }
 }
 
-pub fn poseidon2_hash(left: u32, right: u32) -> u32 {
-    let mut state = [0u32; T];
-    state[0] = left % M31_P;
-    state[1] = right % M31_P;
-
-    apply_external_round_matrix(&mut state);
-
-    for round in 0..(FULL_ROUNDS / 2) {
-        for i in 0..T {
-            state[i] = add_m31(state[i], EXTERNAL_ROUND_CONSTS[round][i]);
-        }
-        let initial_state = state;
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-        }
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-        }
-        for i in 0..T {
-            state[i] = mul_m31(state[i], initial_state[i]);
-        }
-        apply_external_round_matrix(&mut state);
-    }
-
-    for round in 0..PARTIAL_ROUNDS {
-        state[0] = add_m31(state[0], INTERNAL_ROUND_CONSTS[round]);
-        let initial_state = state[0];
-        state[0] = square_m31(state[0]);
-        state[0] = square_m31(state[0]);
-        state[0] = mul_m31(state[0], initial_state);
-        apply_internal_round_matrix(&mut state);
-    }
-
-    for round in 0..(FULL_ROUNDS / 2) {
-        let rc_round = round + FULL_ROUNDS / 2;
-        for i in 0..T {
-            state[i] = add_m31(state[i], EXTERNAL_ROUND_CONSTS[rc_round][i]);
-        }
-        let initial_state = state;
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-        }
-        for i in 0..T {
-            state[i] = square_m31(state[i]);
-        }
-        for i in 0..T {
-            state[i] = mul_m31(state[i], initial_state[i]);
-        }
-        apply_external_round_matrix(&mut state);
-    }
-
-    state[0]
-}
-
 pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS] {
     let mut row = [0u32; POSEIDON2_TRACE_COLUMNS];
     let mut idx = 0usize;
@@ -189,8 +141,8 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
     idx += 1;
 
     let mut state = [0u32; T];
-    state[0] = left % M31_P;
-    state[1] = right % M31_P;
+    state[0] = M31::from(left).0;
+    state[1] = M31::from(right).0;
 
     for i in 0..T {
         row[idx] = state[i];

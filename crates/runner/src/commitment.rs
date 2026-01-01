@@ -3,7 +3,9 @@ use thiserror::Error;
 
 use crate::Memory;
 use crate::ops::utils::M31_P;
-use crate::poseidon2::{POSEIDON2_TRACE_COLUMNS, T, poseidon2_hash, poseidon2_traced};
+use crate::poseidon2::{
+    POSEIDON2_DEFAULT_HASHES_DEPTH_21, POSEIDON2_TRACE_COLUMNS, T, poseidon2_traced,
+};
 use crate::program::decode_program;
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
 
@@ -51,18 +53,14 @@ pub fn leaf_index(base: u32, addr: u32, limb: u32) -> u32 {
     ((addr - base) / 4) * 4 + limb
 }
 
-fn hash_node(left: u32, right: u32) -> u32 {
-    poseidon2_hash(left, right)
-}
-
-fn default_hashes(leaf_depth: u32) -> Vec<u32> {
-    let mut hashes = vec![0u32; (leaf_depth + 1) as usize];
-    hashes[leaf_depth as usize] = 0;
-    for depth in (0..leaf_depth).rev() {
-        let child = hashes[(depth + 1) as usize];
-        hashes[depth as usize] = hash_node(child, child);
-    }
-    hashes
+fn default_hashes(leaf_depth: u32) -> &'static [u32] {
+    let max_depth = (POSEIDON2_DEFAULT_HASHES_DEPTH_21.len() - 1) as u32;
+    assert!(
+        leaf_depth <= max_depth,
+        "unsupported leaf depth {leaf_depth} (max {max_depth})"
+    );
+    let offset = (max_depth - leaf_depth) as usize;
+    &POSEIDON2_DEFAULT_HASHES_DEPTH_21[offset..]
 }
 
 pub fn build_partial_merkle_tree(
