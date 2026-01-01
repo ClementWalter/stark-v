@@ -360,3 +360,118 @@ pub fn gen_interaction_trace(
 
     logup_gen.finalize_last()
 }
+
+/// Register multiplicities for preprocessed lookups.
+pub fn register_multiplicities(
+    trace: &runner::trace::MulhTable,
+    counters: &mut crate::relations::Counters,
+) {
+    // Compute clock differences for rs1
+    let clk_minus_rs1_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs1_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute clock differences for rs2
+    let clk_minus_rs2_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs2_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute clock differences for rd
+    let clk_minus_rd_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rd_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Register range_check_20 multiplicities (each call takes one column)
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rs1_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rs2_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rd_clk_prev]);
+
+    // Constants for sign extension
+    const SIGN_EXT: u32 = 0xFF; // 2^8 - 1
+
+    // Compute carries and register range_check_8_8 multiplicities
+    let n = trace.clk.len();
+    for i in 0..n {
+        let rs1 = trace.rs1_next[i];
+        let rs2 = trace.rs2_next[i];
+        let rd_low = trace.rd_high_0[i]
+            | (trace.rd_high_1[i] << 8)
+            | (trace.rd_high_2[i] << 16)
+            | (trace.rd_high_3[i] << 24);
+        let rd_high = trace.rd_next[i];
+        let rs1_sign = trace.rs1_sign[i];
+        let rs2_sign = trace.rs2_sign[i];
+
+        // Build extended operands (8 limbs each)
+        // Sign extension for limbs 4-7
+        let mut rs1_ext: [u32; 8] = [rs1_sign * SIGN_EXT; 8];
+        rs1_ext[0] = rs1 & 0xFF;
+        rs1_ext[1] = (rs1 >> 8) & 0xFF;
+        rs1_ext[2] = (rs1 >> 16) & 0xFF;
+        // rs1_ext[3] = rs1_next_3 + rs1_sign * 128
+        rs1_ext[3] = ((rs1 >> 24) & 0x7F) + rs1_sign * 128;
+
+        // Sign extension for limbs 4-7
+        let mut rs2_ext: [u32; 8] = [rs2_sign * SIGN_EXT; 8];
+        rs2_ext[0] = rs2 & 0xFF;
+        rs2_ext[1] = (rs2 >> 8) & 0xFF;
+        rs2_ext[2] = (rs2 >> 16) & 0xFF;
+        // rs2_ext[3] = rs2_next_3 + rs2_sign * 128
+        rs2_ext[3] = ((rs2 >> 24) & 0x7F) + rs2_sign * 128;
+
+        // rd_full[0..4] = rd_high (lower 32 bits of 64-bit result)
+        // rd_full[4..8] = rd_next (upper 32 bits of 64-bit result)
+        let rd_full: [u32; 8] = [
+            rd_low & 0xFF,
+            (rd_low >> 8) & 0xFF,
+            (rd_low >> 16) & 0xFF,
+            (rd_low >> 24) & 0xFF,
+            rd_high & 0xFF,
+            (rd_high >> 8) & 0xFF,
+            (rd_high >> 16) & 0xFF,
+            (rd_high >> 24) & 0xFF,
+        ];
+
+        // Compute carries
+        let mut carry: [u32; 8] = [0; 8];
+        for idx in 0..8 {
+            let prev_carry = if idx == 0 { 0 } else { carry[idx - 1] };
+            let mut limb_sum = prev_carry;
+            for k in 0..=idx.min(7) {
+                if idx - k < 8 {
+                    limb_sum += rs1_ext[k] * rs2_ext[idx - k];
+                }
+            }
+            carry[idx] = limb_sum.wrapping_sub(rd_full[idx]) >> 8;
+        }
+
+        // Register range_check_8_8 for carries
+        counters.range_check_8_8.register(&[carry[0], carry[1]]);
+        counters.range_check_8_8.register(&[carry[2], carry[3]]);
+        counters.range_check_8_8.register(&[carry[4], carry[5]]);
+        counters.range_check_8_8.register(&[carry[6], carry[7]]);
+
+        // Register range_check_8_8 for rd_low limbs (rd_high_0..3)
+        counters.range_check_8_8.register(&[rd_full[0], rd_full[1]]);
+        counters.range_check_8_8.register(&[rd_full[2], rd_full[3]]);
+
+        // Register range_check_8_8 for rd_high limbs (rd_next_0..3)
+        counters.range_check_8_8.register(&[rd_full[4], rd_full[5]]);
+        counters.range_check_8_8.register(&[rd_full[6], rd_full[7]]);
+    }
+}

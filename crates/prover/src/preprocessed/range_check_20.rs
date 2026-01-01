@@ -3,8 +3,6 @@
 //! Single column containing values [0, 1, 2, ..., 2^20 - 1].
 //! Used for range checking clock differences and other bounded values.
 
-use std::marker::PhantomData;
-
 use simd::aligned_vec;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -18,17 +16,13 @@ use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::preprocessed::PreprocessedTable;
 
 /// Range check 20-bit table.
-///
-/// Generic over `N` (column count) - the actual N is determined by the
-/// `preprocessed!` macro declaration.
-pub struct Table<const N: usize>(PhantomData<[(); N]>);
+pub struct Table;
 
-impl<const N: usize> PreprocessedTable<N> for Table<N> {
+impl PreprocessedTable for Table {
     const LOG_SIZE: u32 = 20;
 
-    /// Index is the first value (range check uses single value lookup).
     #[inline]
-    fn index(values: [u32; N]) -> u32 {
+    fn index(values: &[u32]) -> u32 {
         values[0]
     }
 
@@ -36,7 +30,6 @@ impl<const N: usize> PreprocessedTable<N> for Table<N> {
         let domain = CanonicCoset::new(Self::LOG_SIZE).circle_domain();
         let size = 1 << Self::LOG_SIZE;
 
-        // Generate values [0, 1, 2, ..., 2^20 - 1]
         let mut col = aligned_vec![0u32; size];
         for i in 0..size {
             col[i] = i as u32;

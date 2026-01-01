@@ -274,3 +274,91 @@ pub fn gen_interaction_trace(
 
     logup_gen.finalize_last()
 }
+
+/// Register multiplicities for preprocessed lookups.
+pub fn register_multiplicities(
+    trace: &runner::trace::LtRegTable,
+    counters: &mut crate::relations::Counters,
+) {
+    // Compute clock differences for rs1
+    let clk_minus_rs1_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs1_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute clock differences for rs2
+    let clk_minus_rs2_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs2_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute clock differences for rd
+    let clk_minus_rd_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rd_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute diff_val - 1 (used for range check)
+    let diff_val_minus_1: Vec<u32> = trace.diff_val.iter().map(|v| v.wrapping_sub(1)).collect();
+
+    // Compute prefix_sum_final for each row (sum of diff_markers)
+    // Each row contributes prefix_sum_final lookups to range_check_20
+    let prefix_sum_final: Vec<u32> = (0..trace.clk.len())
+        .map(|i| {
+            trace.diff_marker_0[i]
+                + trace.diff_marker_1[i]
+                + trace.diff_marker_2[i]
+                + trace.diff_marker_3[i]
+        })
+        .collect();
+
+    // Register range_check_20 multiplicities:
+    // - clk - rs1_clk_prev (1 per row)
+    // - clk - rs2_clk_prev (1 per row)
+    // - clk - rd_clk_prev (1 per row)
+    // - (diff_val - 1) with multiplicity prefix_sum_final
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rs1_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rs2_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rd_clk_prev]);
+
+    // Register (diff_val - 1) with variable multiplicity
+    for (i, &count) in prefix_sum_final.iter().enumerate() {
+        for _ in 0..count {
+            counters.range_check_20.register(&[diff_val_minus_1[i]]);
+        }
+    }
+
+    // Compute adjusted msl values for range_check_8_8
+    // rs1_msl_adjusted = rs1_msl_felt + opcode_slt_flag * 128
+    // rs2_msl_adjusted = rs2_msl_felt + opcode_slt_flag * 128
+    let rs1_msl_adjusted: Vec<u32> = trace
+        .rs1_msl_felt
+        .iter()
+        .zip(trace.opcode_slt_flag.iter())
+        .map(|(msl, flag)| msl + flag * 128)
+        .collect();
+
+    let rs2_msl_adjusted: Vec<u32> = trace
+        .rs2_msl_felt
+        .iter()
+        .zip(trace.opcode_slt_flag.iter())
+        .map(|(msl, flag)| msl + flag * 128)
+        .collect();
+
+    // Register range_check_8_8 multiplicities: (rs1_msl_adjusted, rs2_msl_adjusted)
+    counters
+        .range_check_8_8
+        .register_many(&[&rs1_msl_adjusted, &rs2_msl_adjusted]);
+}

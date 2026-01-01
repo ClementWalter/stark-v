@@ -533,13 +533,9 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             /// Always produces columns with minimum log_size of 4 (16 rows),
             /// even for empty tables.
             ///
-            /// The `counters` parameter is for preprocessed multiplicity tracking
-            /// (will be populated when LogUp is implemented).
-            ///
             /// Consumes self since the table is no longer needed after trace generation.
-            pub fn into_witness<C>(
+            pub fn into_witness(
                 self,
-                _counters: &mut C,
             ) -> Vec<stwo::prover::poly::circle::CircleEvaluation<
                 stwo::prover::backend::simd::SimdBackend,
                 stwo::core::fields::m31::BaseField,

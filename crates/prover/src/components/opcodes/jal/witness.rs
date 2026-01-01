@@ -152,3 +152,21 @@ pub fn gen_interaction_trace(
 
     logup_gen.finalize_last()
 }
+
+/// Register multiplicities for preprocessed lookups.
+pub fn register_multiplicities(
+    trace: &runner::trace::JalTable,
+    counters: &mut crate::relations::Counters,
+) {
+    // Compute clock differences
+    let clk_minus_rd_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rd_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rd_clk_prev]);
+}

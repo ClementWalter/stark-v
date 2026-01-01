@@ -290,3 +290,60 @@ pub fn gen_interaction_trace(
 
     logup_gen.finalize_last()
 }
+
+/// Register multiplicities for preprocessed lookups.
+/// This function registers all range_check_20 lookups used by load_store.
+pub fn register_multiplicities(
+    trace: &runner::trace::LoadStoreTable,
+    counters: &mut crate::relations::Counters,
+) {
+    // Compute clock differences for rs1
+    let clk_minus_rs1_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.rs1_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute alignment check: ((rs1_next & 0xFF) - shift_amount) / 4 * 2^14
+    // rs1_next_0 is the lowest byte of rs1_next (little-endian)
+    let alignment_check: Vec<u32> = trace
+        .rs1_next
+        .iter()
+        .zip(trace.shift_amount.iter())
+        .map(|(next, shift)| {
+            let rs1_next_0 = next & 0xFF;
+            // (rs1_next_0 - shift_amount) / 4 * 2^14
+            // Note: division by 4 should be exact for valid traces
+            ((rs1_next_0.wrapping_sub(*shift)) / 4) * (1 << 14)
+        })
+        .collect();
+
+    // Compute clock differences for src
+    let clk_minus_src_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.src_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Compute clock differences for dst
+    let clk_minus_dst_clk_prev: Vec<u32> = trace
+        .clk
+        .iter()
+        .zip(trace.dst_clk_prev.iter())
+        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+        .collect();
+
+    // Register all range_check_20 lookups
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_rs1_clk_prev]);
+    counters.range_check_20.register_many(&[&alignment_check]);
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_src_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&[&clk_minus_dst_clk_prev]);
+}
