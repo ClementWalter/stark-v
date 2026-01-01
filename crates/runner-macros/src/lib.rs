@@ -251,17 +251,16 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
     result
 }
 
-/// Generate the to_columns body that splits u32 values into limbs.
+/// Generate the into_columns body that splits u32 values into limbs.
 /// This handles the conversion from the trace table's u32 storage to
-/// the prover's limbed representation. Clones internal data to allow
-/// keeping the table alive for interaction trace generation.
+/// the prover's limbed representation.
 /// Enabler is the first column only if `include_enabler` is true.
-fn generate_to_columns_body(fields: &[Ident], include_enabler: bool) -> proc_macro2::TokenStream {
+fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_macro2::TokenStream {
     let mut column_exprs = Vec::new();
 
     // Enabler is the first column only if no opcode flags are present
     if include_enabler {
-        column_exprs.push(quote! { self.enabler.clone() });
+        column_exprs.push(quote! { self.enabler });
     }
 
     for field in fields {
@@ -272,8 +271,8 @@ fn generate_to_columns_body(fields: &[Ident], include_enabler: bool) -> proc_mac
             let clk_prev = format_ident!("{}_clk_prev", name);
             let next = format_ident!("{}_next", name);
 
-            // addr column (clone)
-            column_exprs.push(quote! { self.#addr.clone() });
+            // addr column
+            column_exprs.push(quote! { self.#addr });
 
             // prev as 4 limbs (little-endian: limb 0 is least significant byte)
             for i in 0u8..4 {
@@ -289,8 +288,8 @@ fn generate_to_columns_body(fields: &[Ident], include_enabler: bool) -> proc_mac
                 });
             }
 
-            // clk_prev column (clone)
-            column_exprs.push(quote! { self.#clk_prev.clone() });
+            // clk_prev column
+            column_exprs.push(quote! { self.#clk_prev });
 
             // next as 4 limbs (little-endian: limb 0 is least significant byte)
             for i in 0u8..4 {
@@ -306,8 +305,8 @@ fn generate_to_columns_body(fields: &[Ident], include_enabler: bool) -> proc_mac
                 });
             }
         } else {
-            // Scalar field (clk, pc) - clone
-            column_exprs.push(quote! { self.#field.clone() });
+            // Scalar field (clk, pc) - return directly
+            column_exprs.push(quote! { self.#field });
         }
     }
 
@@ -395,8 +394,8 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let push_stmts: Vec<_> = opcode.fields.iter().map(generate_push_stmt).collect();
     let debug_fields: Vec<_> = opcode.fields.iter().map(generate_debug_field).collect();
 
-    // Generate to_columns body that splits u32 values into limbs (clones data)
-    let to_columns_body = generate_to_columns_body(&opcode.fields, include_enabler);
+    // Generate into_columns body that splits u32 values into limbs
+    let into_columns_body = generate_into_columns_body(&opcode.fields, include_enabler);
 
     // Get the first field name for len/is_empty when no enabler
     // We need to find the first actual column name after expansion
@@ -522,12 +521,12 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 #(#push_stmts)*
             }
 
-            /// Returns columns as a Vec in canonical order (clones internal data).
+            /// Consumes the table and returns columns as a Vec in canonical order.
             /// Order matches the column struct field order.
             #[doc = #into_columns_doc]
             /// Access fields have prev/next split into 4 u8 limbs (little-endian).
-            pub fn to_columns(&self) -> Vec<simd::AlignedVec<u32>> {
-                #to_columns_body
+            pub fn into_columns(self) -> Vec<simd::AlignedVec<u32>> {
+                #into_columns_body
             }
 
             /// Convert table to trace columns, padding to power of 2.
@@ -553,7 +552,7 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 let len = self.len() as u32;
                 let log_size = len.next_power_of_two().ilog2().max(4);
                 let padded_len = 1 << log_size;
-                let columns = self.to_columns();
+                let columns = self.into_columns();
                 let domain = CanonicCoset::new(log_size).circle_domain();
 
                 columns
