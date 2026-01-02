@@ -56,7 +56,7 @@ pub fn decode_program_word(addr: u32, word: u32) -> Result<[u32; 4], CommitmentE
                 opcode_id,
                 inst.rd as u32,
                 inst.rs1 as u32,
-                imm_to_felt(inst.imm),
+                (inst.imm as u32) & 0xFFF,
             ]
         }
         Opcode::Jalr => [
