@@ -11,7 +11,6 @@
 pub mod macros;
 #[macro_use]
 pub mod logup_macros;
-pub mod commitment;
 pub mod components;
 pub mod preprocessed;
 pub mod prover;

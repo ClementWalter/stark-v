@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::ops::RangeBounds;
 
 use crate::trace::{Access, Tracer};
 
@@ -16,14 +15,10 @@ impl Memory {
         }
     }
 
-    /// Return 4-byte aligned addresses used by the memory within the given range.
+    /// Return byte addresses used by the memory.
     #[inline]
-    pub fn keys<R: RangeBounds<u32>>(&self, range: R) -> impl Iterator<Item = u32> + '_ {
-        MemoryKeys {
-            iter: self.data.range(range),
-            last: 0,
-            has_last: false,
-        }
+    pub fn keys(&self) -> impl Iterator<Item = u32> + '_ {
+        self.data.keys().copied()
     }
 
     /// Read a single byte.
@@ -156,30 +151,6 @@ impl Default for Memory {
     }
 }
 
-struct MemoryKeys<'a> {
-    iter: std::collections::btree_map::Range<'a, u32, u8>,
-    last: u32,
-    has_last: bool,
-}
-
-impl Iterator for MemoryKeys<'_> {
-    type Item = u32;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        for (&addr, _) in self.iter.by_ref() {
-            let aligned = addr & !3;
-            if self.has_last && self.last == aligned {
-                continue;
-            }
-            self.last = aligned;
-            self.has_last = true;
-            return Some(aligned);
-        }
-        None
-    }
-}
-
 impl FromIterator<(u32, u8)> for Memory {
     fn from_iter<I: IntoIterator<Item = (u32, u8)>>(iter: I) -> Self {
         Self {
@@ -192,10 +163,9 @@ impl FromIterator<(u32, u8)> for Memory {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
-    use crate::commitment::RW_MEMORY_BASE;
     use crate::trace::Tracer;
 
-    const MEM_ADDR: u32 = RW_MEMORY_BASE + 0x100;
+    const MEM_ADDR: u32 = 0x2000;
 
     // =========================================================================
     // Basic Operations

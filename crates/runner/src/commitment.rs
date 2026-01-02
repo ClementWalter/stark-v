@@ -9,13 +9,54 @@ use crate::poseidon2::{
 use crate::program::decode_program;
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
 
-pub const RW_MEMORY_BASE: u32 = PROGRAM_BASE + PROGRAM_RANGE_SIZE;
-pub const RW_TREE_LEAVES: u32 = 1 << 21;
-pub const RW_TREE_HEIGHT: u32 = 22;
+pub const MAX_TREE_HEIGHT: u32 = 31;
 
-pub const PROGRAM_BASE: u32 = 0x0000_0400;
-pub const PROGRAM_TREE_HEIGHT: u32 = 21;
-pub const PROGRAM_RANGE_SIZE: u32 = 0x000F_FC00;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MemoryLayout {
+    pub program_base: u32,
+    pub program_end: u32,
+    pub data_base: u32,
+    pub data_end: u32,
+    pub stack_bottom: u32,
+    pub stack_top: u32,
+}
+
+impl MemoryLayout {
+    #[cfg(test)]
+    pub(crate) fn new(
+        program_base: u32,
+        program_end: u32,
+        data_base: u32,
+        data_end: u32,
+        stack_bottom: u32,
+        stack_top: u32,
+    ) -> Self {
+        Self {
+            program_base,
+            program_end,
+            data_base,
+            data_end,
+            stack_bottom,
+            stack_top,
+        }
+    }
+
+    pub(crate) fn from_loaded(loaded: &crate::elf::LoadedElf) -> Self {
+        Self {
+            program_base: loaded.text_base,
+            program_end: loaded.text_end,
+            data_base: loaded.data_base,
+            data_end: loaded.data_end,
+            stack_bottom: loaded.stack_bottom,
+            stack_top: loaded.sp,
+        }
+    }
+
+    pub(crate) fn is_rw_addr(&self, addr: u32) -> bool {
+        (addr >= self.data_base && addr < self.data_end)
+            || (addr >= self.stack_bottom && addr < self.stack_top)
+    }
+}
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum CommitmentError {
@@ -49,25 +90,28 @@ pub struct NodeData {
     pub cur: MerkleValue,
 }
 
-pub fn leaf_index(base: u32, addr: u32, limb: u32) -> u32 {
-    ((addr - base) / 4) * 4 + limb
-}
-
-fn default_hashes(leaf_depth: u32) -> &'static [u32] {
+fn default_hashes(leaf_depth: u32) -> Vec<u32> {
     let max_depth = (POSEIDON2_DEFAULT_HASHES_DEPTH_21.len() - 1) as u32;
-    assert!(
-        leaf_depth <= max_depth,
-        "unsupported leaf depth {leaf_depth} (max {max_depth})"
-    );
-    let offset = (max_depth - leaf_depth) as usize;
-    &POSEIDON2_DEFAULT_HASHES_DEPTH_21[offset..]
+    if leaf_depth <= max_depth {
+        let offset = (max_depth - leaf_depth) as usize;
+        return POSEIDON2_DEFAULT_HASHES_DEPTH_21[offset..].to_vec();
+    }
+
+    let mut defaults = vec![0u32; (leaf_depth as usize) + 1];
+    defaults[leaf_depth as usize] = 0;
+    for depth in (0..leaf_depth).rev() {
+        let child = defaults[(depth + 1) as usize];
+        let row = poseidon2_traced(child, child);
+        defaults[depth as usize] = row[POSEIDON2_TRACE_COLUMNS - T];
+    }
+    defaults
 }
 
 pub fn build_partial_merkle_tree(
     leaves: &FxHashMap<u32, MerkleValue>,
-    leaf_depth: u32,
     poseidon2: &mut Poseidon2Table,
 ) -> (Vec<NodeData>, u32) {
+    let leaf_depth = MAX_TREE_HEIGHT.saturating_sub(1);
     if leaves.is_empty() {
         let root = default_hashes(leaf_depth)[0];
         return (vec![], root);
@@ -131,16 +175,11 @@ pub fn build_partial_merkle_tree(
 }
 
 impl Tracer {
-    pub fn finalize_commitments(&mut self, memory: &Memory) -> Result<(), CommitmentError> {
-        let rw_range = RW_MEMORY_BASE..RW_MEMORY_BASE + RW_TREE_LEAVES;
-
-        // Sanity check: all memory addresses should be in the RW memory range
-        for &addr in self.mem_clk.keys() {
-            if !rw_range.contains(&addr) {
-                return Err(CommitmentError::RwAddressOutOfRange { addr });
-            }
-        }
-
+    pub(crate) fn finalize_commitments(
+        &mut self,
+        memory: &Memory,
+        layout: &MemoryLayout,
+    ) -> Result<(), CommitmentError> {
         // Create trace tables
         self.program = ProgramTable::new();
         self.memory = MemoryTable::new();
@@ -148,12 +187,12 @@ impl Tracer {
         self.poseidon2 = Poseidon2Table::new();
 
         // Create program leaves
-        let program_rows = decode_program(memory)?;
+        let program_rows = decode_program(memory, layout)?;
         let mut program_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         for row in &program_rows {
             let read_count = self.program_reads.get(&row.addr).copied().unwrap_or(0);
             for limb in 0..4u32 {
-                let idx = leaf_index(PROGRAM_BASE, row.addr, limb);
+                let idx = row.addr + limb;
                 program_leaves.insert(idx, MerkleValue::new(row.values[limb as usize], read_count));
             }
         }
@@ -163,7 +202,9 @@ impl Tracer {
         let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
 
-        let mem_addrs = memory.keys(rw_range);
+        let mem_addrs = memory
+            .keys()
+            .filter(|&addr| addr & 3 == 0 && layout.is_rw_addr(addr));
 
         for addr in mem_addrs {
             let final_word = memory.read_u32(addr);
@@ -176,7 +217,7 @@ impl Tracer {
             mem_entries.push((addr, initial_word, final_word, final_clk));
 
             for limb in 0..4u32 {
-                let idx = leaf_index(RW_MEMORY_BASE, addr, limb);
+                let idx = addr + limb;
                 rw_initial_leaves.insert(
                     idx,
                     MerkleValue::new(initial_bytes[limb as usize] as u32, 1),
@@ -186,15 +227,12 @@ impl Tracer {
         }
 
         // Build Merkle trees and Poseidon2 trace
-        let program_leaf_depth = PROGRAM_TREE_HEIGHT.saturating_sub(1);
-        let rw_leaf_depth = RW_TREE_HEIGHT.saturating_sub(1);
-
         let (program_nodes, program_root) =
-            build_partial_merkle_tree(&program_leaves, program_leaf_depth, &mut self.poseidon2);
+            build_partial_merkle_tree(&program_leaves, &mut self.poseidon2);
         let (rw_initial_nodes, rw_initial_root) =
-            build_partial_merkle_tree(&rw_initial_leaves, rw_leaf_depth, &mut self.poseidon2);
+            build_partial_merkle_tree(&rw_initial_leaves, &mut self.poseidon2);
         let (rw_final_nodes, rw_final_root) =
-            build_partial_merkle_tree(&rw_final_leaves, rw_leaf_depth, &mut self.poseidon2);
+            build_partial_merkle_tree(&rw_final_leaves, &mut self.poseidon2);
 
         // Create memory trace
         for (addr, initial_word, final_word, final_clk) in mem_entries {
@@ -267,7 +305,6 @@ impl Tracer {
 mod tests {
     use super::*;
     use crate::Memory;
-    use crate::commitment::{PROGRAM_BASE, RW_MEMORY_BASE};
     use crate::{InstCache, RunError, RunResult, decode, execute, io, load_elf};
 
     fn run_with_tracer_for_test(
@@ -276,6 +313,7 @@ mod tests {
         mut tracer: Tracer,
     ) -> Result<RunResult, RunError> {
         let loaded = load_elf(elf_bytes)?;
+        let layout = MemoryLayout::from_loaded(&loaded);
 
         let mut cpu = crate::Cpu::new(loaded.entry, loaded.sp, loaded.gp);
         let mut mem = loaded.memory;
@@ -289,7 +327,7 @@ mod tests {
                     loaded.output_data_addr,
                     loaded.output_end_addr,
                 );
-                tracer.finalize_commitments(&mem)?;
+                tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clk as u64,
                     final_pc: cpu.pc,
@@ -318,7 +356,7 @@ mod tests {
                     loaded.output_data_addr,
                     loaded.output_end_addr,
                 );
-                tracer.finalize_commitments(&mem)?;
+                tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clk as u64,
                     final_pc: cpu.pc,
@@ -337,7 +375,7 @@ mod tests {
                     loaded.output_data_addr,
                     loaded.output_end_addr,
                 );
-                tracer.finalize_commitments(&mem)?;
+                tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clk as u64,
                     final_pc: prev_pc,
@@ -356,25 +394,16 @@ mod tests {
     }
 
     #[test]
-    fn test_leaf_index_rw_and_program() {
-        assert_eq!(leaf_index(RW_MEMORY_BASE, RW_MEMORY_BASE, 0), 0);
-        assert_eq!(leaf_index(RW_MEMORY_BASE, RW_MEMORY_BASE, 3), 3);
-        assert_eq!(leaf_index(RW_MEMORY_BASE, RW_MEMORY_BASE + 4, 0), 4);
-
-        assert_eq!(leaf_index(PROGRAM_BASE, PROGRAM_BASE, 0), 0);
-        assert_eq!(leaf_index(PROGRAM_BASE, PROGRAM_BASE + 4, 2), 6);
-    }
-
-    #[test]
     fn test_commitment_decode_failure() {
+        let layout = MemoryLayout::new(0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000);
         let mut mem = Memory::new();
-        mem.write_u32(PROGRAM_BASE, 0xFFFF_FFFF);
+        mem.write_u32(layout.program_base, 0xFFFF_FFFF);
         let mut tracer = Tracer::default();
-        let err = tracer.finalize_commitments(&mem).unwrap_err();
+        let err = tracer.finalize_commitments(&mem, &layout).unwrap_err();
         assert_eq!(
             err,
             CommitmentError::DecodeFailure {
-                pc: PROGRAM_BASE,
+                pc: layout.program_base,
                 word: 0xFFFF_FFFF
             }
         );
@@ -382,13 +411,16 @@ mod tests {
 
     #[test]
     fn test_commitment_out_of_range_rw_access() {
+        let layout = MemoryLayout::new(0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000);
         let mut tracer = Tracer::default();
-        tracer.trace_mem_access(RW_MEMORY_BASE - 4, 0, 0);
-        let err = tracer.finalize_commitments(&Memory::new()).unwrap_err();
+        tracer.trace_mem_access(layout.program_end - 4, 0, 0);
+        let err = tracer
+            .finalize_commitments(&Memory::new(), &layout)
+            .unwrap_err();
         assert_eq!(
             err,
             CommitmentError::RwAddressOutOfRange {
-                addr: RW_MEMORY_BASE - 4
+                addr: layout.program_end - 4
             }
         );
     }

@@ -13,8 +13,8 @@ use stwo_constraint_framework::LogupTraceGenerator;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use crate::add_to_relation;
-use crate::commitment::{RW_MEMORY_BASE, RW_TREE_HEIGHT};
 use crate::relations::Relations;
+use runner::MAX_TREE_HEIGHT;
 
 pub mod columns {
     pub use runner::trace::prover_columns::MemoryColumns;
@@ -55,8 +55,7 @@ pub mod air {
 
             let one = E::F::one();
             let two = one.clone() + one.clone();
-            let base = E::F::from(M31::from(RW_MEMORY_BASE));
-            let leaf_depth = E::F::from(M31::from(RW_TREE_HEIGHT - 1));
+            let leaf_depth = E::F::from(M31::from(MAX_TREE_HEIGHT - 1));
             let three = two.clone() + one.clone();
 
             eval.add_constraint(enabler.clone() * (one.clone() - enabler.clone()));
@@ -78,7 +77,7 @@ pub mod air {
                 value_3
             );
 
-            let index_base = addr - base;
+            let index_base = addr;
             add_to_relation!(
                 eval,
                 self.relations.merkle,
@@ -147,8 +146,7 @@ pub mod witness {
         let multiplicity = &trace[7].data;
         let root = &trace[8].data;
 
-        let base = PackedM31::broadcast(M31::from(RW_MEMORY_BASE));
-        let leaf_depth = PackedM31::broadcast(M31::from(RW_TREE_HEIGHT - 1));
+        let leaf_depth = PackedM31::broadcast(M31::from(MAX_TREE_HEIGHT - 1));
         let one = PackedM31::broadcast(M31::one());
         let two = one + one;
         let three = two + one;
@@ -160,7 +158,7 @@ pub mod witness {
         let rw_as = PackedM31::broadcast(M31::one());
         let rw_as_col = vec![rw_as; simd_size];
         let leaf_depth_col = vec![leaf_depth; simd_size];
-        let index_base: Vec<PackedM31> = (0..simd_size).map(|i| addr[i] - base).collect();
+        let index_base: Vec<PackedM31> = addr.to_vec();
         let index_base_plus_one: Vec<PackedM31> =
             (0..simd_size).map(|i| index_base[i] + one).collect();
         let index_base_plus_two: Vec<PackedM31> =

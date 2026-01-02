@@ -1,9 +1,0 @@
-pub const RW_MEMORY_BASE: u32 = PROGRAM_END;
-pub const RW_TREE_LEAVES: u32 = 1 << 21;
-pub const RW_TREE_HEIGHT: u32 = 22;
-
-pub const PROGRAM_BASE: u32 = 0x0000_0400;
-pub const PROGRAM_TREE_LEAVES: u32 = 1 << 20;
-pub const PROGRAM_TREE_HEIGHT: u32 = 21;
-pub const PROGRAM_RANGE_SIZE: u32 = 0x000F_FC00;
-pub const PROGRAM_END: u32 = PROGRAM_BASE + PROGRAM_RANGE_SIZE;

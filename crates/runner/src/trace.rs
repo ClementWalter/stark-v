@@ -589,9 +589,7 @@ enum GapTable {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
-    use crate::commitment::RW_MEMORY_BASE;
-
-    const MEM_ADDR: u32 = RW_MEMORY_BASE + 0x100;
+    const MEM_ADDR: u32 = 0x2000;
 
     impl AccessTable {
         /// Returns an iterator over Access values (for backward compatibility).

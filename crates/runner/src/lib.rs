@@ -16,7 +16,7 @@ mod ops;
 use decode::get_or_decode;
 use thiserror::Error;
 
-pub use commitment::CommitmentError;
+pub use commitment::{CommitmentError, MAX_TREE_HEIGHT};
 pub use cpu::Cpu;
 pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
@@ -74,6 +74,7 @@ pub struct RunResult {
 /// ```
 pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
     let loaded = load_elf(elf_bytes)?;
+    let layout = commitment::MemoryLayout::from_loaded(&loaded);
 
     let mut cpu = Cpu::new(loaded.entry, loaded.sp, loaded.gp);
     let mut mem = loaded.memory;
@@ -89,7 +90,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_data_addr,
                 loaded.output_end_addr,
             );
-            tracer.finalize_commitments(&mem)?;
+            tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
                 final_pc: cpu.pc,
@@ -121,7 +122,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_data_addr,
                 loaded.output_end_addr,
             );
-            tracer.finalize_commitments(&mem)?;
+            tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
                 final_pc: cpu.pc,
@@ -143,7 +144,7 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 loaded.output_data_addr,
                 loaded.output_end_addr,
             );
-            tracer.finalize_commitments(&mem)?;
+            tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
                 final_pc: prev_pc,

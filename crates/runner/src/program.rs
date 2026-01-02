@@ -1,5 +1,4 @@
-use crate::commitment::CommitmentError;
-use crate::commitment::{PROGRAM_BASE, PROGRAM_RANGE_SIZE};
+use crate::commitment::{CommitmentError, MemoryLayout};
 use crate::decode::{DecodedInst, Opcode};
 use crate::memory::Memory;
 use crate::ops::utils::imm_to_felt;
@@ -83,10 +82,15 @@ pub fn decode_program_word(addr: u32, word: u32) -> Result<[u32; 4], CommitmentE
     Ok(values)
 }
 
-pub fn decode_program(memory: &Memory) -> Result<Vec<ProgramRow>, CommitmentError> {
-    let mut rows = Vec::with_capacity((PROGRAM_RANGE_SIZE / 4) as usize);
+pub fn decode_program(
+    memory: &Memory,
+    layout: &MemoryLayout,
+) -> Result<Vec<ProgramRow>, CommitmentError> {
+    let program_range = layout.program_base..layout.program_end;
+    let range_len = layout.program_end.saturating_sub(layout.program_base) as usize;
+    let mut rows = Vec::with_capacity(range_len / 4);
 
-    for addr in (PROGRAM_BASE..PROGRAM_BASE + PROGRAM_RANGE_SIZE).step_by(4) {
+    for addr in program_range.step_by(4) {
         let word = memory.read_u32(addr);
         if word != 0 {
             let values = decode_program_word(addr, word)?;
@@ -100,7 +104,6 @@ pub fn decode_program(memory: &Memory) -> Result<Vec<ProgramRow>, CommitmentErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commitment::PROGRAM_BASE;
 
     fn encode_r_type(funct7: u32, rs2: u32, rs1: u32, funct3: u32, rd: u32, opcode: u32) -> u32 {
         (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
@@ -153,6 +156,7 @@ mod tests {
 
     #[test]
     fn test_decode_program_word_tuples() {
+        let base = 0u32;
         let add = encode_r_type(0, 2, 1, 0, 3, 0x33);
         let addi = encode_i_type(-1, 6, 0, 5, 0x13);
         let slli = encode_shift_i_type(3, 2, 0b001, 1, 0x13);
@@ -163,25 +167,25 @@ mod tests {
         let jal = encode_j_type(16, 1, 0x6F);
         let beq = encode_b_type(8, 2, 1, 0b000, 0x63);
 
-        let add_vals = decode_program_word(PROGRAM_BASE, add).unwrap();
+        let add_vals = decode_program_word(base, add).unwrap();
         assert_eq!(add_vals, [Opcode::Add as u32, 3, 1, 2,]);
 
-        let addi_vals = decode_program_word(PROGRAM_BASE + 4, addi).unwrap();
+        let addi_vals = decode_program_word(base + 4, addi).unwrap();
         assert_eq!(addi_vals, [Opcode::Addi as u32, 5, 6, 2147483646,]);
 
-        let slli_vals = decode_program_word(PROGRAM_BASE + 8, slli).unwrap();
+        let slli_vals = decode_program_word(base + 8, slli).unwrap();
         assert_eq!(slli_vals, [Opcode::Slli as u32, 1, 2, 3,]);
 
-        let lw_vals = decode_program_word(PROGRAM_BASE + 12, lw).unwrap();
+        let lw_vals = decode_program_word(base + 12, lw).unwrap();
         assert_eq!(lw_vals, [Opcode::Lw as u32, 5, 4, 8,]);
 
-        let sw_vals = decode_program_word(PROGRAM_BASE + 16, sw).unwrap();
+        let sw_vals = decode_program_word(base + 16, sw).unwrap();
         assert_eq!(sw_vals, [Opcode::Sw as u32, 5, 4, 12,]);
 
-        let lui_vals = decode_program_word(PROGRAM_BASE + 20, lui).unwrap();
+        let lui_vals = decode_program_word(base + 20, lui).unwrap();
         assert_eq!(lui_vals, [Opcode::Lui as u32, 7, 0xABCDE, 0,]);
 
-        let auipc_vals = decode_program_word(PROGRAM_BASE + 24, auipc).unwrap();
+        let auipc_vals = decode_program_word(base + 24, auipc).unwrap();
         assert_eq!(
             auipc_vals,
             [
@@ -192,10 +196,10 @@ mod tests {
             ]
         );
 
-        let jal_vals = decode_program_word(PROGRAM_BASE + 28, jal).unwrap();
+        let jal_vals = decode_program_word(base + 28, jal).unwrap();
         assert_eq!(jal_vals, [Opcode::Jal as u32, 1, imm_to_felt(16), 0,]);
 
-        let beq_vals = decode_program_word(PROGRAM_BASE + 32, beq).unwrap();
+        let beq_vals = decode_program_word(base + 32, beq).unwrap();
         assert_eq!(beq_vals, [Opcode::Beq as u32, 1, 2, imm_to_felt(8),]);
     }
 }

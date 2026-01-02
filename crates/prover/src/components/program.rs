@@ -13,8 +13,8 @@ use stwo_constraint_framework::LogupTraceGenerator;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use crate::add_to_relation;
-use crate::commitment::{PROGRAM_BASE, PROGRAM_TREE_HEIGHT};
 use crate::relations::Relations;
+use runner::MAX_TREE_HEIGHT;
 
 pub mod columns {
     pub use runner::trace::prover_columns::ProgramColumns;
@@ -52,8 +52,7 @@ pub mod air {
             let multiplicity = cols.multiplicity.clone();
             let root = cols.root.clone();
 
-            let base = E::F::from(M31::from(PROGRAM_BASE));
-            let leaf_depth = E::F::from(M31::from(PROGRAM_TREE_HEIGHT - 1));
+            let leaf_depth = E::F::from(M31::from(MAX_TREE_HEIGHT - 1));
             let one = E::F::one();
             let two = one.clone() + one.clone();
             let three = two.clone() + one.clone();
@@ -71,7 +70,7 @@ pub mod air {
                 value_3
             );
 
-            let index_base = addr - base;
+            let index_base = addr;
             add_to_relation!(
                 eval,
                 self.relations.merkle,
@@ -139,15 +138,14 @@ pub mod witness {
         let mut interaction_trace = LogupTraceGenerator::new(log_size);
 
         // Constants
-        let base = PackedM31::broadcast(M31::from(PROGRAM_BASE));
-        let leaf_depth = PackedM31::broadcast(M31::from(PROGRAM_TREE_HEIGHT - 1));
+        let leaf_depth = PackedM31::broadcast(M31::from(MAX_TREE_HEIGHT - 1));
         let one = PackedM31::broadcast(M31::one());
         let two = one + one;
         let three = two + one;
 
         // Compute derived columns
         let leaf_depth_col = vec![leaf_depth; simd_size];
-        let index_base: Vec<PackedM31> = (0..simd_size).map(|i| cols.addr[i] - base).collect();
+        let index_base: Vec<PackedM31> = cols.addr.to_vec();
         let index_base_plus_one: Vec<PackedM31> =
             (0..simd_size).map(|i| index_base[i] + one).collect();
         let index_base_plus_two: Vec<PackedM31> =
