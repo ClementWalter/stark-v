@@ -21,9 +21,9 @@ pub fn lui(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     // The immediate for LUI is a 20-bit value in the upper bits
     // imm as stored has already been shifted, so we need to extract the upper 20 bits
     let imm_val = (inst.imm as u32) >> 12; // Get the actual 20-bit immediate
-    let imm_0 = imm_val & 0xFF; // bits [0:7]
-    let imm_1 = (imm_val >> 8) & 0xFF; // bits [8:15]
-    let imm_2 = (imm_val >> 16) & 0xF; // bits [16:19] (only 4 bits)
+    let imm_0 = imm_val & 0xF; // bits [0:3]
+    let imm_1 = (imm_val >> 4) & 0xFF; // bits [4:11]
+    let imm_2 = (imm_val >> 12) & 0xFF; // bits [12:19] (only 4 bits)
 
     trace_op!(lui: tracer, old_pc, rd,
         imm_0, imm_1, imm_2
