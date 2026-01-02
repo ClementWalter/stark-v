@@ -305,9 +305,7 @@ pub fn register_multiplicities(
     let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
-    let diff_val_minus_1: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.diff_val[i] - one)
-        .collect();
+    let diff_val_minus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.diff_val[i] - one).collect();
 
     // prefix_sum_final = sum of diff_markers
     let prefix_sum_final: Vec<PackedM31> = (0..simd_size)

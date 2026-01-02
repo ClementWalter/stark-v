@@ -224,7 +224,7 @@ pub fn register_multiplicities(
     let simd_size = cols.clk.len();
 
     // Numerator: enabler (1 for valid rows, 0 for padding)
-    let enabler: Vec<PackedM31> = cols.enabler.iter().copied().collect();
+    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])

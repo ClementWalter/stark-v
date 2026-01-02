@@ -92,13 +92,10 @@ pub fn slices_to_table(columns: &[(&str, &[u32])]) -> Table {
 
     // Add truncation indicator if needed
     if max_rows > 0 && num_rows > max_rows {
-        let truncated_row: Vec<Cell> = columns
-            .iter()
-            .map(|_| Cell::new("..."))
-            .collect();
+        let truncated_row: Vec<Cell> = columns.iter().map(|_| Cell::new("...")).collect();
         table.add_row(truncated_row);
         // Add a footer row showing total
-        let footer: Vec<Cell> = std::iter::once(Cell::new(format!("({} rows total)", num_rows)))
+        let footer: Vec<Cell> = std::iter::once(Cell::new(format!("({num_rows} rows total)")))
             .chain(columns.iter().skip(1).map(|_| Cell::new("")))
             .collect();
         table.add_row(footer);
@@ -217,7 +214,10 @@ impl ToTable for Vec<Vec<M31>> {
             let row: Vec<Cell> = self
                 .iter()
                 .map(|col| {
-                    let val = col.get(row_idx).map(|&m| m31_to_centered_i32(m)).unwrap_or(0);
+                    let val = col
+                        .get(row_idx)
+                        .map(|&m| m31_to_centered_i32(m))
+                        .unwrap_or(0);
                     Cell::new(val)
                 })
                 .collect();
@@ -631,7 +631,11 @@ mod tests {
         let output = table.to_string();
 
         // Should show truncation indicator
-        assert!(output.contains("..."), "Output should contain '...': {}", output);
+        assert!(
+            output.contains("..."),
+            "Output should contain '...': {}",
+            output
+        );
 
         // Reset
         reset_display_options();

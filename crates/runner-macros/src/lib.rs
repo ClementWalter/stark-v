@@ -325,7 +325,10 @@ fn column_struct_name(opcode: &Ident) -> Ident {
 
 /// Generate Table column entries for a table (used by to_table method).
 /// Returns tuples of (column_name_str, field_access_expr) for slices_to_table.
-fn generate_table_columns(fields: &[Ident], include_enabler: bool) -> Vec<proc_macro2::TokenStream> {
+fn generate_table_columns(
+    fields: &[Ident],
+    include_enabler: bool,
+) -> Vec<proc_macro2::TokenStream> {
     let mut columns = Vec::new();
 
     // Enabler first if present
@@ -342,10 +345,10 @@ fn generate_table_columns(fields: &[Ident], include_enabler: bool) -> Vec<proc_m
             let clk_prev = format_ident!("{}_clk_prev", name);
             let next = format_ident!("{}_next", name);
 
-            let addr_name = format!("{}_addr", name);
-            let prev_name = format!("{}_prev", name);
-            let clk_prev_name = format!("{}_clk_prev", name);
-            let next_name = format!("{}_next", name);
+            let addr_name = format!("{name}_addr");
+            let prev_name = format!("{name}_prev");
+            let clk_prev_name = format!("{name}_clk_prev");
+            let next_name = format!("{name}_next");
 
             columns.push(quote! { (#addr_name, &self.#addr[..]) });
             columns.push(quote! { (#prev_name, &self.#prev[..]) });

@@ -389,19 +389,39 @@ pub fn register_multiplicities(
     // Register bitwise: 4 limbs (rs1_next[i], rs2_next[i], rd_next[i], bitwise_id)
     counters.bitwise.register_many(
         &is_bitwise,
-        &[cols.rs1_next_0, cols.rs2_next_0, cols.rd_next_0, &bitwise_id],
+        &[
+            cols.rs1_next_0,
+            cols.rs2_next_0,
+            cols.rd_next_0,
+            &bitwise_id,
+        ],
     );
     counters.bitwise.register_many(
         &is_bitwise,
-        &[cols.rs1_next_1, cols.rs2_next_1, cols.rd_next_1, &bitwise_id],
+        &[
+            cols.rs1_next_1,
+            cols.rs2_next_1,
+            cols.rd_next_1,
+            &bitwise_id,
+        ],
     );
     counters.bitwise.register_many(
         &is_bitwise,
-        &[cols.rs1_next_2, cols.rs2_next_2, cols.rd_next_2, &bitwise_id],
+        &[
+            cols.rs1_next_2,
+            cols.rs2_next_2,
+            cols.rd_next_2,
+            &bitwise_id,
+        ],
     );
     counters.bitwise.register_many(
         &is_bitwise,
-        &[cols.rs1_next_3, cols.rs2_next_3, cols.rd_next_3, &bitwise_id],
+        &[
+            cols.rs1_next_3,
+            cols.rs2_next_3,
+            cols.rd_next_3,
+            &bitwise_id,
+        ],
     );
 
     // Register range_check_20: (clk - rd_clk_prev)

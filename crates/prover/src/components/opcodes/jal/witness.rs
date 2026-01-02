@@ -167,7 +167,7 @@ pub fn register_multiplicities(
     let simd_size = cols.clk.len();
 
     // Numerator: enabler (same as gen_interaction_trace uses for these lookups)
-    let enabler: Vec<PackedM31> = cols.enabler.iter().copied().collect();
+    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
 
     // Derived columns (same as gen_interaction_trace)
     let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)

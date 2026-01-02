@@ -304,7 +304,7 @@ pub fn register_multiplicities(
     let inv_two_pow_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 8).inverse());
 
     // Numerator: enabler (from column)
-    let enabler: Vec<PackedM31> = cols.enabler.iter().copied().collect();
+    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
 
     // Clock differences
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)

@@ -335,9 +335,7 @@ pub fn register_multiplicities(
     let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
-    let lt_diff_minus_1: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.lt_diff[i] - one)
-        .collect();
+    let lt_diff_minus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.lt_diff[i] - one).collect();
 
     counters
         .range_check_20
