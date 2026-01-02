@@ -167,7 +167,7 @@ impl Iterator for MemoryKeys<'_> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((&addr, _)) = self.iter.next() {
+        for (&addr, _) in self.iter.by_ref() {
             let aligned = addr & !3;
             if self.has_last && self.last == aligned {
                 continue;
