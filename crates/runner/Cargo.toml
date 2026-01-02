@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap.workspace = true
+debug-utils.workspace = true
 goblin.workspace = true
 rustc-hash.workspace = true
 simd.workspace = true

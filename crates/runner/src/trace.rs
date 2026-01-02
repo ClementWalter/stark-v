@@ -870,4 +870,184 @@ mod tests {
             assert_eq!(MulColumns::<()>::SIZE, 33);
         }
     }
+
+    // =========================================================================
+    // DataFrame Debug Tests
+    // =========================================================================
+
+    mod debug_df_tests {
+        use super::*;
+
+        #[test]
+        fn test_base_alu_reg_table_to_df() {
+            let mut table = BaseAluRegTable::new();
+
+            let rd = Access {
+                addr: 1,
+                prev: 0,
+                clk_prev: 0,
+                next: 10,
+            };
+            let rs1 = Access {
+                addr: 2,
+                prev: 5,
+                clk_prev: 1,
+                next: 5,
+            };
+            let rs2 = Access {
+                addr: 3,
+                prev: 7,
+                clk_prev: 2,
+                next: 7,
+            };
+
+            // Push two rows
+            table.push(1, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
+            table.push(2, 0x1004, rd, rs1, rs2, 0, 1, 0, 0, 0);
+
+            let df = table.to_df();
+
+            // Should have 2 rows
+            assert_eq!(df.height(), 2);
+
+            // Check expected columns exist
+            assert!(df.column("clk").is_ok());
+            assert!(df.column("pc").is_ok());
+            assert!(df.column("rd_addr").is_ok());
+            assert!(df.column("rd_prev").is_ok());
+            assert!(df.column("rd_clk_prev").is_ok());
+            assert!(df.column("rd_next").is_ok());
+            assert!(df.column("rs1_addr").is_ok());
+            assert!(df.column("rs2_addr").is_ok());
+            assert!(df.column("opcode_add_flag").is_ok());
+            assert!(df.column("opcode_sub_flag").is_ok());
+        }
+
+        #[test]
+        fn test_base_alu_reg_table_to_df_values() {
+            let mut table = BaseAluRegTable::new();
+
+            let rd = Access {
+                addr: 5,
+                prev: 100,
+                clk_prev: 10,
+                next: 200,
+            };
+            let rs1 = Access {
+                addr: 6,
+                prev: 50,
+                clk_prev: 5,
+                next: 50,
+            };
+            let rs2 = Access {
+                addr: 7,
+                prev: 25,
+                clk_prev: 3,
+                next: 25,
+            };
+
+            table.push(42, 0x2000, rd, rs1, rs2, 1, 0, 0, 0, 0);
+
+            let df = table.to_df();
+
+            // Check values
+            let clk_col = df.column("clk").unwrap();
+            let clk_vals: Vec<u32> = clk_col.u32().unwrap().into_no_null_iter().collect();
+            assert_eq!(clk_vals, vec![42]);
+
+            let pc_col = df.column("pc").unwrap();
+            let pc_vals: Vec<u32> = pc_col.u32().unwrap().into_no_null_iter().collect();
+            assert_eq!(pc_vals, vec![0x2000]);
+
+            let rd_addr_col = df.column("rd_addr").unwrap();
+            let rd_addr_vals: Vec<u32> = rd_addr_col.u32().unwrap().into_no_null_iter().collect();
+            assert_eq!(rd_addr_vals, vec![5]);
+
+            let rd_next_col = df.column("rd_next").unwrap();
+            let rd_next_vals: Vec<u32> = rd_next_col.u32().unwrap().into_no_null_iter().collect();
+            assert_eq!(rd_next_vals, vec![200]);
+        }
+
+        #[test]
+        fn test_lui_table_to_df_with_enabler() {
+            // LUI has an enabler column (no opcode flags)
+            let mut table = LuiTable::new();
+
+            let rd = Access {
+                addr: 10,
+                prev: 0,
+                clk_prev: 0,
+                next: 0x12345000,
+            };
+
+            table.push(1, 0x1000, rd, 0x12, 0x34, 0x50);
+
+            let df = table.to_df();
+
+            // Check enabler column exists and has value 1
+            let enabler_col = df.column("enabler").unwrap();
+            let enabler_vals: Vec<u32> = enabler_col.u32().unwrap().into_no_null_iter().collect();
+            assert_eq!(enabler_vals, vec![1]);
+        }
+
+        #[test]
+        fn test_empty_table_to_df() {
+            let table = BaseAluRegTable::new();
+            let df = table.to_df();
+
+            // Empty table should produce empty DataFrame
+            assert_eq!(df.height(), 0);
+        }
+
+        #[test]
+        fn test_tracer_print_tables() {
+            let mut tracer = Tracer::default();
+
+            // Add some traces
+            let rd = Access::default();
+            let rs1 = Access::default();
+            let rs2 = Access::default();
+
+            tracer.base_alu_reg.push(0, 0, rd, rs1, rs2, 1, 0, 0, 0, 0);
+            tracer.base_alu_reg.push(1, 4, rd, rs1, rs2, 1, 0, 0, 0, 0);
+
+            // This should not panic
+            tracer.print_tables(Some(10), Some(10));
+        }
+
+        #[test]
+        fn test_tracer_print_tables_empty() {
+            let tracer = Tracer::default();
+
+            // Empty tracer should not panic
+            tracer.print_tables(None, None);
+        }
+
+        #[test]
+        fn test_multiple_tables_to_df() {
+            let mut tracer = Tracer::default();
+
+            // Add traces to different tables
+            let rd = Access::default();
+            let rs1 = Access::default();
+            let rs2 = Access::default();
+
+            tracer.base_alu_reg.push(0, 0, rd, rs1, rs2, 1, 0, 0, 0, 0);
+            tracer.lui.push(1, 4, rd, 0, 0, 0);
+            tracer.jal.push(2, 8, rd, 100);
+
+            // Each table should produce valid DataFrames
+            let base_alu_df = tracer.base_alu_reg.to_df();
+            let lui_df = tracer.lui.to_df();
+            let jal_df = tracer.jal.to_df();
+
+            assert_eq!(base_alu_df.height(), 1);
+            assert_eq!(lui_df.height(), 1);
+            assert_eq!(jal_df.height(), 1);
+
+            // LUI and JAL have enabler columns, BaseAluReg doesn't
+            assert!(lui_df.column("enabler").is_ok());
+            assert!(jal_df.column("enabler").is_ok());
+        }
+    }
 }

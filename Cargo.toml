@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/debug-utils",
   "crates/prover",
   "crates/runner",
   "crates/runner-macros",
@@ -54,6 +55,9 @@ goblin = "0.9"
 # Data structures
 rustc-hash = "2.1"
 
+# Debug / DataFrames (minimal: only fmt for Display, no lazy/io/parquet)
+polars = { version = "0.46", default-features = false, features = ["fmt"] }
+
 # Error handling
 thiserror = "2.0"
 
@@ -67,6 +71,7 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
+debug-utils = { path = "crates/debug-utils" }
 runner = { path = "crates/runner" }
 runner-macros = { path = "crates/runner-macros" }
 simd = { path = "crates/simd" }
