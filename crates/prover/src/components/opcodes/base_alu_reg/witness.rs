@@ -37,7 +37,6 @@ pub fn gen_interaction_trace(
     let zero = PackedM31::zero();
     let one = PackedM31::broadcast(BaseField::one());
     let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
-    let three = PackedM31::broadcast(BaseField::from_u32_unchecked(3));
     let four = PackedM31::broadcast(BaseField::from_u32_unchecked(4));
 
     let opcode_add = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Add as u32));
@@ -73,13 +72,9 @@ pub fn gen_interaction_trace(
         .map(|i| cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i])
         .collect();
 
+    // Match preprocessed bitwise table: and=0, or=1, xor=2
     let bitwise_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            cols.opcode_xor_flag[i]
-                + two * cols.opcode_or_flag[i]
-                + three * cols.opcode_and_flag[i]
-                + four * (cols.opcode_add_flag[i] + cols.opcode_sub_flag[i])
-        })
+        .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
     let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.pc[i] + four).collect();
@@ -341,7 +336,6 @@ pub fn register_multiplicities(
 
     // Constants (same as gen_interaction_trace)
     let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
-    let three = PackedM31::broadcast(BaseField::from_u32_unchecked(3));
 
     // Numerators (same as gen_interaction_trace)
     let enabler: Vec<PackedM31> = (0..simd_size)
@@ -368,11 +362,9 @@ pub fn register_multiplicities(
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
-    // bitwise_id = xor_flag + 2*or_flag + 3*and_flag
+    // Match preprocessed bitwise table: and=0, or=1, xor=2
     let bitwise_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            cols.opcode_xor_flag[i] + two * cols.opcode_or_flag[i] + three * cols.opcode_and_flag[i]
-        })
+        .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
     // Register range_check_20: (clk - rs1_clk_prev)

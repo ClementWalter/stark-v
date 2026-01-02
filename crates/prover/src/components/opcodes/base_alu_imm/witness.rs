@@ -37,7 +37,6 @@ pub fn gen_interaction_trace(
     let zero = PackedM31::zero();
     let one = PackedM31::broadcast(BaseField::one());
     let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
-    let three = PackedM31::broadcast(BaseField::from_u32_unchecked(3));
     let four = PackedM31::broadcast(BaseField::from_u32_unchecked(4));
     let pow2_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(256));
     let pow2_11 = PackedM31::broadcast(BaseField::from_u32_unchecked(2048));
@@ -90,10 +89,9 @@ pub fn gen_interaction_trace(
         .map(|i| cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i])
         .collect();
 
+    // Match preprocessed bitwise table: and=0, or=1, xor=2
     let bitwise_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            cols.opcode_xor_flag[i] + two * cols.opcode_or_flag[i] + three * cols.opcode_and_flag[i]
-        })
+        .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
     let imm_1_times_256: Vec<PackedM31> = (0..simd_size).map(|i| pow2_8 * cols.imm_1[i]).collect();
@@ -313,7 +311,6 @@ pub fn register_multiplicities(
     // Constants (same as gen_interaction_trace)
     let pow2_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(256));
     let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
-    let three = PackedM31::broadcast(BaseField::from_u32_unchecked(3));
     let sext_mask_1 =
         PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 3) * ((1 << 5) - 1)));
     let sext_mask_2 = PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 8) - 1));
@@ -351,11 +348,9 @@ pub fn register_multiplicities(
         .collect();
     let sext_imm_3 = sext_imm_2.clone();
 
-    // bitwise_id = xor_flag + 2*or_flag + 3*and_flag
+    // Match preprocessed bitwise table: and=0, or=1, xor=2
     let bitwise_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            cols.opcode_xor_flag[i] + two * cols.opcode_or_flag[i] + three * cols.opcode_and_flag[i]
-        })
+        .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
     // Register range_check_8_11: (imm_0, imm_1 * 256) with multiplicity 1
