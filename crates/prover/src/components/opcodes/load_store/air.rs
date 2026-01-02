@@ -158,12 +158,12 @@ impl FrameworkEval for Eval {
         // check shift amount
         // For bytes: shift_amount = shift_id (0-3)
         // For half-words: shift_id is 1 ([1,1,0,0]) or 5 ([0,0,1,1])
-        //   shift_amount = (shift_id - 1) / 4, so 0 or 1
-        let quarter_inv = BaseField::from_u32_unchecked(4).inverse();
+        //   shift_amount = (shift_id - 1) / 2, so 0 or 2
+        let half_inv = BaseField::from_u32_unchecked(2).inverse();
         eval.add_constraint(
             cols.shift_amount.clone()
                 - (opcode_b_flag.clone() * shift_id.clone()
-                    + opcode_h_flag.clone() * (shift_id.clone() - E::F::one()) * quarter_inv),
+                    + opcode_h_flag.clone() * (shift_id.clone() - E::F::one()) * half_inv),
         );
 
         // check src/dst addresses (load/store dependent)

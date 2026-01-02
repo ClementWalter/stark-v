@@ -1322,6 +1322,7 @@ dependencies = [
  "debug-utils",
  "goblin",
  "guest-lib",
+ "itertools 0.13.0",
  "postcard",
  "prover",
  "runner-macros",

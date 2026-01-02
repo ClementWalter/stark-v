@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustc_hash::FxHashMap;
 use thiserror::Error;
 
@@ -222,7 +223,9 @@ impl Tracer {
 
         let mem_addrs = memory
             .keys()
-            .filter(|&addr| addr & 3 == 0 && layout.is_rw_addr(addr));
+            .filter(|&addr| layout.is_rw_addr(addr))
+            .map(|addr| addr & !3)
+            .dedup();
 
         for addr in mem_addrs {
             let final_word = memory.read_u32(addr);

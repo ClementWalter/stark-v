@@ -10,7 +10,7 @@ fn compute_store_witness(addr: u32, is_byte: bool, is_half: bool) -> StoreWitnes
     let shift_amount = if is_byte {
         byte_offset
     } else if is_half {
-        (byte_offset & 2) / 2
+        byte_offset & 2
     } else {
         0
     };
