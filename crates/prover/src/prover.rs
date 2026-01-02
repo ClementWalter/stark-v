@@ -38,7 +38,6 @@ pub fn prove_rv32im(
     // 1. Generate traces from execution
     let span = span!(Level::INFO, "Generate traces").entered();
     let tracer = run_result.tracer;
-    info!("{}", tracer.memory.to_table());
     info!("{}", tracer.load_store.to_table());
     info!("Tracer total_traces: {}", tracer.total_traces());
     let traces = gen_trace(tracer);
