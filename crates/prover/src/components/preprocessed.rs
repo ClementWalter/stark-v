@@ -6,8 +6,8 @@ crate::preprocessed_components! {
     bitwise,
     range_check_20,
     range_check_8_11,
-    range_check_8_8,
     range_check_8_8_4,
+    range_check_8_8,
     range_check_m31,
 }
 
