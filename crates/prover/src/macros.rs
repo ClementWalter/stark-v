@@ -850,8 +850,6 @@ macro_rules! preprocessed_components {
                         // Get preprocessed columns (constant lookup table values)
                         let preprocessed_cols = $crate::preprocessed::$table::Table::gen_columns();
 
-                        use debug_utils::ToTable;
-
                         // Get multiplicity from trace (how many times each value was looked up)
                         let multiplicity = &trace[0].values.data;
 
@@ -864,9 +862,6 @@ macro_rules! preprocessed_components {
                         // Collect preprocessed column data slices for combine!
                         let col_data: Vec<&[stwo::prover::backend::simd::m31::PackedM31]> =
                             preprocessed_cols.iter().map(|c| c.values.data.as_slice()).collect();
-
-                        println!("{}", col_data.to_table().to_string());
-                        println!("{}", multiplicity_qm31.to_table().to_string());
 
                         // Compute denominator by combining preprocessed values with relation
                         let simd_size = col_data[0].len();

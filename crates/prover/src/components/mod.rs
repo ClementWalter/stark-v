@@ -462,9 +462,7 @@ pub fn gen_trace(mut tracer: runner::trace::Tracer) -> Traces {
     let reg_clock_update = tracer_reg_clock_update.into_witness();
 
     // Convert counters to preprocessed multiplicity traces
-    counters.print_counters(None, None);
     let preprocessed = preprocessed::Traces::from_counters(counters);
-    preprocessed.print_tables(None, None);
 
     Traces {
         opcodes,
