@@ -55,8 +55,8 @@ goblin = "0.9"
 # Data structures
 rustc-hash = "2.1"
 
-# Debug / DataFrames (minimal: only fmt for Display, no lazy/io/parquet)
-polars = { version = "0.46", default-features = false, features = ["fmt"] }
+# Debug / Table printing (lightweight alternative to polars)
+comfy-table = "7.1"
 
 # Error handling
 thiserror = "2.0"

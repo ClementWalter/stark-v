@@ -323,9 +323,9 @@ fn column_struct_name(opcode: &Ident) -> Ident {
     format_ident!("{}Columns", pascal)
 }
 
-/// Generate DataFrame column entries for a table (used by to_df method).
-/// Returns tuples of (column_name_str, field_access_expr) for slices_to_df.
-fn generate_df_columns(fields: &[Ident], include_enabler: bool) -> Vec<proc_macro2::TokenStream> {
+/// Generate Table column entries for a table (used by to_table method).
+/// Returns tuples of (column_name_str, field_access_expr) for slices_to_table.
+fn generate_table_columns(fields: &[Ident], include_enabler: bool) -> Vec<proc_macro2::TokenStream> {
     let mut columns = Vec::new();
 
     // Enabler first if present
@@ -497,8 +497,8 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         "No enabler column (deduced from opcode flags in AIR)."
     };
 
-    // Generate DataFrame column entries for to_df method
-    let df_columns = generate_df_columns(&opcode.fields, include_enabler);
+    // Generate Table column entries for to_table method
+    let table_columns = generate_table_columns(&opcode.fields, include_enabler);
 
     quote! {
         #[derive(Clone, Default)]
@@ -602,10 +602,10 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                     .collect()
             }
 
-            /// Convert this table to a Polars DataFrame for debugging.
-            pub fn to_df(&self) -> debug_utils::DataFrame {
-                debug_utils::slices_to_df(&[
-                    #(#df_columns),*
+            /// Convert this table to a formatted Table for debugging.
+            pub fn to_table(&self) -> debug_utils::Table {
+                debug_utils::slices_to_table(&[
+                    #(#table_columns),*
                 ])
             }
         }
@@ -666,7 +666,7 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
             quote! {
                 if !self.#name.is_empty() {
                     println!("\n=== {} ({} rows) ===", #name_str, self.#name.len());
-                    println!("{}", self.#name.to_df());
+                    println!("{}", self.#name.to_table());
                 }
             }
         })

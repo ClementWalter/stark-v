@@ -5,4 +5,4 @@ edition.workspace = true
 
 [dependencies]
 stwo = { workspace = true, features = ["prover"] }
-polars.workspace = true
+comfy-table.workspace = true
