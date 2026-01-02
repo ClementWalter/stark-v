@@ -171,7 +171,7 @@ mod tests {
         assert_eq!(add_vals, [Opcode::Add as u32, 3, 1, 2,]);
 
         let addi_vals = decode_program_word(base + 4, addi).unwrap();
-        assert_eq!(addi_vals, [Opcode::Addi as u32, 5, 6, 2147483646,]);
+        assert_eq!(addi_vals, [Opcode::Addi as u32, 5, 6, 4095,]);
 
         let slli_vals = decode_program_word(base + 8, slli).unwrap();
         assert_eq!(slli_vals, [Opcode::Slli as u32, 1, 2, 3,]);
