@@ -261,14 +261,23 @@ pub mod witness {
 
     /// Register multiplicities for preprocessed lookups.
     pub fn register_multiplicities(
-        trace: &runner::trace::MemoryTable,
+        trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
         counters: &mut crate::relations::Counters,
     ) {
+        if trace.is_empty() {
+            return;
+        }
+
+        let cols = MemoryColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+
+        // Numerator: enabler (1 for valid rows, 0 for padding)
+        let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+
         counters
             .range_check_8_8
-            .register_many(&[&trace.value_0[..], &trace.value_1[..]]);
+            .register_many(&enabler, &[cols.value_0, cols.value_1]);
         counters
             .range_check_8_8
-            .register_many(&[&trace.value_2[..], &trace.value_3[..]]);
+            .register_many(&enabler, &[cols.value_2, cols.value_3]);
     }
 }

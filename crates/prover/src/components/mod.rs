@@ -443,15 +443,22 @@ pub fn gen_trace(mut tracer: runner::trace::Tracer) -> Traces {
     // Create counters for preprocessed multiplicity tracking
     let mut counters = crate::relations::Counters::new();
 
-    let program = std::mem::take(&mut tracer.program).into_witness();
-    let memory = std::mem::take(&mut tracer.memory).into_witness();
-    let merkle = std::mem::take(&mut tracer.merkle).into_witness();
-    let poseidon2 = std::mem::take(&mut tracer.poseidon2).into_witness();
-    let mem_clock_update = std::mem::take(&mut tracer.mem_clk_update).into_witness();
-    let reg_clock_update = std::mem::take(&mut tracer.reg_clk_update).into_witness();
+    let tracer_program = std::mem::take(&mut tracer.program);
+    let tracer_memory = std::mem::take(&mut tracer.memory);
+    let tracer_merkle = std::mem::take(&mut tracer.merkle);
+    let tracer_poseidon2 = std::mem::take(&mut tracer.poseidon2);
+    let tracer_mem_clock_update = std::mem::take(&mut tracer.mem_clk_update);
+    let tracer_reg_clock_update = std::mem::take(&mut tracer.reg_clk_update);
 
     // Generate opcode traces (populates counters during generation)
     let opcodes = opcodes::gen_trace(tracer, &mut counters);
+
+    let program = tracer_program.into_witness();
+    let memory = tracer_memory.into_witness();
+    let merkle = tracer_merkle.into_witness();
+    let poseidon2 = tracer_poseidon2.into_witness();
+    let mem_clock_update = tracer_mem_clock_update.into_witness();
+    let reg_clock_update = tracer_reg_clock_update.into_witness();
 
     // Convert counters to preprocessed multiplicity traces
     let preprocessed = preprocessed::Traces::from_counters(counters);
