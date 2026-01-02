@@ -458,7 +458,7 @@ pub fn gen_trace(mut tracer: runner::trace::Tracer) -> Traces {
 
     let program = tracer_program.into_witness();
     let memory = tracer_memory.into_witness();
-    // memory::witness::register_multiplicities(&memory, &mut counters);
+    memory::witness::register_multiplicities(&memory, &mut counters);
     let merkle = tracer_merkle.into_witness();
     let poseidon2 = tracer_poseidon2.into_witness();
     let mem_clock_update = tracer_mem_clock_update.into_witness();
