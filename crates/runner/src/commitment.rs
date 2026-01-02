@@ -209,10 +209,9 @@ impl Tracer {
         let program_rows = decode_program(memory, layout)?;
         let mut program_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         for row in &program_rows {
-            let read_count = self.program_reads.get(&row.addr).copied().unwrap_or(0);
             for limb in 0..4u32 {
                 let idx = row.addr + limb;
-                program_leaves.insert(idx, MerkleValue::new(row.values[limb as usize], read_count));
+                program_leaves.insert(idx, MerkleValue::new(row.values[limb as usize], 1));
             }
         }
 
@@ -268,7 +267,7 @@ impl Tracer {
                 initial_bytes[2] as u32,
                 initial_bytes[3] as u32,
                 1,
-                rw_final_root,
+                rw_initial_root,
             );
 
             self.memory.push(
