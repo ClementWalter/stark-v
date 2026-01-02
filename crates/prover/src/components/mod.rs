@@ -97,6 +97,7 @@ impl Traces {
 }
 
 /// Claim containing log_size for each component.
+#[derive(Debug)]
 pub struct Claim {
     /// Opcode claims (log_size per instruction).
     pub opcodes: opcodes::Claim,

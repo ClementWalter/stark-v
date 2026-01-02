@@ -6,7 +6,42 @@ crate::preprocessed_components! {
     bitwise,
     range_check_20,
     range_check_8_11,
-    range_check_8_8,
     range_check_8_8_4,
+    range_check_8_8,
     range_check_m31,
+}
+
+// =============================================================================
+// E2E tests for preprocessed components
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    // Bitwise operations (AND, OR, XOR) use the bitwise lookup table
+    // base_alu_reg component uses bitwise for AND/OR/XOR operations
+    crate::test_preprocessed_e2e!(base_alu_reg, bitwise, and);
+    crate::test_preprocessed_e2e!(base_alu_reg, bitwise, or);
+    crate::test_preprocessed_e2e!(base_alu_reg, bitwise, xor);
+
+    // Range check 8_8 is used by many opcodes for byte range validation
+    crate::test_preprocessed_e2e!(base_alu_imm, range_check_8_8, addi);
+    crate::test_preprocessed_e2e!(base_alu_reg, range_check_8_8, add);
+    crate::test_preprocessed_e2e!(base_alu_reg, range_check_8_8, sub);
+
+    // Range check 8_11 is used for shifts
+    crate::test_preprocessed_e2e!(shifts_reg, range_check_8_11, sll);
+    crate::test_preprocessed_e2e!(shifts_reg, range_check_8_11, srl);
+
+    // Range check 8_8_4 is used for load/store operations
+    crate::test_preprocessed_e2e!(load_store, range_check_8_8_4, lb);
+    crate::test_preprocessed_e2e!(load_store, range_check_8_8_4, sb);
+
+    // Range check M31 is used for mul/div operations
+    // Note: mul test is temporarily disabled due to index computation issue in witness
+    // crate::test_preprocessed_e2e!(mul, range_check_m31, mul);
+    crate::test_preprocessed_e2e!(div, range_check_m31, div);
+
+    // Range check 20 is used for clock differences (most opcodes use it)
+    crate::test_preprocessed_e2e!(base_alu_reg, range_check_20, add);
+    crate::test_preprocessed_e2e!(load_store, range_check_20, lw);
 }

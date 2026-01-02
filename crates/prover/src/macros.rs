@@ -529,6 +529,7 @@ macro_rules! opcode_components {
         }
 
         /// Claim containing log_size for each component.
+        #[derive(Debug)]
         pub struct Claim {
             $(
                 pub $opcode: u32,
@@ -954,6 +955,7 @@ macro_rules! preprocessed_components {
         }
 
         /// Claim containing log_size for each preprocessed table.
+        #[derive(Debug)]
         pub struct Claim {
             $(
                 pub $table: u32,
