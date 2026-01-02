@@ -62,8 +62,6 @@ impl MemoryLayout {
 pub enum CommitmentError {
     #[error("Failed to decode instruction at PC=0x{pc:08x} (word=0x{word:08x})")]
     DecodeFailure { pc: u32, word: u32 },
-    #[error("RW memory address out of range: 0x{addr:08x}")]
-    RwAddressOutOfRange { addr: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -405,22 +403,6 @@ mod tests {
             CommitmentError::DecodeFailure {
                 pc: layout.program_base,
                 word: 0xFFFF_FFFF
-            }
-        );
-    }
-
-    #[test]
-    fn test_commitment_out_of_range_rw_access() {
-        let layout = MemoryLayout::new(0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000);
-        let mut tracer = Tracer::default();
-        tracer.trace_mem_access(layout.program_end - 4, 0, 0);
-        let err = tracer
-            .finalize_commitments(&Memory::new(), &layout)
-            .unwrap_err();
-        assert_eq!(
-            err,
-            CommitmentError::RwAddressOutOfRange {
-                addr: layout.program_end - 4
             }
         );
     }
