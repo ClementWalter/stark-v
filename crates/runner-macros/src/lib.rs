@@ -374,6 +374,9 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
 
     let owned_fields: Vec<_> = flat_fields.iter().map(|f| quote! { pub #f: T }).collect();
 
+    // Generate field names as strings for NAMES constant
+    let field_names: Vec<String> = flat_fields.iter().map(|f| f.to_string()).collect();
+
     let from_eval_fields: Vec<_> = flat_fields
         .iter()
         .map(|f| quote! { #f: eval.next_trace_mask() })
@@ -397,6 +400,11 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         impl<T> #struct_name<T> {
             /// Number of columns in this struct.
             pub const SIZE: usize = #field_count;
+
+            /// Column names as strings (for debug printing).
+            pub const NAMES: &'static [&'static str] = &[
+                #(#field_names),*
+            ];
 
             /// Construct from an AIR evaluator by reading trace masks.
             #[inline(always)]

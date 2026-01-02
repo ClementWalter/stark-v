@@ -391,6 +391,26 @@ macro_rules! opcode_components {
                 columns
             }
 
+            /// Print all component tables for debugging.
+            /// This is equivalent to `tracer.print_tables(max_rows, max_cols)`.
+            pub fn print_tables(&self, max_rows: Option<usize>, max_cols: Option<usize>) {
+                use debug_utils::ToTable;
+                use stwo::prover::backend::Column;
+                debug_utils::set_display_options(max_rows, max_cols);
+                $(
+                    // If the table is non-empty, print its contents.
+                    if !self.$opcode.is_empty() {
+                        let table_name = stringify!($opcode);
+                        let names = paste::paste! {
+                            runner::trace::prover_columns::[<$opcode:camel Columns>]::<()>::NAMES
+                        };
+                        let table = self.$opcode.to_table_named(names);
+                        println!("\n=== {} ({} rows) ===", table_name, self.$opcode.first().unwrap().values.to_cpu().len());
+                        println!("{}", table);
+                    }
+                )*
+            }
+
         }
 
         /// Claim containing log_size for each component.

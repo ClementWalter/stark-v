@@ -1183,6 +1183,7 @@ name = "prover"
 version = "0.1.0"
 dependencies = [
  "ctor",
+ "debug-utils",
  "divan",
  "itertools 0.13.0",
  "mimalloc",
