@@ -16,11 +16,10 @@ pub mod reg_clock_update;
 use stwo::core::ColumnVec;
 use stwo::core::air::Component;
 use stwo::core::channel::Channel;
-use stwo::core::channel::MerkleChannel;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::QM31;
-use stwo::prover::CommitmentSchemeProver;
-use stwo::prover::backend::BackendForChannel;
+use stwo::core::pcs::TreeVec;
+use stwo::prover::backend::Column;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
@@ -356,24 +355,27 @@ impl Components {
         bounds
     }
 
-    /// Track relations for debugging LogUp imbalances.
+    /// Track relations for debugging LogUp imbalances using the original traces.
     ///
     /// Returns a summary showing which relations have mismatched counts.
-    pub fn track_relations<MC: MerkleChannel>(
+    pub fn track_relations(
         &self,
-        commitment_scheme: &CommitmentSchemeProver<'_, SimdBackend, MC>,
-    ) -> RelationSummary
-    where
-        SimdBackend: BackendForChannel<MC>,
-    {
-        let evals = commitment_scheme
-            .trace()
-            .polys
-            .map(|tree| tree.iter().map(|poly| poly.evals.to_cpu().values).collect());
-        let evals = &evals.as_ref();
-        let trace = &evals.into();
+        preprocessed_trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        traces: &Traces,
+    ) -> RelationSummary {
+        // Use the original (non-extended) traces to avoid mismatches from PCS blowup.
+        let preprocessed_cpu: Vec<Vec<BaseField>> = preprocessed_trace
+            .iter()
+            .map(|col| col.values.to_cpu())
+            .collect();
+        let main_columns = traces.columns_cloned();
+        let main_cpu: Vec<Vec<BaseField>> =
+            main_columns.iter().map(|col| col.values.to_cpu()).collect();
 
-        let entries = self.relation_entries(trace);
+        let cpu_trace = TreeVec::new(vec![preprocessed_cpu, main_cpu]);
+        let trace_refs = TreeVec::new(cpu_trace.iter().map(|tree| tree.iter().collect()).collect());
+
+        let entries = self.relation_entries(&trace_refs);
         RelationSummary::summarize_relations(&entries).cleaned()
     }
 
