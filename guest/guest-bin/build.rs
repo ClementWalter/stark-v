@@ -19,6 +19,9 @@ fn main() {
     // Tell Cargo to rerun if examples directory changes
     println!("cargo:rerun-if-changed=../guest-lib/examples");
 
+    // Tell Cargo to rerun if linker.ld changes
+    println!("cargo:rerun-if-changed=./linker.ld");
+
     // Scan for example files
     let entries = match fs::read_dir(examples_dir) {
         Ok(entries) => entries,
