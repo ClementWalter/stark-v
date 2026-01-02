@@ -122,9 +122,10 @@ pub fn prove_rv32im(
         let total_sum = claimed_sum.total();
         info!("Claimed sum: {total_sum:?}");
         if !total_sum.is_zero() {
+            let preprocessed_trace = PreProcessedTrace::new();
             info!(
                 "Relation summary: {:?}",
-                components.track_relations(&commitment_scheme)
+                components.track_relations(&preprocessed_trace.trace, &traces)
             );
             panic!("Relation sum must be zero, got {total_sum:?}");
         }
