@@ -1,6 +1,7 @@
 //! Tests for lt_reg component.
 
 use super::*;
+use num_traits::Zero;
 
 #[test]
 fn test_lt_reg_witness_gen_empty_table() {
@@ -23,8 +24,7 @@ fn test_lt_reg_interaction_trace_empty_table() {
         witness::gen_interaction_trace(trace.as_slice(), &relations);
     // Interaction trace is always generated (even for padding-only tables)
     assert!(!interaction_trace.is_empty());
-    // claimed_sum won't be zero due to range check entries with -1 numerator
-    let _ = claimed_sum;
+    assert!(claimed_sum.is_zero());
 }
 
 // =============================================================================

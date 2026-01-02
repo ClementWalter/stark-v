@@ -1,6 +1,6 @@
 //! Witness generation for shifts_imm component.
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -13,7 +13,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::ShiftsImmColumns;
-use crate::{combine, consume_pair, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -69,7 +69,6 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -143,7 +142,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -154,7 +153,13 @@ pub fn gen_interaction_trace(
     // 8. range_check_8_8: -1 * (rd[2], rd[3])
     let rc_8_8_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
-    consume_pair!(logup_gen; rc_8_8_0_denom, rc_8_8_1_denom);
+    write_pair!(
+        &neg_enabler,
+        &rc_8_8_0_denom,
+        &neg_enabler,
+        &rc_8_8_1_denom,
+        logup_gen
+    );
 
     // 9. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
     let rd_read_denom = combine!(
@@ -195,7 +200,7 @@ pub fn gen_interaction_trace(
     // 11. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    crate::consume_col!(rc_20_rd_denom, logup_gen);
+    crate::write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

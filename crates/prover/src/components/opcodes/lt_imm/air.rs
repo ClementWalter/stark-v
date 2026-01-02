@@ -148,7 +148,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_8_8_4,
-            -E::F::one(),
+            -enabler.clone(),
             cols.rs1_msl_felt.clone() + cols.opcode_slti_flag.clone() * pow2::<E>(7),
             cols.imm_0,
             two.clone() * cols.imm_1.clone()
@@ -203,7 +203,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -E::F::one(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
@@ -247,7 +247,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -E::F::one(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

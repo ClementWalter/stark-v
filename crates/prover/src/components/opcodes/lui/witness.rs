@@ -1,5 +1,6 @@
 //! Witness generation for lui component.
 
+use num_traits::One;
 use num_traits::Zero;
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
@@ -13,7 +14,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::LuiColumns;
-use crate::{combine, consume_col, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 ///
@@ -76,7 +77,6 @@ pub fn gen_interaction_trace(
     let pos_enabler: Vec<PackedQM31> = (0..simd_size)
         .map(|i| PackedQM31::from(cols.enabler[i]))
         .collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -113,7 +113,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &registers_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_4_denom,
         logup_gen
     );
@@ -159,7 +159,7 @@ pub fn gen_interaction_trace(
     let rc_20_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     // Leftover entry 7: -1 numerator
-    consume_col!(rc_20_denom, logup_gen);
+    write_col!(&neg_enabler, &rc_20_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

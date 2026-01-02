@@ -13,7 +13,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::MulColumns;
-use crate::{combine, consume_pair, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -98,7 +98,6 @@ pub fn gen_interaction_trace(
     let pos_enabler: Vec<PackedQM31> = (0..simd_size)
         .map(|i| PackedQM31::from(cols.enabler[i]))
         .collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -172,7 +171,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -220,9 +219,9 @@ pub fn gen_interaction_trace(
     let rc_8_8_carry_0_denom = combine!(relations.range_check_8_8, [&carry_0, &carry_1]);
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs2_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_carry_0_denom,
         logup_gen
     );
@@ -233,7 +232,13 @@ pub fn gen_interaction_trace(
     // 12. range_check_8_8: -1 * (rd[0], rd[1])
     let rc_8_8_rd_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
-    consume_pair!(logup_gen; rc_8_8_carry_1_denom, rc_8_8_rd_0_denom);
+    write_pair!(
+        &neg_enabler,
+        &rc_8_8_carry_1_denom,
+        &neg_enabler,
+        &rc_8_8_rd_0_denom,
+        logup_gen
+    );
 
     // 13. range_check_8_8: -1 * (rd[2], rd[3])
     let rc_8_8_rd_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
@@ -253,7 +258,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_rd_1_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -280,7 +285,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rd_denom,
         logup_gen
     );

@@ -70,7 +70,6 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -130,7 +129,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -178,7 +177,7 @@ pub fn gen_interaction_trace(
     let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clk]);
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs2_denom,
         &neg_enabler,
         &registers_read_denom,

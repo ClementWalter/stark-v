@@ -337,7 +337,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -E::F::one(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
@@ -348,7 +348,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -E::F::one(),
+            -enabler.clone(),
             (base[0].clone() - cols.shift_amount.clone())
                 * quarter_inv
                 * E::F::from(BaseField::from_u32_unchecked(1 << 14))
@@ -359,7 +359,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_m31,
-            -E::F::one(),
+            -enabler.clone(),
             base[0].clone(),
             base[3].clone()
         );
@@ -395,7 +395,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -E::F::one(),
+            -enabler.clone(),
             cols.clk.clone() - cols.src_clk_prev.clone()
         );
 
@@ -430,7 +430,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -E::F::one(),
+            -enabler.clone(),
             cols.clk.clone() - cols.dst_clk_prev.clone()
         );
 
