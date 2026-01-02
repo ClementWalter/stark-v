@@ -55,6 +55,7 @@ struct LoadStoreWitness {
 }
 
 pub fn lb(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
     let mem = memory.read_u8_traced(addr, tracer);
@@ -72,7 +73,7 @@ pub fn lb(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
     // src_addr_selector = mem_addr - shift_amount, dst_addr_selector = r2_idx
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
-    trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
+    trace_op!(load_store: tracer, old_pc, rd, rs1, mem,
         inst.rd as u32, imm_felt, src_msb,
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -82,6 +83,7 @@ pub fn lb(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
 }
 
 pub fn lh(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
     let mem = memory.read_u16_traced(addr, tracer);
@@ -99,7 +101,7 @@ pub fn lh(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
     // src_addr_selector = mem_addr - shift_amount, dst_addr_selector = r2_idx
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
-    trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
+    trace_op!(load_store: tracer, old_pc, rd, rs1, mem,
         inst.rd as u32, imm_felt, src_msb,
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -109,6 +111,7 @@ pub fn lh(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
 }
 
 pub fn lw(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
     let mem = memory.read_u32_traced(addr, tracer);
@@ -125,7 +128,7 @@ pub fn lw(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
     // src_addr_selector = mem_addr - shift_amount, dst_addr_selector = r2_idx
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
-    trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
+    trace_op!(load_store: tracer, old_pc, rd, rs1, mem,
         inst.rd as u32, imm_felt, src_msb,
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -135,6 +138,7 @@ pub fn lw(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trace
 }
 
 pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
     let mem = memory.read_u8_traced(addr, tracer);
@@ -151,7 +155,7 @@ pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
     // src_addr_selector = mem_addr - shift_amount, dst_addr_selector = r2_idx
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
-    trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
+    trace_op!(load_store: tracer, old_pc, rd, rs1, mem,
         inst.rd as u32, imm_felt, src_msb, // needed to reconstruct top byte in AIR
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -161,6 +165,7 @@ pub fn lbu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
 }
 
 pub fn lhu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
     let mem = memory.read_u16_traced(addr, tracer);
@@ -177,7 +182,7 @@ pub fn lhu(cpu: &mut Cpu, memory: &Memory, inst: &DecodedInst, tracer: &mut Trac
     // src_addr_selector = mem_addr - shift_amount, dst_addr_selector = r2_idx
     let src_addr_selector = addr - w.shift_amount;
     let dst_addr_selector = inst.rd as u32;
-    trace_op!(load_store: tracer, cpu.pc, rd, rs1, mem,
+    trace_op!(load_store: tracer, old_pc, rd, rs1, mem,
         inst.rd as u32, imm_felt, src_msb, // needed to reconstruct top byte in AIR
         w.shift_amount,
         src_addr_selector, dst_addr_selector,

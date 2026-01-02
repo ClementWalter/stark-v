@@ -41,6 +41,7 @@ struct StoreWitness {
 }
 
 pub fn sb(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -57,7 +58,7 @@ pub fn sb(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut T
     // src_addr_selector = r2_idx, dst_addr_selector = mem_addr - shift_amount
     let src_addr_selector = inst.rs2 as u32;
     let dst_addr_selector = addr - w.shift_amount;
-    trace_op!(load_store: tracer, cpu.pc, mem, rs1, rs2,
+    trace_op!(load_store: tracer, old_pc, mem, rs1, rs2,
         inst.rs2 as u32, imm_felt, src_msb as u32,
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -67,6 +68,7 @@ pub fn sb(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut T
 }
 
 pub fn sh(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -83,7 +85,7 @@ pub fn sh(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut T
     // src_addr_selector = r2_idx, dst_addr_selector = mem_addr - shift_amount
     let src_addr_selector = inst.rs2 as u32;
     let dst_addr_selector = addr - w.shift_amount;
-    trace_op!(load_store: tracer, cpu.pc, mem, rs1, rs2,
+    trace_op!(load_store: tracer, old_pc, mem, rs1, rs2,
         inst.rs2 as u32, imm_felt, src_msb as u32,
         w.shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -93,6 +95,7 @@ pub fn sh(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut T
 }
 
 pub fn sw(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let addr = rs1.next.wrapping_add(inst.imm as u32);
@@ -109,7 +112,7 @@ pub fn sw(cpu: &mut Cpu, memory: &mut Memory, inst: &DecodedInst, tracer: &mut T
     // src_addr_selector = r2_idx, dst_addr_selector = mem_addr - shift_amount
     let src_addr_selector = inst.rs2 as u32;
     let dst_addr_selector = addr - w.shift_amount;
-    trace_op!(load_store: tracer, cpu.pc, mem, rs1, rs2,
+    trace_op!(load_store: tracer, old_pc, mem, rs1, rs2,
         inst.rs2 as u32, imm_felt, src_msb,
         w.shift_amount,
         src_addr_selector, dst_addr_selector,

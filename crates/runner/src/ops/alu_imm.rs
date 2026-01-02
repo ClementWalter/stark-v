@@ -28,6 +28,7 @@ pub(crate) fn decode_imm_limbs(imm: i32) -> (u32, u32, u32) {
 // =============================================================================
 
 pub fn addi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let result = rs1.next.wrapping_add(inst.imm as u32);
     let rd = cpu.write_reg(inst.rd, result, tracer);
@@ -35,13 +36,14 @@ pub fn addi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
     // opcode flags: add=1, xor=0, or=0, and=0
-    trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(base_alu_imm: tracer, old_pc, rd, rs1,
         imm_0, imm_1, imm_msb,
         1, 0, 0, 0
     );
 }
 
 pub fn xori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let result = rs1.next ^ (inst.imm as u32);
     let rd = cpu.write_reg(inst.rd, result, tracer);
@@ -49,13 +51,14 @@ pub fn xori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
     // opcode flags: add=0, xor=1, or=0, and=0
-    trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(base_alu_imm: tracer, old_pc, rd, rs1,
         imm_0, imm_1, imm_msb,
         0, 1, 0, 0
     );
 }
 
 pub fn ori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let result = rs1.next | (inst.imm as u32);
     let rd = cpu.write_reg(inst.rd, result, tracer);
@@ -63,13 +66,14 @@ pub fn ori(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
     // opcode flags: add=0, xor=0, or=1, and=0
-    trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(base_alu_imm: tracer, old_pc, rd, rs1,
         imm_0, imm_1, imm_msb,
         0, 0, 1, 0
     );
 }
 
 pub fn andi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let result = rs1.next & (inst.imm as u32);
     let rd = cpu.write_reg(inst.rd, result, tracer);
@@ -77,7 +81,7 @@ pub fn andi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 
     let (imm_0, imm_1, imm_msb) = decode_imm_limbs(inst.imm);
     // opcode flags: add=0, xor=0, or=0, and=1
-    trace_op!(base_alu_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(base_alu_imm: tracer, old_pc, rd, rs1,
         imm_0, imm_1, imm_msb,
         0, 0, 0, 1
     );
@@ -88,6 +92,7 @@ pub fn andi(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 // =============================================================================
 
 pub fn slli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let shamt = inst.imm as u32 & 0x1F;
     let result = rs1.next << shamt;
@@ -98,7 +103,7 @@ pub fn slli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let bit_multiplier = 1u32 << (shamt % 8);
 
     // opcode flags: sll=1, srl=0, sra=0
-    trace_op!(shifts_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(shifts_imm: tracer, old_pc, rd, rs1,
         w.rs1_sign, shamt,
         1, 0, 0,  // opcode flags
         bit_multiplier, 0,  // bit_multiplier_left, bit_multiplier_right
@@ -110,6 +115,7 @@ pub fn slli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn srli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let shamt = inst.imm as u32 & 0x1F;
     let result = rs1.next >> shamt;
@@ -120,7 +126,7 @@ pub fn srli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let bit_multiplier = 1u32 << (shamt % 8);
 
     // opcode flags: sll=0, srl=1, sra=0
-    trace_op!(shifts_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(shifts_imm: tracer, old_pc, rd, rs1,
         w.rs1_sign, shamt,
         0, 1, 0,  // opcode flags
         0, bit_multiplier,  // bit_multiplier_left, bit_multiplier_right
@@ -132,6 +138,7 @@ pub fn srli(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn srai(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let shamt = inst.imm as u32 & 0x1F;
     let result = ((rs1.next as i32) >> shamt) as u32;
@@ -142,7 +149,7 @@ pub fn srai(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let bit_multiplier = 1u32 << (shamt % 8);
 
     // opcode flags: sll=0, srl=0, sra=1
-    trace_op!(shifts_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(shifts_imm: tracer, old_pc, rd, rs1,
         w.rs1_sign, shamt,
         0, 0, 1,  // opcode flags
         0, bit_multiplier,  // bit_multiplier_left, bit_multiplier_right
@@ -158,6 +165,7 @@ pub fn srai(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 // =============================================================================
 
 pub fn slti(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let cmp_result = if (rs1.next as i32) < inst.imm { 1 } else { 0 };
     let rd = cpu.write_reg(inst.rd, cmp_result, tracer);
@@ -167,7 +175,7 @@ pub fn slti(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let w = compute_lt_imm_witness(rs1.next, inst.imm, true);
 
     // opcode flags: slti=1, sltiu=0
-    trace_op!(lt_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(lt_imm: tracer, old_pc, rd, rs1,
         cmp_result, w.rs1_msl_felt,
         imm_0, imm_1, imm_msb,
         1, 0,  // opcode flags
@@ -177,6 +185,7 @@ pub fn slti(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn sltiu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let cmp_result = if rs1.next < (inst.imm as u32) { 1 } else { 0 };
     let rd = cpu.write_reg(inst.rd, cmp_result, tracer);
@@ -186,7 +195,7 @@ pub fn sltiu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let w = compute_lt_imm_witness(rs1.next, inst.imm, false);
 
     // opcode flags: slti=0, sltiu=1
-    trace_op!(lt_imm: tracer, cpu.pc, rd, rs1,
+    trace_op!(lt_imm: tracer, old_pc, rd, rs1,
         cmp_result, w.rs1_msl_felt,
         imm_0, imm_1, imm_msb,
         0, 1,  // opcode flags
