@@ -228,6 +228,15 @@ pub fn register_multiplicities(
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+
+    // Register range_check_8_8 for rd limbs
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rd_clk_prev]);

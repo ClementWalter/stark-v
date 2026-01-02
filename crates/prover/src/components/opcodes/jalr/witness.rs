@@ -236,6 +236,22 @@ pub fn register_multiplicities(
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+
+    // Register range_check_m31: (rs1_next_0, rs1_next_3)
+    counters
+        .range_check_m31
+        .register_many(&enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
+
+    // Register range_check_8_8: (rd_next_1, rd_next_2)
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_1, cols.rd_next_2]);
+
+    // Register range_check_m31: (rd_next_0, rd_next_3)
+    counters
+        .range_check_m31
+        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_3]);
+
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rd_clk_prev]);

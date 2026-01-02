@@ -343,10 +343,27 @@ pub fn register_multiplicities(
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+
+    // Register range_check_8_8 for q limbs
     counters
-        .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .range_check_8_8
+        .register_many(&enabler, &[cols.q_0, cols.q_1]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.q_2, cols.q_3]);
+
+    // Register range_check_8_8 for r limbs
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.r_0, cols.r_1]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.r_2, cols.r_3]);
+
     counters
         .range_check_20
         .register_many(&valid_not_special, &[&lt_diff_minus_1]);
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
 }

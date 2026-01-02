@@ -185,6 +185,11 @@ pub fn register_multiplicities(
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
+    // Register range_check_8_8_4: (imm_1, imm_2, imm_0)
+    counters
+        .range_check_8_8_4
+        .register_many(&enabler, &[cols.imm_1, cols.imm_2, cols.imm_0]);
+
     // Register range_check_20: (clk - rd_clk_prev)
     counters
         .range_check_20

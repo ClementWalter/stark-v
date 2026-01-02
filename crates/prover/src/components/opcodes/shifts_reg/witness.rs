@@ -310,12 +310,62 @@ pub fn register_multiplicities(
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
+    let pow2_12 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 12));
+
+    // Compute shift_amount from markers (same as gen_interaction_trace)
+    let shift_amount: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            // bit_shift = sum(j * bit_shift_marker[j])
+            let bit_shift = PackedM31::broadcast(BaseField::from_u32_unchecked(1))
+                * cols.bit_shift_marker_1[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(2))
+                    * cols.bit_shift_marker_2[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(3))
+                    * cols.bit_shift_marker_3[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(4))
+                    * cols.bit_shift_marker_4[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(5))
+                    * cols.bit_shift_marker_5[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(6))
+                    * cols.bit_shift_marker_6[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(7))
+                    * cols.bit_shift_marker_7[i];
+            // limb_shift = sum(j * limb_shift_marker[j])
+            let limb_shift = PackedM31::broadcast(BaseField::from_u32_unchecked(1))
+                * cols.limb_shift_marker_1[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(2))
+                    * cols.limb_shift_marker_2[i]
+                + PackedM31::broadcast(BaseField::from_u32_unchecked(3))
+                    * cols.limb_shift_marker_3[i];
+            limb_shift * PackedM31::broadcast(BaseField::from_u32_unchecked(8)) + bit_shift
+        })
+        .collect();
+
+    // shift_check = 2^12 * (rs2[0] - shift_amount)
+    let shift_check: Vec<PackedM31> = (0..simd_size)
+        .map(|i| pow2_12 * (cols.rs2_next_0[i] - shift_amount[i]))
+        .collect();
+
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+
+    // Register range_check_20 for shift_check
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&shift_check]);
+
+    // Register range_check_8_8 for rd limbs
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_rd_clk_prev]);

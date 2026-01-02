@@ -343,6 +343,12 @@ pub fn register_multiplicities(
     counters
         .range_check_20
         .register_many(&enabler, &[&alignment_check]);
+
+    // Register range_check_m31: (rs1_next_0, rs1_next_3) for base address
+    counters
+        .range_check_m31
+        .register_many(&enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
+
     counters
         .range_check_20
         .register_many(&enabler, &[&clk_minus_src_clk_prev]);
