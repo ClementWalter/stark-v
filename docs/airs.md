@@ -1208,7 +1208,7 @@ write to rd
 
 check shift amount
 
-- `shift_amount - (opcode_b_flag * shift_id + opcode_h_flag * (shift_id - 1) / 4)`
+- `shift_amount - (opcode_b_flag * shift_id + opcode_h_flag * (shift_id - 1) / 2)`
 
 check src/dst address selectors
 

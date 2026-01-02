@@ -7,6 +7,7 @@ edition = "2024"
 clap.workspace = true
 debug-utils.workspace = true
 goblin.workspace = true
+itertools.workspace = true
 rustc-hash.workspace = true
 simd.workspace = true
 stwo-constraint-framework.workspace = true

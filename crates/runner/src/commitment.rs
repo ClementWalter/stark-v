@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustc_hash::FxHashMap;
 use thiserror::Error;
 
@@ -19,6 +20,8 @@ pub(crate) struct MemoryLayout {
     pub data_end: u32,
     pub stack_bottom: u32,
     pub stack_top: u32,
+    pub io_base: u32,
+    pub io_end: u32,
 }
 
 impl MemoryLayout {
@@ -30,6 +33,8 @@ impl MemoryLayout {
         data_end: u32,
         stack_bottom: u32,
         stack_top: u32,
+        io_base: u32,
+        io_end: u32,
     ) -> Self {
         Self {
             program_base,
@@ -38,10 +43,23 @@ impl MemoryLayout {
             data_end,
             stack_bottom,
             stack_top,
+            io_base,
+            io_end,
         }
     }
 
     pub(crate) fn from_loaded(loaded: &crate::elf::LoadedElf) -> Self {
+        let io_base = loaded
+            .halt_flag_addr
+            .min(loaded.output_len_addr)
+            .min(loaded.output_data_addr);
+        let io_end = loaded
+            .output_end_addr
+            .max(loaded.output_data_addr)
+            .max(loaded.output_len_addr)
+            .max(loaded.halt_flag_addr)
+            .saturating_add(1);
+
         Self {
             program_base: loaded.text_base,
             program_end: loaded.text_end,
@@ -49,12 +67,15 @@ impl MemoryLayout {
             data_end: loaded.data_end,
             stack_bottom: loaded.stack_bottom,
             stack_top: loaded.sp,
+            io_base,
+            io_end,
         }
     }
 
     pub(crate) fn is_rw_addr(&self, addr: u32) -> bool {
         (addr >= self.data_base && addr < self.data_end)
             || (addr >= self.stack_bottom && addr < self.stack_top)
+            || (addr >= self.io_base && addr < self.io_end)
     }
 }
 
@@ -202,7 +223,9 @@ impl Tracer {
 
         let mem_addrs = memory
             .keys()
-            .filter(|&addr| addr & 3 == 0 && layout.is_rw_addr(addr));
+            .filter(|&addr| layout.is_rw_addr(addr))
+            .map(|addr| addr & !3)
+            .dedup();
 
         for addr in mem_addrs {
             let final_word = memory.read_u32(addr);
@@ -393,7 +416,9 @@ mod tests {
 
     #[test]
     fn test_commitment_decode_failure() {
-        let layout = MemoryLayout::new(0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000);
+        let layout = MemoryLayout::new(
+            0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000,
+        );
         let mut mem = Memory::new();
         mem.write_u32(layout.program_base, 0xFFFF_FFFF);
         let mut tracer = Tracer::default();
