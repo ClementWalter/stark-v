@@ -63,6 +63,22 @@ pub mod air {
                 multiplicity.clone() * (multiplicity.clone() * multiplicity.clone() - one.clone()),
             );
 
+            add_to_relation!(
+                eval,
+                self.relations.range_check_8_8,
+                -enabler.clone(),
+                value_0.clone(),
+                value_1.clone()
+            );
+
+            add_to_relation!(
+                eval,
+                self.relations.range_check_8_8,
+                -enabler.clone(),
+                value_2.clone(),
+                value_3.clone()
+            );
+
             let rw_as = E::F::one();
             add_to_relation!(
                 eval,
@@ -75,22 +91,6 @@ pub mod air {
                 value_1,
                 value_2,
                 value_3
-            );
-
-            add_to_relation!(
-                eval,
-                self.relations.range_check_8_8,
-                -E::F::one(),
-                value_0.clone(),
-                value_1.clone()
-            );
-
-            add_to_relation!(
-                eval,
-                self.relations.range_check_8_8,
-                -E::F::one(),
-                value_2.clone(),
-                value_3.clone()
             );
 
             let index_base = addr;
@@ -257,5 +257,18 @@ pub mod witness {
         write_col!(&neg_enabler, &merkle_3_denom, interaction_trace);
 
         interaction_trace.finalize_last()
+    }
+
+    /// Register multiplicities for preprocessed lookups.
+    pub fn register_multiplicities(
+        trace: &runner::trace::MemoryTable,
+        counters: &mut crate::relations::Counters,
+    ) {
+        counters
+            .range_check_8_8
+            .register_many(&[&trace.value_0[..], &trace.value_1[..]]);
+        counters
+            .range_check_8_8
+            .register_many(&[&trace.value_2[..], &trace.value_3[..]]);
     }
 }
