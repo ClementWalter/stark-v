@@ -45,10 +45,10 @@ pub mod air {
             let cols = ProgramColumns::from_eval(&mut eval);
             let enabler = cols.enabler.clone();
             let addr = cols.addr.clone();
-            let value0 = cols.value0.clone();
-            let value1 = cols.value1.clone();
-            let value2 = cols.value2.clone();
-            let value3 = cols.value3.clone();
+            let value_0 = cols.value_0.clone();
+            let value_1 = cols.value_1.clone();
+            let value_2 = cols.value_2.clone();
+            let value_3 = cols.value_3.clone();
             let multiplicity = cols.multiplicity.clone();
             let root = cols.root.clone();
 
@@ -65,10 +65,10 @@ pub mod air {
                 self.relations.program_access,
                 multiplicity.clone(),
                 addr,
-                value0,
-                value1,
-                value2,
-                value3
+                value_0,
+                value_1,
+                value_2,
+                value_3
             );
 
             let index_base = addr - base;
@@ -78,7 +78,7 @@ pub mod air {
                 -enabler.clone(),
                 index_base.clone(),
                 leaf_depth.clone(),
-                value0,
+                value_0,
                 root.clone()
             );
 
@@ -88,7 +88,7 @@ pub mod air {
                 -enabler.clone(),
                 index_base.clone() + one.clone(),
                 leaf_depth.clone(),
-                value1,
+                value_1,
                 root.clone()
             );
             add_to_relation!(
@@ -97,7 +97,7 @@ pub mod air {
                 -enabler.clone(),
                 index_base.clone() + two.clone(),
                 leaf_depth.clone(),
-                value2,
+                value_2,
                 root.clone()
             );
             add_to_relation!(
@@ -106,7 +106,7 @@ pub mod air {
                 -enabler,
                 index_base + three,
                 leaf_depth,
-                value3,
+                value_3,
                 root
             );
             eval.finalize_logup_in_pairs();
@@ -159,7 +159,7 @@ pub mod witness {
         // LogUp entries (same order as AIR)
         // =====================================================================
 
-        // 1. program_access: + multiplicity * (addr, value0, value1, value2, value3)
+        // 1. program_access: + multiplicity * (addr, value_0, value_1, value_2, value_3)
         let pos_mult: Vec<PackedQM31> = (0..simd_size)
             .map(|i| PackedQM31::from(cols.multiplicity[i]))
             .collect();
@@ -168,21 +168,21 @@ pub mod witness {
             relations.program_access,
             [
                 cols.addr,
-                cols.value0,
-                cols.value1,
-                cols.value2,
-                cols.value3
+                cols.value_0,
+                cols.value_1,
+                cols.value_2,
+                cols.value_3
             ]
         );
 
-        // 2. merkle: -enabler * (index_base, leaf_depth, value0, root)
+        // 2. merkle: -enabler * (index_base, leaf_depth, value_0, root)
         let neg_enabler: Vec<PackedQM31> = (0..simd_size)
             .map(|i| -PackedQM31::from(cols.enabler[i]))
             .collect();
 
         let merkle_0_denom = combine!(
             relations.merkle,
-            [&index_base, &leaf_depth_col, cols.value0, cols.root]
+            [&index_base, &leaf_depth_col, cols.value_0, cols.root]
         );
 
         write_pair!(
@@ -193,24 +193,24 @@ pub mod witness {
             interaction_trace
         );
 
-        // 3. merkle: -enabler * (index_base + 1, leaf_depth, value1, root)
+        // 3. merkle: -enabler * (index_base + 1, leaf_depth, value_1, root)
         let merkle_1_denom = combine!(
             relations.merkle,
             [
                 &index_base_plus_one,
                 &leaf_depth_col,
-                cols.value1,
+                cols.value_1,
                 cols.root
             ]
         );
 
-        // 4. merkle: -enabler * (index_base + 2, leaf_depth, value2, root)
+        // 4. merkle: -enabler * (index_base + 2, leaf_depth, value_2, root)
         let merkle_2_denom = combine!(
             relations.merkle,
             [
                 &index_base_plus_two,
                 &leaf_depth_col,
-                cols.value2,
+                cols.value_2,
                 cols.root
             ]
         );
@@ -223,13 +223,13 @@ pub mod witness {
             interaction_trace
         );
 
-        // 5. merkle: -enabler * (index_base + 3, leaf_depth, value3, root)
+        // 5. merkle: -enabler * (index_base + 3, leaf_depth, value_3, root)
         let merkle_3_denom = combine!(
             relations.merkle,
             [
                 &index_base_plus_three,
                 &leaf_depth_col,
-                cols.value3,
+                cols.value_3,
                 cols.root
             ]
         );

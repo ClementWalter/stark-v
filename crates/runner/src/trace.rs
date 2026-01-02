@@ -192,7 +192,7 @@ runner_macros::define_trace_tables! {
     // 17. Program commitment table
     // ==========================================================================
     program: {
-        addr, value0, value1, value2, value3, multiplicity, root
+        addr, value_0, value_1, value_2, value_3, multiplicity, root
     },
 
     // ==========================================================================
@@ -200,7 +200,7 @@ runner_macros::define_trace_tables! {
     // ==========================================================================
     memory: {
         addr, clk,
-        value0, value1, value2, value3,
+        value_0, value_1, value_2, value_3,
         multiplicity, root
     },
 
@@ -415,26 +415,26 @@ impl AccessTable {
             enabler.push(1);
         }
 
-        let mut value0 = AlignedVec::with_capacity(len);
-        let mut value1 = AlignedVec::with_capacity(len);
-        let mut value2 = AlignedVec::with_capacity(len);
-        let mut value3 = AlignedVec::with_capacity(len);
+        let mut value_0 = AlignedVec::with_capacity(len);
+        let mut value_1 = AlignedVec::with_capacity(len);
+        let mut value_2 = AlignedVec::with_capacity(len);
+        let mut value_3 = AlignedVec::with_capacity(len);
         for val in self.value.iter() {
             let val = *val;
-            value0.push(val & 0xFF);
-            value1.push((val >> 8) & 0xFF);
-            value2.push((val >> 16) & 0xFF);
-            value3.push((val >> 24) & 0xFF);
+            value_0.push(val & 0xFF);
+            value_1.push((val >> 8) & 0xFF);
+            value_2.push((val >> 16) & 0xFF);
+            value_3.push((val >> 24) & 0xFF);
         }
 
         vec![
             enabler,
             self.addr,
             self.clk_prev,
-            value0,
-            value1,
-            value2,
-            value3,
+            value_0,
+            value_1,
+            value_2,
+            value_3,
         ]
     }
 

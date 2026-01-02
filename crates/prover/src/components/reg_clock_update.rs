@@ -24,10 +24,10 @@ pub mod columns {
         pub enabler: T,
         pub addr: T,
         pub clk_prev: T,
-        pub value0: T,
-        pub value1: T,
-        pub value2: T,
-        pub value3: T,
+        pub value_0: T,
+        pub value_1: T,
+        pub value_2: T,
+        pub value_3: T,
     }
 
     impl<T> RegClockUpdateColumns<T> {
@@ -38,10 +38,10 @@ pub mod columns {
                 enabler: eval.next_trace_mask(),
                 addr: eval.next_trace_mask(),
                 clk_prev: eval.next_trace_mask(),
-                value0: eval.next_trace_mask(),
-                value1: eval.next_trace_mask(),
-                value2: eval.next_trace_mask(),
-                value3: eval.next_trace_mask(),
+                value_0: eval.next_trace_mask(),
+                value_1: eval.next_trace_mask(),
+                value_2: eval.next_trace_mask(),
+                value_3: eval.next_trace_mask(),
             }
         }
     }
@@ -73,10 +73,10 @@ pub mod air {
             let enabler = cols.enabler.clone();
             let addr = cols.addr.clone();
             let clk_prev = cols.clk_prev.clone();
-            let value0 = cols.value0.clone();
-            let value1 = cols.value1.clone();
-            let value2 = cols.value2.clone();
-            let value3 = cols.value3.clone();
+            let value_0 = cols.value_0.clone();
+            let value_1 = cols.value_1.clone();
+            let value_2 = cols.value_2.clone();
+            let value_3 = cols.value_3.clone();
 
             let one = E::F::one();
             let diff = E::F::from(M31::from(DEFAULT_MAX_CLOCK_DIFF));
@@ -91,10 +91,10 @@ pub mod air {
                 reg_as.clone(),
                 addr.clone(),
                 clk_prev.clone(),
-                value0.clone(),
-                value1.clone(),
-                value2.clone(),
-                value3.clone()
+                value_0.clone(),
+                value_1.clone(),
+                value_2.clone(),
+                value_3.clone()
             );
             add_to_relation!(
                 eval,
@@ -103,10 +103,10 @@ pub mod air {
                 reg_as,
                 addr,
                 clk_prev + diff,
-                value0,
-                value1,
-                value2,
-                value3
+                value_0,
+                value_1,
+                value_2,
+                value_3
             );
             eval.finalize_logup_in_pairs();
             eval
@@ -133,10 +133,10 @@ pub mod witness {
         let enabler = &trace[0].data;
         let addr = &trace[1].data;
         let clk_prev = &trace[2].data;
-        let value0 = &trace[3].data;
-        let value1 = &trace[4].data;
-        let value2 = &trace[5].data;
-        let value3 = &trace[6].data;
+        let value_0 = &trace[3].data;
+        let value_1 = &trace[4].data;
+        let value_2 = &trace[5].data;
+        let value_3 = &trace[6].data;
 
         let diff = PackedM31::broadcast(M31::from(DEFAULT_MAX_CLOCK_DIFF));
 
@@ -158,7 +158,15 @@ pub mod witness {
 
         let prev_denom = combine!(
             relations.memory_access,
-            [&reg_as_col, addr, clk_prev, value0, value1, value2, value3]
+            [
+                &reg_as_col,
+                addr,
+                clk_prev,
+                value_0,
+                value_1,
+                value_2,
+                value_3
+            ]
         );
         let next_denom = combine!(
             relations.memory_access,
@@ -166,10 +174,10 @@ pub mod witness {
                 &reg_as_col,
                 addr,
                 &clk_prev_plus_diff,
-                value0,
-                value1,
-                value2,
-                value3
+                value_0,
+                value_1,
+                value_2,
+                value_3
             ]
         );
 

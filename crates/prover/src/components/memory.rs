@@ -46,10 +46,10 @@ pub mod air {
             let enabler = cols.enabler.clone();
             let addr = cols.addr.clone();
             let clk = cols.clk.clone();
-            let value0 = cols.value0.clone();
-            let value1 = cols.value1.clone();
-            let value2 = cols.value2.clone();
-            let value3 = cols.value3.clone();
+            let value_0 = cols.value_0.clone();
+            let value_1 = cols.value_1.clone();
+            let value_2 = cols.value_2.clone();
+            let value_3 = cols.value_3.clone();
             let multiplicity = cols.multiplicity.clone();
             let root = cols.root.clone();
 
@@ -72,10 +72,10 @@ pub mod air {
                 rw_as,
                 addr,
                 clk,
-                value0,
-                value1,
-                value2,
-                value3
+                value_0,
+                value_1,
+                value_2,
+                value_3
             );
 
             let index_base = addr - base;
@@ -85,7 +85,7 @@ pub mod air {
                 -enabler.clone(),
                 index_base.clone(),
                 leaf_depth.clone(),
-                value0,
+                value_0,
                 root.clone()
             );
             add_to_relation!(
@@ -94,7 +94,7 @@ pub mod air {
                 -enabler.clone(),
                 index_base.clone() + one.clone(),
                 leaf_depth.clone(),
-                value1,
+                value_1,
                 root.clone()
             );
             add_to_relation!(
@@ -103,7 +103,7 @@ pub mod air {
                 -enabler.clone(),
                 index_base.clone() + two.clone(),
                 leaf_depth.clone(),
-                value2,
+                value_2,
                 root.clone()
             );
             add_to_relation!(
@@ -112,7 +112,7 @@ pub mod air {
                 -enabler,
                 index_base + three,
                 leaf_depth,
-                value3,
+                value_3,
                 root
             );
             eval.finalize_logup_in_pairs();
@@ -140,10 +140,10 @@ pub mod witness {
         let enabler = &trace[0].data;
         let addr = &trace[1].data;
         let clk = &trace[2].data;
-        let value0 = &trace[3].data;
-        let value1 = &trace[4].data;
-        let value2 = &trace[5].data;
-        let value3 = &trace[6].data;
+        let value_0 = &trace[3].data;
+        let value_1 = &trace[4].data;
+        let value_2 = &trace[5].data;
+        let value_3 = &trace[6].data;
         let multiplicity = &trace[7].data;
         let root = &trace[8].data;
 
@@ -177,23 +177,23 @@ pub mod witness {
 
         let memory_denom = combine!(
             relations.memory_access,
-            [&rw_as_col, addr, clk, value0, value1, value2, value3]
+            [&rw_as_col, addr, clk, value_0, value_1, value_2, value_3]
         );
         let merkle_0_denom = combine!(
             relations.merkle,
-            [&index_base, &leaf_depth_col, value0, root]
+            [&index_base, &leaf_depth_col, value_0, root]
         );
         let merkle_1_denom = combine!(
             relations.merkle,
-            [&index_base_plus_one, &leaf_depth_col, value1, root]
+            [&index_base_plus_one, &leaf_depth_col, value_1, root]
         );
         let merkle_2_denom = combine!(
             relations.merkle,
-            [&index_base_plus_two, &leaf_depth_col, value2, root]
+            [&index_base_plus_two, &leaf_depth_col, value_2, root]
         );
         let merkle_3_denom = combine!(
             relations.merkle,
-            [&index_base_plus_three, &leaf_depth_col, value3, root]
+            [&index_base_plus_three, &leaf_depth_col, value_3, root]
         );
 
         write_pair!(

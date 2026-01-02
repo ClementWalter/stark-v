@@ -6,7 +6,7 @@ crate::relations! {
     relations {
         registers_state: pc, clk;
         memory_access: addr_space, addr, clk, limb_0, limb_1, limb_2, limb_3;
-        program_access: addr, value0, value1, value2, value3;
+        program_access: addr, value_0, value_1, value_2, value_3;
         merkle: index, depth, value, root;
         poseidon2: state0, state1, state2, state3, state4, state5, state6, state7,
             state8, state9, state10, state11, state12, state13, state14, state15;
