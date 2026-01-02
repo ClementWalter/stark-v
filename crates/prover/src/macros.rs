@@ -228,21 +228,6 @@ macro_rules! relations {
                 }
             }
 
-            /// Add counts from a vector (element-wise merge).
-            /// Used when the tracer has already accumulated counts in an AlignedVec.
-            pub fn add_counts(&mut self, counts: &[u32]) {
-                assert_eq!(
-                    counts.len(),
-                    self.counts.len(),
-                    "counts length mismatch: expected {}, got {}",
-                    self.counts.len(),
-                    counts.len()
-                );
-                for (dest, src) in self.counts.iter_mut().zip(counts.iter()) {
-                    *dest += src;
-                }
-            }
-
             pub fn into_trace(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let domain = CanonicCoset::new(T::LOG_SIZE).circle_domain();
                 let col: BaseColumn = self.counts.into();
