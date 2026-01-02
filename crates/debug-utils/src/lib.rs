@@ -581,7 +581,7 @@ impl ToTable for Vec<PackedQM31> {
         };
 
         for limbs in rows.iter().take(display_rows) {
-            let row: Vec<Cell> = limbs.iter().map(|v| Cell::new(v)).collect();
+            let row: Vec<Cell> = limbs.iter().map(Cell::new).collect();
             table.add_row(row);
         }
 
