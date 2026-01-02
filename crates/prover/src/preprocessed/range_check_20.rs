@@ -9,6 +9,7 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::PackedM31;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -22,8 +23,8 @@ impl PreprocessedTable for Table {
     const LOG_SIZE: u32 = 20;
 
     #[inline]
-    fn index(values: &[u32]) -> u32 {
-        values[0]
+    fn index(values: &[PackedM31]) -> [u32; 16] {
+        values[0].to_array().map(|v| v.0)
     }
 
     fn gen_columns() -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {

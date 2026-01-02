@@ -1,6 +1,6 @@
 //! Witness generation for div component.
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -295,45 +295,60 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::DivTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences for rs1
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    if trace.is_empty() {
+        return;
+    }
+
+    let cols = DivColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    let one = PackedM31::broadcast(BaseField::one());
+
+    // Numerators (same as gen_interaction_trace)
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            cols.opcode_div_flag[i]
+                + cols.opcode_divu_flag[i]
+                + cols.opcode_rem_flag[i]
+                + cols.opcode_remu_flag[i]
+        })
+        .collect();
+    let special_case: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.zero_divisor[i] + cols.r_zero[i])
+        .collect();
+    // enabler - special_case (for lt_diff lookup)
+    let valid_not_special: Vec<PackedM31> = (0..simd_size)
+        .map(|i| enabler[i] - special_case[i])
         .collect();
 
-    // Compute clock differences for rs2
-    let clk_minus_rs2_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs2_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
         .collect();
-
-    // Compute clock differences for rd
-    let clk_minus_rd_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rd_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    let clk_minus_rs2_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
         .collect();
-
-    // Compute lt_diff - 1
-    let lt_diff_minus_1: Vec<u32> = trace.lt_diff.iter().map(|d| d.wrapping_sub(1)).collect();
+    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+        .collect();
+    let lt_diff_minus_1: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.lt_diff[i] - one)
+        .collect();
 
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rs2_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rd_clk_prev]);
-    counters.range_check_20.register_many(&[&lt_diff_minus_1]);
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&valid_not_special, &[&lt_diff_minus_1]);
 }

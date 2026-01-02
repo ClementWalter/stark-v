@@ -154,19 +154,28 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::JalTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences
-    let clk_minus_rd_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rd_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    if trace.is_empty() {
+        return;
+    }
+
+    let cols = JalColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    // Numerator: enabler (same as gen_interaction_trace uses for these lookups)
+    let enabler: Vec<PackedM31> = cols.enabler.iter().copied().collect();
+
+    // Derived columns (same as gen_interaction_trace)
+    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
+    // Register range_check_20: (clk - rd_clk_prev) with multiplicity 1
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rd_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
 }

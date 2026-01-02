@@ -1,6 +1,6 @@
 //! Witness generation for lt_imm component.
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
@@ -235,72 +235,72 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::LtImmTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences for rs1
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    if trace.is_empty() {
+        return;
+    }
+
+    let cols = LtImmColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    let one = PackedM31::broadcast(BaseField::one());
+    let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
+    let pow2_7 = PackedM31::broadcast(BaseField::from_u32_unchecked(128));
+
+    // Numerator: enabler (sum of opcode flags)
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.opcode_slti_flag[i] + cols.opcode_sltiu_flag[i])
         .collect();
 
-    // Compute clock differences for rd
-    let clk_minus_rd_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rd_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+        .collect();
+    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+        .collect();
+    let diff_val_minus_1: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.diff_val[i] - one)
         .collect();
 
-    // Compute diff_val - 1 (used for range check)
-    let diff_val_minus_1: Vec<u32> = trace.diff_val.iter().map(|v| v.wrapping_sub(1)).collect();
-
-    // Compute prefix_sum_final for each row (sum of diff_markers)
-    // Each row contributes prefix_sum_final lookups to range_check_20
-    let prefix_sum_final: Vec<u32> = (0..trace.clk.len())
+    // prefix_sum_final = sum of diff_markers
+    let prefix_sum_final: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            trace.diff_marker_0[i]
-                + trace.diff_marker_1[i]
-                + trace.diff_marker_2[i]
-                + trace.diff_marker_3[i]
+            cols.diff_marker_0[i]
+                + cols.diff_marker_1[i]
+                + cols.diff_marker_2[i]
+                + cols.diff_marker_3[i]
         })
         .collect();
 
-    // Register range_check_20 multiplicities:
-    // - clk - rs1_clk_prev (1 per row)
-    // - clk - rd_clk_prev (1 per row)
-    // - (diff_val - 1) with multiplicity prefix_sum_final
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rd_clk_prev]);
-
-    // Register (diff_val - 1) with variable multiplicity
-    for (i, &count) in prefix_sum_final.iter().enumerate() {
-        for _ in 0..count {
-            counters.range_check_20.register(&[diff_val_minus_1[i]]);
-        }
-    }
-
-    // Compute adjusted msl values for range_check_8_8_4
     // rs1_msl_adjusted = rs1_msl_felt + opcode_slti_flag * 128
-    let rs1_msl_adjusted: Vec<u32> = trace
-        .rs1_msl_felt
-        .iter()
-        .zip(trace.opcode_slti_flag.iter())
-        .map(|(msl, flag)| msl + flag * 128)
+    let rs1_msl_adjusted: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.rs1_msl_felt[i] + cols.opcode_slti_flag[i] * pow2_7)
         .collect();
 
     // imm_1_times_2 = 2 * imm_1
-    let imm_1_times_2: Vec<u32> = trace.imm_1.iter().map(|v| v * 2).collect();
+    let imm_1_times_2: Vec<PackedM31> = (0..simd_size).map(|i| two * cols.imm_1[i]).collect();
 
-    // Register range_check_8_8_4 multiplicities: (rs1_msl_adjusted, imm_0, 2*imm_1)
+    // Register range_check_8_8_4: (rs1_msl_adjusted, imm_0, 2*imm_1)
     counters
         .range_check_8_8_4
-        .register_many(&[&rs1_msl_adjusted, &trace.imm_0, &imm_1_times_2]);
+        .register_many(&enabler, &[&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2]);
+
+    // Register range_check_20: (clk - rs1_clk_prev)
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+
+    // Register range_check_20: (clk - rd_clk_prev)
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+
+    // Register range_check_20: (diff_val - 1) with multiplicity prefix_sum_final
+    counters
+        .range_check_20
+        .register_many(&prefix_sum_final, &[&diff_val_minus_1]);
 }
