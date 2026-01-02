@@ -163,17 +163,11 @@ impl Tracer {
         let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
 
-        let mut mem_addrs: Vec<u32> = self
-            .mem_initial
-            .keys()
-            .copied()
-            .filter(|addr| rw_range.contains(addr))
-            .collect();
-        mem_addrs.sort_unstable();
+        let mem_addrs = memory.keys(rw_range);
 
         for addr in mem_addrs {
-            let initial_word = self.mem_initial[&addr];
             let final_word = memory.read_u32(addr);
+            let initial_word = self.mem_initial.get(&addr).copied().unwrap_or(final_word);
 
             let initial_bytes = initial_word.to_le_bytes();
             let final_bytes = final_word.to_le_bytes();

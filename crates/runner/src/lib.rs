@@ -77,8 +77,8 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
 
     let mut cpu = Cpu::new(loaded.entry, loaded.sp, loaded.gp);
     let mut mem = loaded.memory;
-    let mut tracer = Tracer::with_memory(&mem);
     let mut cache: InstCache = InstCache::default();
+    let mut tracer = Tracer::default();
 
     loop {
         // Check halt flag before executing next instruction

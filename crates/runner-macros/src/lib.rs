@@ -820,22 +820,6 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
         }
 
         impl Tracer {
-            /// Create a new tracer with mem_initial initialized with memory values.
-            pub fn with_memory(memory: &crate::Memory) -> Self {
-                let mem_initial = memory.to_word_fx_hash_map();
-                Self {
-                    clk: 0,
-                    max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
-                    reg_clk: [0; 32],
-                    mem_clk: rustc_hash::FxHashMap::default(),
-                    mem_initial,
-                    program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clk_update: AccessTable::new(),
-                    mem_clk_update: AccessTable::new(),
-                    #(#table_inits,)*
-                }
-            }
-
             /// Create a new tracer with custom max clock diff.
             pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
                 Self {

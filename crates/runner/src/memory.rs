@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-
-use rustc_hash::FxHashMap;
+use std::ops::RangeBounds;
 
 use crate::trace::{Access, Tracer};
 
@@ -14,6 +13,16 @@ impl Memory {
     pub fn new() -> Self {
         Self {
             data: BTreeMap::new(),
+        }
+    }
+
+    /// Return 4-byte aligned addresses used by the memory within the given range.
+    #[inline]
+    pub fn keys<R: RangeBounds<u32>>(&self, range: R) -> impl Iterator<Item = u32> + '_ {
+        MemoryKeys {
+            iter: self.data.range(range),
+            last: 0,
+            has_last: false,
         }
     }
 
@@ -65,17 +74,6 @@ impl Memory {
         self.write_u8(addr.wrapping_add(1), (val >> 8) as u8);
         self.write_u8(addr.wrapping_add(2), (val >> 16) as u8);
         self.write_u8(addr.wrapping_add(3), (val >> 24) as u8);
-    }
-
-    /// Returns a HashMap of all 4-byte aligned word addresses to their u32 values.
-    pub fn to_word_fx_hash_map(&self) -> FxHashMap<u32, u32> {
-        let mut map = FxHashMap::default();
-        for &byte_addr in self.data.keys() {
-            let word_addr = byte_addr & !3;
-            map.entry(word_addr)
-                .or_insert_with(|| self.read_u32(word_addr));
-        }
-        map
     }
 
     // =========================================================================
@@ -155,6 +153,30 @@ impl Memory {
 impl Default for Memory {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+struct MemoryKeys<'a> {
+    iter: std::collections::btree_map::Range<'a, u32, u8>,
+    last: u32,
+    has_last: bool,
+}
+
+impl Iterator for MemoryKeys<'_> {
+    type Item = u32;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((&addr, _)) = self.iter.next() {
+            let aligned = addr & !3;
+            if self.has_last && self.last == aligned {
+                continue;
+            }
+            self.last = aligned;
+            self.has_last = true;
+            return Some(aligned);
+        }
+        None
     }
 }
 
