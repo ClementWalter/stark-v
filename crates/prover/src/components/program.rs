@@ -60,7 +60,6 @@ pub mod air {
 
             eval.add_constraint(enabler.clone() * (one.clone() - enabler.clone()));
 
-            dbg!(&value3);
             add_to_relation!(
                 eval,
                 self.relations.program_access,
@@ -72,17 +71,7 @@ pub mod air {
                 value3
             );
 
-            dbg!(&enabler);
-            dbg!(&addr);
             let index_base = addr - base;
-            dbg!(&value0);
-            dbg!(&value1);
-            dbg!(&value2);
-            dbg!(&value3);
-            dbg!(&multiplicity);
-            dbg!(&index_base);
-            dbg!(&leaf_depth);
-            dbg!(&root);
             add_to_relation!(
                 eval,
                 self.relations.merkle,
@@ -195,17 +184,6 @@ pub mod witness {
             relations.merkle,
             [&index_base, &leaf_depth_col, cols.value0, cols.root]
         );
-
-        dbg!(&cols.enabler);
-        dbg!(&cols.addr);
-        dbg!(&cols.value0);
-        dbg!(&cols.value1);
-        dbg!(&cols.value2);
-        dbg!(&cols.value3);
-        dbg!(&cols.multiplicity);
-        dbg!(&index_base);
-        dbg!(&leaf_depth);
-        dbg!(&cols.root);
 
         write_pair!(
             &pos_mult,

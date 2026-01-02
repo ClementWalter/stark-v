@@ -385,24 +385,18 @@ impl Components {
         use tracing::info;
 
         macro_rules! assert_trace_constraints {
-            ($trace_field:ident, $module:ident, $label:literal) => {
-                if !traces.$trace_field.is_empty() {
+            ($module:ident, $label:literal) => {
+                if !traces.$module.is_empty() {
                     let log_size = traces
-                        .$trace_field
+                        .$module
                         .first()
                         .map(|t| t.domain.log_size())
                         .unwrap_or(0);
                     if log_size > 0 {
                         let (interaction_trace, claimed_sum) =
-                            $module::witness::gen_interaction_trace(
-                                &traces.$trace_field,
-                                relations,
-                            );
-                        let trace_tree = TreeVec::new(vec![
-                            vec![],
-                            traces.$trace_field.clone(),
-                            interaction_trace,
-                        ]);
+                            $module::witness::gen_interaction_trace(&traces.$module, relations);
+                        let trace_tree =
+                            TreeVec::new(vec![vec![], traces.$module.clone(), interaction_trace]);
                         let trace_polys = trace_tree.map_cols(|c| c.interpolate());
                         let eval = $module::air::Eval {
                             log_size,
@@ -428,12 +422,12 @@ impl Components {
 
         opcodes::Components::assert_constraints_on_polys(&traces.opcodes, relations);
 
-        assert_trace_constraints!(program, program, "program");
-        assert_trace_constraints!(memory, memory, "memory");
-        assert_trace_constraints!(merkle, merkle, "merkle");
-        assert_trace_constraints!(poseidon2, poseidon2, "poseidon2");
-        assert_trace_constraints!(mem_clock_update, mem_clock_update, "mem_clock_update");
-        assert_trace_constraints!(reg_clock_update, reg_clock_update, "reg_clock_update");
+        assert_trace_constraints!(program, "program");
+        assert_trace_constraints!(memory, "memory");
+        assert_trace_constraints!(merkle, "merkle");
+        assert_trace_constraints!(poseidon2, "poseidon2");
+        assert_trace_constraints!(mem_clock_update, "mem_clock_update");
+        assert_trace_constraints!(reg_clock_update, "reg_clock_update");
 
         preprocessed::Components::assert_constraints_on_polys(&traces.preprocessed, relations);
     }

@@ -117,6 +117,8 @@ pub mod air {
 }
 
 pub mod witness {
+    use runner::trace::prover_columns::MerkleColumns;
+
     use super::*;
     use crate::{combine, write_col, write_pair};
 
@@ -132,55 +134,49 @@ pub mod witness {
         }
 
         // Column order matches MerkleColumns.
-        let enabler = &trace[0].data;
-        let index = &trace[1].data;
-        let depth = &trace[2].data;
-        let left_value = &trace[3].data;
-        let right_value = &trace[4].data;
-        let parent_value = &trace[5].data;
-        let left_multiplicity = &trace[6].data;
-        let right_multiplicity = &trace[7].data;
-        let parent_multiplicity = &trace[8].data;
-        let root = &trace[9].data;
+        let cols = MerkleColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+
+        let simd_size = cols.enabler.len();
+        let log_size = trace[0].domain.log_size();
+        let mut interaction_trace = LogupTraceGenerator::new(log_size);
 
         let one = PackedM31::broadcast(M31::one());
         let inv2 = PackedM31::broadcast(M31::inverse(&M31::from(2)));
 
-        let simd_size = enabler.len();
-        let log_size = trace[0].domain.log_size();
-        let mut interaction_trace = LogupTraceGenerator::new(log_size);
-
-        let index_plus_one: Vec<PackedM31> = (0..simd_size).map(|i| index[i] + one).collect();
-        let index_div2: Vec<PackedM31> = (0..simd_size).map(|i| index[i] * inv2).collect();
-        let depth_minus_one: Vec<PackedM31> = (0..simd_size).map(|i| depth[i] - one).collect();
+        let index_plus_one: Vec<PackedM31> = (0..simd_size).map(|i| cols.index[i] + one).collect();
+        let index_div2: Vec<PackedM31> = (0..simd_size).map(|i| cols.index[i] * inv2).collect();
+        let depth_minus_one: Vec<PackedM31> = (0..simd_size).map(|i| cols.depth[i] - one).collect();
 
         let left_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(left_multiplicity[i]))
+            .map(|i| PackedQM31::from(cols.left_multiplicity[i]))
             .collect();
         let right_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(right_multiplicity[i]))
+            .map(|i| PackedQM31::from(cols.right_multiplicity[i]))
             .collect();
         let neg_parent_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| -PackedQM31::from(parent_multiplicity[i]))
+            .map(|i| -PackedQM31::from(cols.parent_multiplicity[i]))
             .collect();
         let pos_enabler: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(enabler[i]))
+            .map(|i| PackedQM31::from(cols.enabler[i]))
             .collect();
         let neg_enabler: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| -PackedQM31::from(enabler[i]))
+            .map(|i| -PackedQM31::from(cols.enabler[i]))
             .collect();
 
-        let left_denom = combine!(relations.merkle, [index, depth, left_value, root]);
+        let left_denom = combine!(
+            relations.merkle,
+            [cols.index, cols.depth, cols.left_value, cols.root]
+        );
         let right_denom = combine!(
             relations.merkle,
-            [&index_plus_one, depth, right_value, root]
+            [&index_plus_one, cols.depth, cols.right_value, cols.root]
         );
         let parent_denom = combine!(
             relations.merkle,
-            [&index_div2, &depth_minus_one, parent_value, root]
+            [&index_div2, &depth_minus_one, cols.parent_value, cols.root]
         );
-        let poseidon_in_denom = combine!(relations.poseidon2, [left_value, right_value]);
-        let poseidon_out_denom = combine!(relations.poseidon2, [parent_value]);
+        let poseidon_in_denom = combine!(relations.poseidon2, [cols.left_value, cols.right_value]);
+        let poseidon_out_denom = combine!(relations.poseidon2, [cols.parent_value]);
 
         write_pair!(
             &left_mult,

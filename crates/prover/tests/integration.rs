@@ -86,7 +86,6 @@ fn test_fibonacci_constraints() {
 
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
-    dbg!(&run_result.tracer.program);
     let traces = components::gen_trace(run_result.tracer);
     let relations = Relations::dummy();
 
