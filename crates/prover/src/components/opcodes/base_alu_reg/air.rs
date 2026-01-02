@@ -85,12 +85,9 @@ impl FrameworkEval for Eval {
             + cols.opcode_or_flag.clone()
             + cols.opcode_and_flag.clone();
         let two = E::F::one() + E::F::one();
-        let three = two.clone() + E::F::one();
-        let four = two.clone() + two.clone();
-        let bitwise_id = cols.opcode_xor_flag.clone()
-            + two.clone() * cols.opcode_or_flag.clone()
-            + three.clone() * cols.opcode_and_flag.clone()
-            + four * (cols.opcode_add_flag.clone() + cols.opcode_sub_flag.clone());
+        // Match preprocessed bitwise table: and=0, or=1, xor=2
+        let bitwise_id =
+            two.clone() * cols.opcode_xor_flag.clone() + cols.opcode_or_flag.clone();
 
         // Section 1.3: Constraints
 
