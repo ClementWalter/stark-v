@@ -45,12 +45,12 @@ pub mod air {
             let enabler = cols.enabler.clone();
             let index = cols.index.clone();
             let depth = cols.depth.clone();
-            let left_value = cols.left_value.clone();
-            let right_value = cols.right_value.clone();
-            let parent_value = cols.parent_value.clone();
-            let left_multiplicity = cols.left_multiplicity.clone();
-            let right_multiplicity = cols.right_multiplicity.clone();
-            let parent_multiplicity = cols.parent_multiplicity.clone();
+            let lhs = cols.lhs.clone();
+            let rhs = cols.rhs.clone();
+            let cur = cols.cur.clone();
+            let lhs_mult = cols.lhs_mult.clone();
+            let rhs_mult = cols.rhs_mult.clone();
+            let cur_mult = cols.cur_mult.clone();
             let root = cols.root.clone();
 
             let one = E::F::one();
@@ -59,57 +59,51 @@ pub mod air {
 
             eval.add_constraint(enabler.clone() * (one.clone() - enabler.clone()));
             eval.add_constraint(
-                left_multiplicity.clone()
-                    * (left_multiplicity.clone() - one.clone())
-                    * (left_multiplicity.clone() - two.clone()),
+                lhs_mult.clone()
+                    * (lhs_mult.clone() - one.clone())
+                    * (lhs_mult.clone() - two.clone()),
             );
             eval.add_constraint(
-                right_multiplicity.clone()
-                    * (right_multiplicity.clone() - one.clone())
-                    * (right_multiplicity.clone() - two.clone()),
+                rhs_mult.clone()
+                    * (rhs_mult.clone() - one.clone())
+                    * (rhs_mult.clone() - two.clone()),
             );
             eval.add_constraint(
-                parent_multiplicity.clone()
-                    * (parent_multiplicity.clone() - one.clone())
-                    * (parent_multiplicity.clone() - two.clone()),
+                cur_mult.clone()
+                    * (cur_mult.clone() - one.clone())
+                    * (cur_mult.clone() - two.clone()),
             );
 
             add_to_relation!(
                 eval,
                 self.relations.merkle,
-                left_multiplicity,
+                lhs_mult,
                 index.clone(),
                 depth.clone(),
-                left_value.clone(),
+                lhs.clone(),
                 root.clone()
             );
             add_to_relation!(
                 eval,
                 self.relations.merkle,
-                right_multiplicity,
+                rhs_mult,
                 index.clone() + one.clone(),
                 depth.clone(),
-                right_value.clone(),
+                rhs.clone(),
                 root.clone()
             );
             add_to_relation!(
                 eval,
                 self.relations.merkle,
-                -parent_multiplicity,
+                -cur_mult,
                 index * inv2,
                 depth - one.clone(),
-                parent_value.clone(),
+                cur.clone(),
                 root
             );
 
-            add_to_relation!(
-                eval,
-                self.relations.poseidon2,
-                enabler.clone(),
-                left_value,
-                right_value
-            );
-            add_to_relation!(eval, self.relations.poseidon2, -enabler, parent_value);
+            add_to_relation!(eval, self.relations.poseidon2, enabler.clone(), lhs, rhs);
+            add_to_relation!(eval, self.relations.poseidon2, -enabler, cur);
             eval.finalize_logup_in_pairs();
             eval
         }
@@ -148,13 +142,13 @@ pub mod witness {
         let depth_minus_one: Vec<PackedM31> = (0..simd_size).map(|i| cols.depth[i] - one).collect();
 
         let left_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(cols.left_multiplicity[i]))
+            .map(|i| PackedQM31::from(cols.lhs_mult[i]))
             .collect();
         let right_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(cols.right_multiplicity[i]))
+            .map(|i| PackedQM31::from(cols.rhs_mult[i]))
             .collect();
-        let neg_parent_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| -PackedQM31::from(cols.parent_multiplicity[i]))
+        let neg_cur_mult: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| -PackedQM31::from(cols.cur_mult[i]))
             .collect();
         let pos_enabler: Vec<PackedQM31> = (0..simd_size)
             .map(|i| PackedQM31::from(cols.enabler[i]))
@@ -165,18 +159,18 @@ pub mod witness {
 
         let left_denom = combine!(
             relations.merkle,
-            [cols.index, cols.depth, cols.left_value, cols.root]
+            [cols.index, cols.depth, cols.lhs, cols.root]
         );
         let right_denom = combine!(
             relations.merkle,
-            [&index_plus_one, cols.depth, cols.right_value, cols.root]
+            [&index_plus_one, cols.depth, cols.rhs, cols.root]
         );
-        let parent_denom = combine!(
+        let cur_denom = combine!(
             relations.merkle,
-            [&index_div2, &depth_minus_one, cols.parent_value, cols.root]
+            [&index_div2, &depth_minus_one, cols.cur, cols.root]
         );
-        let poseidon_in_denom = combine!(relations.poseidon2, [cols.left_value, cols.right_value]);
-        let poseidon_out_denom = combine!(relations.poseidon2, [cols.parent_value]);
+        let poseidon_in_denom = combine!(relations.poseidon2, [cols.lhs, cols.rhs]);
+        let poseidon_out_denom = combine!(relations.poseidon2, [cols.cur]);
 
         write_pair!(
             &left_mult,
@@ -186,8 +180,8 @@ pub mod witness {
             interaction_trace
         );
         write_pair!(
-            &neg_parent_mult,
-            &parent_denom,
+            &neg_cur_mult,
+            &cur_denom,
             &pos_enabler,
             &poseidon_in_denom,
             interaction_trace

@@ -46,7 +46,7 @@ pub struct NodeData {
     pub depth: u32,
     pub left: MerkleValue,
     pub right: MerkleValue,
-    pub parent: MerkleValue,
+    pub cur: MerkleValue,
 }
 
 pub fn leaf_index(base: u32, addr: u32, limb: u32) -> u32 {
@@ -78,7 +78,7 @@ pub fn build_partial_merkle_tree(
     let mut current: FxHashMap<u32, MerkleValue> = leaves.clone();
 
     for depth in (1..=leaf_depth).rev() {
-        let mut parent: FxHashMap<u32, MerkleValue> = FxHashMap::default();
+        let mut next: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         let mut indices: Vec<u32> = current.keys().copied().collect();
         indices.sort_unstable();
         let mut processed = std::collections::HashSet::new();
@@ -107,23 +107,23 @@ pub fn build_partial_merkle_tree(
             let row = poseidon2_traced(left.value, right.value);
             poseidon2.push_row(&row);
 
-            let parent_hash = row[POSEIDON2_TRACE_COLUMNS - T];
-            let parent_value = MerkleValue::new(parent_hash, 1);
+            let cur_hash = row[POSEIDON2_TRACE_COLUMNS - T];
+            let cur = MerkleValue::new(cur_hash, 1);
 
             nodes.push(NodeData {
                 index: left_index,
                 depth,
                 left,
                 right,
-                parent: parent_value,
+                cur,
             });
 
-            parent.insert(left_index >> 1, parent_value);
+            next.insert(left_index >> 1, cur);
             processed.insert(left_index);
             processed.insert(right_index);
         }
 
-        current = parent;
+        current = next;
     }
 
     let root = current.get(&0).map(|v| v.value).unwrap_or(0);
@@ -252,10 +252,10 @@ impl Tracer {
                     node.depth,
                     node.left.value,
                     node.right.value,
-                    node.parent.value,
+                    node.cur.value,
                     node.left.multiplicity,
                     node.right.multiplicity,
-                    node.parent.multiplicity,
+                    node.cur.multiplicity,
                     root,
                 );
             }
