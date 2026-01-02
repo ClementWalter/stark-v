@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/debug-utils",
   "crates/prover",
   "crates/runner",
   "crates/runner-macros",
@@ -54,6 +55,9 @@ goblin = "0.9"
 # Data structures
 rustc-hash = "2.1"
 
+# Debug / Table printing (lightweight alternative to polars)
+comfy-table = "7.1"
+
 # Error handling
 thiserror = "2.0"
 
@@ -62,11 +66,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Proc-macro utilities
+paste = "1.0"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
+debug-utils = { path = "crates/debug-utils" }
 runner = { path = "crates/runner" }
 runner-macros = { path = "crates/runner-macros" }
 simd = { path = "crates/simd" }

@@ -211,30 +211,48 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::JalrTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences for rs1
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
-        .collect();
+    if trace.is_empty() {
+        return;
+    }
 
-    // Compute clock differences for rd
-    let clk_minus_rd_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rd_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    let cols = JalrColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    // Numerator: enabler (1 for valid rows, 0 for padding)
+    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+        .collect();
+    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+
+    // Register range_check_m31: (rs1_next_0, rs1_next_3)
+    counters
+        .range_check_m31
+        .register_many(&enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
+
+    // Register range_check_8_8: (rd_next_1, rd_next_2)
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_1, cols.rd_next_2]);
+
+    // Register range_check_m31: (rd_next_0, rd_next_3)
+    counters
+        .range_check_m31
+        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_3]);
+
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rd_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
 }

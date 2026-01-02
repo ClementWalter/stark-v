@@ -12,6 +12,7 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::PackedM31;
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -27,8 +28,10 @@ impl PreprocessedTable for Table {
     const LOG_SIZE: u32 = 19;
 
     #[inline]
-    fn index(values: &[u32]) -> u32 {
-        values[0] + (values[1] << 8)
+    fn index(values: &[PackedM31]) -> [u32; 16] {
+        let v0 = values[0].to_array();
+        let v1 = values[1].to_array();
+        std::array::from_fn(|i| v0[i].0 + (v1[i].0 << 8))
     }
 
     fn gen_columns() -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
@@ -58,5 +61,35 @@ impl PreprocessedTable for Table {
                 id: "range_check_8_11_limb_1".into(),
             },
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stwo::prover::backend::Column;
+
+    /// Test that gen_columns[index(values)] == values for all valid indices.
+    #[test]
+    fn test_index_roundtrip() {
+        let columns = Table::gen_columns();
+        let col_limb_0 = columns[0].values.to_cpu();
+        let col_limb_1 = columns[1].values.to_cpu();
+
+        for index in 0..col_limb_0.len() {
+            let v0 = col_limb_0[index];
+            let v1 = col_limb_1[index];
+
+            let packed_v0 = PackedM31::broadcast(v0);
+            let packed_v1 = PackedM31::broadcast(v1);
+            let values = [packed_v0, packed_v1];
+
+            let computed_indices = Table::index(&values);
+
+            assert_eq!(
+                computed_indices[0], index as u32,
+                "index mismatch at idx {index}"
+            );
+        }
     }
 }

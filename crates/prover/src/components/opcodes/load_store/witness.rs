@@ -292,58 +292,67 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
-/// This function registers all range_check_20 lookups used by load_store.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::LoadStoreTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences for rs1
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
-        .collect();
+    if trace.is_empty() {
+        return;
+    }
 
-    // Compute alignment check: ((rs1_next & 0xFF) - shift_amount) / 4 * 2^14
-    // rs1_next_0 is the lowest byte of rs1_next (little-endian)
-    let alignment_check: Vec<u32> = trace
-        .rs1_next
-        .iter()
-        .zip(trace.shift_amount.iter())
-        .map(|(next, shift)| {
-            let rs1_next_0 = next & 0xFF;
-            // (rs1_next_0 - shift_amount) / 4 * 2^14
-            // Note: division by 4 should be exact for valid traces
-            ((rs1_next_0.wrapping_sub(*shift)) / 4) * (1 << 14)
+    let cols = LoadStoreColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    let pow2_14 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 14));
+    let quarter_inv = PackedM31::broadcast(BaseField::from_u32_unchecked(4).inverse());
+
+    // Numerator: enabler (sum of opcode flags)
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            cols.opcode_lb_flag[i]
+                + cols.opcode_lh_flag[i]
+                + cols.opcode_lbu_flag[i]
+                + cols.opcode_lhu_flag[i]
+                + cols.opcode_lw_flag[i]
+                + cols.opcode_sb_flag[i]
+                + cols.opcode_sh_flag[i]
+                + cols.opcode_sw_flag[i]
         })
         .collect();
 
-    // Compute clock differences for src
-    let clk_minus_src_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.src_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
         .collect();
 
-    // Compute clock differences for dst
-    let clk_minus_dst_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.dst_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    // alignment_check = (rs1_next_0 - shift_amount) * quarter_inv * pow2_14
+    let alignment_check: Vec<PackedM31> = (0..simd_size)
+        .map(|i| (cols.rs1_next_0[i] - cols.shift_amount[i]) * quarter_inv * pow2_14)
         .collect();
 
-    // Register all range_check_20 lookups
+    let clk_minus_src_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.src_clk_prev[i])
+        .collect();
+    let clk_minus_dst_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.dst_clk_prev[i])
+        .collect();
+
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
-    counters.range_check_20.register_many(&[&alignment_check]);
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&[&clk_minus_src_clk_prev]);
+        .register_many(&enabler, &[&alignment_check]);
+
+    // Register range_check_m31: (rs1_next_0, rs1_next_3) for base address
+    counters
+        .range_check_m31
+        .register_many(&enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
+
     counters
         .range_check_20
-        .register_many(&[&clk_minus_dst_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_src_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_dst_clk_prev]);
 }

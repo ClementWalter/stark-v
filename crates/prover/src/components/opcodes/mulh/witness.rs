@@ -362,116 +362,155 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::MulhTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences for rs1
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    if trace.is_empty() {
+        return;
+    }
+
+    let cols = MulhColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    let zero = PackedM31::zero();
+    let one = PackedM31::broadcast(BaseField::one());
+    let pow2_7 = PackedM31::broadcast(BaseField::from_u32_unchecked(128));
+    let pow2_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(256));
+    let sign_ext = pow2_8 - one;
+    let inv_two_pow_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 8).inverse());
+
+    // Numerator: enabler (sum of opcode flags)
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.opcode_mulh_flag[i] + cols.opcode_mulhsu_flag[i] + cols.opcode_mulhu_flag[i])
         .collect();
 
-    // Compute clock differences for rs2
-    let clk_minus_rs2_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs2_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    // Clock differences
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+        .collect();
+    let clk_minus_rs2_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
+        .collect();
+    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
-    // Compute clock differences for rd
-    let clk_minus_rd_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rd_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    // Sign-extended rs1 and rs2 with sign bit
+    let rs1_3_with_sign: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.rs1_next_3[i] + cols.rs1_sign[i] * pow2_7)
+        .collect();
+    let rs2_3_with_sign: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.rs2_next_3[i] + cols.rs2_sign[i] * pow2_7)
         .collect();
 
-    // Register range_check_20 multiplicities (each call takes one column)
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rs2_clk_prev]);
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rd_clk_prev]);
+    // Build extended operands (same as gen_interaction_trace)
+    let rs1_ext: [Vec<PackedM31>; 8] = std::array::from_fn(|idx| {
+        (0..simd_size)
+            .map(|i| {
+                if idx == 0 {
+                    cols.rs1_next_0[i]
+                } else if idx == 1 {
+                    cols.rs1_next_1[i]
+                } else if idx == 2 {
+                    cols.rs1_next_2[i]
+                } else if idx == 3 {
+                    rs1_3_with_sign[i]
+                } else {
+                    cols.rs1_sign[i] * sign_ext
+                }
+            })
+            .collect()
+    });
+    let rs2_ext: [Vec<PackedM31>; 8] = std::array::from_fn(|idx| {
+        (0..simd_size)
+            .map(|i| {
+                if idx == 0 {
+                    cols.rs2_next_0[i]
+                } else if idx == 1 {
+                    cols.rs2_next_1[i]
+                } else if idx == 2 {
+                    cols.rs2_next_2[i]
+                } else if idx == 3 {
+                    rs2_3_with_sign[i]
+                } else {
+                    cols.rs2_sign[i] * sign_ext
+                }
+            })
+            .collect()
+    });
+    let rd_full: [Vec<PackedM31>; 8] = std::array::from_fn(|idx| {
+        (0..simd_size)
+            .map(|i| match idx {
+                0 => cols.rd_high_0[i],
+                1 => cols.rd_high_1[i],
+                2 => cols.rd_high_2[i],
+                3 => cols.rd_high_3[i],
+                4 => cols.rd_next_0[i],
+                5 => cols.rd_next_1[i],
+                6 => cols.rd_next_2[i],
+                7 => cols.rd_next_3[i],
+                _ => zero,
+            })
+            .collect()
+    });
 
-    // Constants for sign extension
-    const SIGN_EXT: u32 = 0xFF; // 2^8 - 1
-
-    // Compute carries and register range_check_8_8 multiplicities
-    let n = trace.clk.len();
-    for i in 0..n {
-        let rs1 = trace.rs1_next[i];
-        let rs2 = trace.rs2_next[i];
-        let rd_low = trace.rd_high_0[i]
-            | (trace.rd_high_1[i] << 8)
-            | (trace.rd_high_2[i] << 16)
-            | (trace.rd_high_3[i] << 24);
-        let rd_high = trace.rd_next[i];
-        let rs1_sign = trace.rs1_sign[i];
-        let rs2_sign = trace.rs2_sign[i];
-
-        // Build extended operands (8 limbs each)
-        // Sign extension for limbs 4-7
-        let mut rs1_ext: [u32; 8] = [rs1_sign * SIGN_EXT; 8];
-        rs1_ext[0] = rs1 & 0xFF;
-        rs1_ext[1] = (rs1 >> 8) & 0xFF;
-        rs1_ext[2] = (rs1 >> 16) & 0xFF;
-        // rs1_ext[3] = rs1_next_3 + rs1_sign * 128
-        rs1_ext[3] = ((rs1 >> 24) & 0x7F) + rs1_sign * 128;
-
-        // Sign extension for limbs 4-7
-        let mut rs2_ext: [u32; 8] = [rs2_sign * SIGN_EXT; 8];
-        rs2_ext[0] = rs2 & 0xFF;
-        rs2_ext[1] = (rs2 >> 8) & 0xFF;
-        rs2_ext[2] = (rs2 >> 16) & 0xFF;
-        // rs2_ext[3] = rs2_next_3 + rs2_sign * 128
-        rs2_ext[3] = ((rs2 >> 24) & 0x7F) + rs2_sign * 128;
-
-        // rd_full[0..4] = rd_high (lower 32 bits of 64-bit result)
-        // rd_full[4..8] = rd_next (upper 32 bits of 64-bit result)
-        let rd_full: [u32; 8] = [
-            rd_low & 0xFF,
-            (rd_low >> 8) & 0xFF,
-            (rd_low >> 16) & 0xFF,
-            (rd_low >> 24) & 0xFF,
-            rd_high & 0xFF,
-            (rd_high >> 8) & 0xFF,
-            (rd_high >> 16) & 0xFF,
-            (rd_high >> 24) & 0xFF,
-        ];
-
-        // Compute carries
-        let mut carry: [u32; 8] = [0; 8];
-        for idx in 0..8 {
-            let prev_carry = if idx == 0 { 0 } else { carry[idx - 1] };
+    // Compute carries (same as gen_interaction_trace)
+    let mut carry: [Vec<PackedM31>; 8] = std::array::from_fn(|_| vec![zero; simd_size]);
+    for idx in 0..8 {
+        for i in 0..simd_size {
+            let prev_carry = if idx == 0 { zero } else { carry[idx - 1][i] };
             let mut limb_sum = prev_carry;
             for k in 0..=idx.min(7) {
                 if idx - k < 8 {
-                    limb_sum += rs1_ext[k] * rs2_ext[idx - k];
+                    limb_sum += rs1_ext[k][i] * rs2_ext[idx - k][i];
                 }
             }
-            carry[idx] = limb_sum.wrapping_sub(rd_full[idx]) >> 8;
+            carry[idx][i] = (limb_sum - rd_full[idx][i]) * inv_two_pow_8;
         }
-
-        // Register range_check_8_8 for carries
-        counters.range_check_8_8.register(&[carry[0], carry[1]]);
-        counters.range_check_8_8.register(&[carry[2], carry[3]]);
-        counters.range_check_8_8.register(&[carry[4], carry[5]]);
-        counters.range_check_8_8.register(&[carry[6], carry[7]]);
-
-        // Register range_check_8_8 for rd_low limbs (rd_high_0..3)
-        counters.range_check_8_8.register(&[rd_full[0], rd_full[1]]);
-        counters.range_check_8_8.register(&[rd_full[2], rd_full[3]]);
-
-        // Register range_check_8_8 for rd_high limbs (rd_next_0..3)
-        counters.range_check_8_8.register(&[rd_full[4], rd_full[5]]);
-        counters.range_check_8_8.register(&[rd_full[6], rd_full[7]]);
     }
+
+    // Register range_check_20 for clock diffs
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+
+    // Register range_check_8_8 for carries
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[&carry[0], &carry[1]]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[&carry[2], &carry[3]]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[&carry[4], &carry[5]]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[&carry[6], &carry[7]]);
+
+    // Register range_check_8_8 for rd_low limbs (rd_high_0..3)
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_high_0, cols.rd_high_1]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_high_2, cols.rd_high_3]);
+
+    // Register range_check_8_8 for rd_high limbs (rd_next_0..3)
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+    counters
+        .range_check_8_8
+        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+
+    // Register range_check_20 for rd clock diff
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
 }

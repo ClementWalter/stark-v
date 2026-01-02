@@ -194,31 +194,34 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::BranchEqTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences for rs1
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    if trace.is_empty() {
+        return;
+    }
+
+    let cols = BranchEqColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    // Numerator: enabler (1 for valid rows, 0 for padding)
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.opcode_beq_flag[i] + cols.opcode_bne_flag[i])
         .collect();
 
-    // Compute clock differences for rs2
-    let clk_minus_rs2_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs2_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+        .collect();
+    let clk_minus_rs2_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
         .collect();
 
-    // Register range_check_20 multiplicities
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&[&clk_minus_rs2_clk_prev]);
+        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
 }

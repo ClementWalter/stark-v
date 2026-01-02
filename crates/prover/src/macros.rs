@@ -50,6 +50,7 @@ macro_rules! relations {
         use stwo::core::poly::circle::CanonicCoset;
         use stwo::prover::backend::simd::SimdBackend;
         use stwo::prover::backend::simd::column::BaseColumn;
+        use stwo::prover::backend::simd::m31::PackedM31;
         use stwo::prover::poly::BitReversedOrder;
         use stwo::prover::poly::circle::CircleEvaluation;
         use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -178,7 +179,9 @@ macro_rules! relations {
         /// Trait for preprocessed table generation.
         pub trait PreprocessedTable {
             const LOG_SIZE: u32;
-            fn index(values: &[u32]) -> u32;
+            /// Compute indices for all 16 SIMD lanes from PackedM31 values.
+            /// Each preprocessed table implements the index computation based on its columns.
+            fn index(values: &[PackedM31]) -> [u32; 16];
             fn gen_columns() -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>;
             fn column_ids() -> Vec<PreProcessedColumnId>;
         }
@@ -200,46 +203,50 @@ macro_rules! relations {
                 }
             }
 
+            /// Register a single SIMD row with numerator.
+            /// Skips lanes where num is 0 (avoids computing potentially invalid indices).
             #[inline]
-            pub fn register(&mut self, values: &[u32]) {
-                let idx = T::index(values) as usize;
-                debug_assert!(idx < self.counts.len(), "index {idx} out of bounds");
-                self.counts[idx] += 1;
+            pub fn register(&mut self, num: PackedM31, denom: &[PackedM31]) {
+                let num_arr = num.to_array();
+                // Skip lanes with zero numerator before computing indices
+                let indices = T::index(denom);
+                for (lane, &n) in num_arr.iter().enumerate() {
+                    if n.0 == 0 {
+                        continue;
+                    }
+                    let idx = indices[lane];
+                    debug_assert!((idx as usize) < self.counts.len(), "index {idx} out of bounds");
+                    self.counts[idx as usize] += n.0;
+                }
             }
 
-            /// Register many values at once from column slices.
+            /// Register many values at once from column slices with numerators.
             /// Each row across the columns forms one lookup value.
+            /// Skips lanes where num is 0 (avoids computing potentially invalid indices).
             ///
             /// Example for range_check_20 (1 column):
             /// ```ignore
-            /// counters.range_check_20.register_many(&[&trace.value]);
+            /// counters.range_check_20.register_many(num, &[cols.value]);
             /// ```
-            pub fn register_many(&mut self, columns: &[&[u32]]) {
-                if columns.is_empty() {
+            pub fn register_many(&mut self, num: &[PackedM31], denom: &[&[PackedM31]]) {
+                if denom.is_empty() {
                     return;
                 }
-                let len = columns[0].len();
-                debug_assert!(columns.iter().all(|c| c.len() == len), "column length mismatch");
+                let len = denom[0].len();
+                debug_assert!(num.len() == len, "num length mismatch");
+                debug_assert!(denom.iter().all(|c| c.len() == len), "column length mismatch");
                 for i in 0..len {
-                    let values: Vec<u32> = columns.iter().map(|c| c[i]).collect();
-                    let idx = T::index(&values) as usize;
-                    debug_assert!(idx < self.counts.len(), "index {idx} out of bounds");
-                    self.counts[idx] += 1;
-                }
-            }
-
-            /// Add counts from a vector (element-wise merge).
-            /// Used when the tracer has already accumulated counts in an AlignedVec.
-            pub fn add_counts(&mut self, counts: &[u32]) {
-                assert_eq!(
-                    counts.len(),
-                    self.counts.len(),
-                    "counts length mismatch: expected {}, got {}",
-                    self.counts.len(),
-                    counts.len()
-                );
-                for (dest, src) in self.counts.iter_mut().zip(counts.iter()) {
-                    *dest += src;
+                    let num_arr = num[i].to_array();
+                    let values: Vec<PackedM31> = denom.iter().map(|c| c[i]).collect();
+                    let indices = T::index(&values);
+                    for (lane, &n) in num_arr.iter().enumerate() {
+                        if n.0 == 0 {
+                            continue;
+                        }
+                        let idx = indices[lane];
+                        debug_assert!((idx as usize) < self.counts.len(), "index {idx} out of bounds");
+                        self.counts[idx as usize] += n.0;
+                    }
                 }
             }
 
@@ -305,6 +312,33 @@ macro_rules! relations {
                     traces.extend(self.$prep_name.into_trace());
                 )*
                 traces
+            }
+
+            /// Print all counters for debugging.
+            /// Shows the multiplicity counts for each preprocessed table.
+            pub fn print_counters(&self, max_rows: Option<usize>, _max_cols: Option<usize>) {
+                debug_utils::set_display_options(max_rows, None);
+                $(
+                    let table_name = stringify!($prep_name);
+                    let non_zero_count = self.$prep_name.counts.iter().filter(|c| **c > 0).count();
+                    if non_zero_count > 0 {
+                        println!("\n=== {} ({} non-zero entries) ===", table_name, non_zero_count);
+                        // Print as index -> count pairs for non-zero entries
+                        let entries: Vec<(usize, u32)> = self.$prep_name.counts
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, c)| **c > 0)
+                            .map(|(i, c)| (i, *c))
+                            .collect();
+                        let max = max_rows.unwrap_or(entries.len());
+                        for (idx, count) in entries.iter().take(max) {
+                            println!("  [{}] = {}", idx, count);
+                        }
+                        if entries.len() > max {
+                            println!("  ... ({} more)", entries.len() - max);
+                        }
+                    }
+                )*
             }
         }
 
@@ -384,6 +418,26 @@ macro_rules! opcode_components {
                 columns
             }
 
+            /// Print all component tables for debugging.
+            /// This is equivalent to `tracer.print_tables(max_rows, max_cols)`.
+            pub fn print_tables(&self, max_rows: Option<usize>, max_cols: Option<usize>) {
+                use debug_utils::ToTable;
+                use stwo::prover::backend::Column;
+                debug_utils::set_display_options(max_rows, max_cols);
+                $(
+                    // If the table is non-empty, print its contents.
+                    if !self.$opcode.is_empty() {
+                        let table_name = stringify!($opcode);
+                        let names = paste::paste! {
+                            runner::trace::prover_columns::[<$opcode:camel Columns>]::<()>::NAMES
+                        };
+                        let table = self.$opcode.to_table_named(names);
+                        println!("\n=== {} ({} rows) ===", table_name, self.$opcode.first().unwrap().values.to_cpu().len());
+                        println!("{}", table);
+                    }
+                )*
+            }
+
         }
 
         /// Claim containing log_size for each component.
@@ -448,14 +502,15 @@ macro_rules! opcode_components {
             tracer: runner::trace::Tracer,
             counters: &mut $crate::relations::Counters,
         ) -> Traces {
-            $(
-                $opcode::witness::register_multiplicities(&tracer.$opcode, counters);
-            )*
-            Traces {
+            let traces = Traces {
                 $(
                     $opcode: tracer.$opcode.into_witness(),
                 )*
-            }
+            };
+            $(
+                $opcode::witness::register_multiplicities(traces.$opcode.as_slice(), counters);
+            )*
+            traces
         }
 
         /// Generate all interaction traces.
@@ -788,6 +843,24 @@ macro_rules! preprocessed_components {
                     columns.extend(self.$table);
                 )*
                 columns
+            }
+
+            /// Print all preprocessed tables for debugging.
+            pub fn print_tables(&self, max_rows: Option<usize>, max_cols: Option<usize>) {
+                use debug_utils::ToTable;
+                use stwo::prover::backend::Column;
+                use $crate::preprocessed::PreprocessedTable;
+                debug_utils::set_display_options(max_rows, max_cols);
+                $(
+                    if !self.$table.is_empty() {
+                        let table_name = stringify!($table);
+                        let column_ids = $crate::preprocessed::$table::Table::column_ids();
+                        let names: Vec<&str> = column_ids.iter().map(|id| id.id.as_str()).collect();
+                        let table = self.$table.to_table_named(&names);
+                        println!("\n=== {} ({} rows) ===", table_name, self.$table.first().unwrap().values.to_cpu().len());
+                        println!("{}", table);
+                    }
+                )*
             }
 
         }

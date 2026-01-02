@@ -328,73 +328,104 @@ pub fn gen_interaction_trace(
 }
 
 /// Register multiplicities for preprocessed lookups.
+/// Uses the same column access pattern as gen_interaction_trace.
 pub fn register_multiplicities(
-    trace: &runner::trace::BaseAluRegTable,
+    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     counters: &mut crate::relations::Counters,
 ) {
-    // Compute clock differences
-    let clk_minus_rs1_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs1_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
-        .collect();
-
-    let clk_minus_rs2_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rs2_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
-        .collect();
-
-    let clk_minus_rd_clk_prev: Vec<u32> = trace
-        .clk
-        .iter()
-        .zip(trace.rd_clk_prev.iter())
-        .map(|(clk, prev)| clk.wrapping_sub(*prev))
-        .collect();
-
-    // Register range_check_20 for all three clock diffs
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rs1_clk_prev]);
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rs2_clk_prev]);
-    counters
-        .range_check_20
-        .register_many(&[&clk_minus_rd_clk_prev]);
-
-    // Register bitwise lookups for xor/or/and operations
-    // bitwise_id encoding: xor=1, or=2, and=3
-    for i in 0..trace.clk.len() {
-        let is_xor = trace.opcode_xor_flag[i] == 1;
-        let is_or = trace.opcode_or_flag[i] == 1;
-        let is_and = trace.opcode_and_flag[i] == 1;
-
-        if is_xor || is_or || is_and {
-            let bitwise_id = if is_xor {
-                1
-            } else if is_or {
-                2
-            } else {
-                3
-            };
-
-            // Split rs1_next, rs2_next, rd_next into limbs and register 4 bitwise lookups
-            let rs1 = trace.rs1_next[i];
-            let rs2 = trace.rs2_next[i];
-            let rd = trace.rd_next[i];
-
-            for limb_idx in 0..4 {
-                let shift = limb_idx * 8;
-                let rs1_limb = (rs1 >> shift) & 0xFF;
-                let rs2_limb = (rs2 >> shift) & 0xFF;
-                let rd_limb = (rd >> shift) & 0xFF;
-                counters
-                    .bitwise
-                    .register(&[rs1_limb, rs2_limb, rd_limb, bitwise_id]);
-            }
-        }
+    if trace.is_empty() {
+        return;
     }
+
+    let cols = BaseAluRegColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+    let simd_size = cols.clk.len();
+
+    // Constants (same as gen_interaction_trace)
+    let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
+    let three = PackedM31::broadcast(BaseField::from_u32_unchecked(3));
+
+    // Numerators (same as gen_interaction_trace)
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            cols.opcode_add_flag[i]
+                + cols.opcode_sub_flag[i]
+                + cols.opcode_xor_flag[i]
+                + cols.opcode_or_flag[i]
+                + cols.opcode_and_flag[i]
+        })
+        .collect();
+    let is_bitwise: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i])
+        .collect();
+
+    // Derived columns (same as gen_interaction_trace)
+    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+        .collect();
+    let clk_minus_rs2_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
+        .collect();
+    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+        .collect();
+
+    // bitwise_id = xor_flag + 2*or_flag + 3*and_flag
+    let bitwise_id: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            cols.opcode_xor_flag[i] + two * cols.opcode_or_flag[i] + three * cols.opcode_and_flag[i]
+        })
+        .collect();
+
+    // Register range_check_20: (clk - rs1_clk_prev)
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+
+    // Register range_check_20: (clk - rs2_clk_prev)
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+
+    // Register bitwise: 4 limbs (rs1_next[i], rs2_next[i], rd_next[i], bitwise_id)
+    counters.bitwise.register_many(
+        &is_bitwise,
+        &[
+            cols.rs1_next_0,
+            cols.rs2_next_0,
+            cols.rd_next_0,
+            &bitwise_id,
+        ],
+    );
+    counters.bitwise.register_many(
+        &is_bitwise,
+        &[
+            cols.rs1_next_1,
+            cols.rs2_next_1,
+            cols.rd_next_1,
+            &bitwise_id,
+        ],
+    );
+    counters.bitwise.register_many(
+        &is_bitwise,
+        &[
+            cols.rs1_next_2,
+            cols.rs2_next_2,
+            cols.rd_next_2,
+            &bitwise_id,
+        ],
+    );
+    counters.bitwise.register_many(
+        &is_bitwise,
+        &[
+            cols.rs1_next_3,
+            cols.rs2_next_3,
+            cols.rd_next_3,
+            &bitwise_id,
+        ],
+    );
+
+    // Register range_check_20: (clk - rd_clk_prev)
+    counters
+        .range_check_20
+        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
 }

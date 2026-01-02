@@ -870,4 +870,119 @@ mod tests {
             assert_eq!(MulColumns::<()>::SIZE, 33);
         }
     }
+
+    // =========================================================================
+    // Table Debug Tests
+    // =========================================================================
+
+    mod debug_table_tests {
+        use super::*;
+
+        #[test]
+        fn test_base_alu_reg_table_to_table() {
+            let mut table = BaseAluRegTable::new();
+
+            let rd = Access {
+                addr: 1,
+                prev: 0,
+                clk_prev: 0,
+                next: 10,
+            };
+            let rs1 = Access {
+                addr: 2,
+                prev: 5,
+                clk_prev: 1,
+                next: 5,
+            };
+            let rs2 = Access {
+                addr: 3,
+                prev: 7,
+                clk_prev: 2,
+                next: 7,
+            };
+
+            // Push two rows
+            table.push(1, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
+            table.push(2, 0x1004, rd, rs1, rs2, 0, 1, 0, 0, 0);
+
+            table.to_table().to_string();
+        }
+
+        #[test]
+        fn test_lui_table_to_table_with_enabler() {
+            // LUI has an enabler column (no opcode flags)
+            let mut table = LuiTable::new();
+
+            let rd = Access {
+                addr: 10,
+                prev: 0,
+                clk_prev: 0,
+                next: 0x12345000,
+            };
+
+            table.push(1, 0x1000, rd, 0x12, 0x34, 0x50);
+
+            let output = table.to_table().to_string();
+
+            // Check enabler column exists
+            assert!(output.contains("enabler"));
+        }
+
+        #[test]
+        fn test_empty_table_to_table() {
+            let table = BaseAluRegTable::new();
+            let output = table.to_table().to_string();
+
+            // Empty table should still have headers
+            assert!(output.contains("clk"));
+        }
+
+        #[test]
+        fn test_tracer_print_tables() {
+            let mut tracer = Tracer::default();
+
+            // Add some traces
+            let rd = Access::default();
+            let rs1 = Access::default();
+            let rs2 = Access::default();
+
+            tracer.base_alu_reg.push(0, 0, rd, rs1, rs2, 1, 0, 0, 0, 0);
+            tracer.base_alu_reg.push(1, 4, rd, rs1, rs2, 1, 0, 0, 0, 0);
+
+            // This should not panic
+            tracer.print_tables(Some(10), Some(10));
+        }
+
+        #[test]
+        fn test_tracer_print_tables_empty() {
+            let tracer = Tracer::default();
+
+            // Empty tracer should not panic
+            tracer.print_tables(None, None);
+        }
+
+        #[test]
+        fn test_multiple_tables_to_table() {
+            let mut tracer = Tracer::default();
+
+            // Add traces to different tables
+            let rd = Access::default();
+            let rs1 = Access::default();
+            let rs2 = Access::default();
+
+            tracer.base_alu_reg.push(0, 0, rd, rs1, rs2, 1, 0, 0, 0, 0);
+            tracer.lui.push(1, 4, rd, 0, 0, 0);
+            tracer.jal.push(2, 8, rd, 100);
+
+            // Each table should produce valid output
+            let base_alu_output = tracer.base_alu_reg.to_table().to_string();
+            let lui_output = tracer.lui.to_table().to_string();
+            let jal_output = tracer.jal.to_table().to_string();
+
+            // LUI and JAL have enabler columns, BaseAluReg doesn't
+            assert!(lui_output.contains("enabler"));
+            assert!(jal_output.contains("enabler"));
+            assert!(!base_alu_output.contains("enabler"));
+        }
+    }
 }

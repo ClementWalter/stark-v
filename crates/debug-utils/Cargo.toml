@@ -1,0 +1,8 @@
+[package]
+name = "debug-utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+stwo = { workspace = true, features = ["prover"] }
+comfy-table.workspace = true

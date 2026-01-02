@@ -1,5 +1,7 @@
 //! Main proving function for RV32IM execution traces.
 
+#[cfg(feature = "track-relations")]
+use num_traits::Zero;
 use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
@@ -37,8 +39,6 @@ pub fn prove_rv32im(
     let span = span!(Level::INFO, "Generate traces").entered();
     let tracer = run_result.tracer;
     info!("Tracer total_traces: {}", tracer.total_traces());
-    info!("Tracer base_alu_imm len: {}", tracer.base_alu_imm.len());
-    info!("Tracer load_store len: {}", tracer.load_store.len());
     let traces = gen_trace(tracer);
     let log_size = traces.max_log_size();
     info!("Max trace log_size: {log_size}");
@@ -63,6 +63,7 @@ pub fn prove_rv32im(
     let span = span!(Level::INFO, "Preprocessed trace").entered();
     let preprocessed_trace = PreProcessedTrace::new();
     let preprocessed_ids = preprocessed_trace.ids.clone();
+    info!("Preprocessed trace ids len: {}", preprocessed_ids.len());
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(preprocessed_trace.trace);
@@ -74,14 +75,6 @@ pub fn prove_rv32im(
     let claim: crate::components::Claim = (&traces).into();
     let columns = traces.columns_cloned();
     info!("Main trace columns committed: {}", columns.len());
-
-    // Log the actual log_sizes of committed columns
-    let mut log_size_counts: std::collections::HashMap<u32, usize> =
-        std::collections::HashMap::new();
-    for col in &columns {
-        *log_size_counts.entry(col.domain.log_size()).or_insert(0) += 1;
-    }
-    info!("Committed column log_sizes: {:?}", log_size_counts);
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(columns);
@@ -109,21 +102,33 @@ pub fn prove_rv32im(
     }
     span.exit();
 
-    // TODO: Re-enable this verification once all components are implemented
-    // // 10. Verify claimed sum is zero (all lookups balanced)
-    // let total_sum = claimed_sum.total();
-    // info!("Claimed sum: {total_sum:?}");
-    // assert!(
-    //     total_sum.is_zero(),
-    //     "Relation sum must be zero, got {total_sum:?}"
-    // );
-
-    // 11. Create components and prove
+    // 10. Create components
     let span = span!(Level::INFO, "Create components").entered();
     let mut location_allocator =
         TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_ids);
     let components = Components::new(&claim, &mut location_allocator, relations, &claimed_sum);
     span.exit();
+
+    #[cfg(feature = "track-relations")]
+    info!(
+        "Trace log degree bounds: {:?}",
+        components.trace_log_degree_bounds()
+    );
+
+    // 11. Verify claimed sum is zero (all lookups balanced)
+    // Only enabled with track-relations feature until all components are implemented
+    #[cfg(feature = "track-relations")]
+    {
+        let total_sum = claimed_sum.total();
+        info!("Claimed sum: {total_sum:?}");
+        if !total_sum.is_zero() {
+            info!(
+                "Relation summary: {:?}",
+                components.track_relations(&commitment_scheme)
+            );
+            panic!("Relation sum must be zero, got {total_sum:?}");
+        }
+    }
 
     // 12. Generate proof
     let span = span!(Level::INFO, "Prove").entered();
