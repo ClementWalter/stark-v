@@ -313,6 +313,33 @@ macro_rules! relations {
                 )*
                 traces
             }
+
+            /// Print all counters for debugging.
+            /// Shows the multiplicity counts for each preprocessed table.
+            pub fn print_counters(&self, max_rows: Option<usize>, _max_cols: Option<usize>) {
+                debug_utils::set_display_options(max_rows, None);
+                $(
+                    let table_name = stringify!($prep_name);
+                    let non_zero_count = self.$prep_name.counts.iter().filter(|c| **c > 0).count();
+                    if non_zero_count > 0 {
+                        println!("\n=== {} ({} non-zero entries) ===", table_name, non_zero_count);
+                        // Print as index -> count pairs for non-zero entries
+                        let entries: Vec<(usize, u32)> = self.$prep_name.counts
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, c)| **c > 0)
+                            .map(|(i, c)| (i, *c))
+                            .collect();
+                        let max = max_rows.unwrap_or(entries.len());
+                        for (idx, count) in entries.iter().take(max) {
+                            println!("  [{}] = {}", idx, count);
+                        }
+                        if entries.len() > max {
+                            println!("  ... ({} more)", entries.len() - max);
+                        }
+                    }
+                )*
+            }
         }
 
         impl Default for Counters {
@@ -816,6 +843,24 @@ macro_rules! preprocessed_components {
                     columns.extend(self.$table);
                 )*
                 columns
+            }
+
+            /// Print all preprocessed tables for debugging.
+            pub fn print_tables(&self, max_rows: Option<usize>, max_cols: Option<usize>) {
+                use debug_utils::ToTable;
+                use stwo::prover::backend::Column;
+                use $crate::preprocessed::PreprocessedTable;
+                debug_utils::set_display_options(max_rows, max_cols);
+                $(
+                    if !self.$table.is_empty() {
+                        let table_name = stringify!($table);
+                        let column_ids = $crate::preprocessed::$table::Table::column_ids();
+                        let names: Vec<&str> = column_ids.iter().map(|id| id.id.as_str()).collect();
+                        let table = self.$table.to_table_named(&names);
+                        println!("\n=== {} ({} rows) ===", table_name, self.$table.first().unwrap().values.to_cpu().len());
+                        println!("{}", table);
+                    }
+                )*
             }
 
         }
