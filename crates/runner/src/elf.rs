@@ -1,5 +1,6 @@
 use crate::Memory;
 use goblin::elf::Elf;
+use goblin::elf::program_header::PT_LOAD;
 use thiserror::Error;
 use tracing::debug;
 
@@ -23,6 +24,16 @@ pub struct LoadedElf {
     pub gp: u32,
     /// Memory initialized with loadable segments.
     pub memory: Memory,
+    /// Text segment base address.
+    pub text_base: u32,
+    /// Text segment end address (exclusive).
+    pub text_end: u32,
+    /// Data segment base address.
+    pub data_base: u32,
+    /// Data segment end address (exclusive).
+    pub data_end: u32,
+    /// Stack bottom address.
+    pub stack_bottom: u32,
     /// Address of halt flag (from __halt_flag linker symbol).
     pub halt_flag_addr: u32,
     /// Address of output length (from __output_len linker symbol).
@@ -60,6 +71,20 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
     // Find __stack_top symbol
     let sp = find_symbol("__stack_top").unwrap_or(0x0020_0000);
     debug!(sp = format_args!("0x{:08x}", sp), "Stack pointer");
+    let stack_bottom = find_symbol("__stack_bottom")
+        .or_else(|| find_symbol("__stack_size").map(|size| sp.wrapping_sub(size)))
+        .unwrap_or(sp);
+    debug!(
+        stack_bottom = format_args!("0x{:08x}", stack_bottom),
+        "Stack bottom"
+    );
+    let text_base = find_symbol("__text_start").unwrap_or(entry);
+    let text_len = find_symbol("__text_len").unwrap_or(0);
+    let text_end = text_base.wrapping_add(text_len);
+
+    let data_base = find_symbol("__data_start").unwrap_or(stack_bottom);
+    let data_len = find_symbol("__data_len").unwrap_or(0);
+    let data_end = data_base.wrapping_add(data_len);
 
     // Find I/O region symbols
     let halt_flag_addr = find_symbol("__halt_flag").unwrap_or(0x0010_0000);
@@ -77,7 +102,7 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
     // Load all PT_LOAD segments into memory
     let mut mem_data = Vec::new();
     for ph in &elf.program_headers {
-        if ph.p_type == goblin::elf::program_header::PT_LOAD {
+        if ph.p_type == PT_LOAD {
             let vaddr = ph.p_vaddr as u32;
             let file_offset = ph.p_offset as usize;
             let file_size = ph.p_filesz as usize;
@@ -118,6 +143,11 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
         sp,
         gp,
         memory,
+        text_base,
+        text_end,
+        data_base,
+        data_end,
+        stack_bottom,
         halt_flag_addr,
         output_len_addr,
         output_data_addr,

@@ -15,6 +15,12 @@ impl Memory {
         }
     }
 
+    /// Return byte addresses used by the memory.
+    #[inline]
+    pub fn keys(&self) -> impl Iterator<Item = u32> + '_ {
+        self.data.keys().copied()
+    }
+
     /// Read a single byte.
     #[inline]
     pub fn read_u8(&self, addr: u32) -> u8 {
@@ -159,6 +165,8 @@ mod tests {
     use super::*;
     use crate::trace::Tracer;
 
+    const MEM_ADDR: u32 = 0x2000;
+
     // =========================================================================
     // Basic Operations
     // =========================================================================
@@ -197,13 +205,13 @@ mod tests {
     #[test]
     fn test_read_write_u32_little_endian() {
         let mut mem = Memory::new();
-        mem.write_u32(100, 0xDEADBEEF);
+        mem.write_u32(MEM_ADDR, 0xDEADBEEF);
         // Little-endian: low byte first
-        assert_eq!(mem.read_u8(100), 0xEF);
-        assert_eq!(mem.read_u8(101), 0xBE);
-        assert_eq!(mem.read_u8(102), 0xAD);
-        assert_eq!(mem.read_u8(103), 0xDE);
-        assert_eq!(mem.read_u32(100), 0xDEADBEEF);
+        assert_eq!(mem.read_u8(MEM_ADDR), 0xEF);
+        assert_eq!(mem.read_u8(MEM_ADDR + 1), 0xBE);
+        assert_eq!(mem.read_u8(MEM_ADDR + 2), 0xAD);
+        assert_eq!(mem.read_u8(MEM_ADDR + 3), 0xDE);
+        assert_eq!(mem.read_u32(MEM_ADDR), 0xDEADBEEF);
     }
 
     #[test]
@@ -224,9 +232,9 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        let access = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
-        assert_eq!(access.addr, 100);
+        assert_eq!(access.addr, MEM_ADDR);
         assert_eq!(access.prev, 0);
         assert_eq!(access.next, 0);
         assert_eq!(access.clk_prev, 0);
@@ -240,20 +248,20 @@ mod tests {
         let mut tracer = Tracer::default();
         tracer.clk = 10;
 
-        mem.read_u8_traced(100, &mut tracer);
-        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
+        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&10));
     }
 
     #[test]
     fn test_write_u8_traced_records_change() {
         let mut mem = Memory::new();
-        mem.write_u8(100, 0x42);
+        mem.write_u8(MEM_ADDR, 0x42);
         let mut tracer = Tracer::default();
         tracer.clk = 5;
 
-        let access = mem.write_u8_traced(100, 0xFF, &mut tracer);
+        let access = mem.write_u8_traced(MEM_ADDR, 0xFF, &mut tracer);
 
-        assert_eq!(access.addr, 100);
+        assert_eq!(access.addr, MEM_ADDR);
         assert_eq!(access.prev, 0x42);
         assert_eq!(access.next, 0xFF);
         assert_eq!(access.clk_prev, 0);
@@ -261,7 +269,7 @@ mod tests {
         assert!(tracer.mem_clk_update.is_empty());
 
         // Verify memory was updated
-        assert_eq!(mem.read_u8(100), 0xFF);
+        assert_eq!(mem.read_u8(MEM_ADDR), 0xFF);
     }
 
     #[test]
@@ -271,11 +279,11 @@ mod tests {
 
         // First write at clk=1
         tracer.clk = 1;
-        mem.write_u8_traced(100, 0x11, &mut tracer);
+        mem.write_u8_traced(MEM_ADDR, 0x11, &mut tracer);
 
         // Second write at clk=2
         tracer.clk = 2;
-        let access = mem.write_u8_traced(100, 0x22, &mut tracer);
+        let access = mem.write_u8_traced(MEM_ADDR, 0x22, &mut tracer);
 
         assert_eq!(access.clk_prev, 1);
         // Note: access.clk is no longer stored; current clk is tracer.clk=2
@@ -291,17 +299,17 @@ mod tests {
     #[test]
     fn test_read_u32_traced() {
         let mut mem = Memory::new();
-        mem.write_u32(100, 0x44332211);
+        mem.write_u32(MEM_ADDR, 0x44332211);
         let mut tracer = Tracer::default();
 
         tracer.clk = 20;
-        let access = mem.read_u32_traced(100, &mut tracer);
+        let access = mem.read_u32_traced(MEM_ADDR, &mut tracer);
 
         // Aligned address should have the clock
-        assert_eq!(tracer.mem_clk.get(&100), Some(&20));
+        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&20));
 
         // Returned access should have full value
-        assert_eq!(access.addr, 100);
+        assert_eq!(access.addr, MEM_ADDR);
         assert_eq!(access.prev, 0x44332211);
         assert_eq!(access.next, 0x44332211);
         // Note: access.clk is no longer stored; use tracer.clk at call site
@@ -313,16 +321,16 @@ mod tests {
         let mut tracer = Tracer::default();
 
         tracer.clk = 10;
-        let access = mem.write_u16_traced(100, 0xABCD, &mut tracer);
+        let access = mem.write_u16_traced(MEM_ADDR, 0xABCD, &mut tracer);
 
         // Verify memory written correctly
-        assert_eq!(mem.read_u16(100), 0xABCD);
+        assert_eq!(mem.read_u16(MEM_ADDR), 0xABCD);
 
         // Aligned address should have the clock (100 is 4-byte aligned)
-        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&10));
 
         // Returned access should have the full word value
-        assert_eq!(access.addr, 100);
+        assert_eq!(access.addr, MEM_ADDR);
         assert_eq!(access.prev, 0); // was uninitialized
         assert_eq!(access.next, 0xABCD); // written u16 in low bytes
     }
@@ -334,16 +342,16 @@ mod tests {
     #[test]
     fn test_gap_filling_single_byte() {
         let mut mem = Memory::new();
-        mem.write_u8(100, 0x42);
+        mem.write_u8(MEM_ADDR, 0x42);
         let mut tracer = Tracer::with_max_clock_diff(100);
 
         // First access at clk=1
         tracer.clk = 1;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // Access with gap > max_clock_diff (100)
         tracer.clk = 350;
-        let access = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // Should have 3 intermediate accesses (101, 201, 301) to bridge the gap
         assert_eq!(
@@ -365,14 +373,14 @@ mod tests {
     #[test]
     fn test_gap_filling_preserves_value() {
         let mut mem = Memory::new();
-        mem.write_u8(100, 0xAB);
+        mem.write_u8(MEM_ADDR, 0xAB);
         let mut tracer = Tracer::with_max_clock_diff(50);
 
         tracer.clk = 0;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         tracer.clk = 200; // Large gap
-        let access = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // All intermediate accesses should preserve the value (read, not write)
         for intermediate in &tracer.mem_clk_update {
@@ -390,10 +398,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
         tracer.clk = 0;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         tracer.clk = 100; // Exactly at max_clock_diff
-        let access = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // Should be no intermediates needed
         assert!(tracer.mem_clk_update.is_empty());
@@ -407,10 +415,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
         tracer.clk = 0;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         tracer.clk = 101; // Just over max_clock_diff
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // Should have 1 intermediate stored
         assert_eq!(tracer.mem_clk_update.len(), 1);
@@ -449,10 +457,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(1);
 
         tracer.clk = 0;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         tracer.clk = 5; // Gap of 5, need 4 intermediates
-        let access = mem.read_u8_traced(100, &mut tracer);
+        let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // With max_clock_diff=1, gap of 5 needs 4 intermediates
         assert_eq!(tracer.mem_clk_update.len(), 4);
@@ -474,10 +482,10 @@ mod tests {
         let mut tracer = Tracer::with_max_clock_diff(u32::MAX);
 
         tracer.clk = 0;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         tracer.clk = u32::MAX - 1;
-        mem.read_u8_traced(100, &mut tracer);
+        mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // No intermediate ever needed with max clock diff
         assert!(tracer.mem_clk_update.is_empty());
@@ -490,7 +498,7 @@ mod tests {
 
         for clk in 0..10 {
             tracer.clk = clk;
-            mem.read_u8_traced(100, &mut tracer);
+            mem.read_u8_traced(MEM_ADDR, &mut tracer);
         }
         // No intermediates needed for sequential clocks
         assert!(tracer.mem_clk_update.is_empty());
@@ -503,48 +511,48 @@ mod tests {
     #[test]
     fn test_aligned_tracing_u8() {
         let mut mem = Memory::new();
-        mem.write_u32(100, 0x12345678);
+        mem.write_u32(MEM_ADDR, 0x12345678);
         let mut tracer = Tracer::default();
 
         tracer.clk = 10;
-        let access = mem.read_u8_traced(101, &mut tracer);
+        let access = mem.read_u8_traced(MEM_ADDR + 1, &mut tracer);
 
         // Should trace the 4-byte aligned address
-        assert_eq!(access.addr, 100); // 101 & !3 = 100
+        assert_eq!(access.addr, MEM_ADDR); // (addr + 1) & !3
         assert_eq!(access.prev, 0x12345678);
         assert_eq!(access.next, 0x12345678);
-        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&10));
     }
 
     #[test]
     fn test_aligned_tracing_u16() {
         let mut mem = Memory::new();
-        mem.write_u32(100, 0x12345678);
+        mem.write_u32(MEM_ADDR, 0x12345678);
         let mut tracer = Tracer::default();
 
         tracer.clk = 10;
-        let access = mem.read_u16_traced(102, &mut tracer);
+        let access = mem.read_u16_traced(MEM_ADDR + 2, &mut tracer);
 
         // Should trace the 4-byte aligned address
-        assert_eq!(access.addr, 100); // 102 & !3 = 100
+        assert_eq!(access.addr, MEM_ADDR); // (addr + 2) & !3
         assert_eq!(access.prev, 0x12345678);
         assert_eq!(access.next, 0x12345678);
-        assert_eq!(tracer.mem_clk.get(&100), Some(&10));
+        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&10));
     }
 
     #[test]
     fn test_aligned_tracing_write_u8() {
         let mut mem = Memory::new();
-        mem.write_u32(100, 0x12345678);
+        mem.write_u32(MEM_ADDR, 0x12345678);
         let mut tracer = Tracer::default();
 
         tracer.clk = 10;
-        let access = mem.write_u8_traced(101, 0xFF, &mut tracer);
+        let access = mem.write_u8_traced(MEM_ADDR + 1, 0xFF, &mut tracer);
 
         // Should trace the 4-byte aligned address with prev/next word values
-        assert_eq!(access.addr, 100); // 101 & !3 = 100
+        assert_eq!(access.addr, MEM_ADDR); // (addr + 1) & !3
         assert_eq!(access.prev, 0x12345678);
         assert_eq!(access.next, 0x1234FF78); // byte 1 changed to 0xFF
-        assert_eq!(mem.read_u32(100), 0x1234FF78);
+        assert_eq!(mem.read_u32(MEM_ADDR), 0x1234FF78);
     }
 }

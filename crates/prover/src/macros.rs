@@ -136,6 +136,94 @@ macro_rules! relations {
 
         // ==================== Relations Struct ====================
 
+        $(
+            #[allow(non_camel_case_types)]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct $rel_name(
+                stwo_constraint_framework::logup::LookupElements<
+                    { $crate::count_idents!($($rel_field),+) }
+                >
+            );
+
+            impl $rel_name {
+                pub fn dummy() -> Self {
+                    Self(stwo_constraint_framework::logup::LookupElements::dummy())
+                }
+                pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
+                    Self(stwo_constraint_framework::logup::LookupElements::draw(channel))
+                }
+                pub fn combine<F, EF>(&self, values: &[F]) -> EF
+                where
+                    F: Clone,
+                    EF: stwo_constraint_framework::RelationEFTraitBound<F>,
+                {
+                    self.0.combine(values)
+                }
+            }
+
+            impl<F, EF> stwo_constraint_framework::Relation<F, EF> for $rel_name
+            where
+                F: Clone,
+                EF: stwo_constraint_framework::RelationEFTraitBound<F>,
+            {
+                fn combine(&self, values: &[F]) -> EF {
+                    self.0.combine(values)
+                }
+
+                fn get_name(&self) -> &str {
+                    stringify!($rel_name)
+                }
+
+                fn get_size(&self) -> usize {
+                    $crate::count_idents!($($rel_field),+)
+                }
+            }
+        )*
+
+        $(
+            #[allow(non_camel_case_types)]
+            #[derive(Clone, Debug, PartialEq)]
+            pub struct $prep_name(
+                stwo_constraint_framework::logup::LookupElements<
+                    { $crate::count_idents!($($prep_col),+) }
+                >
+            );
+
+            impl $prep_name {
+                pub fn dummy() -> Self {
+                    Self(stwo_constraint_framework::logup::LookupElements::dummy())
+                }
+                pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
+                    Self(stwo_constraint_framework::logup::LookupElements::draw(channel))
+                }
+                pub fn combine<F, EF>(&self, values: &[F]) -> EF
+                where
+                    F: Clone,
+                    EF: stwo_constraint_framework::RelationEFTraitBound<F>,
+                {
+                    self.0.combine(values)
+                }
+            }
+
+            impl<F, EF> stwo_constraint_framework::Relation<F, EF> for $prep_name
+            where
+                F: Clone,
+                EF: stwo_constraint_framework::RelationEFTraitBound<F>,
+            {
+                fn combine(&self, values: &[F]) -> EF {
+                    self.0.combine(values)
+                }
+
+                fn get_name(&self) -> &str {
+                    stringify!($prep_name)
+                }
+
+                fn get_size(&self) -> usize {
+                    $crate::count_idents!($($prep_col),+)
+                }
+            }
+        )*
+
         #[derive(Clone)]
         pub struct Relations {
             // Regular relations

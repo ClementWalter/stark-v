@@ -188,6 +188,33 @@ fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
     }
 }
 
+/// Generate push-row statements for a field from a flat row slice
+fn generate_push_row_stmt(field: &Ident) -> proc_macro2::TokenStream {
+    let name = field.to_string();
+    if is_access_field(&name) {
+        // Access fields expand to 4 columns in trace order
+        let addr = format_ident!("{}_addr", name);
+        let prev = format_ident!("{}_prev", name);
+        let clk_prev = format_ident!("{}_clk_prev", name);
+        let next = format_ident!("{}_next", name);
+        quote! {
+            self.#addr.push(row[idx]);
+            idx += 1;
+            self.#prev.push(row[idx]);
+            idx += 1;
+            self.#clk_prev.push(row[idx]);
+            idx += 1;
+            self.#next.push(row[idx]);
+            idx += 1;
+        }
+    } else {
+        quote! {
+            self.#field.push(row[idx]);
+            idx += 1;
+        }
+    }
+}
+
 /// Generate debug field entries for a single row
 fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
@@ -249,6 +276,20 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
         }
     }
     result
+}
+
+/// Count trace columns (enabler + fields, with Access fields expanding to 4 columns).
+fn trace_columns_len(fields: &[Ident], include_enabler: bool) -> usize {
+    let mut count = if include_enabler { 1 } else { 0 };
+    for field in fields {
+        let name = field.to_string();
+        if is_access_field(&name) {
+            count += 4;
+        } else {
+            count += 1;
+        }
+    }
+    count
 }
 
 /// Generate the into_columns body that splits u32 values into limbs.
@@ -441,10 +482,12 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let field_inits_cap: Vec<_> = opcode.fields.iter().map(generate_field_init_cap).collect();
     let push_params: Vec<_> = opcode.fields.iter().map(generate_push_param).collect();
     let push_stmts: Vec<_> = opcode.fields.iter().map(generate_push_stmt).collect();
+    let push_row_stmts: Vec<_> = opcode.fields.iter().map(generate_push_row_stmt).collect();
     let debug_fields: Vec<_> = opcode.fields.iter().map(generate_debug_field).collect();
 
     // Generate into_columns body that splits u32 values into limbs
     let into_columns_body = generate_into_columns_body(&opcode.fields, include_enabler);
+    let row_len = trace_columns_len(&opcode.fields, include_enabler);
 
     // Get the first field name for len/is_empty when no enabler
     // We need to find the first actual column name after expansion
@@ -480,6 +523,15 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
 
     let enabler_push_stmt = if include_enabler {
         quote! { self.enabler.push(1); }
+    } else {
+        quote! {}
+    };
+
+    let enabler_push_row_stmt = if include_enabler {
+        quote! {
+            self.enabler.push(row[idx]);
+            idx += 1;
+        }
     } else {
         quote! {}
     };
@@ -571,6 +623,14 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             pub fn push(&mut self, #(#push_params),*) {
                 #enabler_push_stmt
                 #(#push_stmts)*
+            }
+
+            #[inline]
+            pub fn push_row(&mut self, row: &[u32]) {
+                debug_assert_eq!(row.len(), #row_len);
+                let mut idx = 0usize;
+                #enabler_push_row_stmt
+                #(#push_row_stmts)*
             }
 
             /// Consumes the table and returns columns as a Vec in canonical order.
@@ -695,6 +755,10 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
             pub reg_clk: [u32; 32],
             /// Last access clock for each memory address.
             pub mem_clk: rustc_hash::FxHashMap<u32, u32>,
+            /// Value at first access for each memory word (4-byte aligned address).
+            pub mem_initial: rustc_hash::FxHashMap<u32, u32>,
+            /// Program fetch counts per PC.
+            pub program_reads: rustc_hash::FxHashMap<u32, u32>,
 
             /// Intermediate register clock update accesses (gap-filling).
             pub reg_clk_update: AccessTable,
@@ -730,6 +794,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                     .field("max_clock_diff", &self.max_clock_diff)
                     .field("reg_clk", &self.reg_clk)
                     .field("mem_clk", &HexKeyMap(&self.mem_clk))
+                    .field("mem_initial", &HexKeyMap(&self.mem_initial))
+                    .field("program_reads", &HexKeyMap(&self.program_reads))
                     .field("reg_clk_update", &self.reg_clk_update)
                     .field("mem_clk_update", &self.mem_clk_update)
                     #(#debug_table_fields)*
@@ -744,6 +810,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                     max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
                     reg_clk: [0; 32],
                     mem_clk: rustc_hash::FxHashMap::default(),
+                    mem_initial: rustc_hash::FxHashMap::default(),
+                    program_reads: rustc_hash::FxHashMap::default(),
                     reg_clk_update: AccessTable::new(),
                     mem_clk_update: AccessTable::new(),
                     #(#table_inits,)*
@@ -770,6 +838,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                     max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
                     reg_clk: [0; 32],
                     mem_clk: rustc_hash::FxHashMap::default(),
+                    mem_initial: rustc_hash::FxHashMap::default(),
+                    program_reads: rustc_hash::FxHashMap::default(),
                     reg_clk_update: AccessTable::new(),
                     mem_clk_update: AccessTable::new(),
                     #(#table_inits_cap,)*

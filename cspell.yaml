@@ -1,8 +1,9 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
-  - ADDSUB
   - addi
+  - addrs
+  - ADDSUB
   - allocvec
   - andi
   - andn
@@ -15,16 +16,16 @@ words:
   - cfgs
   - clément
   - clippy
-  - Swatinem
   - condvar
   - csrrw
   - divu
-  - doubleword
   - doctest
+  - doubleword
   - dtolnay
   - ebreak
   - ecall
   - ehdr
+  - evals
   - filesz
   - fondeur
   - funct
@@ -32,10 +33,12 @@ words:
   - globl
   - halfword
   - hashbrown
+  - idents
+  - ilog2
   - immediates
   - inplace
-  - intermed
   - insn
+  - intermed
   - itertools
   - jalr
   - jemalloc
@@ -50,31 +53,31 @@ words:
   - logup
   - madv
   - madvise
-  - MEPC
   - memsz
+  - MEPC
   - merkle
   - mersenne
   - metavar
   - mimalloc
-  - mret
-  - MRET
   - mispredictions
   - mmap
   - mmio
-  - muldiv
   - movsign
   - Movsign
+  - mret
+  - MRET
+  - MTVEC
+  - muldiv
   - mulh
   - mulhsu
   - mulhu
   - muli
   - mult
   - mults
-  - MTVEC
+  - nomem
   - norelax
   - noreturn
   - nostack
-  - nomem
   - objdump
   - openvm
   - pairable
@@ -84,7 +87,6 @@ words:
   - regs
   - remu
   - repr
-  - idents
   - risc0
   - riscv
   - rodata
@@ -110,8 +112,9 @@ words:
   - storew
   - strtab
   - stwo
-  - syms
   - subi
+  - Swatinem
+  - syms
   - syscalls
   - thiserror
   - tikv
@@ -122,8 +125,8 @@ words:
   - unimp
   - usize
   - vaddr
-  - Virt
   - virt
+  - Virt
   - vm
   - worktree
   - worktrees
@@ -131,5 +134,3 @@ words:
   - XLEN
   - xori
   - zkvm
-  - evals
-  - ilog2

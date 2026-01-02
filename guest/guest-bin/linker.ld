@@ -19,12 +19,15 @@ __output_end = __stack_bottom;
 
 SECTIONS {
     .text : ALIGN(4) {
+        __text_start = .;
         KEEP(*(.text._start))
         *(.text .text.*)
         *(.gnu.linkonce.t.*)
+        __text_end = .;
     } > TEXT
 
     .rodata : ALIGN(4) {
+        __data_start = .;
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
         *(.eh_frame*)
@@ -42,6 +45,10 @@ SECTIONS {
         *(.data .data.*)
         *(.sdata .sdata.*)
     } > DATA
+
+    __text_len = __text_end - __text_start;
+    __data_end = .;
+    __data_len = __data_end - __data_start;
 
     PROVIDE(__global_pointer$ = ORIGIN(DATA) + 0x800);
 
