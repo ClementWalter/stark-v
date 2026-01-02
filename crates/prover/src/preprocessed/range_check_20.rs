@@ -45,3 +45,31 @@ impl PreprocessedTable for Table {
         }]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stwo::prover::backend::Column;
+
+    /// Test that gen_columns[index(values)] == values for all valid indices.
+    #[allow(clippy::needless_range_loop)]
+    #[test]
+    fn test_index_roundtrip() {
+        let columns = Table::gen_columns();
+        let col_value = columns[0].values.to_cpu();
+
+        for index in 0..col_value.len() {
+            let v = col_value[index];
+
+            let packed_v = PackedM31::broadcast(v);
+            let values = [packed_v];
+
+            let computed_indices = Table::index(&values);
+
+            assert_eq!(
+                computed_indices[0], index as u32,
+                "index mismatch at idx {index}"
+            );
+        }
+    }
+}

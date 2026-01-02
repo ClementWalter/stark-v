@@ -63,3 +63,33 @@ impl PreprocessedTable for Table {
         ]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stwo::prover::backend::Column;
+
+    /// Test that gen_columns[index(values)] == values for all valid indices.
+    #[test]
+    fn test_index_roundtrip() {
+        let columns = Table::gen_columns();
+        let col_limb_0 = columns[0].values.to_cpu();
+        let col_limb_1 = columns[1].values.to_cpu();
+
+        for index in 0..col_limb_0.len() {
+            let v0 = col_limb_0[index];
+            let v1 = col_limb_1[index];
+
+            let packed_v0 = PackedM31::broadcast(v0);
+            let packed_v1 = PackedM31::broadcast(v1);
+            let values = [packed_v0, packed_v1];
+
+            let computed_indices = Table::index(&values);
+
+            assert_eq!(
+                computed_indices[0], index as u32,
+                "index mismatch at idx {index}"
+            );
+        }
+    }
+}

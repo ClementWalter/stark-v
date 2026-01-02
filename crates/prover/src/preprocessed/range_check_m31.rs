@@ -104,3 +104,34 @@ impl PreprocessedTable for Table {
         ]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stwo::prover::backend::Column;
+
+    /// Test that gen_columns[index(values)] == values for all valid indices.
+    #[test]
+    fn test_index_roundtrip() {
+        let columns = Table::gen_columns();
+        let col_lsl = columns[0].values.to_cpu();
+        let col_msl = columns[1].values.to_cpu();
+
+        // Last index is a duplicate (0, 0) to exclude (255, 127).
+        for index in 0..(col_lsl.len() - 1) {
+            let v0 = col_lsl[index];
+            let v1 = col_msl[index];
+
+            let packed_v0 = PackedM31::broadcast(v0);
+            let packed_v1 = PackedM31::broadcast(v1);
+            let values = [packed_v0, packed_v1];
+
+            let computed_indices = Table::index(&values);
+
+            assert_eq!(
+                computed_indices[0], index as u32,
+                "index mismatch at idx {index}"
+            );
+        }
+    }
+}
