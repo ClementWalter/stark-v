@@ -13,7 +13,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::DivColumns;
-use crate::{combine, consume_col, consume_pair, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -107,7 +107,6 @@ pub fn gen_interaction_trace(
         .zip(special_case.iter())
         .map(|(&e, &s)| -PackedQM31::from(e - s))
         .collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -181,7 +180,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -229,9 +228,9 @@ pub fn gen_interaction_trace(
     let rc_8_8_q_0_denom = combine!(relations.range_check_8_8, [cols.q_0, cols.q_1]);
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs2_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_q_0_denom,
         logup_gen
     );
@@ -242,7 +241,13 @@ pub fn gen_interaction_trace(
     // 12. range_check_8_8: -1 * (r_0, r_1)
     let rc_8_8_r_0_denom = combine!(relations.range_check_8_8, [cols.r_0, cols.r_1]);
 
-    consume_pair!(logup_gen; rc_8_8_q_1_denom, rc_8_8_r_0_denom);
+    write_pair!(
+        &neg_enabler,
+        &rc_8_8_q_1_denom,
+        &neg_enabler,
+        &rc_8_8_r_0_denom,
+        logup_gen
+    );
 
     // 13. range_check_8_8: -1 * (r_2, r_3)
     let rc_8_8_r_1_denom = combine!(relations.range_check_8_8, [cols.r_2, cols.r_3]);
@@ -251,7 +256,7 @@ pub fn gen_interaction_trace(
     let rc_20_lt_diff_denom = combine!(relations.range_check_20, [&lt_diff_minus_1]);
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_r_1_denom,
         &neg_valid_not_special,
         &rc_20_lt_diff_denom,
@@ -289,7 +294,7 @@ pub fn gen_interaction_trace(
     // 17. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    consume_col!(rc_20_rd_denom, logup_gen);
+    write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

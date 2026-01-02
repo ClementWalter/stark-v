@@ -112,7 +112,6 @@ pub fn gen_interaction_trace(
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
     let neg_is_bitwise: Vec<PackedQM31> =
         is_bitwise.iter().map(|&b| -PackedQM31::from(b)).collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -136,7 +135,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &neg_enabler,
         &program_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_11_denom,
         logup_gen
     );
@@ -201,7 +200,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         &neg_is_bitwise,
         &bitwise_0_denom,
@@ -240,7 +239,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &neg_is_bitwise,
         &bitwise_3_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_0_denom,
         logup_gen
     );
@@ -263,7 +262,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_1_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -290,7 +289,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rd_denom,
         logup_gen
     );

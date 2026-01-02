@@ -13,7 +13,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::LoadStoreColumns;
-use crate::{combine, consume_pair, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -112,7 +112,6 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -186,7 +185,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -200,7 +199,13 @@ pub fn gen_interaction_trace(
         [cols.rs1_next_0, cols.rs1_next_3]
     );
 
-    consume_pair!(logup_gen; rc_20_align_denom, rc_m31_base_denom);
+    write_pair!(
+        &neg_enabler,
+        &rc_20_align_denom,
+        &neg_enabler,
+        &rc_m31_base_denom,
+        logup_gen
+    );
 
     // 9. memory_access: -enabler * (src_as, src_addr_selector, src_clk_prev, src_prev_0..3)
     let src_read_denom = combine!(
@@ -256,7 +261,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_20_src_denom,
         &neg_enabler,
         &dst_read_denom,
@@ -283,7 +288,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &dst_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_20_dst_denom,
         logup_gen
     );

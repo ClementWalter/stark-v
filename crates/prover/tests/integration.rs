@@ -21,7 +21,7 @@ fn test_all_components_aggregate() {
         gen_interaction_trace(&traces, &relations);
 
     assert!(!interaction_columns.is_empty());
-    assert!(!claimed_sum.sum().is_zero());
+    assert!(claimed_sum.sum().is_zero());
 }
 
 #[test]

@@ -13,7 +13,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::LtImmColumns;
-use crate::{combine, consume_col, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -94,7 +94,6 @@ pub fn gen_interaction_trace(
         .iter()
         .map(|&p| -PackedQM31::from(p))
         .collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -183,7 +182,7 @@ pub fn gen_interaction_trace(
     let rc_20_diff_denom = combine!(relations.range_check_20, [&diff_val_minus_1]);
 
     write_pair!(
-        &neg_one,
+        &neg_enabler,
         &rc_20_rs1_denom,
         &neg_prefix_sum,
         &rc_20_diff_denom,
@@ -229,7 +228,7 @@ pub fn gen_interaction_trace(
     // 11. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    consume_col!(rc_20_rd_denom, logup_gen);
+    write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }
