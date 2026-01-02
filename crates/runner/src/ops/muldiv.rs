@@ -14,6 +14,7 @@ use crate::{Cpu, DecodedInst};
 // =============================================================================
 
 pub fn mul(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let rs1_val = rs1.next as i32 as i64;
@@ -21,7 +22,7 @@ pub fn mul(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let result = rs1_val.wrapping_mul(rs2_val) as u32;
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    trace_op!(mul: tracer, cpu.pc, rd, rs1, rs2);
+    trace_op!(mul: tracer, old_pc, rd, rs1, rs2);
 }
 
 // =============================================================================
@@ -76,6 +77,7 @@ struct MulhWitness {
 }
 
 pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let w = compute_mulh_witness(rs1.next, rs2.next, true, true);
@@ -83,7 +85,7 @@ pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     // opcode flags: mulh=1, mulhsu=0, mulhu=0
-    trace_op!(mulh: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(mulh: tracer, old_pc, rd, rs1, rs2,
         w.rd_high[0], w.rd_high[1], w.rd_high[2], w.rd_high[3],
         w.rs1_sign, w.rs2_sign,
         1, 0, 0
@@ -91,6 +93,7 @@ pub fn mulh(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let w = compute_mulh_witness(rs1.next, rs2.next, true, false);
@@ -98,7 +101,7 @@ pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     // opcode flags: mulh=0, mulhsu=1, mulhu=0
-    trace_op!(mulh: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(mulh: tracer, old_pc, rd, rs1, rs2,
         w.rd_high[0], w.rd_high[1], w.rd_high[2], w.rd_high[3],
         w.rs1_sign, w.rs2_sign,
         0, 1, 0
@@ -106,6 +109,7 @@ pub fn mulhsu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let w = compute_mulh_witness(rs1.next, rs2.next, false, false);
@@ -113,7 +117,7 @@ pub fn mulhu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     cpu.advance_pc();
 
     // opcode flags: mulh=0, mulhsu=0, mulhu=1
-    trace_op!(mulh: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(mulh: tracer, old_pc, rd, rs1, rs2,
         w.rd_high[0], w.rd_high[1], w.rd_high[2], w.rd_high[3],
         w.rs1_sign, w.rs2_sign,
         0, 0, 1
@@ -264,6 +268,7 @@ fn run_sltu_diff_idx(c: &[u32; 4], r_prime: &[u32; 4], cmp: bool) -> usize {
 }
 
 pub fn div(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let rs1_val = rs1.next as i32;
@@ -281,7 +286,7 @@ pub fn div(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let w = compute_div_witness(rs1.next, rs2.next, true);
 
     // opcode flags: div=1, divu=0, rem=0, remu=0
-    trace_op!(div: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(div: tracer, old_pc, rd, rs1, rs2,
         w.zero_divisor, w.r_zero,
         w.q[0], w.q[1], w.q[2], w.q[3],
         w.r[0], w.r[1], w.r[2], w.r[3],
@@ -296,6 +301,7 @@ pub fn div(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn divu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let result = if rs2.next == 0 {
@@ -309,7 +315,7 @@ pub fn divu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let w = compute_div_witness(rs1.next, rs2.next, false);
 
     // opcode flags: div=0, divu=1, rem=0, remu=0
-    trace_op!(div: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(div: tracer, old_pc, rd, rs1, rs2,
         w.zero_divisor, w.r_zero,
         w.q[0], w.q[1], w.q[2], w.q[3],
         w.r[0], w.r[1], w.r[2], w.r[3],
@@ -324,6 +330,7 @@ pub fn divu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn rem(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let rs1_val = rs1.next as i32;
@@ -341,7 +348,7 @@ pub fn rem(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let w = compute_div_witness(rs1.next, rs2.next, true);
 
     // opcode flags: div=0, divu=0, rem=1, remu=0
-    trace_op!(div: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(div: tracer, old_pc, rd, rs1, rs2,
         w.zero_divisor, w.r_zero,
         w.q[0], w.q[1], w.q[2], w.q[3],
         w.r[0], w.r[1], w.r[2], w.r[3],
@@ -356,6 +363,7 @@ pub fn rem(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
 }
 
 pub fn remu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
+    let old_pc = cpu.pc;
     let rs1 = cpu.read_reg(inst.rs1, tracer);
     let rs2 = cpu.read_reg(inst.rs2, tracer);
     let result = if rs2.next == 0 {
@@ -369,7 +377,7 @@ pub fn remu(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let w = compute_div_witness(rs1.next, rs2.next, false);
 
     // opcode flags: div=0, divu=0, rem=0, remu=1
-    trace_op!(div: tracer, cpu.pc, rd, rs1, rs2,
+    trace_op!(div: tracer, old_pc, rd, rs1, rs2,
         w.zero_divisor, w.r_zero,
         w.q[0], w.q[1], w.q[2], w.q[3],
         w.r[0], w.r[1], w.r[2], w.r[3],
