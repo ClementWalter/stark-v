@@ -77,6 +77,22 @@ pub mod air {
                 value_3
             );
 
+            add_to_relation!(
+                eval,
+                self.relations.range_check_8_8,
+                -E::F::one(),
+                value_0.clone(),
+                value_1.clone()
+            );
+
+            add_to_relation!(
+                eval,
+                self.relations.range_check_8_8,
+                -E::F::one(),
+                value_2.clone(),
+                value_3.clone()
+            );
+
             let index_base = addr;
             add_to_relation!(
                 eval,
@@ -121,6 +137,8 @@ pub mod air {
 }
 
 pub mod witness {
+    use runner::trace::prover_columns::MemoryColumns;
+
     use super::*;
     use crate::{combine, write_col, write_pair};
 
@@ -135,30 +153,22 @@ pub mod witness {
             return (vec![], QM31::zero());
         }
 
-        // Column order matches MemoryCommitColumns.
-        let enabler = &trace[0].data;
-        let addr = &trace[1].data;
-        let clk = &trace[2].data;
-        let value_0 = &trace[3].data;
-        let value_1 = &trace[4].data;
-        let value_2 = &trace[5].data;
-        let value_3 = &trace[6].data;
-        let multiplicity = &trace[7].data;
-        let root = &trace[8].data;
+        // Column order matches MemoryColumns.
+        let cols = MemoryColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+        let simd_size = cols.enabler.len();
+
+        let log_size = trace[0].domain.log_size();
+        let mut interaction_trace = LogupTraceGenerator::new(log_size);
 
         let leaf_depth = PackedM31::broadcast(M31::from(MAX_TREE_HEIGHT - 1));
         let one = PackedM31::broadcast(M31::one());
         let two = one + one;
         let three = two + one;
 
-        let simd_size = enabler.len();
-        let log_size = trace[0].domain.log_size();
-        let mut interaction_trace = LogupTraceGenerator::new(log_size);
-
         let rw_as = PackedM31::broadcast(M31::one());
         let rw_as_col = vec![rw_as; simd_size];
         let leaf_depth_col = vec![leaf_depth; simd_size];
-        let index_base: Vec<PackedM31> = addr.to_vec();
+        let index_base: Vec<PackedM31> = cols.addr.to_vec();
         let index_base_plus_one: Vec<PackedM31> =
             (0..simd_size).map(|i| index_base[i] + one).collect();
         let index_base_plus_two: Vec<PackedM31> =
@@ -167,31 +177,67 @@ pub mod witness {
             (0..simd_size).map(|i| index_base[i] + three).collect();
 
         let pos_mult: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(multiplicity[i]))
+            .map(|i| PackedQM31::from(cols.multiplicity[i]))
             .collect();
         let neg_enabler: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| -PackedQM31::from(enabler[i]))
+            .map(|i| -PackedQM31::from(cols.enabler[i]))
             .collect();
+
+        let range_check_8_8_0_denom =
+            combine!(relations.range_check_8_8, [&cols.value_0, &cols.value_1]);
+        let range_check_8_8_1_denom =
+            combine!(relations.range_check_8_8, [&cols.value_2, &cols.value_3]);
 
         let memory_denom = combine!(
             relations.memory_access,
-            [&rw_as_col, addr, clk, value_0, value_1, value_2, value_3]
+            [
+                &rw_as_col,
+                cols.addr,
+                cols.clk,
+                cols.value_0,
+                cols.value_1,
+                cols.value_2,
+                cols.value_3
+            ]
         );
         let merkle_0_denom = combine!(
             relations.merkle,
-            [&index_base, &leaf_depth_col, value_0, root]
+            [&index_base, &leaf_depth_col, cols.value_0, cols.root]
         );
         let merkle_1_denom = combine!(
             relations.merkle,
-            [&index_base_plus_one, &leaf_depth_col, value_1, root]
+            [
+                &index_base_plus_one,
+                &leaf_depth_col,
+                cols.value_1,
+                cols.root
+            ]
         );
         let merkle_2_denom = combine!(
             relations.merkle,
-            [&index_base_plus_two, &leaf_depth_col, value_2, root]
+            [
+                &index_base_plus_two,
+                &leaf_depth_col,
+                cols.value_2,
+                cols.root
+            ]
         );
         let merkle_3_denom = combine!(
             relations.merkle,
-            [&index_base_plus_three, &leaf_depth_col, value_3, root]
+            [
+                &index_base_plus_three,
+                &leaf_depth_col,
+                cols.value_3,
+                cols.root
+            ]
+        );
+
+        write_pair!(
+            &neg_enabler,
+            &range_check_8_8_0_denom,
+            &neg_enabler,
+            &range_check_8_8_1_denom,
+            interaction_trace
         );
 
         write_pair!(
