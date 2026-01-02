@@ -84,7 +84,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.range_check_8_8_4,
-            -E::F::one(),
+            -cols.enabler.clone(),
             cols.imm_1,
             cols.imm_2,
             cols.imm_0

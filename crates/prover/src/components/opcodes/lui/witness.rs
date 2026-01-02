@@ -76,7 +76,6 @@ pub fn gen_interaction_trace(
     let pos_enabler: Vec<PackedQM31> = (0..simd_size)
         .map(|i| PackedQM31::from(cols.enabler[i]))
         .collect();
-    let neg_one = vec![-PackedQM31::one(); simd_size];
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -113,7 +112,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &pos_enabler,
         &registers_write_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_4_denom,
         logup_gen
     );

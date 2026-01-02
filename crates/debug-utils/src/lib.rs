@@ -472,6 +472,132 @@ impl ToTable for ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedO
     }
 }
 
+// =============================================================================
+// Vec<&[PackedM31]> - Multi-column Table from slices of PackedM31
+// =============================================================================
+
+impl ToTable for Vec<&[PackedM31]> {
+    fn to_table(&self) -> Table {
+        self.to_table_named(&[])
+    }
+
+    fn to_table_named(&self, names: &[&str]) -> Table {
+        let mut table = Table::new();
+        table.set_content_arrangement(ContentArrangement::Dynamic);
+
+        if self.is_empty() {
+            return table;
+        }
+
+        // Set headers
+        let headers: Vec<Cell> = self
+            .iter()
+            .enumerate()
+            .map(|(i, _)| Cell::new(col_name(names, i)))
+            .collect();
+        table.set_header(headers);
+
+        // Flatten each column (each PackedM31 has 16 elements)
+        let flattened: Vec<Vec<i32>> = self
+            .iter()
+            .map(|col| {
+                col.iter()
+                    .flat_map(|packed| packed.to_array())
+                    .map(m31_to_centered_i32)
+                    .collect()
+            })
+            .collect();
+
+        let num_rows = flattened.first().map(|c| c.len()).unwrap_or(0);
+        let max_rows = get_max_rows();
+        let display_rows = if max_rows > 0 && num_rows > max_rows {
+            max_rows
+        } else {
+            num_rows
+        };
+
+        // Add data rows
+        for row_idx in 0..display_rows {
+            let row: Vec<Cell> = flattened
+                .iter()
+                .map(|col| Cell::new(col.get(row_idx).copied().unwrap_or(0)))
+                .collect();
+            table.add_row(row);
+        }
+
+        // Add truncation indicator
+        if max_rows > 0 && num_rows > max_rows {
+            let truncated_row: Vec<Cell> = flattened.iter().map(|_| Cell::new("...")).collect();
+            table.add_row(truncated_row);
+        }
+
+        table
+    }
+}
+
+// =============================================================================
+// Vec<PackedQM31> - 4 columns Table (one per QM31 limb), rows are flattened lanes
+// =============================================================================
+
+use stwo::prover::backend::simd::qm31::PackedQM31;
+
+impl ToTable for Vec<PackedQM31> {
+    fn to_table(&self) -> Table {
+        self.to_table_named(&[])
+    }
+
+    fn to_table_named(&self, names: &[&str]) -> Table {
+        let mut table = Table::new();
+        table.set_content_arrangement(ContentArrangement::Dynamic);
+
+        // QM31 has 4 limbs: (a, b, c, d) where QM31 = CM31(a,b) + CM31(c,d)*i
+        let headers: Vec<Cell> = (0..4).map(|i| Cell::new(col_name(names, i))).collect();
+        table.set_header(headers);
+
+        // Flatten: each PackedQM31 has 16 lanes, each lane is a QM31 with 4 M31 components
+        // Each row represents one QM31 value with its 4 limbs as columns
+        let rows: Vec<[i32; 4]> = self
+            .iter()
+            .flat_map(|packed| {
+                packed.to_array().map(|qm31| {
+                    // QM31 = CM31(a, b) + CM31(c, d) * i
+                    // qm31.0 = first CM31, qm31.1 = second CM31
+                    // CM31.0 = first M31, CM31.1 = second M31
+                    [
+                        m31_to_centered_i32(qm31.0.0),
+                        m31_to_centered_i32(qm31.0.1),
+                        m31_to_centered_i32(qm31.1.0),
+                        m31_to_centered_i32(qm31.1.1),
+                    ]
+                })
+            })
+            .collect();
+
+        let max_rows = get_max_rows();
+        let display_rows = if max_rows > 0 && rows.len() > max_rows {
+            max_rows
+        } else {
+            rows.len()
+        };
+
+        for limbs in rows.iter().take(display_rows) {
+            let row: Vec<Cell> = limbs.iter().map(|v| Cell::new(v)).collect();
+            table.add_row(row);
+        }
+
+        if max_rows > 0 && rows.len() > max_rows {
+            table.add_row(vec![
+                Cell::new("..."),
+                Cell::new("..."),
+                Cell::new("..."),
+                Cell::new("..."),
+            ]);
+        }
+
+        table
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

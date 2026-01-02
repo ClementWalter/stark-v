@@ -121,7 +121,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &neg_enabler,
         &program_denom,
-        &neg_one,
+        &neg_enabler,
         &rc_8_8_4_denom,
         logup_gen
     );
