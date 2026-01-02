@@ -82,6 +82,7 @@ pub fn run_guest_raw(name: &str) -> Vec<u8> {
 /// 2. Validates the trace is non-empty for the expected component
 /// 3. Generates witness and interaction traces
 /// 4. Asserts AIR constraints hold
+/// 5. Tracks and prints relation summary for debugging LogUp imbalances
 ///
 /// # Usage
 /// ```ignore
@@ -117,7 +118,7 @@ macro_rules! test_bin_e2e {
 
                 let traces = TreeVec::new(vec![
                     vec![],
-                    trace,
+                    trace.clone(),
                     interaction_trace,
                 ]);
 
@@ -136,6 +137,31 @@ macro_rules! test_bin_e2e {
                     },
                     claimed_sum,
                 );
+
+                // Track and print relation summary for debugging LogUp imbalances
+                #[cfg(feature = "track-relations")]
+                {
+                    use stwo_constraint_framework::{FrameworkComponent, TraceLocationAllocator};
+                    use stwo_constraint_framework::relation_tracker::{
+                        add_to_relation_entries, RelationSummary,
+                    };
+
+                    let mut allocator = TraceLocationAllocator::default();
+                    let component = FrameworkComponent::new(&mut allocator, eval, claimed_sum);
+
+                    // Convert trace to the format expected by add_to_relation_entries
+                    let trace_values: TreeVec<Vec<Vec<stwo::core::fields::m31::BaseField>>> = TreeVec::new(vec![
+                        vec![], // preprocessed (empty)
+                        trace.iter().map(|col| col.to_cpu().values).collect(),
+                    ]);
+                    let trace_refs = trace_values.as_cols_ref();
+
+                    let entries = add_to_relation_entries(&component, &trace_refs);
+                    let summary = RelationSummary::summarize_relations(&entries).cleaned();
+
+                    println!("\n=== Relation Summary for {} ===", stringify!($opcode));
+                    println!("{:?}", summary);
+                }
             }
         }
     };
