@@ -42,6 +42,10 @@ pub struct LoadedElf {
     pub output_data_addr: u32,
     /// Address of output data end (from __output_end linker symbol).
     pub output_end_addr: u32,
+    /// Address of input data start (from __input_start linker symbol).
+    pub input_start_addr: u32,
+    /// Address of input data end (from __input_end linker symbol).
+    pub input_end_addr: u32,
 }
 
 /// Load an ELF file and return the entry point, initial registers, and memory.
@@ -91,11 +95,15 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
     let output_len_addr = find_symbol("__output_len").unwrap_or(0x0010_0004);
     let output_data_addr = find_symbol("__output_data").unwrap_or(0x0010_0008);
     let output_end_addr = find_symbol("__output_end").unwrap_or(0x001F_FC00);
+    let input_start_addr = find_symbol("__input_start").unwrap_or(output_len_addr);
+    let input_end_addr = find_symbol("__input_end").unwrap_or(input_start_addr);
     debug!(
         halt_flag = format_args!("0x{:08x}", halt_flag_addr),
         output_len = format_args!("0x{:08x}", output_len_addr),
         output_data = format_args!("0x{:08x}", output_data_addr),
         output_end = format_args!("0x{:08x}", output_end_addr),
+        input_start = format_args!("0x{:08x}", input_start_addr),
+        input_end = format_args!("0x{:08x}", input_end_addr),
         "I/O region"
     );
 
@@ -152,5 +160,7 @@ pub fn load_elf(bytes: &[u8]) -> Result<LoadedElf, ElfError> {
         output_len_addr,
         output_data_addr,
         output_end_addr,
+        input_start_addr,
+        input_end_addr,
     })
 }

@@ -2,7 +2,7 @@
 //!
 //! Captures public execution state and provides LogUp compensation entries.
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use stwo::core::channel::Channel;
 use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::m31::{M31, P as M31_P};
@@ -10,6 +10,13 @@ use stwo::core::fields::qm31::QM31;
 use stwo_constraint_framework::Relation;
 
 use crate::relations::Relations;
+
+#[derive(Clone, Debug)]
+pub struct OutputWord {
+    pub addr: u32,
+    pub value: u32,
+    pub clk: u32,
+}
 
 /// Public data required to verify an RV32IM proof.
 #[derive(Clone, Debug)]
@@ -32,6 +39,20 @@ pub struct PublicData {
     pub initial_rw_root: Option<u32>,
     /// RW final memory tree root (if memory table is non-empty).
     pub final_rw_root: Option<u32>,
+    /// Input region start address.
+    pub input_start: u32,
+    /// Input length in bytes.
+    pub input_len: u32,
+    /// Input words (little-endian, contiguous).
+    pub input_words: Vec<u32>,
+    /// Output length in bytes.
+    pub output_len: u32,
+    /// Output length word address.
+    pub output_len_addr: u32,
+    /// Output data start address.
+    pub output_data_addr: u32,
+    /// Output words (length word + data words).
+    pub output_words: Vec<OutputWord>,
 }
 
 impl PublicData {
@@ -60,6 +81,24 @@ impl PublicData {
         }
 
         let clock = u32::try_from(run_result.cycles).expect("cycles overflow u32");
+        let input_words = pack_words(&run_result.input);
+        let output_data_end = run_result
+            .output_data_addr
+            .wrapping_add(run_result.output_len);
+        let mut output_words = Vec::new();
+        for word in &run_result.output_words {
+            if let Some(&clk) = tracer.mem_clk.get(&word.addr) {
+                output_words.push(OutputWord {
+                    addr: word.addr,
+                    value: word.value,
+                    clk,
+                });
+                continue;
+            }
+            if word.addr >= run_result.output_data_addr && word.addr < output_data_end {
+                panic!("output address 0x{:08x} was not accessed", word.addr);
+            }
+        }
 
         Self {
             initial_pc: run_result.initial_pc,
@@ -71,6 +110,13 @@ impl PublicData {
             program_root,
             initial_rw_root,
             final_rw_root,
+            input_start: run_result.input_start,
+            input_len: run_result.input.len() as u32,
+            input_words,
+            output_len: run_result.output_len,
+            output_len_addr: run_result.output_len_addr,
+            output_data_addr: run_result.output_data_addr,
+            output_words,
         }
     }
 
@@ -93,6 +139,19 @@ impl PublicData {
             self.final_rw_root.unwrap_or(0),
         ];
         channel.mix_u32s(&roots);
+
+        channel.mix_u32s(&[
+            self.input_start,
+            self.input_len,
+            self.output_len_addr,
+            self.output_data_addr,
+            self.output_len,
+            self.output_words.len() as u32,
+        ]);
+        channel.mix_u32s(&self.input_words);
+        for word in &self.output_words {
+            channel.mix_u32s(&[word.addr, word.value, word.clk]);
+        }
     }
 
     /// LogUp sum contribution from public data.
@@ -162,6 +221,39 @@ impl PublicData {
             values_to_inverse.push(-final_access);
         }
 
+        // Input memory: emit initial values at clk=0.
+        let rw_as = M31::one();
+        for (idx, &word) in self.input_words.iter().enumerate() {
+            let addr = self
+                .input_start
+                .wrapping_add((idx as u32).saturating_mul(4));
+            let bytes = word.to_le_bytes();
+            values_to_inverse.push(relations.memory_access.combine(&[
+                rw_as,
+                M31::from(addr),
+                M31::zero(),
+                M31::from(bytes[0] as u32),
+                M31::from(bytes[1] as u32),
+                M31::from(bytes[2] as u32),
+                M31::from(bytes[3] as u32),
+            ]));
+        }
+
+        // Output memory: consume final values at last access clock.
+        for word in &self.output_words {
+            let bytes = word.value.to_le_bytes();
+            let final_access: QM31 = relations.memory_access.combine(&[
+                rw_as,
+                M31::from(word.addr),
+                M31::from(word.clk),
+                M31::from(bytes[0] as u32),
+                M31::from(bytes[1] as u32),
+                M31::from(bytes[2] as u32),
+                M31::from(bytes[3] as u32),
+            ]);
+            values_to_inverse.push(-final_access);
+        }
+
         if values_to_inverse.is_empty() {
             return QM31::zero();
         }
@@ -169,4 +261,20 @@ impl PublicData {
         let inverses = QM31::batch_inverse(&values_to_inverse);
         inverses.iter().sum()
     }
+}
+
+fn pack_words(bytes: &[u8]) -> Vec<u32> {
+    if bytes.is_empty() {
+        return Vec::new();
+    }
+    let mut words = Vec::with_capacity(bytes.len().div_ceil(4));
+    let mut idx = 0;
+    while idx < bytes.len() {
+        let mut buf = [0u8; 4];
+        let end = (idx + 4).min(bytes.len());
+        buf[..end - idx].copy_from_slice(&bytes[idx..end]);
+        words.push(u32::from_le_bytes(buf));
+        idx = end;
+    }
+    words
 }

@@ -22,6 +22,10 @@ pub(crate) struct MemoryLayout {
     pub stack_top: u32,
     pub io_base: u32,
     pub io_end: u32,
+    pub input_base: u32,
+    pub input_end: u32,
+    pub output_base: u32,
+    pub output_end: u32,
 }
 
 impl MemoryLayout {
@@ -35,6 +39,10 @@ impl MemoryLayout {
         stack_top: u32,
         io_base: u32,
         io_end: u32,
+        input_base: u32,
+        input_end: u32,
+        output_base: u32,
+        output_end: u32,
     ) -> Self {
         Self {
             program_base,
@@ -45,20 +53,28 @@ impl MemoryLayout {
             stack_top,
             io_base,
             io_end,
+            input_base,
+            input_end,
+            output_base,
+            output_end,
         }
     }
 
     pub(crate) fn from_loaded(loaded: &crate::elf::LoadedElf) -> Self {
-        let io_base = loaded
+        let mut io_base = loaded
             .halt_flag_addr
             .min(loaded.output_len_addr)
             .min(loaded.output_data_addr);
-        let io_end = loaded
+        let mut io_end = loaded
             .output_end_addr
             .max(loaded.output_data_addr)
             .max(loaded.output_len_addr)
             .max(loaded.halt_flag_addr)
             .saturating_add(1);
+        if loaded.input_start_addr < loaded.input_end_addr {
+            io_base = io_base.min(loaded.input_start_addr);
+            io_end = io_end.max(loaded.input_end_addr);
+        }
 
         Self {
             program_base: loaded.text_base,
@@ -69,7 +85,19 @@ impl MemoryLayout {
             stack_top: loaded.sp,
             io_base,
             io_end,
+            input_base: loaded.input_start_addr,
+            input_end: loaded.input_end_addr,
+            output_base: loaded.output_len_addr,
+            output_end: loaded.output_end_addr,
         }
+    }
+
+    pub(crate) fn is_input_addr(&self, addr: u32) -> bool {
+        addr >= self.input_base && addr < self.input_end
+    }
+
+    pub(crate) fn is_output_addr(&self, addr: u32) -> bool {
+        addr >= self.output_base && addr < self.output_end
     }
 
     pub(crate) fn is_rw_addr(&self, addr: u32) -> bool {
@@ -227,22 +255,32 @@ impl Tracer {
             .dedup();
 
         for addr in mem_addrs {
+            let is_input = layout.is_input_addr(addr);
+            let is_output = layout.is_output_addr(addr);
+            let accessed_clk = self.mem_clk.get(&addr).copied().unwrap_or(0);
+            let accessed = accessed_clk > 0;
+            let include_initial = !is_input;
+            let include_final = if is_input { accessed } else { !is_output };
             let final_word = memory.read_u32(addr);
             let initial_word = self.mem_initial.get(&addr).copied().unwrap_or(final_word);
-
             let initial_bytes = initial_word.to_le_bytes();
             let final_bytes = final_word.to_le_bytes();
-            let final_clk = self.mem_clk.get(&addr).copied().unwrap_or(0);
+            let final_clk = accessed_clk;
 
             mem_entries.push((addr, initial_word, final_word, final_clk));
 
             for limb in 0..4u32 {
                 let idx = addr + limb;
-                rw_initial_leaves.insert(
-                    idx,
-                    MerkleValue::new(initial_bytes[limb as usize] as u32, 1),
-                );
-                rw_final_leaves.insert(idx, MerkleValue::new(final_bytes[limb as usize] as u32, 1));
+                if include_initial {
+                    rw_initial_leaves.insert(
+                        idx,
+                        MerkleValue::new(initial_bytes[limb as usize] as u32, 1),
+                    );
+                }
+                if include_final {
+                    rw_final_leaves
+                        .insert(idx, MerkleValue::new(final_bytes[limb as usize] as u32, 1));
+                }
             }
         }
 
@@ -256,30 +294,38 @@ impl Tracer {
 
         // Create memory trace
         for (addr, initial_word, final_word, final_clk) in mem_entries {
+            let is_input = layout.is_input_addr(addr);
+            let is_output = layout.is_output_addr(addr);
+            let include_initial = !is_input;
+            let include_final = if is_input { final_clk > 0 } else { !is_output };
             let initial_bytes = initial_word.to_le_bytes();
             let final_bytes = final_word.to_le_bytes();
 
-            self.memory.push(
-                addr,
-                0,
-                initial_bytes[0] as u32,
-                initial_bytes[1] as u32,
-                initial_bytes[2] as u32,
-                initial_bytes[3] as u32,
-                1,
-                rw_initial_root,
-            );
+            if include_initial {
+                self.memory.push(
+                    addr,
+                    0,
+                    initial_bytes[0] as u32,
+                    initial_bytes[1] as u32,
+                    initial_bytes[2] as u32,
+                    initial_bytes[3] as u32,
+                    1,
+                    rw_initial_root,
+                );
+            }
 
-            self.memory.push(
-                addr,
-                final_clk,
-                final_bytes[0] as u32,
-                final_bytes[1] as u32,
-                final_bytes[2] as u32,
-                final_bytes[3] as u32,
-                M31_P - 1,
-                rw_final_root,
-            );
+            if include_final {
+                self.memory.push(
+                    addr,
+                    final_clk,
+                    final_bytes[0] as u32,
+                    final_bytes[1] as u32,
+                    final_bytes[2] as u32,
+                    final_bytes[3] as u32,
+                    M31_P - 1,
+                    rw_final_root,
+                );
+            }
         }
 
         // Create program trace
@@ -343,11 +389,18 @@ mod tests {
 
         loop {
             if mem.read_u32(loaded.halt_flag_addr) != 0 {
+                let output_len = mem.read_u32(loaded.output_len_addr);
                 let output = io::read_output(
                     &mem,
                     loaded.output_len_addr,
                     loaded.output_data_addr,
                     loaded.output_end_addr,
+                );
+                let output_words = crate::collect_output_words(
+                    &mem,
+                    loaded.output_len_addr,
+                    loaded.output_data_addr,
+                    output_len,
                 );
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
@@ -357,6 +410,14 @@ mod tests {
                     initial_regs,
                     final_regs: cpu.regs(),
                     output,
+                    input: Vec::new(),
+                    input_start: loaded.input_start_addr,
+                    input_end: loaded.input_end_addr,
+                    output_len,
+                    output_len_addr: loaded.output_len_addr,
+                    output_data_addr: loaded.output_data_addr,
+                    output_end_addr: loaded.output_end_addr,
+                    output_words,
                     tracer,
                 });
             }
@@ -375,11 +436,18 @@ mod tests {
                 _ => false,
             };
             if is_self_loop {
+                let output_len = mem.read_u32(loaded.output_len_addr);
                 let output = io::read_output(
                     &mem,
                     loaded.output_len_addr,
                     loaded.output_data_addr,
                     loaded.output_end_addr,
+                );
+                let output_words = crate::collect_output_words(
+                    &mem,
+                    loaded.output_len_addr,
+                    loaded.output_data_addr,
+                    output_len,
                 );
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
@@ -389,6 +457,14 @@ mod tests {
                     initial_regs,
                     final_regs: cpu.regs(),
                     output,
+                    input: Vec::new(),
+                    input_start: loaded.input_start_addr,
+                    input_end: loaded.input_end_addr,
+                    output_len,
+                    output_len_addr: loaded.output_len_addr,
+                    output_data_addr: loaded.output_data_addr,
+                    output_end_addr: loaded.output_end_addr,
+                    output_words,
                     tracer,
                 });
             }
@@ -397,11 +473,18 @@ mod tests {
             execute(&mut cpu, &mut mem, &inst, &mut tracer);
 
             if cpu.pc == prev_pc {
+                let output_len = mem.read_u32(loaded.output_len_addr);
                 let output = io::read_output(
                     &mem,
                     loaded.output_len_addr,
                     loaded.output_data_addr,
                     loaded.output_end_addr,
+                );
+                let output_words = crate::collect_output_words(
+                    &mem,
+                    loaded.output_len_addr,
+                    loaded.output_data_addr,
+                    output_len,
                 );
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
@@ -411,6 +494,14 @@ mod tests {
                     initial_regs,
                     final_regs: cpu.regs(),
                     output,
+                    input: Vec::new(),
+                    input_start: loaded.input_start_addr,
+                    input_end: loaded.input_end_addr,
+                    output_len,
+                    output_len_addr: loaded.output_len_addr,
+                    output_data_addr: loaded.output_data_addr,
+                    output_end_addr: loaded.output_end_addr,
+                    output_words,
                     tracer,
                 });
             }
@@ -427,7 +518,8 @@ mod tests {
     #[test]
     fn test_commitment_decode_failure() {
         let layout = MemoryLayout::new(
-            0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000,
+            0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000, 0x7000, 0x7000, 0x7000,
+            0x7000,
         );
         let mut mem = Memory::new();
         mem.write_u32(layout.program_base, 0xFFFF_FFFF);
