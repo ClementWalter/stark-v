@@ -37,6 +37,12 @@ impl Cpu {
         self.pc = self.pc.wrapping_add(4);
     }
 
+    /// Snapshot all general-purpose registers.
+    #[inline]
+    pub fn regs(&self) -> [u32; 32] {
+        self.regs
+    }
+
     // =========================================================================
     // Traced access methods
     // =========================================================================

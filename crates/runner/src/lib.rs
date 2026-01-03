@@ -45,8 +45,14 @@ pub enum RunError {
 pub struct RunResult {
     /// Total number of cycles executed.
     pub cycles: u64,
+    /// Entry program counter.
+    pub initial_pc: u32,
     /// Final program counter (where halt was detected).
     pub final_pc: u32,
+    /// Register values at start of execution.
+    pub initial_regs: [u32; 32],
+    /// Register values at end of execution.
+    pub final_regs: [u32; 32],
     /// Output bytes from guest (postcard-serialized data).
     pub output: Option<Vec<u8>>,
     /// Execution trace for proving.
@@ -77,6 +83,8 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
     let layout = commitment::MemoryLayout::from_loaded(&loaded);
 
     let mut cpu = Cpu::new(loaded.entry, loaded.sp, loaded.gp);
+    let initial_pc = cpu.pc;
+    let initial_regs = cpu.regs();
     let mut mem = loaded.memory;
     let mut cache: InstCache = InstCache::default();
     let mut tracer = Tracer::default();
@@ -93,7 +101,10 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
+                initial_pc,
                 final_pc: cpu.pc,
+                initial_regs,
+                final_regs: cpu.regs(),
                 output,
                 tracer,
             });
@@ -125,7 +136,10 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
+                initial_pc,
                 final_pc: cpu.pc,
+                initial_regs,
+                final_regs: cpu.regs(),
                 output,
                 tracer,
             });
@@ -147,7 +161,10 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
                 cycles: tracer.clk as u64,
+                initial_pc,
                 final_pc: prev_pc,
+                initial_regs,
+                final_regs: cpu.regs(),
                 output,
                 tracer,
             });

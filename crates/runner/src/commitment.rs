@@ -336,6 +336,8 @@ mod tests {
         let layout = MemoryLayout::from_loaded(&loaded);
 
         let mut cpu = crate::Cpu::new(loaded.entry, loaded.sp, loaded.gp);
+        let initial_pc = cpu.pc;
+        let initial_regs = cpu.regs();
         let mut mem = loaded.memory;
         let mut cache: InstCache = InstCache::default();
 
@@ -350,7 +352,10 @@ mod tests {
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clk as u64,
+                    initial_pc,
                     final_pc: cpu.pc,
+                    initial_regs,
+                    final_regs: cpu.regs(),
                     output,
                     tracer,
                 });
@@ -379,7 +384,10 @@ mod tests {
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clk as u64,
+                    initial_pc,
                     final_pc: cpu.pc,
+                    initial_regs,
+                    final_regs: cpu.regs(),
                     output,
                     tracer,
                 });
@@ -398,7 +406,10 @@ mod tests {
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clk as u64,
+                    initial_pc,
                     final_pc: prev_pc,
+                    initial_regs,
+                    final_regs: cpu.regs(),
                     output,
                     tracer,
                 });

@@ -529,7 +529,7 @@ macro_rules! opcode_components {
         }
 
         /// Claim containing log_size for each component.
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct Claim {
             $(
                 pub $opcode: u32,
@@ -556,9 +556,22 @@ macro_rules! opcode_components {
                     channel.mix_u64(self.$opcode as u64);
                 )*
             }
+
+            /// Log sizes for each trace column (flattened in opcode order).
+            pub fn log_sizes(&self) -> Vec<u32> {
+                let mut sizes = vec![];
+                $(
+                    let count = paste::paste! {
+                        runner::trace::prover_columns::[<$opcode:camel Columns>]::<()>::SIZE
+                    };
+                    sizes.extend(std::iter::repeat(self.$opcode).take(count));
+                )*
+                sizes
+            }
         }
 
         /// Claimed sums from interaction traces.
+        #[derive(Clone, Debug)]
         pub struct ClaimedSum {
             $(
                 pub $opcode: QM31,
@@ -574,6 +587,13 @@ macro_rules! opcode_components {
                     total += self.$opcode;
                 )*
                 total
+            }
+
+            /// Mix claimed sums into the channel.
+            pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
+                $(
+                    channel.mix_felts(&[self.$opcode]);
+                )*
             }
         }
 
@@ -656,6 +676,11 @@ macro_rules! opcode_components {
             /// Get all components as trait objects for proving.
             pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
                 vec![ $(&self.$opcode,)* ]
+            }
+
+            /// Get all components as trait objects for verification.
+            pub fn verifiers(&self) -> Vec<&dyn stwo::core::air::Component> {
+                vec![ $( &self.$opcode as &dyn stwo::core::air::Component, )* ]
             }
 
             /// Collect relation tracker entries from all components.
@@ -955,7 +980,7 @@ macro_rules! preprocessed_components {
         }
 
         /// Claim containing log_size for each preprocessed table.
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct Claim {
             $(
                 pub $table: u32,
@@ -982,9 +1007,19 @@ macro_rules! preprocessed_components {
                     channel.mix_u64(self.$table as u64);
                 )*
             }
+
+            /// Log sizes for each multiplicity column (one per table).
+            pub fn log_sizes(&self) -> Vec<u32> {
+                vec![
+                    $(
+                        self.$table
+                    ),*
+                ]
+            }
         }
 
         /// Claimed sums from preprocessed interaction traces.
+        #[derive(Clone, Debug)]
         pub struct ClaimedSum {
             $(
                 pub $table: QM31,
@@ -1000,6 +1035,13 @@ macro_rules! preprocessed_components {
                     total += self.$table;
                 )*
                 total
+            }
+
+            /// Mix claimed sums into the channel.
+            pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
+                $(
+                    channel.mix_felts(&[self.$table]);
+                )*
             }
         }
 
@@ -1062,6 +1104,11 @@ macro_rules! preprocessed_components {
             /// Get all components as trait objects for proving.
             pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
                 vec![ $(&self.$table,)* ]
+            }
+
+            /// Get all components as trait objects for verification.
+            pub fn verifiers(&self) -> Vec<&dyn stwo::core::air::Component> {
+                vec![ $( &self.$table as &dyn stwo::core::air::Component, )* ]
             }
 
             /// Collect relation tracker entries from all components.
