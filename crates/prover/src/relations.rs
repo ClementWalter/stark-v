@@ -2,6 +2,12 @@
 //!
 //! This module generates all lookup relations and preprocessed table infrastructure.
 
+// Use lower POW bits in debug builds to speed up tests.
+#[cfg(debug_assertions)]
+pub const INTERACTION_POW_BITS: u32 = 1;
+#[cfg(not(debug_assertions))]
+pub const INTERACTION_POW_BITS: u32 = 10;
+
 crate::relations! {
     relations {
         registers_state: pc, clk;

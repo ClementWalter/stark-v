@@ -5,7 +5,6 @@ use num_traits::Zero;
 use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::proof::StarkProof;
 use stwo::core::proof_of_work::GrindOps;
 use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::prover::backend::simd::SimdBackend;
@@ -15,13 +14,9 @@ use stwo_constraint_framework::TraceLocationAllocator;
 use tracing::{Level, info, span};
 
 use crate::components::{Components, gen_interaction_trace, gen_trace};
-use crate::relations::{PreProcessedTrace, Relations};
-
-// Use lower POW bits in debug builds to speed up tests.
-#[cfg(debug_assertions)]
-const INTERACTION_POW_BITS: u32 = 1;
-#[cfg(not(debug_assertions))]
-const INTERACTION_POW_BITS: u32 = 10;
+use crate::public_data::PublicData;
+use crate::relations::{INTERACTION_POW_BITS, PreProcessedTrace, Relations};
+use crate::{InteractionClaim, Proof};
 
 /// Prove execution of an RV32IM program.
 ///
@@ -34,7 +29,9 @@ const INTERACTION_POW_BITS: u32 = 10;
 pub fn prove_rv32im(
     run_result: runner::RunResult,
     config: PcsConfig,
-) -> StarkProof<Blake2sMerkleHasher> {
+) -> Proof<Blake2sMerkleHasher> {
+    let public_data = PublicData::new(&run_result);
+
     // 1. Generate traces from execution
     let span = span!(Level::INFO, "Generate traces").entered();
     let tracer = run_result.tracer;
@@ -59,7 +56,10 @@ pub fn prove_rv32im(
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    // 4. Preprocessed trace (constant lookup tables - fixed size, independent of execution)
+    // 4. Public data
+    public_data.mix_into(channel);
+
+    // 5. Preprocessed trace (constant lookup tables - fixed size, independent of execution)
     let span = span!(Level::INFO, "Preprocessed trace").entered();
     let preprocessed_trace = PreProcessedTrace::new();
     let preprocessed_ids = preprocessed_trace.ids.clone();
@@ -70,7 +70,7 @@ pub fn prove_rv32im(
     tree_builder.commit(channel);
     span.exit();
 
-    // 5. Main execution trace (opcode + multiplicity columns)
+    // 6. Main execution trace (opcode + multiplicity columns)
     let span = span!(Level::INFO, "Main trace").entered();
     let claim: crate::components::Claim = (&traces).into();
     let columns = traces.columns_cloned();
@@ -81,20 +81,31 @@ pub fn prove_rv32im(
     tree_builder.commit(channel);
     span.exit();
 
-    // 6. Mix claim into channel
+    // 7. Mix claim into channel
     claim.mix_into(channel);
 
-    // 7. Proof of work before drawing lookup elements
+    // 8. Proof of work before drawing lookup elements
     info!("proof of work with {} bits", INTERACTION_POW_BITS);
     let interaction_pow = SimdBackend::grind(channel, INTERACTION_POW_BITS);
     channel.mix_u64(interaction_pow);
 
-    // 8. Draw lookup elements
+    // 9. Draw lookup elements
     let relations = Relations::draw(channel);
+    #[cfg(feature = "track-relations")]
+    let public_logup_sum = public_data.logup_sum(&relations);
 
-    // 9. Interaction trace (LogUp fractions) - only commit if non-empty
+    // 10. Interaction trace (LogUp fractions) - only commit if non-empty
     let span = span!(Level::INFO, "Interaction trace").entered();
     let (interaction_trace, claimed_sum) = gen_interaction_trace(&traces, &relations);
+    let interaction_log_sizes = interaction_trace
+        .iter()
+        .map(|col| col.domain.log_size())
+        .collect::<Vec<_>>();
+    let interaction_claim = InteractionClaim {
+        claimed_sum,
+        log_sizes: interaction_log_sizes,
+    };
+    interaction_claim.mix_into(channel);
     if !interaction_trace.is_empty() {
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(interaction_trace);
@@ -102,11 +113,16 @@ pub fn prove_rv32im(
     }
     span.exit();
 
-    // 10. Create components
+    // 11. Create components
     let span = span!(Level::INFO, "Create components").entered();
     let mut location_allocator =
         TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_ids);
-    let components = Components::new(&claim, &mut location_allocator, relations, &claimed_sum);
+    let components = Components::new(
+        &claim,
+        &mut location_allocator,
+        relations,
+        &interaction_claim.claimed_sum,
+    );
     span.exit();
 
     #[cfg(feature = "track-relations")]
@@ -115,11 +131,11 @@ pub fn prove_rv32im(
         components.trace_log_degree_bounds()
     );
 
-    // 11. Verify claimed sum is zero (all lookups balanced)
+    // 12. Verify claimed sum is zero (all lookups balanced)
     // Only enabled with track-relations feature until all components are implemented
     #[cfg(feature = "track-relations")]
     {
-        let total_sum = claimed_sum.total();
+        let total_sum = interaction_claim.claimed_sum.total() + public_logup_sum;
         info!("Claimed sum: {total_sum:?}");
         if !total_sum.is_zero() {
             let preprocessed_trace = PreProcessedTrace::new();
@@ -131,11 +147,17 @@ pub fn prove_rv32im(
         }
     }
 
-    // 12. Generate proof
+    // 13. Generate proof
     let span = span!(Level::INFO, "Prove").entered();
     let proof =
         prove(&components.provers(), channel, commitment_scheme).expect("Proof generation failed");
     span.exit();
 
-    proof
+    Proof {
+        claim,
+        interaction_claim,
+        public_data,
+        stark_proof: proof,
+        interaction_pow,
+    }
 }

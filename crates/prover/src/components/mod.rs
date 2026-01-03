@@ -96,7 +96,7 @@ impl Traces {
 }
 
 /// Claim containing log_size for each component.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Claim {
     /// Opcode claims (log_size per instruction).
     pub opcodes: opcodes::Claim,
@@ -167,9 +167,43 @@ impl Claim {
         channel.mix_u64(self.reg_clock_update as u64);
         self.preprocessed.mix_into(channel);
     }
+
+    /// Log sizes for all main trace columns (flattened in commit order).
+    pub fn main_trace_log_sizes(&self) -> Vec<u32> {
+        let mut sizes = self.opcodes.log_sizes();
+
+        sizes.extend(std::iter::repeat_n(
+            self.program,
+            runner::trace::prover_columns::ProgramColumns::<()>::SIZE,
+        ));
+        sizes.extend(std::iter::repeat_n(
+            self.memory,
+            runner::trace::prover_columns::MemoryColumns::<()>::SIZE,
+        ));
+        sizes.extend(std::iter::repeat_n(
+            self.merkle,
+            runner::trace::prover_columns::MerkleColumns::<()>::SIZE,
+        ));
+        sizes.extend(std::iter::repeat_n(
+            self.poseidon2,
+            runner::trace::prover_columns::Poseidon2Columns::<()>::SIZE,
+        ));
+        sizes.extend(std::iter::repeat_n(
+            self.mem_clock_update,
+            mem_clock_update::columns::MemClockUpdateColumns::<()>::SIZE,
+        ));
+        sizes.extend(std::iter::repeat_n(
+            self.reg_clock_update,
+            reg_clock_update::columns::RegClockUpdateColumns::<()>::SIZE,
+        ));
+
+        sizes.extend(self.preprocessed.log_sizes());
+        sizes
+    }
 }
 
 /// Aggregate of all claimed sums from interaction traces.
+#[derive(Clone, Debug)]
 pub struct ClaimedSum {
     /// Claimed sums from opcode components.
     pub opcodes: opcodes::ClaimedSum,
@@ -200,6 +234,20 @@ impl ClaimedSum {
             + self.mem_clock_update
             + self.reg_clock_update
             + self.preprocessed.sum()
+    }
+
+    /// Mix claimed sums into the channel.
+    pub fn mix_into(&self, channel: &mut impl Channel) {
+        self.opcodes.mix_into(channel);
+        channel.mix_felts(&[
+            self.program,
+            self.memory,
+            self.merkle,
+            self.poseidon2,
+            self.mem_clock_update,
+            self.reg_clock_update,
+        ]);
+        self.preprocessed.mix_into(channel);
     }
 }
 
@@ -322,6 +370,19 @@ impl Components {
         provers.push(&self.reg_clock_update);
         provers.extend(self.preprocessed.provers());
         provers
+    }
+
+    /// Get all components as trait objects for verification.
+    pub fn verifiers(&self) -> Vec<&dyn Component> {
+        let mut verifiers = self.opcodes.verifiers();
+        verifiers.push(&self.program);
+        verifiers.push(&self.memory);
+        verifiers.push(&self.merkle);
+        verifiers.push(&self.poseidon2);
+        verifiers.push(&self.mem_clock_update);
+        verifiers.push(&self.reg_clock_update);
+        verifiers.extend(self.preprocessed.verifiers());
+        verifiers
     }
 
     /// Collect relation tracker entries from all components.

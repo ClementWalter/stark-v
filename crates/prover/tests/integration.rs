@@ -70,6 +70,24 @@ fn test_prove_fibonacci() {
     let _proof = prove_rv32im(run_result, PcsConfig::default());
 }
 
+/// Full end-to-end proof + verification for Fibonacci.
+#[test_log::test]
+fn test_prove_verify_fibonacci() {
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::{prove_rv32im, verify_rv32im};
+    use runner::run;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("fib");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read fib ELF");
+
+    let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
+
+    let proof = prove_rv32im(run_result, PcsConfig::default());
+    verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");
+}
+
 /// Test constraint satisfaction using assert_constraints_on_polys for each component.
 /// This helps identify which specific component's constraints are failing.
 #[test_log::test]
