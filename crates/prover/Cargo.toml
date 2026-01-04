@@ -39,3 +39,7 @@ peak-alloc = ["dep:peak_alloc"]
 jemalloc = ["dep:tikv-jemallocator"]
 mimalloc = ["dep:mimalloc"]
 smalloc = ["dep:smalloc", "dep:ctor"]
+
+[[bench]]
+name = "fibonacci"
+harness = false

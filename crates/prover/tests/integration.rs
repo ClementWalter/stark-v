@@ -5,6 +5,7 @@ use prover::components::opcodes::{ClaimedSum, Traces, gen_interaction_trace, gen
 use prover::relations::{Counters, Relations};
 use runner::trace::Tracer;
 use stwo::core::pcs::PcsConfig;
+use tracing::info;
 
 #[test]
 fn test_all_components_aggregate() {
@@ -158,6 +159,9 @@ fn test_e2e_fibonacci_benchmark() {
 
     let run_prove_elapsed = run_elapsed + prove_elapsed;
     let cycles_f = cycles as f64;
+    let run_secs = run_elapsed.as_secs_f64().max(f64::MIN_POSITIVE);
+    let run_hz = (cycles_f / run_secs).ceil() as u64;
+    let run_khz = run_hz as f64 / 1_000.0;
     let run_prove_secs = run_prove_elapsed.as_secs_f64().max(f64::MIN_POSITIVE);
     let prove_secs = prove_elapsed.as_secs_f64().max(f64::MIN_POSITIVE);
     let run_prove_hz = (cycles_f / run_prove_secs).ceil() as u64;
@@ -165,14 +169,12 @@ fn test_e2e_fibonacci_benchmark() {
     let run_prove_khz = run_prove_hz as f64 / 1_000.0;
     let prove_khz = prove_hz as f64 / 1_000.0;
 
-    println!("fib_input benchmark");
-    println!("  n: {n}");
-    println!("  cycles: {cycles}");
-    println!(
-        "  run+prove: {:>10.3} kHz  ({:.3}s)",
-        run_prove_khz, run_prove_secs
-    );
-    println!("  prove:     {:>10.3} kHz  ({:.3}s)", prove_khz, prove_secs);
+    info!("fib_input benchmark");
+    info!("  n: {n}");
+    info!("  cycles: {cycles}");
+    info!("  run:     {run_khz:>10.3} kHz  ({run_secs:.3}s)",);
+    info!("  run+prove: {run_prove_khz:>10.3} kHz  ({run_prove_secs:.3}s)",);
+    info!("  prove:     {prove_khz:>10.3} kHz  ({prove_secs:.3}s)",);
 }
 
 /// Test constraint satisfaction using assert_constraints_on_polys for each component.
