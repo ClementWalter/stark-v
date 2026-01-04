@@ -18,6 +18,24 @@ pub struct OutputWord {
     pub clk: u32,
 }
 
+#[derive(Clone, Debug)]
+pub struct IoEntries {
+    /// Input region start address.
+    pub input_start: u32,
+    /// Input length in bytes.
+    pub input_len: u32,
+    /// Input words (little-endian, contiguous).
+    pub input_words: Vec<u32>,
+    /// Output length in bytes.
+    pub output_len: u32,
+    /// Output length word address.
+    pub output_len_addr: u32,
+    /// Output data start address.
+    pub output_data_addr: u32,
+    /// Output words (length word + data words).
+    pub output_words: Vec<OutputWord>,
+}
+
 /// Public data required to verify an RV32IM proof.
 #[derive(Clone, Debug)]
 pub struct PublicData {
@@ -39,20 +57,8 @@ pub struct PublicData {
     pub initial_rw_root: Option<u32>,
     /// RW final memory tree root (if memory table is non-empty).
     pub final_rw_root: Option<u32>,
-    /// Input region start address.
-    pub input_start: u32,
-    /// Input length in bytes.
-    pub input_len: u32,
-    /// Input words (little-endian, contiguous).
-    pub input_words: Vec<u32>,
-    /// Output length in bytes.
-    pub output_len: u32,
-    /// Output length word address.
-    pub output_len_addr: u32,
-    /// Output data start address.
-    pub output_data_addr: u32,
-    /// Output words (length word + data words).
-    pub output_words: Vec<OutputWord>,
+    /// Input/output related data.
+    pub io_entries: IoEntries,
 }
 
 impl PublicData {
@@ -99,6 +105,15 @@ impl PublicData {
                 panic!("output address 0x{:08x} was not accessed", word.addr);
             }
         }
+        let io_entries = IoEntries {
+            input_start: run_result.input_start,
+            input_len: run_result.input.len() as u32,
+            input_words,
+            output_len: run_result.output_len,
+            output_len_addr: run_result.output_len_addr,
+            output_data_addr: run_result.output_data_addr,
+            output_words,
+        };
 
         Self {
             initial_pc: run_result.initial_pc,
@@ -110,13 +125,7 @@ impl PublicData {
             program_root,
             initial_rw_root,
             final_rw_root,
-            input_start: run_result.input_start,
-            input_len: run_result.input.len() as u32,
-            input_words,
-            output_len: run_result.output_len,
-            output_len_addr: run_result.output_len_addr,
-            output_data_addr: run_result.output_data_addr,
-            output_words,
+            io_entries,
         }
     }
 
@@ -141,15 +150,15 @@ impl PublicData {
         channel.mix_u32s(&roots);
 
         channel.mix_u32s(&[
-            self.input_start,
-            self.input_len,
-            self.output_len_addr,
-            self.output_data_addr,
-            self.output_len,
-            self.output_words.len() as u32,
+            self.io_entries.input_start,
+            self.io_entries.input_len,
+            self.io_entries.output_len_addr,
+            self.io_entries.output_data_addr,
+            self.io_entries.output_len,
+            self.io_entries.output_words.len() as u32,
         ]);
-        channel.mix_u32s(&self.input_words);
-        for word in &self.output_words {
+        channel.mix_u32s(&self.io_entries.input_words);
+        for word in &self.io_entries.output_words {
             channel.mix_u32s(&[word.addr, word.value, word.clk]);
         }
     }
@@ -223,8 +232,9 @@ impl PublicData {
 
         // Input memory: emit initial values at clk=0.
         let rw_as = M31::one();
-        for (idx, &word) in self.input_words.iter().enumerate() {
+        for (idx, &word) in self.io_entries.input_words.iter().enumerate() {
             let addr = self
+                .io_entries
                 .input_start
                 .wrapping_add((idx as u32).saturating_mul(4));
             let bytes = word.to_le_bytes();
@@ -240,7 +250,7 @@ impl PublicData {
         }
 
         // Output memory: consume final values at last access clock.
-        for word in &self.output_words {
+        for word in &self.io_entries.output_words {
             let bytes = word.value.to_le_bytes();
             let final_access: QM31 = relations.memory_access.combine(&[
                 rw_as,
