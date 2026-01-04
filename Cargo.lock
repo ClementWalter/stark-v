@@ -1190,6 +1190,7 @@ dependencies = [
  "num-traits",
  "paste",
  "peak_alloc",
+ "postcard",
  "rayon",
  "runner",
  "serde",
