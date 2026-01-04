@@ -9,6 +9,8 @@ stark-v is an RV32IM zkVM that generates STARK proofs for RISC-V program
 execution. The prover uses declarative macros to generate Stwo AIR components,
 enabling rapid development of new constraints.
 
+:warning: This is a work in progress and not yet ready for production.
+
 ### Credits
 
 The AIR component design is inspired by
@@ -49,7 +51,7 @@ pub fn add(cpu: &mut Cpu, inst: &DecodedInst, tracer: &mut Tracer) {
     let result = rs1.next.wrapping_add(rs2.next);
     let rd = cpu.write_reg(inst.rd, result, tracer);
     cpu.advance_pc();
-    // Record trace row: opcode flags select which constraint applies
+    // Record trace row in the given table with any required columns
     trace_op!(base_alu_reg: tracer, old_pc, rd, rs1, rs2, 1, 0, 0, 0, 0);
 }
 ```
