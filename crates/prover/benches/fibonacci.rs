@@ -23,6 +23,7 @@ use prover::e2e::{ensure_guest_built, guest_bin_dir};
 use prover::{print_enabled_features, prove_rv32im};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use runner::run_with_input;
+use stwo::core::fri::FriConfig;
 use stwo::core::pcs::PcsConfig;
 
 fn main() {
@@ -59,13 +60,18 @@ fn bench_fibonacci<const N: u32>(bencher: divan::Bencher, par_iter: usize) {
             #[cfg(feature = "peak-alloc")]
             prover::PEAK_ALLOC.reset_peak_usage();
 
+            let config = PcsConfig {
+                pow_bits: 24,
+                fri_config: FriConfig::new(0, 1, 70),
+            };
+
             // Run VM and prove in parallel - each iteration gets its own RunResult
             let proofs: Vec<_> = (0..par_iter)
                 .into_par_iter()
                 .map(|_| {
                     let run_result = run_with_input(&elf_bytes, &input, 100_000_000)
                         .expect("Failed to run fib_input");
-                    prove_rv32im(run_result, PcsConfig::default())
+                    prove_rv32im(run_result, config)
                 })
                 .collect();
 
