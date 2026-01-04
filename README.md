@@ -188,27 +188,24 @@ Measured on Apple M2 Max with 12 physical cores and 64GB of RAM:
 
 ```sh
 STARKV_FIB_N=5000000 cargo test --release --package prover --features parallel --test integration -- test_e2e_fibonacci_benchmark --exact --nocapture
-   Compiling prover v0.1.0 (/Users/clementwalter/Documents/starkware/stark-v/crates/prover)
-    Finished `release` profile [optimized] target(s) in 1.78s
-     Running tests/integration.rs (target/release/deps/integration-4acc7c147dc4d264)
 
 running 1 test
     Finished `release` profile [optimized] target(s) in 0.06s
-2026-01-04T14:02:02.034985Z  INFO Generate traces: prover::prover: Tracer total_traces: 25003428
-2026-01-04T14:02:04.814830Z  INFO Generate traces: prover::prover: Max trace log_size: 24
-2026-01-04T14:02:04.965158Z  INFO Preprocessed trace: prover::prover: Preprocessed trace ids len: 14
-2026-01-04T14:02:05.370744Z  INFO Main trace: prover::prover: Main trace columns committed: 1057
-2026-01-04T14:02:10.077151Z  INFO prover::prover: proof of work with 10 bits
-2026-01-04T14:02:46.606295Z  INFO Prove:prove_ex: stwo::prover: proof_size_estimate=83396
-2026-01-04T14:02:46.788014Z  INFO stwo::core::verifier: Composition polynomial log degree bound: 25
-2026-01-04T14:02:46.788219Z  INFO stwo::core::verifier: Sampling 1579 columns.
-2026-01-04T14:02:46.788225Z  INFO stwo::core::verifier: Total sample points: 1691.
-2026-01-04T14:02:46.790615Z  INFO integration: fib_input benchmark
-2026-01-04T14:02:46.790623Z  INFO integration:   n: 5000000
-2026-01-04T14:02:46.790625Z  INFO integration:   cycles: 25000170
-2026-01-04T14:02:46.790626Z  INFO integration:   run:       7599.932 kHz  (3.290s)
-2026-01-04T14:02:46.790630Z  INFO integration:   run+prove:    520.441 kHz  (48.037s)
-2026-01-04T14:02:46.790633Z  INFO integration:   prove:        558.701 kHz  (44.747s)
+2026-01-04T14:34:44.089476Z  INFO Generate traces: prover::prover: Tracer total_traces: 25003428
+2026-01-04T14:34:46.758412Z  INFO Generate traces: prover::prover: Max trace log_size: 24
+2026-01-04T14:34:46.905371Z  INFO Preprocessed trace: prover::prover: Preprocessed trace ids len: 14
+2026-01-04T14:34:47.303413Z  INFO Main trace: prover::prover: Main trace columns committed: 1057
+2026-01-04T14:34:51.971467Z  INFO prover::prover: proof of work with 10 bits
+2026-01-04T14:35:27.999387Z  INFO Prove:prove_ex: stwo::prover: proof_size_estimate=83396
+2026-01-04T14:35:28.166420Z  INFO stwo::core::verifier: Composition polynomial log degree bound: 25
+2026-01-04T14:35:28.166594Z  INFO stwo::core::verifier: Sampling 1579 columns.
+2026-01-04T14:35:28.166600Z  INFO stwo::core::verifier: Total sample points: 1691.
+2026-01-04T14:35:28.169360Z  INFO integration: fib_input benchmark
+2026-01-04T14:35:28.169368Z  INFO integration:   n: 5000000
+2026-01-04T14:35:28.169369Z  INFO integration:   cycles: 25000170
+2026-01-04T14:35:28.169370Z  INFO integration:   run:       7831.143 kHz  (3.192s)
+2026-01-04T14:35:28.169375Z  INFO integration:   run+prove:    528.939 kHz  (47.265s)
+2026-01-04T14:35:28.169377Z  INFO integration:   prove:        567.253 kHz  (44.072s)
 test test_e2e_fibonacci_benchmark ... ok
 ```
 
@@ -220,32 +217,18 @@ cargo bench --package prover --bench fibonacci
 Timer precision: 41 ns
 fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
 ╰─ bench_fibonacci                │               │               │               │         │
-   ├─ 100000                      │               │               │               │         │
-   │  ├─ 1          10.43 s       │ 10.43 s       │ 10.43 s       │ 10.43 s       │ 1       │ 1
-   │  │             47.91 Kitem/s │ 47.91 Kitem/s │ 47.91 Kitem/s │ 47.91 Kitem/s │         │
-   │  ├─ 4          11.13 s       │ 11.13 s       │ 11.13 s       │ 11.13 s       │ 1       │ 1
-   │  │             179.6 Kitem/s │ 179.6 Kitem/s │ 179.6 Kitem/s │ 179.6 Kitem/s │         │
-   │  ├─ 8          11.91 s       │ 11.91 s       │ 11.91 s       │ 11.91 s       │ 1       │ 1
-   │  │             335.7 Kitem/s │ 335.7 Kitem/s │ 335.7 Kitem/s │ 335.7 Kitem/s │         │
-   │  ╰─ 12         14.35 s       │ 14.35 s       │ 14.35 s       │ 14.35 s       │ 1       │ 1
-   │                418.1 Kitem/s │ 418.1 Kitem/s │ 418.1 Kitem/s │ 418.1 Kitem/s │         │
    ├─ 500000                      │               │               │               │         │
-   │  ├─ 1          25.31 s       │ 25.31 s       │ 25.31 s       │ 25.31 s       │ 1       │ 1
-   │  │             98.77 Kitem/s │ 98.77 Kitem/s │ 98.77 Kitem/s │ 98.77 Kitem/s │         │
-   │  ├─ 4          25.96 s       │ 25.96 s       │ 25.96 s       │ 25.96 s       │ 1       │ 1
-   │  │             385.1 Kitem/s │ 385.1 Kitem/s │ 385.1 Kitem/s │ 385.1 Kitem/s │         │
-   │  ├─ 8          29.27 s       │ 29.27 s       │ 29.27 s       │ 29.27 s       │ 1       │ 1
-   │  │             683.2 Kitem/s │ 683.2 Kitem/s │ 683.2 Kitem/s │ 683.2 Kitem/s │         │
-   │  ╰─ 12         42.74 s       │ 42.74 s       │ 42.74 s       │ 42.74 s       │ 1       │ 1
-   │                701.8 Kitem/s │ 701.8 Kitem/s │ 701.8 Kitem/s │ 701.8 Kitem/s │         │
-   ├─ 1000000                     │               │               │               │         │
-   │  ├─ 1          44.44 s       │ 44.44 s       │ 44.44 s       │ 44.44 s       │ 1       │ 1
-   │  │             112.4 Kitem/s │ 112.4 Kitem/s │ 112.4 Kitem/s │ 112.4 Kitem/s │         │
-   │  ├─ 4          46.36 s       │ 46.36 s       │ 46.36 s       │ 46.36 s       │ 1       │ 1
-   │  │             431.3 Kitem/s │ 431.3 Kitem/s │ 431.3 Kitem/s │ 431.3 Kitem/s │         │
-   │  ├─ 8          1.125 m       │ 1.125 m       │ 1.125 m       │ 1.125 m       │ 1       │ 1
-   │  │             592.2 Kitem/s │ 592.2 Kitem/s │ 592.2 Kitem/s │ 592.2 Kitem/s │         │
-   │  ╰─ 12         2.293 m       │ 2.293 m       │ 2.293 m       │ 2.293 m       │ 1       │ 1
+   │  ├─ 8          26.75 s       │ 26.75 s       │ 26.75 s       │ 26.75 s       │ 1       │ 1
+   │  │             747.4 Kitem/s │ 747.4 Kitem/s │ 747.4 Kitem/s │ 747.4 Kitem/s │         │
+   │  ├─ 10         29.65 s       │ 29.65 s       │ 29.65 s       │ 29.65 s       │ 1       │ 1
+   │  │             843.1 Kitem/s │ 843.1 Kitem/s │ 843.1 Kitem/s │ 843.1 Kitem/s │         │
+   │  ╰─ 12         32.57 s       │ 32.57 s       │ 32.57 s       │ 32.57 s       │ 1       │ 1
+   │                921 Kitem/s   │ 921 Kitem/s   │ 921 Kitem/s   │ 921 Kitem/s   │         │
+   ├─ 750000                      │               │               │               │         │
+   │  ├─ 8          55.85 s       │ 55.85 s       │ 55.85 s       │ 55.85 s       │ 1       │ 1
+   │  │             537 Kitem/s   │ 537 Kitem/s   │ 537 Kitem/s   │ 537 Kitem/s   │         │
+   │  ├─ 10         1.186 m       │ 1.186 m       │ 1.186 m       │ 1.186 m       │ 1       │ 1
+   │  │             526.7 Kitem/s │ 526.7 Kitem/s │ 526.7 Kitem/s │ 526.7 Kitem/s │         │
 ```
 
 With `--features jemalloc`:
@@ -256,28 +239,34 @@ Timer precision: 41 ns
 fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
 ╰─ bench_fibonacci                │               │               │               │         │
    ├─ 500000                      │               │               │               │         │
-   │  ├─ 8          26.58 s       │ 26.58 s       │ 26.58 s       │ 26.58 s       │ 1       │ 1
-   │  │             752.3 Kitem/s │ 752.3 Kitem/s │ 752.3 Kitem/s │ 752.3 Kitem/s │         │
-   │  ├─ 10         30.42 s       │ 30.42 s       │ 30.42 s       │ 30.42 s       │ 1       │ 1
-   │  │             821.7 Kitem/s │ 821.7 Kitem/s │ 821.7 Kitem/s │ 821.7 Kitem/s │         │
-   │  ╰─ 12         37.84 s       │ 37.84 s       │ 37.84 s       │ 37.84 s       │ 1       │ 1
-   │                792.7 Kitem/s │ 792.7 Kitem/s │ 792.7 Kitem/s │ 792.7 Kitem/s │         │
+   │  ├─ 8          25.65 s       │ 25.65 s       │ 25.65 s       │ 25.65 s       │ 1       │ 1
+   │  │             779.7 Kitem/s │ 779.7 Kitem/s │ 779.7 Kitem/s │ 779.7 Kitem/s │         │
+   │  ├─ 10         28.48 s       │ 28.48 s       │ 28.48 s       │ 28.48 s       │ 1       │ 1
+   │  │             877.5 Kitem/s │ 877.5 Kitem/s │ 877.5 Kitem/s │ 877.5 Kitem/s │         │
+   │  ╰─ 12         35.4 s        │ 35.4 s        │ 35.4 s        │ 35.4 s        │ 1       │ 1
+   │                847.4 Kitem/s │ 847.4 Kitem/s │ 847.4 Kitem/s │ 847.4 Kitem/s │         │
+   ├─ 750000                      │               │               │               │         │
+   │  ├─ 8          59 s          │ 59 s          │ 59 s          │ 59 s          │ 1       │ 1
+   │  │             508.4 Kitem/s │ 508.4 Kitem/s │ 508.4 Kitem/s │ 508.4 Kitem/s │         │
 ```
 
 With `--features smalloc`:
 
 ```sh
 cargo bench --package prover --bench fibonacci --features smalloc
-Timer precision: 41 ns
 fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
 ╰─ bench_fibonacci                │               │               │               │         │
    ├─ 500000                      │               │               │               │         │
-   │  ├─ 8          26.94 s       │ 26.94 s       │ 26.94 s       │ 26.94 s       │ 1       │ 1
-   │  │             742.4 Kitem/s │ 742.4 Kitem/s │ 742.4 Kitem/s │ 742.4 Kitem/s │         │
-   │  ├─ 10         33.76 s       │ 33.76 s       │ 33.76 s       │ 33.76 s       │ 1       │ 1
-   │  │             740.5 Kitem/s │ 740.5 Kitem/s │ 740.5 Kitem/s │ 740.5 Kitem/s │         │
-   │  ╰─ 12         52.52 s       │ 52.52 s       │ 52.52 s       │ 52.52 s       │ 1       │ 1
-   │                571.1 Kitem/s │ 571.1 Kitem/s │ 571.1 Kitem/s │ 571.1 Kitem/s │         │
+   │  ├─ 8          25.45 s       │ 25.45 s       │ 25.45 s       │ 25.45 s       │ 1       │ 1
+   │  │             785.7 Kitem/s │ 785.7 Kitem/s │ 785.7 Kitem/s │ 785.7 Kitem/s │         │
+   │  ├─ 10         29.76 s       │ 29.76 s       │ 29.76 s       │ 29.76 s       │ 1       │ 1
+   │  │             839.9 Kitem/s │ 839.9 Kitem/s │ 839.9 Kitem/s │ 839.9 Kitem/s │         │
+   │  ╰─ 12         36.3 s        │ 36.3 s        │ 36.3 s        │ 36.3 s        │ 1       │ 1
+   │                826.4 Kitem/s │ 826.4 Kitem/s │ 826.4 Kitem/s │ 826.4 Kitem/s │         │
+   ├─ 750000                      │               │               │               │         │
+   │  ├─ 8          1.254 m       │ 1.254 m       │ 1.254 m       │ 1.254 m       │ 1       │ 1
+   │  │             398.6 Kitem/s │ 398.6 Kitem/s │ 398.6 Kitem/s │ 398.6 Kitem/s │         │
+   │  ├─ 10         2.895 m       │ 2.895 m       │ 2.895 m       │ 2.895 m       │ 1       │ 1
 ```
 
 With `--features mimalloc`:
@@ -288,12 +277,17 @@ Timer precision: 41 ns
 fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
 ╰─ bench_fibonacci                │               │               │               │         │
    ├─ 500000                      │               │               │               │         │
-   │  ├─ 8          26.4 s        │ 26.4 s        │ 26.4 s        │ 26.4 s        │ 1       │ 1
-   │  │             757.5 Kitem/s │ 757.5 Kitem/s │ 757.5 Kitem/s │ 757.5 Kitem/s │         │
-   │  ├─ 10         29.44 s       │ 29.44 s       │ 29.44 s       │ 29.44 s       │ 1       │ 1
-   │  │             848.9 Kitem/s │ 848.9 Kitem/s │ 848.9 Kitem/s │ 848.9 Kitem/s │         │
-   │  ╰─ 12         36.8 s        │ 36.8 s        │ 36.8 s        │ 36.8 s        │ 1       │ 1
-   │                815.2 Kitem/s │ 815.2 Kitem/s │ 815.2 Kitem/s │ 815.2 Kitem/s │         │
+   │  ├─ 8          25.67 s       │ 25.67 s       │ 25.67 s       │ 25.67 s       │ 1       │ 1
+   │  │             778.9 Kitem/s │ 778.9 Kitem/s │ 778.9 Kitem/s │ 778.9 Kitem/s │         │
+   │  ├─ 10         28.43 s       │ 28.43 s       │ 28.43 s       │ 28.43 s       │ 1       │ 1
+   │  │             879.2 Kitem/s │ 879.2 Kitem/s │ 879.2 Kitem/s │ 879.2 Kitem/s │         │
+   │  ╰─ 12         32.17 s       │ 32.17 s       │ 32.17 s       │ 32.17 s       │ 1       │ 1
+   │                932.4 Kitem/s │ 932.4 Kitem/s │ 932.4 Kitem/s │ 932.4 Kitem/s │         │
+   ├─ 750000                      │               │               │               │         │
+   │  ├─ 8          53.91 s       │ 53.91 s       │ 53.91 s       │ 53.91 s       │ 1       │ 1
+   │  │             556.4 Kitem/s │ 556.4 Kitem/s │ 556.4 Kitem/s │ 556.4 Kitem/s │         │
+   │  ├─ 10         1.182 m       │ 1.182 m       │ 1.182 m       │ 1.182 m       │ 1       │ 1
+   │  │             528.5 Kitem/s │ 528.5 Kitem/s │ 528.5 Kitem/s │ 528.5 Kitem/s │         │
 ```
 
 ## Features
