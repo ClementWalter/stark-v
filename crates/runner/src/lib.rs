@@ -36,8 +36,18 @@ pub enum RunError {
     #[error("Exceeded maximum cycles ({max})")]
     MaxCyclesExceeded { cycles: u64, max: u64 },
 
+    #[error("Input length {len} exceeds input capacity {capacity}")]
+    InputTooLarge { len: usize, capacity: usize },
+
     #[error("Commitment error: {0}")]
     Commitment(#[from] CommitmentError),
+}
+
+/// Word-aligned I/O word captured from memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IoWord {
+    pub addr: u32,
+    pub value: u32,
 }
 
 /// Result of a successful program execution.
@@ -55,6 +65,22 @@ pub struct RunResult {
     pub final_regs: [u32; 32],
     /// Output bytes from guest (postcard-serialized data).
     pub output: Option<Vec<u8>>,
+    /// Raw input bytes provided to the guest.
+    pub input: Vec<u8>,
+    /// Input region start address.
+    pub input_start: u32,
+    /// Input region end address (exclusive).
+    pub input_end: u32,
+    /// Output length (value stored at output_len_addr).
+    pub output_len: u32,
+    /// Address of output length word.
+    pub output_len_addr: u32,
+    /// Address of output data start.
+    pub output_data_addr: u32,
+    /// Address of output data end (exclusive).
+    pub output_end_addr: u32,
+    /// Output words (length word + output data words).
+    pub output_words: Vec<IoWord>,
     /// Execution trace for proving.
     pub tracer: Tracer,
 }
@@ -79,6 +105,15 @@ pub struct RunResult {
 /// println!("Completed in {} cycles", result.cycles);
 /// ```
 pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
+    run_with_input(elf_bytes, &[], max_cycles)
+}
+
+/// Run an ELF program to completion with explicit input bytes.
+pub fn run_with_input(
+    elf_bytes: &[u8],
+    input: &[u8],
+    max_cycles: u64,
+) -> Result<RunResult, RunError> {
     let loaded = load_elf(elf_bytes)?;
     let layout = commitment::MemoryLayout::from_loaded(&loaded);
 
@@ -86,17 +121,37 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
     let initial_pc = cpu.pc;
     let initial_regs = cpu.regs();
     let mut mem = loaded.memory;
+    let input_start = loaded.input_start_addr;
+    let input_end = loaded.input_end_addr;
+    let input_capacity = input_end.saturating_sub(input_start) as usize;
+    if input.len() > input_capacity {
+        return Err(RunError::InputTooLarge {
+            len: input.len(),
+            capacity: input_capacity,
+        });
+    }
+    for (idx, byte) in input.iter().enumerate() {
+        let addr = input_start.wrapping_add(idx as u32);
+        mem.write_u8(addr, *byte);
+    }
     let mut cache: InstCache = InstCache::default();
     let mut tracer = Tracer::default();
 
     loop {
         // Check halt flag before executing next instruction
         if mem.read_u32(loaded.halt_flag_addr) != 0 {
+            let output_len = mem.read_u32(loaded.output_len_addr);
             let output = io::read_output(
                 &mem,
                 loaded.output_len_addr,
                 loaded.output_data_addr,
                 loaded.output_end_addr,
+            );
+            let output_words = collect_output_words(
+                &mem,
+                loaded.output_len_addr,
+                loaded.output_data_addr,
+                output_len,
             );
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
@@ -106,6 +161,14 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 initial_regs,
                 final_regs: cpu.regs(),
                 output,
+                input: input.to_vec(),
+                input_start,
+                input_end,
+                output_len,
+                output_len_addr: loaded.output_len_addr,
+                output_data_addr: loaded.output_data_addr,
+                output_end_addr: loaded.output_end_addr,
+                output_words,
                 tracer,
             });
         }
@@ -127,11 +190,18 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
             _ => false,
         };
         if is_self_loop {
+            let output_len = mem.read_u32(loaded.output_len_addr);
             let output = io::read_output(
                 &mem,
                 loaded.output_len_addr,
                 loaded.output_data_addr,
                 loaded.output_end_addr,
+            );
+            let output_words = collect_output_words(
+                &mem,
+                loaded.output_len_addr,
+                loaded.output_data_addr,
+                output_len,
             );
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
@@ -141,6 +211,14 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 initial_regs,
                 final_regs: cpu.regs(),
                 output,
+                input: input.to_vec(),
+                input_start,
+                input_end,
+                output_len,
+                output_len_addr: loaded.output_len_addr,
+                output_data_addr: loaded.output_data_addr,
+                output_end_addr: loaded.output_end_addr,
+                output_words,
                 tracer,
             });
         }
@@ -152,11 +230,18 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
 
         // Halt on infinite loop (PC unchanged after execution) - backup detection
         if cpu.pc == prev_pc {
+            let output_len = mem.read_u32(loaded.output_len_addr);
             let output = io::read_output(
                 &mem,
                 loaded.output_len_addr,
                 loaded.output_data_addr,
                 loaded.output_end_addr,
+            );
+            let output_words = collect_output_words(
+                &mem,
+                loaded.output_len_addr,
+                loaded.output_data_addr,
+                output_len,
             );
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
@@ -166,6 +251,14 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
                 initial_regs,
                 final_regs: cpu.regs(),
                 output,
+                input: input.to_vec(),
+                input_start,
+                input_end,
+                output_len,
+                output_len_addr: loaded.output_len_addr,
+                output_data_addr: loaded.output_data_addr,
+                output_end_addr: loaded.output_end_addr,
+                output_words,
                 tracer,
             });
         }
@@ -178,4 +271,33 @@ pub fn run(elf_bytes: &[u8], max_cycles: u64) -> Result<RunResult, RunError> {
             });
         }
     }
+}
+
+pub(crate) fn collect_output_words(
+    mem: &Memory,
+    output_len_addr: u32,
+    output_data_addr: u32,
+    output_len: u32,
+) -> Vec<IoWord> {
+    let mut words = Vec::new();
+    let len_addr = output_len_addr & !3;
+    words.push(IoWord {
+        addr: len_addr,
+        value: mem.read_u32(len_addr),
+    });
+    if output_len == 0 {
+        return words;
+    }
+    let start = output_data_addr & !3;
+    let end = output_data_addr.wrapping_add(output_len);
+    let end_aligned = end.wrapping_add(3) & !3;
+    let mut addr = start;
+    while addr < end_aligned {
+        words.push(IoWord {
+            addr,
+            value: mem.read_u32(addr),
+        });
+        addr = addr.wrapping_add(4);
+    }
+    words
 }

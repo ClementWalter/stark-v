@@ -12,9 +12,12 @@ __stack_bottom = __stack_top - __stack_size;
 
 /* I/O region - between TEXT end and STACK bottom */
 __io_start = 0x00100000;
-__halt_flag = __io_start;
-__output_len = __io_start + 4;
-__output_data = __io_start + 8;
+__input_len = 0x00001000; /* 4 KiB input buffer */
+__input_start = __io_start;
+__input_end = __input_start + __input_len;
+__halt_flag = __input_end;
+__output_len = __halt_flag + 4;
+__output_data = __halt_flag + 8;
 __output_end = __stack_bottom;
 
 SECTIONS {
