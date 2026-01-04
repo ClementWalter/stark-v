@@ -74,9 +74,11 @@ impl FrameworkEval for Eval {
                 - (rs1_felt + cols.imm_felt.clone()),
         );
 
-        // rd is pc + 4
+        // rd is pc + 4 (gated by rd_addr for x0 writes)
+        // When rd_addr = 0 (x0), the write is discarded and rd_next = 0, so skip this constraint
         eval.add_constraint(
             cols.enabler.clone()
+                * cols.rd_addr.clone()
                 * (rd_felt - (cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)))),
         );
 
