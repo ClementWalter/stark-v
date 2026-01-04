@@ -44,6 +44,7 @@ words:
   - jemalloc
   - jemallocator
   - kakarot
+  - Kitem
   - littleriscv
   - loadb
   - loadbu
