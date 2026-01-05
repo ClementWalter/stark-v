@@ -111,109 +111,79 @@ fn eval_expr(expr: &str, symbols: &HashMap<String, u32>) -> Option<u32> {
     symbols.get(name).copied()
 }
 
-/// Generate the io.rs file content from parsed symbols.
-fn generate_io_rs(symbols: &HashMap<String, u32>) -> String {
-    let get = |name: &str| symbols.get(name).copied().unwrap_or(0);
-
-    let input_start = get("input_start");
-    let input_end = get("input_end");
-    let input_size = input_end.saturating_sub(input_start);
-    let halt_flag = get("halt_flag");
-    let output_len = get("output_len");
-    let output_data = get("output_data");
-    let output_end = get("output_end");
-    let output_max_size = output_end.saturating_sub(output_data);
-    let stack_top = get("stack_top");
-    let stack_size = get("stack_size");
-    let stack_bottom = get("stack_bottom");
-
-    format!(
-        r#"//! I/O memory layout constants - AUTO-GENERATED from guest-bin/linker.ld
+/// Generate the io.rs file content with functions using extern linker symbols.
+fn generate_io_rs(_symbols: &HashMap<String, u32>) -> String {
+    // Functions use extern linker symbols directly for correct riscv32 linking.
+    // The linker.ld file is the single source of truth for memory layout.
+    r#"//! I/O helpers for guest programs.
 //!
-//! Do not edit manually. Run `cargo build -p guest-lib` to regenerate.
+//! These functions use extern linker symbols from guest-bin/linker.ld
+//! to access the zkVM's I/O memory regions.
 
-/// Start address of the input buffer.
-pub const INPUT_START: u32 = {input_start:#010x};
-
-/// End address of the input buffer (exclusive).
-pub const INPUT_END: u32 = {input_end:#010x};
-
-/// Input buffer size in bytes.
-pub const INPUT_SIZE: usize = {input_size:#x};
-
-/// Address of the halt flag (set to non-zero to halt execution).
-pub const HALT_FLAG: u32 = {halt_flag:#010x};
-
-/// Address of the output length word.
-pub const OUTPUT_LEN: u32 = {output_len:#010x};
-
-/// Start address of the output data buffer.
-pub const OUTPUT_DATA: u32 = {output_data:#010x};
-
-/// End address of the output data buffer (exclusive).
-pub const OUTPUT_END: u32 = {output_end:#010x};
-
-/// Maximum output size in bytes.
-pub const OUTPUT_MAX_SIZE: usize = {output_max_size:#x};
-
-/// Stack top address.
-pub const STACK_TOP: u32 = {stack_top:#010x};
-
-/// Stack size in bytes.
-pub const STACK_SIZE: usize = {stack_size:#x};
-
-/// Stack bottom address.
-pub const STACK_BOTTOM: u32 = {stack_bottom:#010x};
+#[cfg(target_arch = "riscv32")]
+unsafe extern "C" {
+    static __input_start: u8;
+    static __input_end: u8;
+    static __halt_flag: u8;
+    static __output_len: u8;
+    static __output_data: u8;
+    static __output_end: u8;
+}
 
 /// Read input bytes from the input buffer.
 ///
 /// # Safety
-/// This function reads from raw memory addresses. Only call from within
-/// a zkVM guest program with the correct memory layout.
+/// Only call from within a zkVM guest program.
 #[cfg(target_arch = "riscv32")]
-pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {{
-    unsafe {{
-        let len = buf.len().min(INPUT_SIZE);
-        for (i, byte) in buf.iter_mut().take(len).enumerate() {{
-            let addr = INPUT_START + i as u32;
+pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {
+    unsafe {
+        let start = core::ptr::addr_of!(__input_start) as usize;
+        let end = core::ptr::addr_of!(__input_end) as usize;
+        let input_size = end.saturating_sub(start);
+        let len = buf.len().min(input_size);
+        for (i, byte) in buf.iter_mut().take(len).enumerate() {
+            let addr = start + i;
             *byte = core::ptr::read_volatile(addr as *const u8);
-        }}
+        }
         len
-    }}
-}}
+    }
+}
 
 /// Write output bytes to the output buffer and set the length.
 ///
 /// # Safety
-/// This function writes to raw memory addresses. Only call from within
-/// a zkVM guest program with the correct memory layout.
+/// Only call from within a zkVM guest program.
 #[cfg(target_arch = "riscv32")]
-pub unsafe fn write_output_bytes(data: &[u8]) {{
-    unsafe {{
-        let len = data.len().min(OUTPUT_MAX_SIZE);
+pub unsafe fn write_output_bytes(data: &[u8]) {
+    unsafe {
+        let data_start = core::ptr::addr_of!(__output_data) as usize;
+        let data_end = core::ptr::addr_of!(__output_end) as usize;
+        let max_size = data_end.saturating_sub(data_start);
+        let len = data.len().min(max_size);
         // Write length
-        core::ptr::write_volatile(OUTPUT_LEN as *mut u32, len as u32);
+        let len_addr = core::ptr::addr_of!(__output_len) as *mut u32;
+        core::ptr::write_volatile(len_addr, len as u32);
         // Write data
-        for (i, byte) in data.iter().take(len).enumerate() {{
-            let addr = OUTPUT_DATA + i as u32;
+        for (i, byte) in data.iter().take(len).enumerate() {
+            let addr = data_start + i;
             core::ptr::write_volatile(addr as *mut u8, *byte);
-        }}
-    }}
-}}
+        }
+    }
+}
 
 /// Signal halt to the zkVM runtime.
 ///
 /// # Safety
-/// This function writes to raw memory addresses. Only call from within
-/// a zkVM guest program with the correct memory layout.
+/// Only call from within a zkVM guest program.
 #[cfg(target_arch = "riscv32")]
-pub unsafe fn halt() {{
-    unsafe {{
-        core::ptr::write_volatile(HALT_FLAG as *mut u32, 1);
-    }}
-}}
+pub unsafe fn halt() {
+    unsafe {
+        let halt_addr = core::ptr::addr_of!(__halt_flag) as *mut u32;
+        core::ptr::write_volatile(halt_addr, 1);
+    }
+}
 "#
-    )
+    .to_string()
 }
 
 fn generate_dispatcher_and_examples() {
