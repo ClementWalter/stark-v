@@ -43,12 +43,14 @@ pub const OUTPUT_MAX_SIZE: usize = (OUTPUT_END - OUTPUT_DATA) as usize;
 /// a zkVM guest program with the correct memory layout.
 #[cfg(target_arch = "riscv32")]
 pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {
-    let len = buf.len().min(INPUT_SIZE);
-    for (i, byte) in buf.iter_mut().take(len).enumerate() {
-        let addr = INPUT_START + i as u32;
-        *byte = core::ptr::read_volatile(addr as *const u8);
+    unsafe {
+        let len = buf.len().min(INPUT_SIZE);
+        for (i, byte) in buf.iter_mut().take(len).enumerate() {
+            let addr = INPUT_START + i as u32;
+            *byte = core::ptr::read_volatile(addr as *const u8);
+        }
+        len
     }
-    len
 }
 
 /// Write output bytes to the output buffer and set the length.
@@ -58,13 +60,15 @@ pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {
 /// a zkVM guest program with the correct memory layout.
 #[cfg(target_arch = "riscv32")]
 pub unsafe fn write_output_bytes(data: &[u8]) {
-    let len = data.len().min(OUTPUT_MAX_SIZE);
-    // Write length
-    core::ptr::write_volatile(OUTPUT_LEN as *mut u32, len as u32);
-    // Write data
-    for (i, byte) in data.iter().take(len).enumerate() {
-        let addr = OUTPUT_DATA + i as u32;
-        core::ptr::write_volatile(addr as *mut u8, *byte);
+    unsafe {
+        let len = data.len().min(OUTPUT_MAX_SIZE);
+        // Write length
+        core::ptr::write_volatile(OUTPUT_LEN as *mut u32, len as u32);
+        // Write data
+        for (i, byte) in data.iter().take(len).enumerate() {
+            let addr = OUTPUT_DATA + i as u32;
+            core::ptr::write_volatile(addr as *mut u8, *byte);
+        }
     }
 }
 
@@ -75,5 +79,7 @@ pub unsafe fn write_output_bytes(data: &[u8]) {
 /// a zkVM guest program with the correct memory layout.
 #[cfg(target_arch = "riscv32")]
 pub unsafe fn halt() {
-    core::ptr::write_volatile(HALT_FLAG as *mut u32, 1);
+    unsafe {
+        core::ptr::write_volatile(HALT_FLAG as *mut u32, 1);
+    }
 }
