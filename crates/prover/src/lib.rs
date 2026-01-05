@@ -81,6 +81,10 @@ pub use prover::prove_rv32im;
 pub use public_data::PublicData;
 pub use verifier::verify_rv32im;
 
+// Re-export stwo types needed by external consumers
+pub use stwo::core::fri::FriConfig;
+pub use stwo::core::pcs::PcsConfig;
+
 /// E2E test infrastructure (building and running guest binaries).
 #[doc(hidden)]
 pub mod e2e;
