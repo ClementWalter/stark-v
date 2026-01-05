@@ -2,8 +2,9 @@
 //!
 //! These functions use extern linker symbols from guest-bin/linker.ld
 //! to access the zkVM's I/O memory regions.
+//!
+//! This module is only available when compiling for riscv32.
 
-#[cfg(target_arch = "riscv32")]
 unsafe extern "C" {
     static __input_start: u8;
     static __input_end: u8;
@@ -17,7 +18,6 @@ unsafe extern "C" {
 ///
 /// # Safety
 /// Only call from within a zkVM guest program.
-#[cfg(target_arch = "riscv32")]
 pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {
     unsafe {
         let start = core::ptr::addr_of!(__input_start) as usize;
@@ -37,7 +37,6 @@ pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {
 /// # Safety
 /// Only call from within a zkVM guest program.
 /// Caller must ensure input contains at least 4 bytes.
-#[cfg(target_arch = "riscv32")]
 pub unsafe fn read_input_u32() -> u32 {
     unsafe {
         let start = core::ptr::addr_of!(__input_start) as *const u32;
@@ -49,7 +48,6 @@ pub unsafe fn read_input_u32() -> u32 {
 ///
 /// # Safety
 /// Only call from within a zkVM guest program.
-#[cfg(target_arch = "riscv32")]
 pub unsafe fn write_output_bytes(data: &[u8]) {
     unsafe {
         let data_start = core::ptr::addr_of!(__output_data) as usize;
@@ -71,7 +69,6 @@ pub unsafe fn write_output_bytes(data: &[u8]) {
 ///
 /// # Safety
 /// Only call from within a zkVM guest program.
-#[cfg(target_arch = "riscv32")]
 pub unsafe fn halt() {
     unsafe {
         let halt_addr = core::ptr::addr_of!(__halt_flag) as *mut u32;
