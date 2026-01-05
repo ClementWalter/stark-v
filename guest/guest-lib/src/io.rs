@@ -1,40 +1,39 @@
-//! I/O memory layout and helper functions for guest programs.
+//! I/O memory layout constants - AUTO-GENERATED from guest-bin/linker.ld
 //!
-//! These constants match the memory layout defined in `guest-bin/linker.ld`.
-//! External consumers can use these to understand the zkVM's memory interface.
+//! Do not edit manually. Run `cargo build -p guest-lib` to regenerate.
 
-/// Start address of the input buffer (4 KiB).
-pub const INPUT_START: u32 = 0x0010_0000;
+/// Start address of the input buffer.
+pub const INPUT_START: u32 = 0x00100000;
 
 /// End address of the input buffer (exclusive).
-pub const INPUT_END: u32 = 0x0010_1000;
+pub const INPUT_END: u32 = 0x00101000;
 
 /// Input buffer size in bytes.
-pub const INPUT_SIZE: usize = (INPUT_END - INPUT_START) as usize;
+pub const INPUT_SIZE: usize = 0x1000;
 
 /// Address of the halt flag (set to non-zero to halt execution).
-pub const HALT_FLAG: u32 = 0x0010_1000;
+pub const HALT_FLAG: u32 = 0x00101000;
 
 /// Address of the output length word.
-pub const OUTPUT_LEN: u32 = 0x0010_1004;
+pub const OUTPUT_LEN: u32 = 0x00101004;
 
 /// Start address of the output data buffer.
-pub const OUTPUT_DATA: u32 = 0x0010_1008;
+pub const OUTPUT_DATA: u32 = 0x00101008;
 
-/// Stack top address.
-pub const STACK_TOP: u32 = 0x0020_0000;
-
-/// Stack size in bytes (1 KiB).
-pub const STACK_SIZE: usize = 0x0000_0400;
-
-/// Stack bottom address.
-pub const STACK_BOTTOM: u32 = STACK_TOP - STACK_SIZE as u32;
-
-/// End address of the output data buffer (exclusive, equals stack bottom).
-pub const OUTPUT_END: u32 = STACK_BOTTOM;
+/// End address of the output data buffer (exclusive).
+pub const OUTPUT_END: u32 = 0x001ffc00;
 
 /// Maximum output size in bytes.
-pub const OUTPUT_MAX_SIZE: usize = (OUTPUT_END - OUTPUT_DATA) as usize;
+pub const OUTPUT_MAX_SIZE: usize = 0xfebf8;
+
+/// Stack top address.
+pub const STACK_TOP: u32 = 0x00200000;
+
+/// Stack size in bytes.
+pub const STACK_SIZE: usize = 0x400;
+
+/// Stack bottom address.
+pub const STACK_BOTTOM: u32 = 0x001ffc00;
 
 /// Read input bytes from the input buffer.
 ///
