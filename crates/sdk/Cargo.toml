@@ -1,0 +1,10 @@
+[package]
+name = "stark-v-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "SDK for building and proving RISC-V programs with stark-v"
+
+[dependencies]
+guest-lib = { workspace = true }
+prover = { workspace = true }
+runner = { workspace = true }

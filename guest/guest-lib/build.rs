@@ -6,6 +6,10 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
+    generate_dispatcher_and_examples();
+}
+
+fn generate_dispatcher_and_examples() {
     let programs_dir = Path::new("src/programs");
     let examples_dir = Path::new("examples");
     let out_dir = std::env::var("OUT_DIR").unwrap();
