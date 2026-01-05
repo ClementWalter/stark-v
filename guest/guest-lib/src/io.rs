@@ -32,6 +32,19 @@ pub unsafe fn read_input_bytes(buf: &mut [u8]) -> usize {
     }
 }
 
+/// Read a u32 from the start of the input buffer.
+///
+/// # Safety
+/// Only call from within a zkVM guest program.
+/// Caller must ensure input contains at least 4 bytes.
+#[cfg(target_arch = "riscv32")]
+pub unsafe fn read_input_u32() -> u32 {
+    unsafe {
+        let start = core::ptr::addr_of!(__input_start) as *const u32;
+        core::ptr::read_volatile(start)
+    }
+}
+
 /// Write output bytes to the output buffer and set the length.
 ///
 /// # Safety
