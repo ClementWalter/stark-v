@@ -6,19 +6,9 @@ use core::arch::global_asm;
 use core::panic::PanicInfo;
 use core::ptr;
 
+use guest_lib::io::{HALT_FLAG, OUTPUT_DATA, OUTPUT_END, OUTPUT_LEN};
 use postcard::to_slice;
 use serde::Serialize;
-
-// -----------------------------------------------------------------------------
-// Linker symbols for I/O region (defined in linker.ld)
-// -----------------------------------------------------------------------------
-
-unsafe extern "C" {
-    static __halt_flag: u8;
-    static __output_len: u8;
-    static __output_data: u8;
-    static __output_end: u8;
-}
 
 // -----------------------------------------------------------------------------
 // Startup assembly (ELF entrypoint)
@@ -61,37 +51,31 @@ pub fn halt() -> ! {
 ///
 /// This function:
 /// 1. Serializes `data` using postcard into the output buffer
-/// 2. Writes the length to __output_len
-/// 3. Sets __halt_flag to signal the host
+/// 2. Writes the length to OUTPUT_LEN
+/// 3. Sets HALT_FLAG to signal the host
 /// 4. Loops forever (host will stop execution)
 pub fn output<T: Serialize>(data: &T) -> ! {
     unsafe {
-        let data_addr = ptr::addr_of!(__output_data) as *mut u8;
-        let end_addr = ptr::addr_of!(__output_end) as usize;
-        let data_start = data_addr as usize;
-        let max_size = end_addr.saturating_sub(data_start);
+        let max_size = (OUTPUT_END - OUTPUT_DATA) as usize;
 
         // Create a slice from the output region
-        let output_buffer = core::slice::from_raw_parts_mut(data_addr, max_size);
+        let output_buffer = core::slice::from_raw_parts_mut(OUTPUT_DATA as *mut u8, max_size);
 
         // Serialize with postcard
         match to_slice(data, output_buffer) {
             Ok(written) => {
                 let len = written.len() as u32;
                 // Write length
-                let len_addr = ptr::addr_of!(__output_len) as *mut u32;
-                ptr::write_volatile(len_addr, len);
+                ptr::write_volatile(OUTPUT_LEN as *mut u32, len);
             }
             Err(_) => {
                 // Serialization failed - write 0 length
-                let len_addr = ptr::addr_of!(__output_len) as *mut u32;
-                ptr::write_volatile(len_addr, 0);
+                ptr::write_volatile(OUTPUT_LEN as *mut u32, 0);
             }
         }
 
         // Set halt flag
-        let halt_addr = ptr::addr_of!(__halt_flag) as *mut u32;
-        ptr::write_volatile(halt_addr, 1);
+        ptr::write_volatile(HALT_FLAG as *mut u32, 1);
     }
 
     // Should never reach here - host stops on halt flag
