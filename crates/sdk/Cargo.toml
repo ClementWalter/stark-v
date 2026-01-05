@@ -6,5 +6,5 @@ description = "SDK for building and proving RISC-V programs with stark-v"
 
 [dependencies]
 guest-lib = { workspace = true }
-prover = { path = "../prover" }
+prover = { workspace = true }
 runner = { workspace = true }
