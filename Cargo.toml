@@ -5,6 +5,7 @@ members = [
   "crates/prover",
   "crates/runner",
   "crates/runner-macros",
+  "crates/sdk",
   "crates/simd",
   "guest/guest-lib",
 ]
