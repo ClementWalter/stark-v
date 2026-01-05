@@ -73,6 +73,7 @@ syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
 debug-utils = { path = "crates/debug-utils" }
+guest-lib = { path = "guest/guest-lib" }
 runner = { path = "crates/runner" }
 runner-macros = { path = "crates/runner-macros" }
 simd = { path = "crates/simd" }

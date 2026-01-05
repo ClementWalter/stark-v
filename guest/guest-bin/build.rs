@@ -19,8 +19,15 @@ fn main() {
     // Tell Cargo to rerun if examples directory changes
     println!("cargo:rerun-if-changed=../guest-lib/examples");
 
-    // Tell Cargo to rerun if linker.ld changes
-    println!("cargo:rerun-if-changed=./linker.ld");
+    // Emit linker script path for riscv32 targets
+    // This allows external consumers to use guest-bin as a git dependency
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let linker_path = Path::new(&manifest_dir).join("linker.ld");
+    println!(
+        "cargo:rustc-link-arg=-T{}",
+        linker_path.display()
+    );
+    println!("cargo:rerun-if-changed=linker.ld");
 
     // Scan for example files
     let entries = match fs::read_dir(examples_dir) {

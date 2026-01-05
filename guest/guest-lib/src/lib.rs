@@ -4,6 +4,7 @@
 //! - Result types for guest-host communication
 //! - The `guest_main!` macro for minimal boilerplate
 //! - Program computations for testing
+//! - I/O memory layout constants (`io` module)
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
@@ -11,6 +12,7 @@
 // Modules
 // =============================================================================
 
+pub mod io;
 pub mod programs;
 
 // =============================================================================
