@@ -400,7 +400,9 @@ pub fn register_multiplicities(
 
     // Numerator: negated enabler (to match gen_interaction_trace)
     let neg_enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| -(cols.opcode_mulh_flag[i] + cols.opcode_mulhsu_flag[i] + cols.opcode_mulhu_flag[i]))
+        .map(|i| {
+            -(cols.opcode_mulh_flag[i] + cols.opcode_mulhsu_flag[i] + cols.opcode_mulhu_flag[i])
+        })
         .collect();
 
     // Clock differences

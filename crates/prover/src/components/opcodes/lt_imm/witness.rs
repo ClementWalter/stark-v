@@ -282,9 +282,10 @@ pub fn register_multiplicities(
     let imm_1_times_2: Vec<PackedM31> = (0..simd_size).map(|i| two * cols.imm_1[i]).collect();
 
     // Register range_check_8_8_4: (rs1_msl_adjusted, imm_0, 2*imm_1) with negated multiplicity
-    counters
-        .range_check_8_8_4
-        .register_many(&neg_enabler, &[&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2]);
+    counters.range_check_8_8_4.register_many(
+        &neg_enabler,
+        &[&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2],
+    );
 
     // Register range_check_20: (clk - rs1_clk_prev) with negated multiplicity
     counters

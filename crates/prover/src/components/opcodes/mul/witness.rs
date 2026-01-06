@@ -309,9 +309,7 @@ pub fn register_multiplicities(
     let inv_two_pow_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 8).inverse());
 
     // Numerator: negated enabler (to match gen_interaction_trace)
-    let neg_enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| -cols.enabler[i])
-        .collect();
+    let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
     // Clock differences
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)

@@ -272,9 +272,7 @@ pub mod witness {
         let simd_size = cols.enabler.len();
 
         // Numerator: negated enabler (to match gen_interaction_trace)
-        let neg_enabler: Vec<PackedM31> = (0..simd_size)
-            .map(|i| -cols.enabler[i])
-            .collect();
+        let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
         // Register range_check_8_8 with negated multiplicity
         counters
