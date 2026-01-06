@@ -48,7 +48,10 @@ impl Parse for RelationsInput {
         // Parse "relations { ... }"
         let relations_ident: Ident = input.parse()?;
         if relations_ident != "relations" {
-            return Err(syn::Error::new(relations_ident.span(), "expected 'relations'"));
+            return Err(syn::Error::new(
+                relations_ident.span(),
+                "expected 'relations'",
+            ));
         }
         let relations_content;
         braced!(relations_content in input);
@@ -265,7 +268,14 @@ pub fn relations(input: TokenStream) -> TokenStream {
     let relations_struct_fields = relations.iter().map(|rel| {
         let name = &rel.name;
         let fields = &rel.fields;
-        let doc = format!("Relation: ({})", fields.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", "));
+        let doc = format!(
+            "Relation: ({})",
+            fields
+                .iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         quote! {
             #[doc = #doc]
             pub #name: relation_types::#name,
@@ -275,7 +285,13 @@ pub fn relations(input: TokenStream) -> TokenStream {
     let preprocessed_struct_fields = preprocessed.iter().map(|prep| {
         let name = &prep.name;
         let cols = &prep.fields;
-        let doc = format!("Preprocessed relation: ({})", cols.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", "));
+        let doc = format!(
+            "Preprocessed relation: ({})",
+            cols.iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         quote! {
             #[doc = #doc]
             pub #name: relation_types::#name,
@@ -317,7 +333,14 @@ pub fn relations(input: TokenStream) -> TokenStream {
     let counters_fields = preprocessed.iter().map(|prep| {
         let name = &prep.name;
         let cols = &prep.fields;
-        let doc = format!("Counter for {}: ({})", name, cols.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", "));
+        let doc = format!(
+            "Counter for {}: ({})",
+            name,
+            cols.iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         quote! {
             #[doc = #doc]
             pub #name: Counter<crate::preprocessed::#name::Table>,

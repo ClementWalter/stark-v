@@ -191,7 +191,13 @@ impl Parse for FiveExprInput {
         let trace: Expr = input.parse()?;
         // Optional trailing comma
         let _ = input.parse::<Token![,]>();
-        Ok(FiveExprInput { n0, d0, n1, d1, trace })
+        Ok(FiveExprInput {
+            n0,
+            d0,
+            n1,
+            d1,
+            trace,
+        })
     }
 }
 
@@ -254,6 +260,7 @@ pub fn emit_pair(input: TokenStream) -> TokenStream {
 /// Input for consume_pair - handles two variants:
 /// 1. `$interaction_trace:expr; $($col:expr),+` - consume columns in pairs
 /// 2. `$denom_0:expr, $denom_1:expr, $interaction_trace:expr` - consume two specific columns
+#[allow(clippy::large_enum_variant)]
 enum ConsumePairInput {
     /// Variant 1: trace ; col1, col2, ...
     ListVariant { trace: Expr, cols: Vec<Expr> },
@@ -272,8 +279,7 @@ impl Parse for ConsumePairInput {
         // Check if next token is semicolon (variant 1) or comma (variant 2)
         if input.peek(Token![;]) {
             input.parse::<Token![;]>()?;
-            let cols: Punctuated<Expr, Token![,]> =
-                Punctuated::parse_separated_nonempty(input)?;
+            let cols: Punctuated<Expr, Token![,]> = Punctuated::parse_separated_nonempty(input)?;
             Ok(ConsumePairInput::ListVariant {
                 trace: first,
                 cols: cols.into_iter().collect(),
