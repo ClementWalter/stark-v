@@ -22,7 +22,7 @@ pub mod programs;
 
 pub use programs::{
     BranchResult, ConstantResult, FactorialResult, FibResult, LoadMergeResult, MemoryTestResult,
-    MulDivResult, branch, constant, fact, fib, load_merge, memory, muldiv,
+    MulDivResult, Sha2Result, branch, constant, fact, fib, load_merge, memory, muldiv, sha256,
 };
 
 // =============================================================================
