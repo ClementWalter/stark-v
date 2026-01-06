@@ -6,22 +6,18 @@
 #![no_main]
 
 guest_bin::guest_main!({
-    // Read the full input into a buffer
     // Input format: [len: u32][data: u8...]
-    let mut buf = [0u8; 1024]; // Max 1KB input
-    let bytes_read = unsafe { guest_lib::io::read_input_bytes(&mut buf) };
+    // First read the length prefix (4 bytes)
+    let len = unsafe { guest_lib::io::read_input_u32() } as usize;
 
-    // First 4 bytes are the length
-    let len = if bytes_read >= 4 {
-        u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize
-    } else {
-        0
-    };
+    // Read only the exact number of data bytes needed (up to 1020 to fit in buffer)
+    let data_len = len.min(1020);
+    let mut buf = [0u8; 1024];
 
-    // Compute SHA256 on the data portion (after the 4-byte length prefix)
-    let data_start = 4;
-    let data_end = (data_start + len).min(bytes_read);
-    let data = &buf[data_start..data_end];
+    // Read data bytes starting at offset 4 (after the length prefix)
+    if data_len > 0 {
+        unsafe { guest_lib::io::read_input_bytes_at(4, &mut buf[..data_len]) };
+    }
 
-    guest_lib::programs::sha2::sha256(data)
+    guest_lib::programs::sha2::sha256(&buf[..data_len])
 });

@@ -89,6 +89,24 @@ fn test_prove_verify_fibonacci() {
     verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");
 }
 
+/// Full end-to-end proof + verification for SHA256 (without input).
+#[test_log::test]
+fn test_prove_verify_sha2() {
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::{prove_rv32im, verify_rv32im};
+    use runner::run;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("sha2");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read sha2 ELF");
+
+    let run_result = run(&elf_bytes, 100_000_000).expect("Failed to run sha2");
+
+    let proof = prove_rv32im(run_result, PcsConfig::default());
+    verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");
+}
+
 /// End-to-end benchmark for Fibonacci with input.
 #[test_log::test]
 fn test_e2e_fibonacci_benchmark() {

@@ -44,6 +44,28 @@ pub unsafe fn read_input_u32() -> u32 {
     }
 }
 
+/// Read input bytes from the input buffer starting at a given offset.
+///
+/// # Safety
+/// Only call from within a zkVM guest program.
+pub unsafe fn read_input_bytes_at(offset: usize, buf: &mut [u8]) -> usize {
+    unsafe {
+        let start = core::ptr::addr_of!(__input_start) as usize;
+        let end = core::ptr::addr_of!(__input_end) as usize;
+        let input_size = end.saturating_sub(start);
+        if offset >= input_size {
+            return 0;
+        }
+        let available = input_size - offset;
+        let len = buf.len().min(available);
+        for (i, byte) in buf.iter_mut().take(len).enumerate() {
+            let addr = start + offset + i;
+            *byte = core::ptr::read_volatile(addr as *const u8);
+        }
+        len
+    }
+}
+
 /// Write output bytes to the output buffer and set the length.
 ///
 /// # Safety
