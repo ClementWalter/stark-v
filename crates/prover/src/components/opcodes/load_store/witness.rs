@@ -179,30 +179,30 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
 
-    // 7. range_check_20: +1 * alignment_check [negation moved to preprocessed side]
+    // 7. range_check_20: -1 * alignment_check
     let rc_20_align_denom = combine!(relations.range_check_20, [&alignment_check]);
 
-    // 8. range_check_m31: +1 * (base[0], base[3]) [negation moved to preprocessed side]
+    // 8. range_check_m31: -1 * (base[0], base[3])
     let rc_m31_base_denom = combine!(
         relations.range_check_m31,
         [cols.rs1_next_0, cols.rs1_next_3]
     );
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_align_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_m31_base_denom,
         logup_gen
     );
@@ -243,7 +243,7 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: +1 * (clk - src_clk_prev) [negation moved to preprocessed side]
+    // 11. range_check_20: -1 * (clk - src_clk_prev)
     let rc_20_src_denom = combine!(relations.range_check_20, [&clk_minus_src_clk_prev]);
 
     // 12. memory_access: -enabler * (dst_as, dst_addr_selector, dst_clk_prev, dst_prev_0..3)
@@ -261,7 +261,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_src_denom,
         &neg_enabler,
         &dst_read_denom,
@@ -282,13 +282,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 14. range_check_20: +1 * (clk - dst_clk_prev) [negation moved to preprocessed side]
+    // 14. range_check_20: -1 * (clk - dst_clk_prev)
     let rc_20_dst_denom = combine!(relations.range_check_20, [&clk_minus_dst_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &dst_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_dst_denom,
         logup_gen
     );
@@ -312,17 +312,17 @@ pub fn register_multiplicities(
     let pow2_14 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 14));
     let quarter_inv = PackedM31::broadcast(BaseField::from_u32_unchecked(4).inverse());
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_lb_flag[i]
+            -(cols.opcode_lb_flag[i]
                 + cols.opcode_lh_flag[i]
                 + cols.opcode_lbu_flag[i]
                 + cols.opcode_lhu_flag[i]
                 + cols.opcode_lw_flag[i]
                 + cols.opcode_sb_flag[i]
                 + cols.opcode_sh_flag[i]
-                + cols.opcode_sw_flag[i]
+                + cols.opcode_sw_flag[i])
         })
         .collect();
 
@@ -344,20 +344,20 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&alignment_check]);
+        .register_many(&neg_enabler, &[&alignment_check]);
 
-    // Register range_check_m31: (rs1_next_0, rs1_next_3) for base address
+    // Register range_check_m31: (rs1_next_0, rs1_next_3) for base address with negated multiplicity
     counters
         .range_check_m31
-        .register_many(&enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
+        .register_many(&neg_enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_src_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_src_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_dst_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_dst_clk_prev]);
 }

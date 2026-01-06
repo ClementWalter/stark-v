@@ -136,27 +136,27 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
 
-    // 7. range_check_8_8: +1 * (rd[0], rd[1]) [negation moved to preprocessed side]
+    // 7. range_check_8_8: -1 * (rd[0], rd[1])
     let rc_8_8_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
-    // 8. range_check_8_8: +1 * (rd[2], rd[3]) [negation moved to preprocessed side]
+    // 8. range_check_8_8: -1 * (rd[2], rd[3])
     let rc_8_8_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_0_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_1_denom,
         logup_gen
     );
@@ -197,10 +197,10 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
+    // 11. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    crate::write_col!(&pos_enabler, &rc_20_rd_denom, logup_gen);
+    crate::write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }
@@ -218,9 +218,9 @@ pub fn register_multiplicities(
     let cols = ShiftsImmColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_sll_flag[i] + cols.opcode_srl_flag[i] + cols.opcode_sra_flag[i])
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_sll_flag[i] + cols.opcode_srl_flag[i] + cols.opcode_sra_flag[i]))
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -230,19 +230,21 @@ pub fn register_multiplicities(
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
+    // Register range_check_20 for rs1 clock diff with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
 
-    // Register range_check_8_8 for rd limbs
+    // Register range_check_8_8 for rd limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_2, cols.rd_next_3]);
 
+    // Register range_check_20 for rd clock diff with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

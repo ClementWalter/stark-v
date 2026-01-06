@@ -98,19 +98,19 @@ impl FrameworkEval for Eval {
         );
 
         // Range check rd (rd is pc+4, so it's a M31)
-        // + RC_8_8(rd[1], rd[2])
+        // - RC_8_8(rd[1], rd[2])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            cols.enabler.clone(),
+            -cols.enabler.clone(),
             rd[1].clone(),
             rd[2].clone()
         );
-        // + RC_M31(rd[0], rd[3])
+        // - RC_M31(rd[0], rd[3])
         add_to_relation!(
             eval,
             self.relations.range_check_m31,
-            cols.enabler.clone(),
+            -cols.enabler.clone(),
             rd[0].clone(),
             rd[3].clone()
         );
@@ -142,11 +142,11 @@ impl FrameworkEval for Eval {
             rd[2].clone(),
             rd[3].clone()
         );
-        // + RC_20(clk - rd_prev_clk)
+        // - RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            cols.enabler.clone(),
+            -cols.enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

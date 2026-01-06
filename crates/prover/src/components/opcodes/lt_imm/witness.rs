@@ -90,6 +90,10 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
+    let neg_prefix_sum: Vec<PackedQM31> = prefix_sum_final
+        .iter()
+        .map(|&p| -PackedQM31::from(p))
+        .collect();
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -107,7 +111,7 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 2. range_check_8_8_4: +1 * (rs1_msl_adjusted, imm_0, 2*imm_1) [negation moved to preprocessed side]
+    // 2. range_check_8_8_4: -1 * (rs1_msl_adjusted, imm_0, 2*imm_1)
     let rc_8_8_4_denom = combine!(
         relations.range_check_8_8_4,
         [&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2]
@@ -116,7 +120,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &neg_enabler,
         &program_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_4_denom,
         logup_gen
     );
@@ -171,18 +175,16 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 7. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
-    // 8. range_check_20: +prefix_sum * (diff_val - 1) [negation moved to preprocessed side]
+    // 8. range_check_20: -prefix_sum * (diff_val - 1)
     let rc_20_diff_denom = combine!(relations.range_check_20, [&diff_val_minus_1]);
-    let pos_prefix_sum: Vec<PackedQM31> =
-        prefix_sum_final.iter().map(|&p| PackedQM31::from(p)).collect();
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
-        &pos_prefix_sum,
+        &neg_prefix_sum,
         &rc_20_diff_denom,
         logup_gen
     );
@@ -223,10 +225,10 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
+    // 11. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    write_col!(&pos_enabler, &rc_20_rd_denom, logup_gen);
+    write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }
@@ -248,9 +250,9 @@ pub fn register_multiplicities(
     let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
     let pow2_7 = PackedM31::broadcast(BaseField::from_u32_unchecked(128));
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_slti_flag[i] + cols.opcode_sltiu_flag[i])
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_slti_flag[i] + cols.opcode_sltiu_flag[i]))
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -261,13 +263,13 @@ pub fn register_multiplicities(
         .collect();
     let diff_val_minus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.diff_val[i] - one).collect();
 
-    // prefix_sum_final = sum of diff_markers
-    let prefix_sum_final: Vec<PackedM31> = (0..simd_size)
+    // prefix_sum_final = sum of diff_markers (negated to match gen_interaction_trace)
+    let neg_prefix_sum_final: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.diff_marker_0[i]
+            -(cols.diff_marker_0[i]
                 + cols.diff_marker_1[i]
                 + cols.diff_marker_2[i]
-                + cols.diff_marker_3[i]
+                + cols.diff_marker_3[i])
         })
         .collect();
 
@@ -279,23 +281,23 @@ pub fn register_multiplicities(
     // imm_1_times_2 = 2 * imm_1
     let imm_1_times_2: Vec<PackedM31> = (0..simd_size).map(|i| two * cols.imm_1[i]).collect();
 
-    // Register range_check_8_8_4: (rs1_msl_adjusted, imm_0, 2*imm_1)
+    // Register range_check_8_8_4: (rs1_msl_adjusted, imm_0, 2*imm_1) with negated multiplicity
     counters
         .range_check_8_8_4
-        .register_many(&enabler, &[&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2]);
+        .register_many(&neg_enabler, &[&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2]);
 
-    // Register range_check_20: (clk - rs1_clk_prev)
+    // Register range_check_20: (clk - rs1_clk_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
 
-    // Register range_check_20: (clk - rd_clk_prev)
+    // Register range_check_20: (clk - rd_clk_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 
-    // Register range_check_20: (diff_val - 1) with multiplicity prefix_sum_final
+    // Register range_check_20: (diff_val - 1) with negated prefix_sum_final multiplicity
     counters
         .range_check_20
-        .register_many(&prefix_sum_final, &[&diff_val_minus_1]);
+        .register_many(&neg_prefix_sum_final, &[&diff_val_minus_1]);
 }

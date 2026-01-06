@@ -123,13 +123,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 4. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 4. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -170,14 +170,14 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: +1 * (clk - rs2_clk_prev) [negation moved to preprocessed side]
+    // 7. range_check_20: -1 * (clk - rs2_clk_prev)
     let rc_20_rs2_denom = combine!(relations.range_check_20, [&clk_minus_rs2_clk_prev]);
 
     // 8. registers_state: -enabler * (pc, clk)
     let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clk]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs2_denom,
         &neg_enabler,
         &registers_read_denom,
@@ -205,9 +205,9 @@ pub fn register_multiplicities(
     let cols = BranchEqColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Numerator: enabler (1 for valid rows, 0 for padding)
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_beq_flag[i] + cols.opcode_bne_flag[i])
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_beq_flag[i] + cols.opcode_bne_flag[i]))
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -219,8 +219,8 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 }

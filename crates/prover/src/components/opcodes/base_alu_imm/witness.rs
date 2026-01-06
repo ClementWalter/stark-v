@@ -108,8 +108,8 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let pos_is_bitwise: Vec<PackedQM31> =
-        is_bitwise.iter().map(|&b| PackedQM31::from(b)).collect();
+    let neg_is_bitwise: Vec<PackedQM31> =
+        is_bitwise.iter().map(|&b| -PackedQM31::from(b)).collect();
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -127,13 +127,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 2. range_check_8_11: +1 * (imm_0, imm_1 * 256) [negation moved to preprocessed side]
+    // 2. range_check_8_11: -1 * (imm_0, imm_1 * 256)
     let rc_8_11_denom = combine!(relations.range_check_8_11, [cols.imm_0, &imm_1_times_256]);
 
     write_pair!(
         &neg_enabler,
         &program_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_11_denom,
         logup_gen
     );
@@ -188,61 +188,61 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 7. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
-    // 8. bitwise: +is_bitwise * (rs1[0], sext_imm[0], rd[0], bitwise_id) [negation moved to preprocessed side]
+    // 8. bitwise: -is_bitwise * (rs1[0], sext_imm[0], rd[0], bitwise_id)
     let bitwise_0_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_0, &sext_imm_0, cols.rd_next_0, &bitwise_id]
     );
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
-        &pos_is_bitwise,
+        &neg_is_bitwise,
         &bitwise_0_denom,
         logup_gen
     );
 
-    // 9. bitwise: +is_bitwise * (rs1[1], sext_imm[1], rd[1], bitwise_id) [negation moved to preprocessed side]
+    // 9. bitwise: -is_bitwise * (rs1[1], sext_imm[1], rd[1], bitwise_id)
     let bitwise_1_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_1, &sext_imm_1, cols.rd_next_1, &bitwise_id]
     );
 
-    // 10. bitwise: +is_bitwise * (rs1[2], sext_imm[2], rd[2], bitwise_id) [negation moved to preprocessed side]
+    // 10. bitwise: -is_bitwise * (rs1[2], sext_imm[2], rd[2], bitwise_id)
     let bitwise_2_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_2, &sext_imm_2, cols.rd_next_2, &bitwise_id]
     );
 
     write_pair!(
-        &pos_is_bitwise,
+        &neg_is_bitwise,
         &bitwise_1_denom,
-        &pos_is_bitwise,
+        &neg_is_bitwise,
         &bitwise_2_denom,
         logup_gen
     );
 
-    // 11. bitwise: +is_bitwise * (rs1[3], sext_imm[3], rd[3], bitwise_id) [negation moved to preprocessed side]
+    // 11. bitwise: -is_bitwise * (rs1[3], sext_imm[3], rd[3], bitwise_id)
     let bitwise_3_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_3, &sext_imm_3, cols.rd_next_3, &bitwise_id]
     );
 
-    // 12. range_check_8_8: +1 * (rd[0], rd[1]) [negation moved to preprocessed side]
+    // 12. range_check_8_8: -1 * (rd[0], rd[1])
     let rc_8_8_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
     write_pair!(
-        &pos_is_bitwise,
+        &neg_is_bitwise,
         &bitwise_3_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_0_denom,
         logup_gen
     );
 
-    // 13. range_check_8_8: +1 * (rd[2], rd[3]) [negation moved to preprocessed side]
+    // 13. range_check_8_8: -1 * (rd[2], rd[3])
     let rc_8_8_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
     // 14. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
@@ -260,7 +260,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_1_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -281,13 +281,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 16. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
+    // 16. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rd_denom,
         logup_gen
     );
@@ -315,17 +315,17 @@ pub fn register_multiplicities(
         PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 3) * ((1 << 5) - 1)));
     let sext_mask_2 = PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 8) - 1));
 
-    // Numerators (same as gen_interaction_trace)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerators (same as gen_interaction_trace, but negated to match)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_add_flag[i]
+            -(cols.opcode_add_flag[i]
                 + cols.opcode_xor_flag[i]
                 + cols.opcode_or_flag[i]
-                + cols.opcode_and_flag[i]
+                + cols.opcode_and_flag[i])
         })
         .collect();
-    let is_bitwise: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i])
+    let neg_is_bitwise: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i]))
         .collect();
 
     // Derived columns (same as gen_interaction_trace)
@@ -353,44 +353,44 @@ pub fn register_multiplicities(
         .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
-    // Register range_check_8_11: (imm_0, imm_1 * 256) with multiplicity 1
+    // Register range_check_8_11: (imm_0, imm_1 * 256) with negated multiplicity
     counters
         .range_check_8_11
-        .register_many(&enabler, &[cols.imm_0, &imm_1_times_256]);
+        .register_many(&neg_enabler, &[cols.imm_0, &imm_1_times_256]);
 
     // Register range_check_20: (clk - rs1_clk_prev)
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
 
     // Register bitwise: 4 limbs (rs1_next[i], sext_imm[i], rd_next[i], bitwise_id)
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_0, &sext_imm_0, cols.rd_next_0, &bitwise_id],
     );
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_1, &sext_imm_1, cols.rd_next_1, &bitwise_id],
     );
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_2, &sext_imm_2, cols.rd_next_2, &bitwise_id],
     );
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_3, &sext_imm_3, cols.rd_next_3, &bitwise_id],
     );
 
     // Register range_check_8_8: (rd_next[0], rd_next[1]) and (rd_next[2], rd_next[3])
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_2, cols.rd_next_3]);
 
     // Register range_check_20: (clk - rd_clk_prev)
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

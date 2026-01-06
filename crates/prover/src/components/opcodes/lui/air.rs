@@ -80,11 +80,11 @@ impl FrameworkEval for Eval {
             cols.clk.clone() + E::F::one()
         );
 
-        // Range check imm limbs: + RC_8_8_4(imm_1, imm_2, imm_0)
+        // Range check imm limbs: - RC_8_8_4(imm_1, imm_2, imm_0)
         add_to_relation!(
             eval,
             self.relations.range_check_8_8_4,
-            cols.enabler.clone(),
+            -cols.enabler.clone(),
             cols.imm_1,
             cols.imm_2,
             cols.imm_0
@@ -117,11 +117,11 @@ impl FrameworkEval for Eval {
             cols.imm_1,
             cols.imm_2
         );
-        // + RC_20(clk - rd_prev_clk)
+        // - RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            cols.enabler.clone(),
+            -cols.enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

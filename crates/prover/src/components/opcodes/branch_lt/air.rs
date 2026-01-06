@@ -210,11 +210,11 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // + RC_20(clk - rs1_prev_clk)
+        // - RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            enabler.clone(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
@@ -245,30 +245,30 @@ impl FrameworkEval for Eval {
             cols.rs2_next_2,
             cols.rs2_next_3
         );
-        // + RC_20(clk - rs2_prev_clk)
+        // - RC_20(clk - rs2_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            enabler.clone(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rs2_clk_prev.clone()
         );
 
         // Range check msl felts with sign consideration
-        // + RC_8_8(rs1_msl_felt + signed * 2^(8-1), rs2_msl_felt + signed * 2^(8-1))
+        // - RC_8_8(rs1_msl_felt + signed * 2^(8-1), rs2_msl_felt + signed * 2^(8-1))
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            enabler.clone(),
+            -enabler.clone(),
             cols.rs1_msl_felt.clone() + signed.clone() * pow2::<E>(7),
             cols.rs2_msl_felt.clone() + signed.clone() * pow2::<E>(7)
         );
 
         // diff_val is > 0 (when prefix_sum = 1)
-        // + prefix_sum * RC_20(diff_val - 1)
+        // - prefix_sum * RC_20(diff_val - 1)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            prefix_sum_final.clone(),
+            -prefix_sum_final.clone(),
             cols.diff_val.clone() - E::F::one()
         );
 

@@ -218,13 +218,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -265,66 +265,66 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 9. range_check_20: +1 * (clk - rs2_clk_prev) [negation moved to preprocessed side]
+    // 9. range_check_20: -1 * (clk - rs2_clk_prev)
     let rc_20_rs2_denom = combine!(relations.range_check_20, [&clk_minus_rs2_clk_prev]);
 
-    // 10. range_check_8_8: +1 * (carry[0], carry[1]) [negation moved to preprocessed side]
+    // 10. range_check_8_8: -1 * (carry[0], carry[1])
     let rc_8_8_carry_0_denom = combine!(relations.range_check_8_8, [&carry[0], &carry[1]]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs2_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_carry_0_denom,
         logup_gen
     );
 
-    // 11. range_check_8_8: +1 * (carry[2], carry[3]) [negation moved to preprocessed side]
+    // 11. range_check_8_8: -1 * (carry[2], carry[3])
     let rc_8_8_carry_1_denom = combine!(relations.range_check_8_8, [&carry[2], &carry[3]]);
 
-    // 12. range_check_8_8: +1 * (carry[4], carry[5]) [negation moved to preprocessed side]
+    // 12. range_check_8_8: -1 * (carry[4], carry[5])
     let rc_8_8_carry_2_denom = combine!(relations.range_check_8_8, [&carry[4], &carry[5]]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_carry_1_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_carry_2_denom,
         logup_gen
     );
 
-    // 13. range_check_8_8: +1 * (carry[6], carry[7]) [negation moved to preprocessed side]
+    // 13. range_check_8_8: -1 * (carry[6], carry[7])
     let rc_8_8_carry_3_denom = combine!(relations.range_check_8_8, [&carry[6], &carry[7]]);
 
-    // 14. range_check_8_8: +1 * (rd_low[0], rd_low[1]) [negation moved to preprocessed side]
+    // 14. range_check_8_8: -1 * (rd_low[0], rd_low[1])
     let rc_8_8_rd_low_0_denom =
         combine!(relations.range_check_8_8, [cols.rd_high_0, cols.rd_high_1]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_carry_3_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_rd_low_0_denom,
         logup_gen
     );
 
-    // 15. range_check_8_8: +1 * (rd_low[2], rd_low[3]) [negation moved to preprocessed side]
+    // 15. range_check_8_8: -1 * (rd_low[2], rd_low[3])
     let rc_8_8_rd_low_1_denom =
         combine!(relations.range_check_8_8, [cols.rd_high_2, cols.rd_high_3]);
 
-    // 16. range_check_8_8: +1 * (rd_high[0], rd_high[1]) [negation moved to preprocessed side]
+    // 16. range_check_8_8: -1 * (rd_high[0], rd_high[1])
     let rc_8_8_rd_high_0_denom =
         combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_rd_low_1_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_rd_high_0_denom,
         logup_gen
     );
 
-    // 17. range_check_8_8: +1 * (rd_high[2], rd_high[3]) [negation moved to preprocessed side]
+    // 17. range_check_8_8: -1 * (rd_high[2], rd_high[3])
     let rc_8_8_rd_high_1_denom =
         combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
@@ -343,7 +343,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_rd_high_1_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -364,13 +364,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 20. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
+    // 20. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rd_denom,
         logup_gen
     );
@@ -398,9 +398,9 @@ pub fn register_multiplicities(
     let sign_ext = pow2_8 - one;
     let inv_two_pow_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 8).inverse());
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_mulh_flag[i] + cols.opcode_mulhsu_flag[i] + cols.opcode_mulhu_flag[i])
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_mulh_flag[i] + cols.opcode_mulhsu_flag[i] + cols.opcode_mulhu_flag[i]))
         .collect();
 
     // Clock differences
@@ -488,46 +488,46 @@ pub fn register_multiplicities(
         }
     }
 
-    // Register range_check_20 for clock diffs
+    // Register range_check_20 for clock diffs with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 
-    // Register range_check_8_8 for carries
+    // Register range_check_8_8 for carries with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&carry[0], &carry[1]]);
+        .register_many(&neg_enabler, &[&carry[0], &carry[1]]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&carry[2], &carry[3]]);
+        .register_many(&neg_enabler, &[&carry[2], &carry[3]]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&carry[4], &carry[5]]);
+        .register_many(&neg_enabler, &[&carry[4], &carry[5]]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&carry[6], &carry[7]]);
+        .register_many(&neg_enabler, &[&carry[6], &carry[7]]);
 
-    // Register range_check_8_8 for rd_low limbs (rd_high_0..3)
+    // Register range_check_8_8 for rd_low limbs (rd_high_0..3) with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_high_0, cols.rd_high_1]);
+        .register_many(&neg_enabler, &[cols.rd_high_0, cols.rd_high_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_high_2, cols.rd_high_3]);
+        .register_many(&neg_enabler, &[cols.rd_high_2, cols.rd_high_3]);
 
-    // Register range_check_8_8 for rd_high limbs (rd_next_0..3)
+    // Register range_check_8_8 for rd_high limbs (rd_next_0..3) with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_2, cols.rd_next_3]);
 
-    // Register range_check_20 for rd clock diff
+    // Register range_check_20 for rd clock diff with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

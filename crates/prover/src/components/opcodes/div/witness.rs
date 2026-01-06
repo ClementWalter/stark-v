@@ -13,7 +13,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::DivColumns;
-use crate::{combine, write_col, write_pair};
+use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -102,10 +102,10 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let pos_valid_not_special: Vec<PackedQM31> = enabler
+    let neg_valid_not_special: Vec<PackedQM31> = enabler
         .iter()
         .zip(special_case.iter())
-        .map(|(&e, &s)| PackedQM31::from(e - s))
+        .map(|(&e, &s)| -PackedQM31::from(e - s))
         .collect();
 
     // =====================================================================
@@ -174,13 +174,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
+    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -221,44 +221,44 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 9. range_check_20: +1 * (clk - rs2_clk_prev) [negation moved to preprocessed side]
+    // 9. range_check_20: -1 * (clk - rs2_clk_prev)
     let rc_20_rs2_denom = combine!(relations.range_check_20, [&clk_minus_rs2_clk_prev]);
 
-    // 10. range_check_8_8: +1 * (q_0, q_1) [negation moved to preprocessed side]
+    // 10. range_check_8_8: -1 * (q_0, q_1)
     let rc_8_8_q_0_denom = combine!(relations.range_check_8_8, [cols.q_0, cols.q_1]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_20_rs2_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_q_0_denom,
         logup_gen
     );
 
-    // 11. range_check_8_8: +1 * (q_2, q_3) [negation moved to preprocessed side]
+    // 11. range_check_8_8: -1 * (q_2, q_3)
     let rc_8_8_q_1_denom = combine!(relations.range_check_8_8, [cols.q_2, cols.q_3]);
 
-    // 12. range_check_8_8: +1 * (r_0, r_1) [negation moved to preprocessed side]
+    // 12. range_check_8_8: -1 * (r_0, r_1)
     let rc_8_8_r_0_denom = combine!(relations.range_check_8_8, [cols.r_0, cols.r_1]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_q_1_denom,
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_r_0_denom,
         logup_gen
     );
 
-    // 13. range_check_8_8: +1 * (r_2, r_3) [negation moved to preprocessed side]
+    // 13. range_check_8_8: -1 * (r_2, r_3)
     let rc_8_8_r_1_denom = combine!(relations.range_check_8_8, [cols.r_2, cols.r_3]);
 
-    // 14. range_check_20: +(enabler - special_case) * (lt_diff - 1) [negation moved to preprocessed side]
+    // 14. range_check_20: -(enabler - special_case) * (lt_diff - 1)
     let rc_20_lt_diff_denom = combine!(relations.range_check_20, [&lt_diff_minus_1]);
 
     write_pair!(
-        &pos_enabler,
+        &neg_enabler,
         &rc_8_8_r_1_denom,
-        &pos_valid_not_special,
+        &neg_valid_not_special,
         &rc_20_lt_diff_denom,
         logup_gen
     );
@@ -291,10 +291,10 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 17. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
+    // 17. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    write_col!(&pos_enabler, &rc_20_rd_denom, logup_gen);
+    write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }
@@ -314,21 +314,21 @@ pub fn register_multiplicities(
 
     let one = PackedM31::broadcast(BaseField::one());
 
-    // Numerators (same as gen_interaction_trace)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerators (same as gen_interaction_trace, but negated to match)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_div_flag[i]
+            -(cols.opcode_div_flag[i]
                 + cols.opcode_divu_flag[i]
                 + cols.opcode_rem_flag[i]
-                + cols.opcode_remu_flag[i]
+                + cols.opcode_remu_flag[i])
         })
         .collect();
     let special_case: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.zero_divisor[i] + cols.r_zero[i])
         .collect();
-    // enabler - special_case (for lt_diff lookup)
-    let valid_not_special: Vec<PackedM31> = (0..simd_size)
-        .map(|i| enabler[i] - special_case[i])
+    // -(enabler - special_case) for lt_diff lookup (negated to match)
+    let neg_valid_not_special: Vec<PackedM31> = (0..simd_size)
+        .map(|i| neg_enabler[i] + special_case[i])
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -344,31 +344,31 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 
-    // Register range_check_8_8 for q limbs
+    // Register range_check_8_8 for q limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.q_0, cols.q_1]);
+        .register_many(&neg_enabler, &[cols.q_0, cols.q_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.q_2, cols.q_3]);
+        .register_many(&neg_enabler, &[cols.q_2, cols.q_3]);
 
-    // Register range_check_8_8 for r limbs
+    // Register range_check_8_8 for r limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.r_0, cols.r_1]);
+        .register_many(&neg_enabler, &[cols.r_0, cols.r_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.r_2, cols.r_3]);
+        .register_many(&neg_enabler, &[cols.r_2, cols.r_3]);
 
     counters
         .range_check_20
-        .register_many(&valid_not_special, &[&lt_diff_minus_1]);
+        .register_many(&neg_valid_not_special, &[&lt_diff_minus_1]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

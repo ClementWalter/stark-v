@@ -188,11 +188,11 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // + RC_20(clk - rs1_prev_clk)
+        // - RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            enabler.clone(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
@@ -223,20 +223,20 @@ impl FrameworkEval for Eval {
             cols.rs2_next_2,
             cols.rs2_next_3
         );
-        // + RC_20(clk - rs2_prev_clk)
+        // - RC_20(clk - rs2_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            enabler.clone(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rs2_clk_prev.clone()
         );
 
         // Bitwise operations (for xor/or/and)
-        // + is_bitwise * Bitwise(rs1[i], rs2[i], rd[i], bitwise_id) for each limb
+        // - is_bitwise * Bitwise(rs1[i], rs2[i], rd[i], bitwise_id) for each limb
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            is_bitwise.clone(),
+            -is_bitwise.clone(),
             rs1[0].clone(),
             rs2[0].clone(),
             rd[0].clone(),
@@ -245,7 +245,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            is_bitwise.clone(),
+            -is_bitwise.clone(),
             rs1[1].clone(),
             rs2[1].clone(),
             rd[1].clone(),
@@ -254,7 +254,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            is_bitwise.clone(),
+            -is_bitwise.clone(),
             rs1[2].clone(),
             rs2[2].clone(),
             rd[2].clone(),
@@ -263,7 +263,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            is_bitwise.clone(),
+            -is_bitwise.clone(),
             rs1[3].clone(),
             rs2[3].clone(),
             rd[3].clone(),
@@ -297,11 +297,11 @@ impl FrameworkEval for Eval {
             rd[2].clone(),
             rd[3].clone()
         );
-        // + RC_20(clk - rd_prev_clk)
+        // - RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            enabler.clone(),
+            -enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

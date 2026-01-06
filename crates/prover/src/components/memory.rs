@@ -63,20 +63,18 @@ pub mod air {
                 multiplicity.clone() * (multiplicity.clone() * multiplicity.clone() - one.clone()),
             );
 
-            // +1 * range_check_8_8 [negation moved to preprocessed side]
             add_to_relation!(
                 eval,
                 self.relations.range_check_8_8,
-                enabler.clone(),
+                -enabler.clone(),
                 value_0.clone(),
                 value_1.clone()
             );
 
-            // +1 * range_check_8_8 [negation moved to preprocessed side]
             add_to_relation!(
                 eval,
                 self.relations.range_check_8_8,
-                enabler.clone(),
+                -enabler.clone(),
                 value_2.clone(),
                 value_3.clone()
             );
@@ -181,9 +179,6 @@ pub mod witness {
         let pos_mult: Vec<PackedQM31> = (0..simd_size)
             .map(|i| PackedQM31::from(cols.multiplicity[i]))
             .collect();
-        let pos_enabler: Vec<PackedQM31> = (0..simd_size)
-            .map(|i| PackedQM31::from(cols.enabler[i]))
-            .collect();
         let neg_enabler: Vec<PackedQM31> = (0..simd_size)
             .map(|i| -PackedQM31::from(cols.enabler[i]))
             .collect();
@@ -237,11 +232,10 @@ pub mod witness {
             ]
         );
 
-        // +1 * range_check_8_8 [negation moved to preprocessed side]
         write_pair!(
-            &pos_enabler,
+            &neg_enabler,
             &range_check_8_8_0_denom,
-            &pos_enabler,
+            &neg_enabler,
             &range_check_8_8_1_denom,
             interaction_trace
         );
@@ -275,15 +269,19 @@ pub mod witness {
         }
 
         let cols = MemoryColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+        let simd_size = cols.enabler.len();
 
-        // Numerator: enabler (1 for valid rows, 0 for padding)
-        let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+        // Numerator: negated enabler (to match gen_interaction_trace)
+        let neg_enabler: Vec<PackedM31> = (0..simd_size)
+            .map(|i| -cols.enabler[i])
+            .collect();
 
+        // Register range_check_8_8 with negated multiplicity
         counters
             .range_check_8_8
-            .register_many(&enabler, &[cols.value_0, cols.value_1]);
+            .register_many(&neg_enabler, &[cols.value_0, cols.value_1]);
         counters
             .range_check_8_8
-            .register_many(&enabler, &[cols.value_2, cols.value_3]);
+            .register_many(&neg_enabler, &[cols.value_2, cols.value_3]);
     }
 }
