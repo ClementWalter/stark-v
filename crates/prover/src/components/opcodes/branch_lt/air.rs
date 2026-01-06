@@ -1,6 +1,5 @@
 //! AIR component for Branch Less Than (blt/bltu/bge/bgeu) - airs.md Section 8
 
-use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;

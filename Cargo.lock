@@ -1199,6 +1199,7 @@ dependencies = [
  "smalloc",
  "stwo",
  "stwo-constraint-framework",
+ "stwo-macros",
  "test-log",
  "thiserror",
  "tikv-jemallocator",
@@ -1326,24 +1327,15 @@ dependencies = [
  "itertools 0.13.0",
  "postcard",
  "prover",
- "runner-macros",
  "rustc-hash",
  "serde",
  "simd",
  "stwo",
  "stwo-constraint-framework",
+ "stwo-macros",
  "thiserror",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "runner-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
 ]
 
 [[package]]
@@ -1653,6 +1645,15 @@ dependencies = [
  "std-shims",
  "stwo",
  "tracing",
+]
+
+[[package]]
+name = "stwo-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
 ]
 
 [[package]]

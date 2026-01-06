@@ -64,10 +64,9 @@ pub fn print_enabled_features() {
     }
 }
 
+// Import all macros from stwo-macros crate
 #[macro_use]
-pub mod macros;
-#[macro_use]
-pub mod logup_macros;
+extern crate stwo_macros;
 pub mod components;
 pub mod errors;
 pub mod preprocessed;

@@ -12,7 +12,6 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use crate::add_to_relation;
 use crate::relations::Relations;
 use runner::trace::DEFAULT_MAX_CLOCK_DIFF;
 
@@ -116,7 +115,6 @@ pub mod air {
 
 pub mod witness {
     use super::*;
-    use crate::{combine, write_pair};
 
     pub fn gen_interaction_trace(
         trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,

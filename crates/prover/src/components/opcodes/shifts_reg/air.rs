@@ -1,6 +1,5 @@
 //! AIR component for Shifts Reg (sll/srl/sra) - airs.md Section 3
 
-use crate::add_to_relation;
 use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;

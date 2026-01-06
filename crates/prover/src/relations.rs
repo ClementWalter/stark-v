@@ -8,7 +8,7 @@ pub const INTERACTION_POW_BITS: u32 = 1;
 #[cfg(not(debug_assertions))]
 pub const INTERACTION_POW_BITS: u32 = 10;
 
-crate::relations! {
+stwo_macros::relations! {
     relations {
         registers_state: pc, clk;
         memory_access: addr_space, addr, clk, limb_0, limb_1, limb_2, limb_3;

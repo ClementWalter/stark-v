@@ -4,7 +4,7 @@ members = [
   "crates/debug-utils",
   "crates/prover",
   "crates/runner",
-  "crates/runner-macros",
+  "crates/stwo-macros",
   "crates/sdk",
   "crates/simd",
   "guest/guest-lib",
@@ -77,7 +77,7 @@ debug-utils = { path = "crates/debug-utils" }
 guest-lib = { path = "guest/guest-lib" }
 prover = { path = "crates/prover" }
 runner = { path = "crates/runner" }
-runner-macros = { path = "crates/runner-macros" }
+stwo-macros = { path = "crates/stwo-macros" }
 simd = { path = "crates/simd" }
 
 [profile.dev]

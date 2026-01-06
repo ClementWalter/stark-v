@@ -13,7 +13,6 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::BranchEqColumns;
-use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -187,7 +186,7 @@ pub fn gen_interaction_trace(
     // 9. registers_state: +enabler * (to_pc, clk + 1)
     let registers_write_denom = combine!(relations.registers_state, [&to_pc, &clk_plus_1]);
 
-    crate::write_col!(&pos_enabler, &registers_write_denom, logup_gen);
+    write_col!(&pos_enabler, &registers_write_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

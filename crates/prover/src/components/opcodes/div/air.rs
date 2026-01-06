@@ -1,6 +1,5 @@
 //! AIR component for DIV (div/divu/rem/remu) - airs.md Section 16
 
-use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
