@@ -1,6 +1,5 @@
 //! AIR component for Less Than Reg (slt/sltu) - airs.md Section 5
 
-use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;

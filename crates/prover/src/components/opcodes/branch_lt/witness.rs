@@ -13,7 +13,6 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::BranchLtColumns;
-use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -235,7 +234,7 @@ pub fn gen_interaction_trace(
     let neg_prefix_sum: Vec<PackedQM31> =
         prefix_sum.iter().map(|&p| -PackedQM31::from(p)).collect();
 
-    crate::write_col!(&neg_prefix_sum, &rc_20_diff_denom, logup_gen);
+    write_col!(&neg_prefix_sum, &rc_20_diff_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

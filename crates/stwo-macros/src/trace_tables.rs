@@ -918,7 +918,6 @@ fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
 /// - `AddTable`, `LuiTable`, `SbTable` structs with columnar fields
 /// - `Tracer` struct with all tables
 /// - `trace_op!` macro for recording traces
-#[proc_macro]
 pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let def = parse_macro_input!(input as TraceTablesDef);
 

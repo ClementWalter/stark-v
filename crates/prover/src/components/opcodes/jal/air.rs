@@ -1,6 +1,5 @@
 //! AIR component for JAL - airs.md Section 12
 
-use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;

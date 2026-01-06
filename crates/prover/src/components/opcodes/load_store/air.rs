@@ -1,6 +1,5 @@
 //! AIR component for Load/Store (lb/lbu/lh/lhu/lw/sb/sh/sw) - airs.md Section 13
 
-use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;

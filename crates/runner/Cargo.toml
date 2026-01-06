@@ -15,7 +15,7 @@ stwo.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-runner-macros.workspace = true
+stwo-macros.workspace = true
 
 [dev-dependencies]
 guest-lib = { path = "../../guest/guest-lib" }

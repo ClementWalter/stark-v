@@ -13,7 +13,6 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::MulColumns;
-use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(

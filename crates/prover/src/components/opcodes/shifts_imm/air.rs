@@ -1,6 +1,5 @@
 //! AIR component for Shifts Imm (slli/srli/srai) - airs.md Section 4
 
-use crate::add_to_relation;
 use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;

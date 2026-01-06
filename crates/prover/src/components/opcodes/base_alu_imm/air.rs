@@ -1,6 +1,5 @@
 //! AIR component for Base ALU Imm (addi/xori/ori/andi) - airs.md Section 2
 
-use crate::add_to_relation;
 use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;

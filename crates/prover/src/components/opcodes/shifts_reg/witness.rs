@@ -14,7 +14,6 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::ShiftsRegColumns;
-use crate::{combine, write_pair};
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -289,7 +288,7 @@ pub fn gen_interaction_trace(
     // 15. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    crate::write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
+    write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

@@ -1,6 +1,5 @@
 //! AIR component for MULH (mulh/mulhsu/mulhu) - airs.md Section 15
 
-use crate::add_to_relation;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;

@@ -1,6 +1,5 @@
 //! AIR component for Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
 
-use crate::add_to_relation;
 use crate::relations::Relations;
 use num_traits::{One, Zero};
 use runner::decode::Opcode;

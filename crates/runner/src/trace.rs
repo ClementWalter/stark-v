@@ -15,7 +15,7 @@ pub const DEFAULT_MAX_CLOCK_DIFF: u32 = (1 << 20) - 1;
 // Generate all trace tables, Tracer struct, and trace_op! macro
 // =============================================================================
 
-runner_macros::define_trace_tables! {
+stwo_macros::define_trace_tables! {
     // ==========================================================================
     // 1. Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
     // ==========================================================================
