@@ -269,15 +269,17 @@ pub mod witness {
         }
 
         let cols = MemoryColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
+        let simd_size = cols.enabler.len();
 
-        // Numerator: enabler (1 for valid rows, 0 for padding)
-        let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+        // Numerator: negated enabler (to match gen_interaction_trace)
+        let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
+        // Register range_check_8_8 with negated multiplicity
         counters
             .range_check_8_8
-            .register_many(&enabler, &[cols.value_0, cols.value_1]);
+            .register_many(&neg_enabler, &[cols.value_0, cols.value_1]);
         counters
             .range_check_8_8
-            .register_many(&enabler, &[cols.value_2, cols.value_3]);
+            .register_many(&neg_enabler, &[cols.value_2, cols.value_3]);
     }
 }

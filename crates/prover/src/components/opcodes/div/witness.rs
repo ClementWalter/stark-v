@@ -314,21 +314,21 @@ pub fn register_multiplicities(
 
     let one = PackedM31::broadcast(BaseField::one());
 
-    // Numerators (same as gen_interaction_trace)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerators (same as gen_interaction_trace, but negated to match)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_div_flag[i]
+            -(cols.opcode_div_flag[i]
                 + cols.opcode_divu_flag[i]
                 + cols.opcode_rem_flag[i]
-                + cols.opcode_remu_flag[i]
+                + cols.opcode_remu_flag[i])
         })
         .collect();
     let special_case: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.zero_divisor[i] + cols.r_zero[i])
         .collect();
-    // enabler - special_case (for lt_diff lookup)
-    let valid_not_special: Vec<PackedM31> = (0..simd_size)
-        .map(|i| enabler[i] - special_case[i])
+    // -(enabler - special_case) for lt_diff lookup (negated to match)
+    let neg_valid_not_special: Vec<PackedM31> = (0..simd_size)
+        .map(|i| neg_enabler[i] + special_case[i])
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -344,31 +344,31 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 
-    // Register range_check_8_8 for q limbs
+    // Register range_check_8_8 for q limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.q_0, cols.q_1]);
+        .register_many(&neg_enabler, &[cols.q_0, cols.q_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.q_2, cols.q_3]);
+        .register_many(&neg_enabler, &[cols.q_2, cols.q_3]);
 
-    // Register range_check_8_8 for r limbs
+    // Register range_check_8_8 for r limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.r_0, cols.r_1]);
+        .register_many(&neg_enabler, &[cols.r_0, cols.r_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.r_2, cols.r_3]);
+        .register_many(&neg_enabler, &[cols.r_2, cols.r_3]);
 
     counters
         .range_check_20
-        .register_many(&valid_not_special, &[&lt_diff_minus_1]);
+        .register_many(&neg_valid_not_special, &[&lt_diff_minus_1]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

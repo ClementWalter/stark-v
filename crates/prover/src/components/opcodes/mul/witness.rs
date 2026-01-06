@@ -308,8 +308,8 @@ pub fn register_multiplicities(
 
     let inv_two_pow_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 8).inverse());
 
-    // Numerator: enabler (from column)
-    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
     // Clock differences
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -357,32 +357,32 @@ pub fn register_multiplicities(
         })
         .collect();
 
-    // Register range_check_20 for clock diffs
+    // Register range_check_20 for clock diffs with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 
-    // Register range_check_8_8 for carries
+    // Register range_check_8_8 for carries with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&carry_0, &carry_1]);
+        .register_many(&neg_enabler, &[&carry_0, &carry_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&carry_2, &carry_3]);
+        .register_many(&neg_enabler, &[&carry_2, &carry_3]);
 
-    // Register range_check_8_8 for rd limbs
+    // Register range_check_8_8 for rd limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_2, cols.rd_next_3]);
 
-    // Register range_check_20 for rd clock diff
+    // Register range_check_20 for rd clock diff with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

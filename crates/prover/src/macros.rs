@@ -298,13 +298,15 @@ macro_rules! relations {
                 let num_arr = num.to_array();
                 // Skip lanes with zero numerator before computing indices
                 let indices = T::index(denom);
+                const P: u64 = (1 << 31) - 1;
                 for (lane, &n) in num_arr.iter().enumerate() {
                     if n.0 == 0 {
                         continue;
                     }
                     let idx = indices[lane];
                     debug_assert!((idx as usize) < self.counts.len(), "index {idx} out of bounds");
-                    self.counts[idx as usize] += n.0;
+                    self.counts[idx as usize] =
+                        ((self.counts[idx as usize] as u64 + n.0 as u64) % P) as u32;
                 }
             }
 
@@ -323,6 +325,7 @@ macro_rules! relations {
                 let len = denom[0].len();
                 debug_assert!(num.len() == len, "num length mismatch");
                 debug_assert!(denom.iter().all(|c| c.len() == len), "column length mismatch");
+                const P: u64 = (1 << 31) - 1;
                 for i in 0..len {
                     let num_arr = num[i].to_array();
                     let values: Vec<PackedM31> = denom.iter().map(|c| c[i]).collect();
@@ -333,7 +336,8 @@ macro_rules! relations {
                         }
                         let idx = indices[lane];
                         debug_assert!((idx as usize) < self.counts.len(), "index {idx} out of bounds");
-                        self.counts[idx as usize] += n.0;
+                        self.counts[idx as usize] =
+                            ((self.counts[idx as usize] as u64 + n.0 as u64) % P) as u32;
                     }
                 }
             }
@@ -823,11 +827,12 @@ macro_rules! preprocessed_components {
                                 .map(|id| eval.get_preprocessed_column(id.clone()))
                                 .collect();
 
-                            // Add to relation with positive multiplicity (emit side)
+                            // Add to relation with negated multiplicity (emit side)
                             // Preprocessed tables emit their LogUp contributions
+                            // Negation here balances the negated multiplicity stored by register_multiplicities
                             eval.add_to_relation(RelationEntry::new(
                                 &self.relations.$table,
-                                E::EF::from(multiplicity),
+                                -E::EF::from(multiplicity),
                                 &preprocessed_cols,
                             ));
 
@@ -880,9 +885,10 @@ macro_rules! preprocessed_components {
                         let multiplicity = &trace[0].values.data;
 
                         // Convert multiplicity to PackedQM31 for write_col!
+                        // Negate to balance the negated multiplicity stored by register_multiplicities
                         let multiplicity_qm31: Vec<PackedQM31> = multiplicity
                             .iter()
-                            .map(|&m| PackedQM31::from(m))
+                            .map(|&m| -PackedQM31::from(m))
                             .collect();
 
                         // Collect preprocessed column data slices for combine!

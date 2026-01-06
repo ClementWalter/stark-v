@@ -256,13 +256,13 @@ pub fn register_multiplicities(
     let one = PackedM31::broadcast(BaseField::one());
     let pow2_7 = PackedM31::broadcast(BaseField::from_u32_unchecked(128));
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_blt_flag[i]
+            -(cols.opcode_blt_flag[i]
                 + cols.opcode_bltu_flag[i]
                 + cols.opcode_bge_flag[i]
-                + cols.opcode_bgeu_flag[i]
+                + cols.opcode_bgeu_flag[i])
         })
         .collect();
 
@@ -274,13 +274,13 @@ pub fn register_multiplicities(
         .collect();
     let diff_val_minus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.diff_val[i] - one).collect();
 
-    // prefix_sum = sum of diff_markers
-    let prefix_sum: Vec<PackedM31> = (0..simd_size)
+    // prefix_sum = sum of diff_markers (negated to match gen_interaction_trace)
+    let neg_prefix_sum: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.diff_marker_0[i]
+            -(cols.diff_marker_0[i]
                 + cols.diff_marker_1[i]
                 + cols.diff_marker_2[i]
-                + cols.diff_marker_3[i]
+                + cols.diff_marker_3[i])
         })
         .collect();
 
@@ -298,23 +298,23 @@ pub fn register_multiplicities(
         .map(|i| cols.rs2_msl_felt[i] + signed[i] * pow2_7)
         .collect();
 
-    // Register range_check_20: (clk - rs1_clk_prev)
+    // Register range_check_20: (clk - rs1_clk_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
 
-    // Register range_check_20: (clk - rs2_clk_prev)
+    // Register range_check_20: (clk - rs2_clk_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 
-    // Register range_check_8_8: (rs1_msl_adjusted, rs2_msl_adjusted)
+    // Register range_check_8_8: (rs1_msl_adjusted, rs2_msl_adjusted) with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[&rs1_msl_adjusted, &rs2_msl_adjusted]);
+        .register_many(&neg_enabler, &[&rs1_msl_adjusted, &rs2_msl_adjusted]);
 
-    // Register range_check_20: (diff_val - 1) with multiplicity prefix_sum
+    // Register range_check_20: (diff_val - 1) with negated prefix_sum multiplicity
     counters
         .range_check_20
-        .register_many(&prefix_sum, &[&diff_val_minus_1]);
+        .register_many(&neg_prefix_sum, &[&diff_val_minus_1]);
 }

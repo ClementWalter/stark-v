@@ -173,26 +173,26 @@ pub fn register_multiplicities(
     let cols = AuipcColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Numerator: enabler (1 for valid rows, 0 for padding)
-    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
     // Derived columns (same as gen_interaction_trace)
     let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
-    // Register range_check_8_8: (rd_next_1, rd_next_2)
+    // Register range_check_8_8: (rd_next_1, rd_next_2) with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_1, cols.rd_next_2]);
+        .register_many(&neg_enabler, &[cols.rd_next_1, cols.rd_next_2]);
 
-    // Register range_check_m31: (rd_next_0, rd_next_3)
+    // Register range_check_m31: (rd_next_0, rd_next_3) with negated multiplicity
     counters
         .range_check_m31
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_3]);
 
-    // Register range_check_20: (clk - rd_clk_prev)
+    // Register range_check_20: (clk - rd_clk_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

@@ -307,9 +307,9 @@ pub fn register_multiplicities(
     let cols = ShiftsRegColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_sll_flag[i] + cols.opcode_srl_flag[i] + cols.opcode_sra_flag[i])
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_sll_flag[i] + cols.opcode_srl_flag[i] + cols.opcode_sra_flag[i]))
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -358,27 +358,29 @@ pub fn register_multiplicities(
         .map(|i| pow2_12 * (cols.rs2_next_0[i] - shift_amount[i]))
         .collect();
 
+    // Register range_check_20 for clock diffs with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 
-    // Register range_check_20 for shift_check
+    // Register range_check_20 for shift_check with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&shift_check]);
+        .register_many(&neg_enabler, &[&shift_check]);
 
-    // Register range_check_8_8 for rd limbs
+    // Register range_check_8_8 for rd limbs with negated multiplicity
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_2, cols.rd_next_3]);
 
+    // Register range_check_20 for rd clock diff with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

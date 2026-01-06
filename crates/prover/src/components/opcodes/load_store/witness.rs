@@ -312,17 +312,17 @@ pub fn register_multiplicities(
     let pow2_14 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 14));
     let quarter_inv = PackedM31::broadcast(BaseField::from_u32_unchecked(4).inverse());
 
-    // Numerator: enabler (sum of opcode flags)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_lb_flag[i]
+            -(cols.opcode_lb_flag[i]
                 + cols.opcode_lh_flag[i]
                 + cols.opcode_lbu_flag[i]
                 + cols.opcode_lhu_flag[i]
                 + cols.opcode_lw_flag[i]
                 + cols.opcode_sb_flag[i]
                 + cols.opcode_sh_flag[i]
-                + cols.opcode_sw_flag[i]
+                + cols.opcode_sw_flag[i])
         })
         .collect();
 
@@ -344,20 +344,20 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&alignment_check]);
+        .register_many(&neg_enabler, &[&alignment_check]);
 
-    // Register range_check_m31: (rs1_next_0, rs1_next_3) for base address
+    // Register range_check_m31: (rs1_next_0, rs1_next_3) for base address with negated multiplicity
     counters
         .range_check_m31
-        .register_many(&enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
+        .register_many(&neg_enabler, &[cols.rs1_next_0, cols.rs1_next_3]);
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_src_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_src_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_dst_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_dst_clk_prev]);
 }

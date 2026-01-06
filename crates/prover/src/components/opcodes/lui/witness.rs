@@ -177,21 +177,21 @@ pub fn register_multiplicities(
     let cols = LuiColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Numerator: enabler (1 for valid rows, 0 for padding)
-    let enabler: Vec<PackedM31> = cols.enabler.to_vec();
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
     // Derived columns (same as gen_interaction_trace)
     let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
-    // Register range_check_8_8_4: (imm_1, imm_2, imm_0)
+    // Register range_check_8_8_4: (imm_1, imm_2, imm_0) with negated multiplicity
     counters
         .range_check_8_8_4
-        .register_many(&enabler, &[cols.imm_1, cols.imm_2, cols.imm_0]);
+        .register_many(&neg_enabler, &[cols.imm_1, cols.imm_2, cols.imm_0]);
 
-    // Register range_check_20: (clk - rd_clk_prev)
+    // Register range_check_20: (clk - rd_clk_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }

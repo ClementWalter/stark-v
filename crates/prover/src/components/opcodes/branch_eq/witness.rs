@@ -205,9 +205,9 @@ pub fn register_multiplicities(
     let cols = BranchEqColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    // Numerator: enabler (1 for valid rows, 0 for padding)
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_beq_flag[i] + cols.opcode_bne_flag[i])
+    // Numerator: negated enabler (to match gen_interaction_trace)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_beq_flag[i] + cols.opcode_bne_flag[i]))
         .collect();
 
     let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
@@ -219,8 +219,8 @@ pub fn register_multiplicities(
 
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
 }

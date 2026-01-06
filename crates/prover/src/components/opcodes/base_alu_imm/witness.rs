@@ -315,17 +315,17 @@ pub fn register_multiplicities(
         PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 3) * ((1 << 5) - 1)));
     let sext_mask_2 = PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 8) - 1));
 
-    // Numerators (same as gen_interaction_trace)
-    let enabler: Vec<PackedM31> = (0..simd_size)
+    // Numerators (same as gen_interaction_trace, but negated to match)
+    let neg_enabler: Vec<PackedM31> = (0..simd_size)
         .map(|i| {
-            cols.opcode_add_flag[i]
+            -(cols.opcode_add_flag[i]
                 + cols.opcode_xor_flag[i]
                 + cols.opcode_or_flag[i]
-                + cols.opcode_and_flag[i]
+                + cols.opcode_and_flag[i])
         })
         .collect();
-    let is_bitwise: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i])
+    let neg_is_bitwise: Vec<PackedM31> = (0..simd_size)
+        .map(|i| -(cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i]))
         .collect();
 
     // Derived columns (same as gen_interaction_trace)
@@ -353,44 +353,44 @@ pub fn register_multiplicities(
         .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
-    // Register range_check_8_11: (imm_0, imm_1 * 256) with multiplicity 1
+    // Register range_check_8_11: (imm_0, imm_1 * 256) with negated multiplicity
     counters
         .range_check_8_11
-        .register_many(&enabler, &[cols.imm_0, &imm_1_times_256]);
+        .register_many(&neg_enabler, &[cols.imm_0, &imm_1_times_256]);
 
     // Register range_check_20: (clk - rs1_clk_prev)
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
 
     // Register bitwise: 4 limbs (rs1_next[i], sext_imm[i], rd_next[i], bitwise_id)
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_0, &sext_imm_0, cols.rd_next_0, &bitwise_id],
     );
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_1, &sext_imm_1, cols.rd_next_1, &bitwise_id],
     );
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_2, &sext_imm_2, cols.rd_next_2, &bitwise_id],
     );
     counters.bitwise.register_many(
-        &is_bitwise,
+        &neg_is_bitwise,
         &[cols.rs1_next_3, &sext_imm_3, cols.rd_next_3, &bitwise_id],
     );
 
     // Register range_check_8_8: (rd_next[0], rd_next[1]) and (rd_next[2], rd_next[3])
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_0, cols.rd_next_1]);
+        .register_many(&neg_enabler, &[cols.rd_next_0, cols.rd_next_1]);
     counters
         .range_check_8_8
-        .register_many(&enabler, &[cols.rd_next_2, cols.rd_next_3]);
+        .register_many(&neg_enabler, &[cols.rd_next_2, cols.rd_next_3]);
 
     // Register range_check_20: (clk - rd_clk_prev)
     counters
         .range_check_20
-        .register_many(&enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
 }
