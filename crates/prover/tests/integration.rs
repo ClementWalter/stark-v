@@ -222,6 +222,34 @@ fn test_fibonacci_input_constraints() {
     Components::assert_constraints_on_polys(&traces, &relations);
 }
 
+/// Test constraint satisfaction for SHA256 with explicit input.
+#[test_log::test]
+fn test_sha2_constraints() {
+    use prover::components::{self, Components};
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::relations::Relations;
+    use runner::run_with_input;
+
+    ensure_guest_built();
+
+    // Create a small test message
+    let message: Vec<u8> = (0..44).map(|i| (i % 256) as u8).collect();
+    let len = message.len() as u32;
+    let mut input = len.to_le_bytes().to_vec();
+    input.extend_from_slice(&message);
+
+    let elf_path = guest_bin_dir().join("sha2_input");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read sha2_input ELF");
+
+    let run_result =
+        run_with_input(&elf_bytes, &input, 100_000_000).expect("Failed to run sha2_input");
+
+    let traces = components::gen_trace(run_result.tracer);
+    let relations = Relations::dummy();
+
+    Components::assert_constraints_on_polys(&traces, &relations);
+}
+
 /// End-to-end benchmark for SHA256 with variable-length input.
 #[test_log::test]
 fn test_e2e_sha2_benchmark() {
