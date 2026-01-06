@@ -1196,6 +1196,7 @@ dependencies = [
  "runner",
  "serde",
  "serde_json",
+ "sha2",
  "simd",
  "smalloc",
  "stwo",

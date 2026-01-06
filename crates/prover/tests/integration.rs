@@ -270,6 +270,11 @@ fn test_e2e_sha2_benchmark() {
         postcard::from_bytes(output_bytes).expect("Failed to decode sha2 output");
     assert_eq!(output.input_len, msg_len as u32);
 
+    // Verify the hash matches expected value computed with sha2 crate
+    use sha2::{Digest, Sha256};
+    let expected_hash: [u8; 32] = Sha256::digest(&message).into();
+    assert_eq!(output.hash, expected_hash, "SHA256 hash mismatch");
+
     let cycles = run_result.cycles;
     assert!(cycles > 0, "No cycles reported");
 

@@ -30,6 +30,7 @@ ctor = { workspace = true, optional = true }
 divan.workspace = true
 test-log.workspace = true
 postcard.workspace = true
+sha2 = { version = "0.10", default-features = false }
 
 [features]
 slow-tests = []
