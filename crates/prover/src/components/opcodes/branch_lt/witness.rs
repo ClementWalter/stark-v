@@ -166,13 +166,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -213,29 +213,29 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 9. range_check_20: -1 * (clk - rs2_clk_prev)
+    // 9. range_check_20: +1 * (clk - rs2_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs2_denom = combine!(relations.range_check_20, [&clk_minus_rs2_clk_prev]);
 
-    // 10. range_check_8_8: -1 * (rs1_msl_adjusted, rs2_msl_adjusted)
+    // 10. range_check_8_8: +1 * (rs1_msl_adjusted, rs2_msl_adjusted) [negation moved to preprocessed side]
     let rc_8_8_msl_denom = combine!(
         relations.range_check_8_8,
         [&rs1_msl_adjusted, &rs2_msl_adjusted]
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs2_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_msl_denom,
         logup_gen
     );
 
-    // 11. range_check_20: -prefix_sum * (diff_val - 1)
+    // 11. range_check_20: +prefix_sum * (diff_val - 1) [negation moved to preprocessed side]
     let rc_20_diff_denom = combine!(relations.range_check_20, [&diff_val_minus_1]);
-    let neg_prefix_sum: Vec<PackedQM31> =
-        prefix_sum.iter().map(|&p| -PackedQM31::from(p)).collect();
+    let pos_prefix_sum: Vec<PackedQM31> =
+        prefix_sum.iter().map(|&p| PackedQM31::from(p)).collect();
 
-    crate::write_col!(&neg_prefix_sum, &rc_20_diff_denom, logup_gen);
+    crate::write_col!(&pos_prefix_sum, &rc_20_diff_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

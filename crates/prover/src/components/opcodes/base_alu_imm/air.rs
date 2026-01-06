@@ -142,11 +142,11 @@ impl FrameworkEval for Eval {
         );
 
         // Range check imm
-        // - RC_8_11(imm_0, 2^8 * imm_1)
+        // + RC_8_11(imm_0, 2^8 * imm_1)
         add_to_relation!(
             eval,
             self.relations.range_check_8_11,
-            -enabler.clone(),
+            enabler.clone(),
             cols.imm_0,
             pow2(8) * cols.imm_1.clone()
         );
@@ -196,20 +196,20 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // + RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
         // Bitwise operations (for xor/or/and)
-        // - is_bitwise * Bitwise(rs1[i], sext_imm[i], rd[i], bitwise_id) for each limb
+        // + is_bitwise * Bitwise(rs1[i], sext_imm[i], rd[i], bitwise_id) for each limb
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            -is_bitwise.clone(),
+            is_bitwise.clone(),
             rs1[0].clone(),
             sext_imm[0].clone(),
             rd[0].clone(),
@@ -218,7 +218,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            -is_bitwise.clone(),
+            is_bitwise.clone(),
             rs1[1].clone(),
             sext_imm[1].clone(),
             rd[1].clone(),
@@ -227,7 +227,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            -is_bitwise.clone(),
+            is_bitwise.clone(),
             rs1[2].clone(),
             sext_imm[2].clone(),
             rd[2].clone(),
@@ -236,7 +236,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.bitwise,
-            -is_bitwise.clone(),
+            is_bitwise.clone(),
             rs1[3].clone(),
             sext_imm[3].clone(),
             rd[3].clone(),
@@ -244,19 +244,19 @@ impl FrameworkEval for Eval {
         );
 
         // Range check rd
-        // - RC_8_8(rd[0], rd[1])
+        // + RC_8_8(rd[0], rd[1])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -enabler.clone(),
+            enabler.clone(),
             rd[0].clone(),
             rd[1].clone()
         );
-        // - RC_8_8(rd[2], rd[3])
+        // + RC_8_8(rd[2], rd[3])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -enabler.clone(),
+            enabler.clone(),
             rd[2].clone(),
             rd[3].clone()
         );
@@ -288,11 +288,11 @@ impl FrameworkEval for Eval {
             rd[2].clone(),
             rd[3].clone()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // + RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

@@ -136,27 +136,27 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
 
-    // 7. range_check_8_8: -1 * (rd[0], rd[1])
+    // 7. range_check_8_8: +1 * (rd[0], rd[1]) [negation moved to preprocessed side]
     let rc_8_8_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
-    // 8. range_check_8_8: -1 * (rd[2], rd[3])
+    // 8. range_check_8_8: +1 * (rd[2], rd[3]) [negation moved to preprocessed side]
     let rc_8_8_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_0_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_1_denom,
         logup_gen
     );
@@ -197,10 +197,10 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: -1 * (clk - rd_clk_prev)
+    // 11. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    crate::write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
+    crate::write_col!(&pos_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

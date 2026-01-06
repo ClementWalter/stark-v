@@ -90,10 +90,6 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let neg_prefix_sum: Vec<PackedQM31> = prefix_sum_final
-        .iter()
-        .map(|&p| -PackedQM31::from(p))
-        .collect();
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -111,7 +107,7 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 2. range_check_8_8_4: -1 * (rs1_msl_adjusted, imm_0, 2*imm_1)
+    // 2. range_check_8_8_4: +1 * (rs1_msl_adjusted, imm_0, 2*imm_1) [negation moved to preprocessed side]
     let rc_8_8_4_denom = combine!(
         relations.range_check_8_8_4,
         [&rs1_msl_adjusted, cols.imm_0, &imm_1_times_2]
@@ -120,7 +116,7 @@ pub fn gen_interaction_trace(
     write_pair!(
         &neg_enabler,
         &program_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_4_denom,
         logup_gen
     );
@@ -175,16 +171,18 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 7. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
-    // 8. range_check_20: -prefix_sum * (diff_val - 1)
+    // 8. range_check_20: +prefix_sum * (diff_val - 1) [negation moved to preprocessed side]
     let rc_20_diff_denom = combine!(relations.range_check_20, [&diff_val_minus_1]);
+    let pos_prefix_sum: Vec<PackedQM31> =
+        prefix_sum_final.iter().map(|&p| PackedQM31::from(p)).collect();
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
-        &neg_prefix_sum,
+        &pos_prefix_sum,
         &rc_20_diff_denom,
         logup_gen
     );
@@ -225,10 +223,10 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: -1 * (clk - rd_clk_prev)
+    // 11. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
+    write_col!(&pos_enabler, &rc_20_rd_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

@@ -129,11 +129,11 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // + RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
@@ -164,46 +164,46 @@ impl FrameworkEval for Eval {
             cols.rs2_next_2,
             cols.rs2_next_3
         );
-        // - RC_20(clk - rs2_prev_clk)
+        // + RC_20(clk - rs2_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             cols.clk.clone() - cols.rs2_clk_prev.clone()
         );
 
         // Check carries
-        // - RC_8_8(carry[0], carry[1])
+        // + RC_8_8(carry[0], carry[1])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             carry[0].clone(),
             carry[1].clone()
         );
-        // - RC_8_8(carry[2], carry[3])
+        // + RC_8_8(carry[2], carry[3])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             carry[2].clone(),
             carry[3].clone()
         );
 
         // Range check rd
-        // - RC_8_8(rd[0], rd[1])
+        // + RC_8_8(rd[0], rd[1])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             rd[0].clone(),
             rd[1].clone()
         );
-        // - RC_8_8(rd[2], rd[3])
+        // + RC_8_8(rd[2], rd[3])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             rd[2].clone(),
             rd[3].clone()
         );
@@ -235,11 +235,11 @@ impl FrameworkEval for Eval {
             rd[2].clone(),
             rd[3].clone()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // + RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

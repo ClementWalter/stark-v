@@ -144,11 +144,11 @@ impl FrameworkEval for Eval {
         );
 
         // Range check imm and range check rs1_msl_felt with sign consideration
-        // - RC_8_8_4(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, 2*imm_1)
+        // + RC_8_8_4(rs1_msl_felt + opcode_slti_flag * 2^(8-1), imm_0, 2*imm_1)
         add_to_relation!(
             eval,
             self.relations.range_check_8_8_4,
-            -enabler.clone(),
+            enabler.clone(),
             cols.rs1_msl_felt.clone() + cols.opcode_slti_flag.clone() * pow2::<E>(7),
             cols.imm_0,
             two.clone() * cols.imm_1.clone()
@@ -199,20 +199,20 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // + RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
         // Range check diff_val is non-zero when prefix_sum = 1
-        // - prefix_sum * RC_20(diff_val - 1)
+        // + prefix_sum * RC_20(diff_val - 1)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -prefix_sum_final.clone(),
+            prefix_sum_final.clone(),
             cols.diff_val.clone() - E::F::one()
         );
 
@@ -243,11 +243,11 @@ impl FrameworkEval for Eval {
             E::F::zero(),
             E::F::zero()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // + RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

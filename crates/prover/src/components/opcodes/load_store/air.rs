@@ -333,33 +333,33 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // + RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
         // Check that (base[0] - shift_amount) is a multiple of 4
-        // - RC_20(2^14 * (base[0] - shift_amount) / 2^2)
+        // + RC_20(2^14 * (base[0] - shift_amount) / 2^2)
         // This simplifies to checking (base[0] - shift_amount) / 4 is in range
         let quarter_inv = BaseField::from_u32_unchecked(4).inverse();
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             (base[0].clone() - cols.shift_amount.clone())
                 * quarter_inv
                 * E::F::from(BaseField::from_u32_unchecked(1 << 14))
         );
 
         // Check that base is a M31
-        // - RC_M31(base[0], base[3])
+        // + RC_M31(base[0], base[3])
         add_to_relation!(
             eval,
             self.relations.range_check_m31,
-            -enabler.clone(),
+            enabler.clone(),
             base[0].clone(),
             base[3].clone()
         );
@@ -391,11 +391,11 @@ impl FrameworkEval for Eval {
             cols.src_next_2,
             src[3].clone()
         );
-        // - RC_20(clk - src_prev_clk)
+        // + RC_20(clk - src_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.src_clk_prev.clone()
         );
 
@@ -426,11 +426,11 @@ impl FrameworkEval for Eval {
             dst[2].clone(),
             dst[3].clone()
         );
-        // - RC_20(clk - dst_prev_clk)
+        // + RC_20(clk - dst_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.dst_clk_prev.clone()
         );
 

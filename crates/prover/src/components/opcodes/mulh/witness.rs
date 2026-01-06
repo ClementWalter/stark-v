@@ -218,13 +218,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
@@ -265,66 +265,66 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 9. range_check_20: -1 * (clk - rs2_clk_prev)
+    // 9. range_check_20: +1 * (clk - rs2_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs2_denom = combine!(relations.range_check_20, [&clk_minus_rs2_clk_prev]);
 
-    // 10. range_check_8_8: -1 * (carry[0], carry[1])
+    // 10. range_check_8_8: +1 * (carry[0], carry[1]) [negation moved to preprocessed side]
     let rc_8_8_carry_0_denom = combine!(relations.range_check_8_8, [&carry[0], &carry[1]]);
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs2_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_carry_0_denom,
         logup_gen
     );
 
-    // 11. range_check_8_8: -1 * (carry[2], carry[3])
+    // 11. range_check_8_8: +1 * (carry[2], carry[3]) [negation moved to preprocessed side]
     let rc_8_8_carry_1_denom = combine!(relations.range_check_8_8, [&carry[2], &carry[3]]);
 
-    // 12. range_check_8_8: -1 * (carry[4], carry[5])
+    // 12. range_check_8_8: +1 * (carry[4], carry[5]) [negation moved to preprocessed side]
     let rc_8_8_carry_2_denom = combine!(relations.range_check_8_8, [&carry[4], &carry[5]]);
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_carry_1_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_carry_2_denom,
         logup_gen
     );
 
-    // 13. range_check_8_8: -1 * (carry[6], carry[7])
+    // 13. range_check_8_8: +1 * (carry[6], carry[7]) [negation moved to preprocessed side]
     let rc_8_8_carry_3_denom = combine!(relations.range_check_8_8, [&carry[6], &carry[7]]);
 
-    // 14. range_check_8_8: -1 * (rd_low[0], rd_low[1])
+    // 14. range_check_8_8: +1 * (rd_low[0], rd_low[1]) [negation moved to preprocessed side]
     let rc_8_8_rd_low_0_denom =
         combine!(relations.range_check_8_8, [cols.rd_high_0, cols.rd_high_1]);
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_carry_3_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_rd_low_0_denom,
         logup_gen
     );
 
-    // 15. range_check_8_8: -1 * (rd_low[2], rd_low[3])
+    // 15. range_check_8_8: +1 * (rd_low[2], rd_low[3]) [negation moved to preprocessed side]
     let rc_8_8_rd_low_1_denom =
         combine!(relations.range_check_8_8, [cols.rd_high_2, cols.rd_high_3]);
 
-    // 16. range_check_8_8: -1 * (rd_high[0], rd_high[1])
+    // 16. range_check_8_8: +1 * (rd_high[0], rd_high[1]) [negation moved to preprocessed side]
     let rc_8_8_rd_high_0_denom =
         combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_rd_low_1_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_rd_high_0_denom,
         logup_gen
     );
 
-    // 17. range_check_8_8: -1 * (rd_high[2], rd_high[3])
+    // 17. range_check_8_8: +1 * (rd_high[2], rd_high[3]) [negation moved to preprocessed side]
     let rc_8_8_rd_high_1_denom =
         combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
@@ -343,7 +343,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_rd_high_1_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -364,13 +364,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 20. range_check_20: -1 * (clk - rd_clk_prev)
+    // 20. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rd_denom,
         logup_gen
     );

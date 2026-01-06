@@ -179,30 +179,30 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 6. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
 
-    // 7. range_check_20: -1 * alignment_check
+    // 7. range_check_20: +1 * alignment_check [negation moved to preprocessed side]
     let rc_20_align_denom = combine!(relations.range_check_20, [&alignment_check]);
 
-    // 8. range_check_m31: -1 * (base[0], base[3])
+    // 8. range_check_m31: +1 * (base[0], base[3]) [negation moved to preprocessed side]
     let rc_m31_base_denom = combine!(
         relations.range_check_m31,
         [cols.rs1_next_0, cols.rs1_next_3]
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_align_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_m31_base_denom,
         logup_gen
     );
@@ -243,7 +243,7 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: -1 * (clk - src_clk_prev)
+    // 11. range_check_20: +1 * (clk - src_clk_prev) [negation moved to preprocessed side]
     let rc_20_src_denom = combine!(relations.range_check_20, [&clk_minus_src_clk_prev]);
 
     // 12. memory_access: -enabler * (dst_as, dst_addr_selector, dst_clk_prev, dst_prev_0..3)
@@ -261,7 +261,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_src_denom,
         &neg_enabler,
         &dst_read_denom,
@@ -282,13 +282,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 14. range_check_20: -1 * (clk - dst_clk_prev)
+    // 14. range_check_20: +1 * (clk - dst_clk_prev) [negation moved to preprocessed side]
     let rc_20_dst_denom = combine!(relations.range_check_20, [&clk_minus_dst_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &dst_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_dst_denom,
         logup_gen
     );

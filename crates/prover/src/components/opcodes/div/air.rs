@@ -324,11 +324,11 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // + RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
@@ -359,53 +359,53 @@ impl FrameworkEval for Eval {
             cols.rs2_next_2,
             cols.rs2_next_3
         );
-        // - RC_20(clk - rs2_prev_clk)
+        // + RC_20(clk - rs2_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rs2_clk_prev.clone()
         );
 
-        // Check carries using RC_8_11: - enabler * RC_8_11(q[i], carry[i]) for i in [0..3]
-        // and - enabler * RC_8_11(r[i], carry[4+i]) for i in [0..3]
+        // Check carries using RC_8_11: + enabler * RC_8_11(q[i], carry[i]) for i in [0..3]
+        // and + enabler * RC_8_11(r[i], carry[4+i]) for i in [0..3]
         // Note: These require computing carries which needs the full b = c*q + r relation
         // For now, we use RC_8_8 for quotient and remainder limb range checks
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -enabler.clone(),
+            enabler.clone(),
             cols.q_0,
             cols.q_1
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -enabler.clone(),
+            enabler.clone(),
             cols.q_2,
             cols.q_3
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -enabler.clone(),
+            enabler.clone(),
             cols.r_0,
             cols.r_1
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -enabler.clone(),
+            enabler.clone(),
             cols.r_2,
             cols.r_3
         );
 
         // lt_diff is non-zero whenever the comparison is executed
-        // - (enabler - special_case) * RC_20(lt_diff - 1)
+        // + (enabler - special_case) * RC_20(lt_diff - 1)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -(enabler.clone() - special_case.clone()),
+            enabler.clone() - special_case.clone(),
             cols.lt_diff.clone() - E::F::one()
         );
 
@@ -436,11 +436,11 @@ impl FrameworkEval for Eval {
             a[2].clone(),
             a[3].clone()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // + RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -enabler.clone(),
+            enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

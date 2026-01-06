@@ -103,17 +103,17 @@ pub fn gen_interaction_trace(
     // 3. registers_state: +enabler * (pc+4, clk+1)
     let registers_write_denom = combine!(relations.registers_state, [&pc_plus_4, &clk_plus_1]);
 
-    // 4. range_check_8_8_4: -1 * (imm_1, imm_2, imm_0)
+    // 4. range_check_8_8_4: +1 * (imm_1, imm_2, imm_0) [negation moved to preprocessed side]
     let rc_8_8_4_denom = combine!(
         relations.range_check_8_8_4,
         [cols.imm_1, cols.imm_2, cols.imm_0]
     );
 
-    // Pair 3+4: +enabler and -1
+    // Pair 3+4: +enabler and +1
     write_pair!(
         &pos_enabler,
         &registers_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_4_denom,
         logup_gen
     );
@@ -155,11 +155,11 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: -1 * (clk - rd_clk_prev)
+    // 7. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
     let rc_20_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
-    // Leftover entry 7: -1 numerator
-    write_col!(&neg_enabler, &rc_20_denom, logup_gen);
+    // Leftover entry 7: +1 numerator
+    write_col!(&pos_enabler, &rc_20_denom, logup_gen);
 
     logup_gen.finalize_last()
 }

@@ -125,20 +125,20 @@ impl FrameworkEval for Eval {
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // + RC_20(clk - rs1_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
         // Check that rs1 is a M31
-        // - RC_M31(rs1[0], rs1[3])
+        // + RC_M31(rs1[0], rs1[3])
         add_to_relation!(
             eval,
             self.relations.range_check_m31,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             rs1[0].clone(),
             rs1[3].clone()
         );
@@ -162,19 +162,19 @@ impl FrameworkEval for Eval {
         );
 
         // Check that rd is a M31
-        // - RC_8_8(rd[1], rd[2])
+        // + RC_8_8(rd[1], rd[2])
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             rd[1].clone(),
             rd[2].clone()
         );
-        // - RC_M31(rd[0], rd[3])
+        // + RC_M31(rd[0], rd[3])
         add_to_relation!(
             eval,
             self.relations.range_check_m31,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             rd[0].clone(),
             rd[3].clone()
         );
@@ -206,11 +206,11 @@ impl FrameworkEval for Eval {
             rd[2].clone(),
             rd[3].clone()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // + RC_20(clk - rd_prev_clk)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
-            -cols.enabler.clone(),
+            cols.enabler.clone(),
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 

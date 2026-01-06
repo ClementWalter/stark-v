@@ -108,8 +108,8 @@ pub fn gen_interaction_trace(
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
-    let neg_is_bitwise: Vec<PackedQM31> =
-        is_bitwise.iter().map(|&b| -PackedQM31::from(b)).collect();
+    let pos_is_bitwise: Vec<PackedQM31> =
+        is_bitwise.iter().map(|&b| PackedQM31::from(b)).collect();
 
     // =====================================================================
     // LogUp entries (same order as AIR)
@@ -127,13 +127,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 2. range_check_8_11: -1 * (imm_0, imm_1 * 256)
+    // 2. range_check_8_11: +1 * (imm_0, imm_1 * 256) [negation moved to preprocessed side]
     let rc_8_11_denom = combine!(relations.range_check_8_11, [cols.imm_0, &imm_1_times_256]);
 
     write_pair!(
         &neg_enabler,
         &program_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_11_denom,
         logup_gen
     );
@@ -188,61 +188,61 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 7. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
-    // 8. bitwise: -is_bitwise * (rs1[0], sext_imm[0], rd[0], bitwise_id)
+    // 8. bitwise: +is_bitwise * (rs1[0], sext_imm[0], rd[0], bitwise_id) [negation moved to preprocessed side]
     let bitwise_0_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_0, &sext_imm_0, cols.rd_next_0, &bitwise_id]
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
-        &neg_is_bitwise,
+        &pos_is_bitwise,
         &bitwise_0_denom,
         logup_gen
     );
 
-    // 9. bitwise: -is_bitwise * (rs1[1], sext_imm[1], rd[1], bitwise_id)
+    // 9. bitwise: +is_bitwise * (rs1[1], sext_imm[1], rd[1], bitwise_id) [negation moved to preprocessed side]
     let bitwise_1_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_1, &sext_imm_1, cols.rd_next_1, &bitwise_id]
     );
 
-    // 10. bitwise: -is_bitwise * (rs1[2], sext_imm[2], rd[2], bitwise_id)
+    // 10. bitwise: +is_bitwise * (rs1[2], sext_imm[2], rd[2], bitwise_id) [negation moved to preprocessed side]
     let bitwise_2_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_2, &sext_imm_2, cols.rd_next_2, &bitwise_id]
     );
 
     write_pair!(
-        &neg_is_bitwise,
+        &pos_is_bitwise,
         &bitwise_1_denom,
-        &neg_is_bitwise,
+        &pos_is_bitwise,
         &bitwise_2_denom,
         logup_gen
     );
 
-    // 11. bitwise: -is_bitwise * (rs1[3], sext_imm[3], rd[3], bitwise_id)
+    // 11. bitwise: +is_bitwise * (rs1[3], sext_imm[3], rd[3], bitwise_id) [negation moved to preprocessed side]
     let bitwise_3_denom = combine!(
         relations.bitwise,
         [cols.rs1_next_3, &sext_imm_3, cols.rd_next_3, &bitwise_id]
     );
 
-    // 12. range_check_8_8: -1 * (rd[0], rd[1])
+    // 12. range_check_8_8: +1 * (rd[0], rd[1]) [negation moved to preprocessed side]
     let rc_8_8_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
     write_pair!(
-        &neg_is_bitwise,
+        &pos_is_bitwise,
         &bitwise_3_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_0_denom,
         logup_gen
     );
 
-    // 13. range_check_8_8: -1 * (rd[2], rd[3])
+    // 13. range_check_8_8: +1 * (rd[2], rd[3]) [negation moved to preprocessed side]
     let rc_8_8_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
     // 14. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
@@ -260,7 +260,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_1_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -281,13 +281,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 16. range_check_20: -1 * (clk - rd_clk_prev)
+    // 16. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rd_denom,
         logup_gen
     );

@@ -114,18 +114,18 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 4. range_check_20: -1 * (clk - rs1_clk_prev)
+    // 4. range_check_20: +1 * (clk - rs1_clk_prev) [negation moved to preprocessed side]
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rs1_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rs1_denom,
         logup_gen
     );
 
-    // 5. range_check_m31: -1 * (rs1_next_0, rs1_next_3)
+    // 5. range_check_m31: +1 * (rs1_next_0, rs1_next_3) [negation moved to preprocessed side]
     let rc_m31_rs1_denom = combine!(
         relations.range_check_m31,
         [cols.rs1_next_0, cols.rs1_next_3]
@@ -135,7 +135,7 @@ pub fn gen_interaction_trace(
     let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clk]);
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_m31_rs1_denom,
         &neg_enabler,
         &registers_read_denom,
@@ -145,18 +145,18 @@ pub fn gen_interaction_trace(
     // 7. registers_state: +enabler * (2 * to_pc_over_two, clk + 1)
     let registers_write_denom = combine!(relations.registers_state, [&to_pc, &clk_plus_1]);
 
-    // 8. range_check_8_8: -1 * (rd_next_1, rd_next_2)
+    // 8. range_check_8_8: +1 * (rd_next_1, rd_next_2) [negation moved to preprocessed side]
     let rc_8_8_denom = combine!(relations.range_check_8_8, [cols.rd_next_1, cols.rd_next_2]);
 
     write_pair!(
         &pos_enabler,
         &registers_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_8_8_denom,
         logup_gen
     );
 
-    // 9. range_check_m31: -1 * (rd_next_0, rd_next_3)
+    // 9. range_check_m31: +1 * (rd_next_0, rd_next_3) [negation moved to preprocessed side]
     let rc_m31_rd_denom = combine!(relations.range_check_m31, [cols.rd_next_0, cols.rd_next_3]);
 
     // 10. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
@@ -174,7 +174,7 @@ pub fn gen_interaction_trace(
     );
 
     write_pair!(
-        &neg_enabler,
+        &pos_enabler,
         &rc_m31_rd_denom,
         &neg_enabler,
         &rd_read_denom,
@@ -195,13 +195,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 12. range_check_20: -1 * (clk - rd_clk_prev)
+    // 12. range_check_20: +1 * (clk - rd_clk_prev) [negation moved to preprocessed side]
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_pair!(
         &pos_enabler,
         &rd_write_denom,
-        &neg_enabler,
+        &pos_enabler,
         &rc_20_rd_denom,
         logup_gen
     );

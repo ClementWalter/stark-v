@@ -823,11 +823,12 @@ macro_rules! preprocessed_components {
                                 .map(|id| eval.get_preprocessed_column(id.clone()))
                                 .collect();
 
-                            // Add to relation with positive multiplicity (emit side)
+                            // Add to relation with NEGATIVE multiplicity (emit side)
                             // Preprocessed tables emit their LogUp contributions
+                            // Negation is applied here to balance with consumer (opcode) lookups
                             eval.add_to_relation(RelationEntry::new(
                                 &self.relations.$table,
-                                E::EF::from(multiplicity),
+                                -E::EF::from(multiplicity),
                                 &preprocessed_cols,
                             ));
 
@@ -879,10 +880,11 @@ macro_rules! preprocessed_components {
                         // Get multiplicity from trace (how many times each value was looked up)
                         let multiplicity = &trace[0].values.data;
 
-                        // Convert multiplicity to PackedQM31 for write_col!
+                        // Convert multiplicity to NEGATED PackedQM31 for write_col!
+                        // The negation is applied here so consumer sites use positive numerators
                         let multiplicity_qm31: Vec<PackedQM31> = multiplicity
                             .iter()
-                            .map(|&m| PackedQM31::from(m))
+                            .map(|&m| -PackedQM31::from(m))
                             .collect();
 
                         // Collect preprocessed column data slices for combine!

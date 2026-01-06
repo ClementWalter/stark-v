@@ -63,18 +63,20 @@ pub mod air {
                 multiplicity.clone() * (multiplicity.clone() * multiplicity.clone() - one.clone()),
             );
 
+            // +1 * range_check_8_8 [negation moved to preprocessed side]
             add_to_relation!(
                 eval,
                 self.relations.range_check_8_8,
-                -enabler.clone(),
+                enabler.clone(),
                 value_0.clone(),
                 value_1.clone()
             );
 
+            // +1 * range_check_8_8 [negation moved to preprocessed side]
             add_to_relation!(
                 eval,
                 self.relations.range_check_8_8,
-                -enabler.clone(),
+                enabler.clone(),
                 value_2.clone(),
                 value_3.clone()
             );
@@ -179,6 +181,9 @@ pub mod witness {
         let pos_mult: Vec<PackedQM31> = (0..simd_size)
             .map(|i| PackedQM31::from(cols.multiplicity[i]))
             .collect();
+        let pos_enabler: Vec<PackedQM31> = (0..simd_size)
+            .map(|i| PackedQM31::from(cols.enabler[i]))
+            .collect();
         let neg_enabler: Vec<PackedQM31> = (0..simd_size)
             .map(|i| -PackedQM31::from(cols.enabler[i]))
             .collect();
@@ -232,10 +237,11 @@ pub mod witness {
             ]
         );
 
+        // +1 * range_check_8_8 [negation moved to preprocessed side]
         write_pair!(
-            &neg_enabler,
+            &pos_enabler,
             &range_check_8_8_0_denom,
-            &neg_enabler,
+            &pos_enabler,
             &range_check_8_8_1_denom,
             interaction_trace
         );
