@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 serde.workspace = true
+sha2 = { version = "0.10", default-features = false }
 
 # postcard with alloc feature for native builds (needed by dispatcher)
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

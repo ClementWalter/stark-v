@@ -767,6 +767,7 @@ version = "0.1.0"
 dependencies = [
  "postcard",
  "serde",
+ "sha2",
 ]
 
 [[package]]
@@ -1195,6 +1196,7 @@ dependencies = [
  "runner",
  "serde",
  "serde_json",
+ "sha2",
  "simd",
  "smalloc",
  "stwo",

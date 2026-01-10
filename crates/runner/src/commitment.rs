@@ -1,5 +1,5 @@
-use itertools::Itertools;
 use rustc_hash::FxHashMap;
+use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::Memory;
@@ -248,11 +248,17 @@ impl Tracer {
         let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
 
-        let mem_addrs = memory
-            .keys()
-            .filter(|&addr| layout.is_rw_addr(addr))
-            .map(|addr| addr & !3)
-            .dedup();
+        let mut mem_addrs = BTreeSet::new();
+        for addr in memory.keys() {
+            if layout.is_rw_addr(addr) {
+                mem_addrs.insert(addr & !3);
+            }
+        }
+        for addr in self.mem_clk.keys().copied() {
+            if layout.is_rw_addr(addr) {
+                mem_addrs.insert(addr & !3);
+            }
+        }
 
         for addr in mem_addrs {
             let is_input = layout.is_input_addr(addr);
