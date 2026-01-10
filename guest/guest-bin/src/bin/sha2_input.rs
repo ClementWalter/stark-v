@@ -18,10 +18,7 @@ guest_bin::guest_main!({
 
     let data_len = len.min(MAX_MSG_LEN);
     let buf = unsafe {
-        core::slice::from_raw_parts_mut(
-            core::ptr::addr_of_mut!(INPUT_BUF) as *mut u8,
-            MAX_MSG_LEN,
-        )
+        core::slice::from_raw_parts_mut(core::ptr::addr_of_mut!(INPUT_BUF) as *mut u8, MAX_MSG_LEN)
     };
 
     // Read data bytes starting at offset 4 (after the length prefix).

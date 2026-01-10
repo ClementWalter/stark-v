@@ -1,5 +1,5 @@
-use std::collections::BTreeSet;
 use rustc_hash::FxHashMap;
+use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::Memory;
