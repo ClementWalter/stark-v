@@ -91,8 +91,9 @@ mod tests {
         let signature: Signature = signing_key.sign(&msg_hash);
         let sig_bytes: [u8; 64] = signature.to_bytes().into();
 
-        // Get compressed public key
-        let pubkey_bytes: [u8; 33] = verifying_key.to_sec1_bytes().as_ref().try_into().unwrap();
+        // Get compressed public key using to_encoded_point (no alloc needed)
+        let encoded_point = verifying_key.to_encoded_point(true);
+        let pubkey_bytes: [u8; 33] = encoded_point.as_bytes().try_into().unwrap();
 
         // Verify
         let result = ecdsa_verify(&msg_hash, &sig_bytes, &pubkey_bytes);
