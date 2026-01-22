@@ -304,7 +304,7 @@ fn run_prove(
     // Generate proof
     info!("Generating proof...");
     let config = PcsConfig::default();
-    let proof = prove_rv32im(run_result, config.clone());
+    let proof = prove_rv32im(run_result, config);
 
     // The proof size estimate is logged by stwo during proving
     // We'll use 0 as placeholder since we can't easily serialize the proof

@@ -15,6 +15,7 @@ words:
   - bytemuck
   - cfgs
   - clément
+  - Circom
   - clippy
   - condvar
   - csrrw
@@ -23,6 +24,7 @@ words:
   - doubleword
   - dtolnay
   - ebreak
+  - eprintln
   - ecall
   - ehdr
   - evals
@@ -44,6 +46,8 @@ words:
   - jemalloc
   - jemallocator
   - kakarot
+  - keccak
+  - Keccak
   - Kitem
   - littleriscv
   - loadb
@@ -84,6 +88,7 @@ words:
   - openvm
   - pairable
   - popcount
+  - precomputation
   - println
   - readelf
   - regs
@@ -94,8 +99,10 @@ words:
   - rodata
   - rustc
   - rustflags
+  - rustup
   - rzup
   - sdiv
+  - secp
   - serde
   - shamir
   - shamt
