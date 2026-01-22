@@ -21,8 +21,9 @@ pub mod programs;
 // =============================================================================
 
 pub use programs::{
-    BranchResult, ConstantResult, FactorialResult, FibResult, LoadMergeResult, MemoryTestResult,
-    MulDivResult, Sha2Result, branch, constant, fact, fib, load_merge, memory, muldiv, sha256,
+    BranchResult, ConstantResult, EcdsaResult, FactorialResult, FibResult, KeccakResult,
+    LoadMergeResult, MemoryTestResult, MulDivResult, Sha2Result, branch, constant, ecdsa_verify,
+    fact, fib, keccak256, load_merge, memory, muldiv, sha256,
 };
 
 // =============================================================================

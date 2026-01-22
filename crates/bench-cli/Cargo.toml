@@ -1,0 +1,22 @@
+[package]
+name = "bench-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for benchmarking stark-v proving and verification"
+
+[[bin]]
+name = "stark-v-bench"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+prover = { workspace = true }
+runner = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+parallel = ["prover/parallel"]
+jemalloc = ["prover/jemalloc"]
