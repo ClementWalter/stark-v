@@ -63,6 +63,9 @@ comfy-table = "7.1"
 # Error handling
 thiserror = "2.0"
 
+# External zkVM interface
+ere-zkvm-interface = { git = "https://github.com/eth-act/ere", tag = "v0.0.13" }
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

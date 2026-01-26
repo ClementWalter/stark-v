@@ -1,6 +1,8 @@
 //! stark-v SDK - Build and prove RISC-V programs.
 //!
-//! This crate provides a unified interface for external consumers of stark-v.
+//! This crate provides a unified interface for external consumers of stark-v,
+//! including implementation of the [`ere_zkvm_interface`] traits for interoperability
+//! with other zkVMs.
 //!
 //! # Modules
 //!
@@ -8,22 +10,23 @@
 //! - [`prover`] - Proving and verification functions
 //! - [`runner`] - Program execution and tracing
 //!
-//! # Example
+//! # Example using ere-zkvm-interface
 //!
 //! ```ignore
-//! use stark_v_sdk::runner::run_with_input;
-//! use stark_v_sdk::prover::{prove_rv32im, verify_rv32im, PcsConfig};
+//! use ere_zkvm_interface::{Compiler, zkVM, InputItem};
+//! use stark_v_sdk::{StarkVCompiler, StarkV};
 //!
-//! // Run the program
-//! let elf_bytes = std::fs::read("program.elf")?;
-//! let result = run_with_input(&elf_bytes, &input, 1_000_000)?;
+//! // Compile a guest program
+//! let compiler = StarkVCompiler::new();
+//! let program = compiler.compile(Path::new("guest/sha256"))?;
 //!
-//! // Generate proof
-//! let config = PcsConfig::default();
-//! let proof = prove_rv32im(result, config.clone());
+//! // Create VM instance and prove
+//! let mut vm = StarkV::new(program);
+//! let input = vec![InputItem::Raw(input_bytes)];
+//! let (public_values, proof, report) = vm.prove(input)?;
 //!
-//! // Verify proof
-//! verify_rv32im(proof, config)?;
+//! // Verify
+//! vm.verify(&proof)?;
 //! ```
 
 /// Guest program utilities: I/O memory layout, constants, and helpers.
@@ -34,3 +37,17 @@ pub use prover;
 
 /// Program execution and tracing.
 pub use runner;
+
+// Re-export key types for convenience
+pub use prover::{PcsConfig, Proof};
+pub use runner::{RunError, RunResult};
+
+mod compiler;
+mod proof_serde;
+mod vm;
+
+pub use compiler::{StarkVCompiler, StarkVCompilerError};
+pub use vm::StarkV;
+
+/// Maximum cycles for program execution (default).
+pub const DEFAULT_MAX_CYCLES: u64 = 100_000_000;
