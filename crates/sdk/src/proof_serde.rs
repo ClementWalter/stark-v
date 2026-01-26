@@ -1,13 +1,11 @@
 //! Proof serialization utilities.
 //!
-//! This module provides utilities for serializing and deserializing stark-v proofs.
+//! stark-v proofs are serialized using postcard for efficient binary encoding.
+//! All proof types implement Serialize/Deserialize via serde.
 //!
-//! **Note**: Full proof serialization is a work in progress. Currently, the VM
-//! caches proofs internally for verification. Full serialization support will
-//! be added once the underlying proof types support Serialize/Deserialize.
-
-// TODO: Implement full proof serialization once prover types have Serialize derives.
-// This will involve:
-// 1. Adding Serialize/Deserialize to Claim, InteractionClaim, PublicData
-// 2. Using postcard for efficient binary serialization
-// 3. Providing conversion to/from ere_zkvm_interface::Proof::Bytes
+//! The proof type is `prover::Proof<Blake2sMerkleHasher>` which contains:
+//! - `claim`: Component log sizes
+//! - `interaction_claim`: LogUp claimed sums
+//! - `public_data`: Execution state (PC, registers, I/O)
+//! - `stark_proof`: The underlying STARK proof
+//! - `interaction_pow`: Proof-of-work nonce

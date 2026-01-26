@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: no-external-changes
+        name: Prevent changes to external directory
+        language: system
+        entry:
+          "bash -c 'git diff --cached --name-only | grep -q ^external/ && echo
+          Error: Changes to external/ directory are not allowed && exit 1 ||
+          exit 0'"
+        pass_filenames: false
+        always_run: true
+
+      - id: trunk
+        name: Trunk check
+        language: system
+        pass_filenames: false
+        entry: trunk check --fix --ci

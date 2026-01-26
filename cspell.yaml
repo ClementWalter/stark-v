@@ -14,8 +14,8 @@ words:
   - bltu
   - bytemuck
   - cfgs
-  - clément
   - Circom
+  - clément
   - clippy
   - condvar
   - csrrw
@@ -24,15 +24,16 @@ words:
   - doubleword
   - dtolnay
   - ebreak
-  - eprintln
   - ecall
   - ehdr
+  - eprintln
   - evals
   - filesz
   - fondeur
   - funct
   - futex
   - globl
+  - Groth
   - halfword
   - hashbrown
   - idents

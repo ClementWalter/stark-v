@@ -111,17 +111,13 @@ impl zkVM for StarkV {
         let output = run_result.output.clone().unwrap_or_default();
 
         // Generate the proof
-        let _proof = prover::prove_rv32im(run_result, self.config.clone());
+        let proof = prover::prove_rv32im(run_result, self.config);
         let duration = start.elapsed();
 
-        // TODO: Serialize the proof properly once proof types support Serialize
-        // For now, we return an empty proof as a placeholder
-        // Full proof serialization requires adding Serialize derives to:
-        // - prover::Proof
-        // - prover::components::Claim
-        // - prover::InteractionClaim
-        // - prover::PublicData
-        let ere_proof = EreProof::Compressed(Vec::new());
+        // Serialize the proof using postcard
+        let proof_bytes = postcard::to_allocvec(&proof)
+            .map_err(|e| zkVMError::other(format!("Failed to serialize proof: {e}")))?;
+        let ere_proof = EreProof::Compressed(proof_bytes);
 
         let report = ProgramProvingReport {
             proving_time: duration,
@@ -130,12 +126,35 @@ impl zkVM for StarkV {
         Ok((output, ere_proof, report))
     }
 
-    fn verify(&self, _proof: &EreProof) -> Result<PublicValues, zkVMError> {
-        // TODO: Implement proper verification once proof serialization is available
-        // Currently, proof bytes are empty so we cannot verify
-        Err(zkVMError::other(
-            "Proof verification not yet implemented - proof serialization required",
-        ))
+    fn verify(&self, proof: &EreProof) -> Result<PublicValues, zkVMError> {
+        use stwo::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+
+        let proof_bytes = match proof {
+            EreProof::Compressed(bytes) => bytes,
+            EreProof::Groth16(_) => {
+                return Err(zkVMError::other("stark-v does not support Groth16 proofs"));
+            }
+        };
+
+        // Deserialize the proof
+        let proof: prover::Proof<Blake2sMerkleHasher> = postcard::from_bytes(proof_bytes)
+            .map_err(|e| zkVMError::other(format!("Failed to deserialize proof: {e}")))?;
+
+        // Extract output before verification
+        let output = proof
+            .public_data
+            .io_entries
+            .output_words
+            .iter()
+            .flat_map(|w| w.value.to_le_bytes())
+            .take(proof.public_data.io_entries.output_len as usize)
+            .collect::<Vec<u8>>();
+
+        // Verify the proof
+        prover::verify_rv32im(proof, self.config)
+            .map_err(|e| zkVMError::other(format!("Proof verification failed: {e}")))?;
+
+        Ok(output)
     }
 
     fn name(&self) -> &'static str {

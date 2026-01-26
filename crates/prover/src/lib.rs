@@ -88,6 +88,7 @@ pub use stwo::core::pcs::PcsConfig;
 #[doc(hidden)]
 pub mod e2e;
 
+use serde::{Deserialize, Serialize};
 use stwo::core::channel::Channel;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs::MerkleHasher;
@@ -95,7 +96,7 @@ use stwo::core::vcs::MerkleHasher;
 use crate::components::ClaimedSum;
 
 /// Interaction claim for LogUp (claimed sums + interaction trace log sizes).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InteractionClaim {
     pub claimed_sum: ClaimedSum,
     pub log_sizes: Vec<u32>,
@@ -112,7 +113,7 @@ impl InteractionClaim {
 }
 
 /// RV32IM proof bundle.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Proof<H: MerkleHasher> {
     pub claim: components::Claim,
     pub interaction_claim: InteractionClaim,

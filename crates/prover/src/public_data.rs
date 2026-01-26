@@ -2,6 +2,8 @@
 //!
 //! Captures public execution state and provides LogUp compensation entries.
 
+use serde::{Deserialize, Serialize};
+
 use num_traits::{One, Zero};
 use stwo::core::channel::Channel;
 use stwo::core::fields::FieldExpOps;
@@ -11,14 +13,14 @@ use stwo_constraint_framework::Relation;
 
 use crate::relations::Relations;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputWord {
     pub addr: u32,
     pub value: u32,
     pub clk: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IoEntries {
     /// Input region start address.
     pub input_start: u32,
@@ -37,7 +39,7 @@ pub struct IoEntries {
 }
 
 /// Public data required to verify an RV32IM proof.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicData {
     /// Entry PC at start of execution.
     pub initial_pc: u32,

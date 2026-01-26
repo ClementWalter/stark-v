@@ -85,7 +85,7 @@ impl Compiler for StarkVCompiler {
 
         let output = cmd
             .output()
-            .map_err(|e| StarkVCompilerError::CargoBuild(format!("Failed to run cargo: {}", e)))?;
+            .map_err(|e| StarkVCompilerError::CargoBuild(format!("Failed to run cargo: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
