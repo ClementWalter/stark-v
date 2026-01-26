@@ -27,10 +27,10 @@ fn main() {
     println!("cargo:rerun-if-changed=linker.ld");
     println!("cargo:rerun-if-env-changed=STARKV_HEAP_SIZE");
 
-    if let Ok(heap_size) = std::env::var("STARKV_HEAP_SIZE") {
-        if let Some(size) = parse_heap_size(&heap_size) {
-            println!("cargo:rustc-link-arg=--defsym=__heap_size={size}");
-        }
+    if let Ok(heap_size) = std::env::var("STARKV_HEAP_SIZE")
+        && let Some(size) = parse_heap_size(&heap_size)
+    {
+        println!("cargo:rustc-link-arg=--defsym=__heap_size={size}");
     }
 
     // Scan for example files

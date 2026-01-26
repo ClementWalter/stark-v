@@ -4,6 +4,7 @@ words:
   - addi
   - addrs
   - ADDSUB
+  - ahash
   - allocvec
   - andi
   - andn
@@ -14,19 +15,20 @@ words:
   - bltu
   - bytemuck
   - cfgs
-  - clément
   - Circom
+  - clément
   - clippy
   - condvar
   - csrrw
+  - defsym
   - divu
   - doctest
   - doubleword
   - dtolnay
   - ebreak
-  - eprintln
   - ecall
   - ehdr
+  - eprintln
   - evals
   - filesz
   - fondeur
@@ -71,6 +73,7 @@ words:
   - Movsign
   - mret
   - MRET
+  - mstore
   - MTVEC
   - muldiv
   - mulh
@@ -94,6 +97,7 @@ words:
   - regs
   - remu
   - repr
+  - revm
   - risc0
   - riscv
   - rodata

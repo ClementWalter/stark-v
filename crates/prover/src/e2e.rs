@@ -20,10 +20,10 @@ fn build_guest(features: Option<&str>) {
 
     let mut cmd = Command::new("cargo");
     cmd.args(["build", "--release"]);
-    if let Some(features) = features {
-        if !features.is_empty() {
-            cmd.args(["--features", features]);
-        }
+    if let Some(features) = features
+        && !features.is_empty()
+    {
+        cmd.args(["--features", features]);
     }
 
     let status = cmd
