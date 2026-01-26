@@ -76,6 +76,17 @@ Address Range           Region          Size
 0x00200000 - 0x002FFFFF  DATA (rw)      1 MB    Heap/static data
 ```
 
+When the `alloc` feature is enabled for guest binaries, a 64 KiB heap region is
+reserved inside the DATA segment (see `guest/guest-bin/linker.ld`). The
+`guest-bin` crate enables `alloc` by default; disable it with
+`default-features = false` if you want a minimal build.
+
+To override the heap size when building guest binaries:
+
+```bash
+STARKV_HEAP_SIZE=262144 cargo build -p guest-bin --release
+```
+
 ### Component Macros
 
 The prover uses three main macros to generate Stwo AIR infrastructure:
@@ -124,11 +135,51 @@ Create a guest binary using the `guest_main!` macro:
 #![no_std]
 #![no_main]
 
-guest_bin::guest_main!({
+use guest_bin::prelude::*;
+
+guest_main!({
     // Your computation here
     let result = 42u32;
     result
 });
+```
+
+To use `alloc` types like `Vec` or `Box`, you can use the `guest_bin::alloc`
+re-export (no `extern crate alloc` needed):
+
+```toml
+# guest/my-program/Cargo.toml
+[dependencies]
+guest-bin = { path = "../../guest/guest-bin" }
+```
+
+```rust
+#![no_std]
+#![no_main]
+
+use guest_bin::alloc::vec::Vec;
+use guest_bin::prelude::*;
+
+guest_main!({
+    let mut v = Vec::new();
+    v.push(42);
+    v.len()
+});
+```
+
+If you want to opt out of allocation support:
+
+```toml
+[dependencies]
+guest-bin = { path = "../../guest/guest-bin", default-features = false }
+```
+
+### revm Smoke Test (Guest)
+
+The revm guest program is feature-gated. Build and run the EVM smoke test with:
+
+```bash
+cargo test -p runner --features revm
 ```
 
 ### Proving Execution

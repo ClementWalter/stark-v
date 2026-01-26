@@ -21,6 +21,8 @@ fn generate_dispatcher_and_examples() {
     // Ensure examples directory exists
     fs::create_dir_all(examples_dir).expect("Failed to create examples directory");
 
+    let revm_enabled = std::env::var("CARGO_FEATURE_REVM").is_ok();
+
     // Collect program names
     let mut programs = Vec::new();
 
@@ -33,6 +35,10 @@ fn generate_dispatcher_and_examples() {
 
             // Skip mod.rs
             if file_name == "mod" {
+                continue;
+            }
+
+            if !revm_enabled && file_name == "revm_smoke" {
                 continue;
             }
 

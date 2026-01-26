@@ -9,6 +9,8 @@ pub mod keccak;
 pub mod load_merge;
 pub mod memory;
 pub mod muldiv;
+#[cfg(feature = "revm")]
+pub mod revm_smoke;
 pub mod sha2;
 
 pub use branch::{BranchResult, branch};
@@ -20,4 +22,6 @@ pub use keccak::{KeccakResult, keccak256};
 pub use load_merge::{LoadMergeResult, load_merge};
 pub use memory::{MemoryTestResult, memory};
 pub use muldiv::{MulDivResult, muldiv};
+#[cfg(feature = "revm")]
+pub use revm_smoke::{RevmSmokeResult, revm_smoke};
 pub use sha2::{Sha2Result, sha256};

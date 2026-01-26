@@ -25,6 +25,13 @@ fn main() {
     let linker_path = Path::new(&manifest_dir).join("linker.ld");
     println!("cargo:rustc-link-arg=-T{}", linker_path.display());
     println!("cargo:rerun-if-changed=linker.ld");
+    println!("cargo:rerun-if-env-changed=STARKV_HEAP_SIZE");
+
+    if let Ok(heap_size) = std::env::var("STARKV_HEAP_SIZE") {
+        if let Some(size) = parse_heap_size(&heap_size) {
+            println!("cargo:rustc-link-arg=--defsym=__heap_size={size}");
+        }
+    }
 
     // Scan for example files
     let entries = match fs::read_dir(examples_dir) {
@@ -42,15 +49,30 @@ fn main() {
         if path.extension().is_some_and(|ext| ext == "rs") {
             let file_name = path.file_stem().unwrap().to_str().unwrap();
 
-            // Generate binary wrapper that calls test_call from the programs module
-            let bin_content = format!(
-                r#"{AUTO_GEN_MARKER}
+            let bin_content = if file_name == "revm_smoke" {
+                format!(
+                    r#"{AUTO_GEN_MARKER}
+#![no_std]
+#![no_main]
+
+#[cfg(feature = "revm")]
+guest_bin::guest_main!(guest_lib::programs::revm_smoke::test_call());
+
+#[cfg(not(feature = "revm"))]
+guest_bin::guest_main!(0u8);
+"#
+                )
+            } else {
+                // Generate binary wrapper that calls test_call from the programs module
+                format!(
+                    r#"{AUTO_GEN_MARKER}
 #![no_std]
 #![no_main]
 
 guest_bin::guest_main!(guest_lib::programs::{file_name}::test_call());
 "#
-            );
+                )
+            };
 
             let bin_path = bin_dir.join(format!("{file_name}.rs"));
 
@@ -68,5 +90,14 @@ guest_bin::guest_main!(guest_lib::programs::{file_name}::test_call());
                     .unwrap_or_else(|e| panic!("Failed to write {}: {}", bin_path.display(), e));
             }
         }
+    }
+}
+
+fn parse_heap_size(value: &str) -> Option<u64> {
+    let trimmed = value.trim();
+    if let Some(hex) = trimmed.strip_prefix("0x") {
+        u64::from_str_radix(hex, 16).ok()
+    } else {
+        trimmed.parse().ok()
     }
 }

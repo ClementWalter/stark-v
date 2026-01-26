@@ -17,6 +17,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 stwo-macros.workspace = true
 
+[features]
+default = []
+revm = ["guest-lib/revm"]
+
 [dev-dependencies]
 guest-lib = { path = "../../guest/guest-lib" }
 postcard.workspace = true

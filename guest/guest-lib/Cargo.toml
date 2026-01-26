@@ -3,11 +3,17 @@ name = "guest-lib"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["alloc"]
+alloc = []
+revm = ["alloc", "dep:revm"]
+
 [dependencies]
 serde.workspace = true
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+revm = { version = "3.5.0", default-features = false, optional = true }
 
 # postcard with alloc feature for native builds (needed by dispatcher)
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
@@ -15,4 +21,18 @@ postcard = { version = "1", features = ["alloc"] }
 
 # postcard without alloc for riscv32 builds
 [target.'cfg(target_arch = "riscv32")'.dependencies]
+ahash = { version = "0.8", default-features = false, features = [
+  "atomic-polyfill",
+] }
+bytes = { version = "1", default-features = false, features = [
+  "extra-platforms",
+] }
+critical-section = { version = "1", features = ["restore-state-none"] }
+once_cell = { version = "1", default-features = false, features = [
+  "portable-atomic",
+] }
+portable-atomic = { version = "1", features = ["critical-section"] }
+spin = { version = "0.9", default-features = false, features = [
+  "portable_atomic",
+] }
 postcard = { version = "1", default-features = false }

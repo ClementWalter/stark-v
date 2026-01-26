@@ -11,22 +11,33 @@ use runner::run;
 
 static BUILD_GUEST: Once = Once::new();
 
+fn build_guest(features: Option<&str>) {
+    let guest_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("guest")
+        .join("guest-bin");
+
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "--release"]);
+    if let Some(features) = features {
+        if !features.is_empty() {
+            cmd.args(["--features", features]);
+        }
+    }
+
+    let status = cmd
+        .current_dir(&guest_bin_dir)
+        .status()
+        .expect("Failed to execute cargo build for guest-bin");
+
+    assert!(status.success(), "Failed to build guest binaries");
+}
+
 /// Build all guest-bin binaries once (includes opcode tests + high-level programs).
 pub fn ensure_guest_built() {
     BUILD_GUEST.call_once(|| {
-        let guest_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("guest")
-            .join("guest-bin");
-
-        let status = Command::new("cargo")
-            .args(["build", "--release"])
-            .current_dir(&guest_bin_dir)
-            .status()
-            .expect("Failed to execute cargo build for guest-bin");
-
-        assert!(status.success(), "Failed to build guest binaries");
+        build_guest(None);
     });
 }
 
@@ -58,6 +69,24 @@ pub fn run_test_bin(name: &str) -> runner::trace::Tracer {
 /// Run a guest binary and return raw output bytes (for program tests).
 pub fn run_guest_raw(name: &str) -> Vec<u8> {
     ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join(name);
+    let elf_bytes =
+        std::fs::read(&elf_path).unwrap_or_else(|e| panic!("Failed to read ELF {elf_path:?}: {e}"));
+
+    let result =
+        run(&elf_bytes, 10_000_000).unwrap_or_else(|e| panic!("Failed to run {name}: {e}"));
+
+    result
+        .output
+        .unwrap_or_else(|| panic!("No output from {name}"))
+}
+
+/// Run a guest binary built with additional cargo features and return raw output bytes.
+pub fn run_guest_raw_with_features(name: &str, features: &[&str]) -> Vec<u8> {
+    let features_arg = features.join(",");
+    let features = features_arg.as_str();
+    build_guest(Some(features));
 
     let elf_path = guest_bin_dir().join(name);
     let elf_bytes =

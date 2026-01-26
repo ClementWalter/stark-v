@@ -3,4 +3,5 @@ target
 tmp*
 .claude/settings.local.json
 .claude/cache/
+.claude/tsc-cache/
 .cursor

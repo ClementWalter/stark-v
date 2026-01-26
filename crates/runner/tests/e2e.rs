@@ -10,10 +10,24 @@
 
 use guest_lib::get_test_bytes;
 use prover::e2e::run_guest_raw;
+#[cfg(feature = "revm")]
+use prover::e2e::run_guest_raw_with_features;
 
 /// Test a single example by comparing guest output bytes with native output bytes.
 fn test_example(name: &str) {
     let guest_bytes = run_guest_raw(name);
+    let native_bytes = get_test_bytes(name).unwrap_or_else(|| panic!("Unknown example: {name}"));
+
+    assert_eq!(
+        guest_bytes, native_bytes,
+        "Output mismatch for example '{name}'\n  Guest bytes: {guest_bytes:?}\n  Native bytes: {native_bytes:?}",
+    );
+}
+
+/// Test a single example using a feature-gated guest binary.
+#[cfg(feature = "revm")]
+fn test_example_with_features(name: &str, features: &[&str]) {
+    let guest_bytes = run_guest_raw_with_features(name, features);
     let native_bytes = get_test_bytes(name).unwrap_or_else(|| panic!("Unknown example: {name}"));
 
     assert_eq!(

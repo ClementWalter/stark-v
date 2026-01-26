@@ -49,8 +49,21 @@ SECTIONS {
         *(.sdata .sdata.*)
     } > DATA
 
-    __text_len = __text_end - __text_start;
     __data_end = .;
+
+    __heap_size = 64K;
+
+    /* Heap region for dynamic allocation (opt-in via alloc feature) */
+    .heap (NOLOAD) : ALIGN(4) {
+        __heap_start = .;
+        . = . + __heap_size;
+        __heap_end = .;
+    } > DATA
+
+    /* Safety check: ensure heap doesn't exceed DATA region */
+    ASSERT(__heap_end <= ORIGIN(DATA) + LENGTH(DATA), "Heap exceeds DATA region!")
+
+    __text_len = __text_end - __text_start;
     __data_len = __data_end - __data_start;
 
     PROVIDE(__global_pointer$ = ORIGIN(DATA) + 0x800);

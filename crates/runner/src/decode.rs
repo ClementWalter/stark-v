@@ -66,6 +66,9 @@ pub enum Opcode {
     Divu,
     Rem,
     Remu,
+
+    // System (CSR/ECALL/EBREAK)
+    System,
 }
 
 /// Decoded instruction with all fields extracted.
@@ -204,6 +207,12 @@ impl DecodedInst {
                 let imm_j = (imm20 << 20) | (imm19_12 << 12) | (imm11 << 11) | (imm10_1 << 1);
                 let imm_j = ((imm_j as i32) << 11) >> 11; // Sign extend from 21 bits
                 (Opcode::Jal, imm_j)
+            }
+
+            // System (CSR/ECALL/EBREAK). Treated as no-op in the interpreter.
+            0b1110011 => {
+                let csr = ((inst >> 20) & 0xFFF) as i32;
+                (Opcode::System, csr)
             }
 
             // JALR

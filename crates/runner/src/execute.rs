@@ -64,5 +64,11 @@ pub fn execute(cpu: &mut Cpu, mem: &mut Memory, inst: &DecodedInst, tracer: &mut
         Opcode::Divu => muldiv::divu(cpu, inst, tracer),
         Opcode::Rem => muldiv::rem(cpu, inst, tracer),
         Opcode::Remu => muldiv::remu(cpu, inst, tracer),
+
+        // System instructions are treated as no-ops with a zero result.
+        Opcode::System => {
+            cpu.write_reg(inst.rd, 0, tracer);
+            cpu.advance_pc();
+        }
     }
 }
