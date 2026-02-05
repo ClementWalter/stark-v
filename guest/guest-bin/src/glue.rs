@@ -99,6 +99,39 @@ pub fn output<T: Serialize>(data: &T) -> ! {
     loop {}
 }
 
+/// Write raw bytes to output region and halt.
+///
+/// Unlike [`output`], this does not serialize with postcard — it writes
+/// the raw byte slice directly to the output buffer.
+pub fn output_raw(data: &[u8]) -> ! {
+    unsafe {
+        let data_addr = ptr::addr_of!(__output_data) as *mut u8;
+        let end_addr = ptr::addr_of!(__output_end) as usize;
+        let data_start = data_addr as usize;
+        let max_size = end_addr.saturating_sub(data_start);
+
+        let len = data.len().min(max_size);
+
+        // Write data
+        for (i, byte) in data.iter().take(len).enumerate() {
+            let addr = data_start + i;
+            ptr::write_volatile(addr as *mut u8, *byte);
+        }
+
+        // Write length
+        let len_addr = ptr::addr_of!(__output_len) as *mut u32;
+        ptr::write_volatile(len_addr, len as u32);
+
+        // Set halt flag
+        let halt_addr = ptr::addr_of!(__halt_flag) as *mut u32;
+        ptr::write_volatile(halt_addr, 1);
+    }
+
+    // Should never reach here - host stops on halt flag
+    #[allow(clippy::empty_loop)]
+    loop {}
+}
+
 // -----------------------------------------------------------------------------
 // Panic handler
 // -----------------------------------------------------------------------------

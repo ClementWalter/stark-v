@@ -19,6 +19,7 @@ postcard = { workspace = true, features = ["alloc", "use-std"] }
 
 # Error handling
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 
 # For compiler
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

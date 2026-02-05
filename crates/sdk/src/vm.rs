@@ -6,11 +6,10 @@
 use crate::DEFAULT_MAX_CYCLES;
 use crate::compiler::StarkVProgram;
 use ere_zkvm_interface::{
-    Input, InputItem, ProgramExecutionReport, ProgramProvingReport, Proof as EreProof, ProofKind,
-    PublicValues, zkVM, zkVMError,
+    Input, ProgramExecutionReport, ProgramProvingReport, Proof as EreProof, ProofKind,
+    PublicValues, zkVM,
 };
 use prover::PcsConfig;
-use std::io::Read;
 use std::time::Instant;
 
 /// stark-v zkVM instance.
@@ -51,37 +50,14 @@ impl StarkV {
     pub fn elf_bytes(&self) -> &[u8] {
         &self.program.elf_bytes
     }
-
-    /// Convert input to raw bytes.
-    ///
-    /// Note: For stark-v, it's recommended to use `Input::write_bytes()` to add
-    /// raw bytes directly. Object serialization via `Input::write()` is not
-    /// fully supported in this implementation.
-    fn input_to_bytes(input: &Input) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for item in input.iter() {
-            match item {
-                InputItem::Object(_) => {
-                    // Object serialization requires erased_serde which adds complexity.
-                    // For stark-v, users should prefer write_bytes() instead.
-                    // Skip objects - they won't be passed to the guest.
-                }
-                InputItem::SerializedObject(data) => bytes.extend(data),
-                InputItem::Bytes(data) => bytes.extend(data),
-            }
-        }
-        bytes
-    }
 }
 
 impl zkVM for StarkV {
-    fn execute(&self, input: &Input) -> Result<(PublicValues, ProgramExecutionReport), zkVMError> {
-        let input_bytes = Self::input_to_bytes(input);
+    fn execute(&self, input: &Input) -> anyhow::Result<(PublicValues, ProgramExecutionReport)> {
         let start = Instant::now();
 
         let run_result =
-            runner::run_with_input(&self.program.elf_bytes, &input_bytes, self.max_cycles)
-                .map_err(|e| zkVMError::other(e.to_string()))?;
+            runner::run_with_input(&self.program.elf_bytes, input.stdin(), self.max_cycles)?;
 
         let output = run_result.output.clone().unwrap_or_default();
         let cycles = run_result.cycles;
@@ -100,13 +76,11 @@ impl zkVM for StarkV {
         &self,
         input: &Input,
         _proof_kind: ProofKind,
-    ) -> Result<(PublicValues, EreProof, ProgramProvingReport), zkVMError> {
-        let input_bytes = Self::input_to_bytes(input);
+    ) -> anyhow::Result<(PublicValues, EreProof, ProgramProvingReport)> {
         let start = Instant::now();
 
         let run_result =
-            runner::run_with_input(&self.program.elf_bytes, &input_bytes, self.max_cycles)
-                .map_err(|e| zkVMError::other(e.to_string()))?;
+            runner::run_with_input(&self.program.elf_bytes, input.stdin(), self.max_cycles)?;
 
         let output = run_result.output.clone().unwrap_or_default();
 
@@ -116,29 +90,25 @@ impl zkVM for StarkV {
 
         // Serialize the proof using postcard
         let proof_bytes = postcard::to_allocvec(&proof)
-            .map_err(|e| zkVMError::other(format!("Failed to serialize proof: {e}")))?;
+            .map_err(|e| anyhow::anyhow!("Failed to serialize proof: {e}"))?;
         let ere_proof = EreProof::Compressed(proof_bytes);
 
-        let report = ProgramProvingReport {
-            proving_time: duration,
-        };
+        let report = ProgramProvingReport::new(duration);
 
         Ok((output, ere_proof, report))
     }
 
-    fn verify(&self, proof: &EreProof) -> Result<PublicValues, zkVMError> {
+    fn verify(&self, proof: &EreProof) -> anyhow::Result<PublicValues> {
         use stwo::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 
         let proof_bytes = match proof {
             EreProof::Compressed(bytes) => bytes,
-            EreProof::Groth16(_) => {
-                return Err(zkVMError::other("stark-v does not support Groth16 proofs"));
-            }
+            _ => anyhow::bail!("stark-v only supports Compressed proofs"),
         };
 
         // Deserialize the proof
         let proof: prover::Proof<Blake2sMerkleHasher> = postcard::from_bytes(proof_bytes)
-            .map_err(|e| zkVMError::other(format!("Failed to deserialize proof: {e}")))?;
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof: {e}"))?;
 
         // Extract output before verification
         let output = proof
@@ -152,7 +122,7 @@ impl zkVM for StarkV {
 
         // Verify the proof
         prover::verify_rv32im(proof, self.config)
-            .map_err(|e| zkVMError::other(format!("Proof verification failed: {e}")))?;
+            .map_err(|e| anyhow::anyhow!("Proof verification failed: {e}"))?;
 
         Ok(output)
     }
@@ -163,17 +133,6 @@ impl zkVM for StarkV {
 
     fn sdk_version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
-    }
-
-    fn deserialize_from<R: Read, T: serde::de::DeserializeOwned>(
-        &self,
-        mut reader: R,
-    ) -> Result<T, zkVMError> {
-        let mut bytes = Vec::new();
-        reader
-            .read_to_end(&mut bytes)
-            .map_err(|e| zkVMError::other(e.to_string()))?;
-        postcard::from_bytes(&bytes).map_err(|e| zkVMError::other(e.to_string()))
     }
 }
 

@@ -18,11 +18,11 @@ edition = "2021"
 
 
 [workspace.dependencies]
-# Stwo dependencies
-stwo = { path = "external/stwo/crates/stwo" }
-stwo-air-utils = { path = "external/stwo/crates/air-utils" }
-stwo-air-utils-derive = { path = "external/stwo/crates/air-utils-derive" }
-stwo-constraint-framework = { path = "external/stwo/crates/constraint-framework", features = [
+# Stwo dependencies (using fork with nightly-2026 array_chunks fix)
+stwo = { git = "https://github.com/ClementWalter/stwo", rev = "60488760" }
+stwo-air-utils = { git = "https://github.com/ClementWalter/stwo", rev = "60488760" }
+stwo-air-utils-derive = { git = "https://github.com/ClementWalter/stwo", rev = "60488760" }
+stwo-constraint-framework = { git = "https://github.com/ClementWalter/stwo", rev = "60488760", features = [
   "prover",
   "std",
 ] }
@@ -41,7 +41,7 @@ peak_alloc = { version = "0.2" }
 rayon = "1.10.0"
 serde_json = "1.0.132"
 smalloc = { version = "7.0.1", git = "https://github.com/zooko/smalloc" }
-std-shims = { path = "external/stwo/crates/std-shims", default-features = false }
+std-shims = { git = "https://github.com/ClementWalter/stwo", rev = "60488760", default-features = false }
 test-log = { version = "0.2.15", features = ["trace"] }
 tikv-jemallocator = "0.6.1"
 rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
@@ -64,7 +64,9 @@ comfy-table = "7.1"
 thiserror = "2.0"
 
 # External zkVM interface
-ere-zkvm-interface = { git = "https://github.com/eth-act/ere", tag = "v0.0.13" }
+ere-zkvm-interface = { git = "https://github.com/eth-act/ere", rev = "aaf2efcc78fecf5f3b7d149a0042c97057a10fb6" }
+anyhow = "1.0"
+bincode = "1.3.3"
 
 # Logging
 tracing = "0.1"
