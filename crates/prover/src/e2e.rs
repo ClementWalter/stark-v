@@ -12,6 +12,11 @@ use runner::run;
 static BUILD_GUEST: Once = Once::new();
 
 /// Build all guest-bin binaries once (includes opcode tests + high-level programs).
+///
+/// # Panics
+///
+/// Panics if the cargo build command fails to execute or if the build fails.
+/// This is acceptable for test infrastructure as build failures should halt all tests.
 pub fn ensure_guest_built() {
     BUILD_GUEST.call_once(|| {
         let guest_bin_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,11 +25,14 @@ pub fn ensure_guest_built() {
             .join("guest")
             .join("guest-bin");
 
+        // Note: This expect() is safe in test context - build failures should halt all tests
         let status = Command::new("cargo")
             .args(["build", "--release"])
             .current_dir(&guest_bin_dir)
             .status()
-            .expect("Failed to execute cargo build for guest-bin");
+            .expect(
+                "Failed to execute cargo build command - cargo may not be installed or accessible",
+            );
 
         assert!(status.success(), "Failed to build guest binaries");
     });
@@ -109,9 +117,10 @@ macro_rules! test_bin_e2e {
 
                 let trace = tracer.$component.into_witness();
 
+                // Note: trace is guaranteed non-empty by the assert above
                 let log_size = trace.first()
                     .map(|t| t.domain.log_size())
-                    .expect("Empty trace after gen_trace");
+                    .expect("Empty trace after gen_trace - this should be unreachable");
 
                 let relations = $crate::relations::Relations::dummy();
                 let (interaction_trace, claimed_sum) =

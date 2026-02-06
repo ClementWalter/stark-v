@@ -65,6 +65,44 @@ pub fn gen_interaction_trace(
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
+    // Compute bit_multiplier for shift carry range checks
+    let bit_multiplier: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            let mut mult = PackedM31::zero();
+            mult +=
+                cols.bit_shift_marker_0[i] * PackedM31::broadcast(BaseField::from_u32_unchecked(1));
+            mult +=
+                cols.bit_shift_marker_1[i] * PackedM31::broadcast(BaseField::from_u32_unchecked(2));
+            mult +=
+                cols.bit_shift_marker_2[i] * PackedM31::broadcast(BaseField::from_u32_unchecked(4));
+            mult +=
+                cols.bit_shift_marker_3[i] * PackedM31::broadcast(BaseField::from_u32_unchecked(8));
+            mult += cols.bit_shift_marker_4[i]
+                * PackedM31::broadcast(BaseField::from_u32_unchecked(16));
+            mult += cols.bit_shift_marker_5[i]
+                * PackedM31::broadcast(BaseField::from_u32_unchecked(32));
+            mult += cols.bit_shift_marker_6[i]
+                * PackedM31::broadcast(BaseField::from_u32_unchecked(64));
+            mult += cols.bit_shift_marker_7[i]
+                * PackedM31::broadcast(BaseField::from_u32_unchecked(128));
+            mult
+        })
+        .collect();
+
+    // Shift carry range check values: bit_multiplier - enabler - bit_shift_carry[i]
+    let carry_rc_0: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_0[i])
+        .collect();
+    let carry_rc_1: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_1[i])
+        .collect();
+    let carry_rc_2: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_2[i])
+        .collect();
+    let carry_rc_3: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_3[i])
+        .collect();
+
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
     let pos_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| PackedQM31::from(e)).collect();
@@ -146,10 +184,24 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_8_8: -1 * (rd[0], rd[1])
+    // 7. range_check_8_8: -1 * (bit_multiplier - enabler - carry[0], bit_multiplier - enabler - carry[1])
+    let rc_8_8_carry_0_denom = combine!(relations.range_check_8_8, [&carry_rc_0, &carry_rc_1]);
+
+    // 8. range_check_8_8: -1 * (bit_multiplier - enabler - carry[2], bit_multiplier - enabler - carry[3])
+    let rc_8_8_carry_1_denom = combine!(relations.range_check_8_8, [&carry_rc_2, &carry_rc_3]);
+
+    write_pair!(
+        &neg_enabler,
+        &rc_8_8_carry_0_denom,
+        &neg_enabler,
+        &rc_8_8_carry_1_denom,
+        logup_gen
+    );
+
+    // 9. range_check_8_8: -1 * (rd[0], rd[1])
     let rc_8_8_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
 
-    // 8. range_check_8_8: -1 * (rd[2], rd[3])
+    // 10. range_check_8_8: -1 * (rd[2], rd[3])
     let rc_8_8_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
 
     write_pair!(
@@ -160,7 +212,7 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 9. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
+    // 11. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
     let rd_read_denom = combine!(
         relations.memory_access,
         [
@@ -174,7 +226,7 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 10. memory_access: +enabler * (0, rd_addr, clk, rd_next_0..3)
+    // 12. memory_access: +enabler * (0, rd_addr, clk, rd_next_0..3)
     let rd_write_denom = combine!(
         relations.memory_access,
         [
@@ -196,7 +248,7 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 11. range_check_20: -1 * (clk - rd_clk_prev)
+    // 13. range_check_20: -1 * (clk - rd_clk_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_col!(&neg_enabler, &rc_20_rd_denom, logup_gen);
@@ -229,10 +281,57 @@ pub fn register_multiplicities(
         .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
         .collect();
 
+    // Compute bit_multiplier for shift carry range checks
+    let bit_multiplier: Vec<PackedM31> = (0..simd_size)
+        .map(|i| {
+            cols.bit_shift_marker_0[i]
+                + cols.bit_shift_marker_1[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(2))
+                + cols.bit_shift_marker_2[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(4))
+                + cols.bit_shift_marker_3[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(8))
+                + cols.bit_shift_marker_4[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(16))
+                + cols.bit_shift_marker_5[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(32))
+                + cols.bit_shift_marker_6[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(64))
+                + cols.bit_shift_marker_7[i]
+                    * PackedM31::broadcast(BaseField::from_u32_unchecked(128))
+        })
+        .collect();
+
+    let enabler: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.opcode_sll_flag[i] + cols.opcode_srl_flag[i] + cols.opcode_sra_flag[i])
+        .collect();
+
+    // Shift carry range check values: bit_multiplier - enabler - bit_shift_carry[i]
+    let carry_rc_0: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_0[i])
+        .collect();
+    let carry_rc_1: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_1[i])
+        .collect();
+    let carry_rc_2: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_2[i])
+        .collect();
+    let carry_rc_3: Vec<PackedM31> = (0..simd_size)
+        .map(|i| bit_multiplier[i] - enabler[i] - cols.bit_shift_carry_3[i])
+        .collect();
+
     // Register range_check_20 for rs1 clock diff with negated multiplicity
     counters
         .range_check_20
         .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
+
+    // Register range_check_8_8 for shift carries with negated multiplicity
+    counters
+        .range_check_8_8
+        .register_many(&neg_enabler, &[&carry_rc_0, &carry_rc_1]);
+    counters
+        .range_check_8_8
+        .register_many(&neg_enabler, &[&carry_rc_2, &carry_rc_3]);
 
     // Register range_check_8_8 for rd limbs with negated multiplicity
     counters

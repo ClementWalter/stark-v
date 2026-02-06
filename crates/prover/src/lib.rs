@@ -75,7 +75,7 @@ pub mod public_data;
 pub mod relations;
 pub mod verifier;
 
-pub use errors::VerificationError;
+pub use errors::{ProverError, VerificationError};
 pub use prover::prove_rv32im;
 pub use public_data::PublicData;
 pub use verifier::verify_rv32im;
