@@ -24,6 +24,9 @@ pub enum StarkVCompilerError {
     #[error("No binary found in guest crate")]
     NoBinaryFound,
 
+    #[error("Expected exactly one binary in guest crate, found: {bin_names:?}")]
+    MultipleBinariesFound { bin_names: Vec<String> },
+
     #[error("Guest directory does not exist: {0}")]
     GuestNotFound(String),
 }
@@ -54,6 +57,16 @@ impl StarkVCompiler {
     /// Create a compiler with specific features enabled.
     pub fn with_features(features: Vec<String>) -> Self {
         Self { features }
+    }
+}
+
+fn select_single_binary_name(mut bin_names: Vec<String>) -> Result<String, StarkVCompilerError> {
+    bin_names.sort();
+    bin_names.dedup();
+    match bin_names.len() {
+        0 => Err(StarkVCompilerError::NoBinaryFound),
+        1 => Ok(bin_names.pop().expect("single element must exist")),
+        _ => Err(StarkVCompilerError::MultipleBinariesFound { bin_names }),
     }
 }
 
@@ -105,18 +118,19 @@ impl Compiler for StarkVCompiler {
 
         // Construct the path to the release binary
         use cargo_metadata::TargetKind;
-        let binary_name = package
+        let binary_names = package
             .targets
             .iter()
-            .find(|t| t.kind.iter().any(|k| matches!(k, TargetKind::Bin)))
-            .map(|t| &t.name)
-            .ok_or(StarkVCompilerError::NoBinaryFound)?;
+            .filter(|t| t.kind.iter().any(|k| matches!(k, TargetKind::Bin)))
+            .map(|t| t.name.clone())
+            .collect::<Vec<_>>();
+        let binary_name = select_single_binary_name(binary_names)?;
 
         let elf_path = guest_directory
             .join("target")
             .join("riscv32im-unknown-none-elf")
             .join("release")
-            .join(binary_name);
+            .join(&binary_name);
 
         let elf_bytes = std::fs::read(&elf_path)?;
 
@@ -148,5 +162,30 @@ mod tests {
 
         let compiler = StarkVCompiler::with_features(vec!["feature1".to_string()]);
         assert_eq!(compiler.features, vec!["feature1"]);
+    }
+
+    #[test]
+    fn test_select_single_binary_name_none() {
+        assert!(matches!(
+            select_single_binary_name(vec![]),
+            Err(StarkVCompilerError::NoBinaryFound)
+        ));
+    }
+
+    #[test]
+    fn test_select_single_binary_name_single() {
+        let name = select_single_binary_name(vec!["guest".to_string()]).unwrap();
+        assert_eq!(name, "guest");
+    }
+
+    #[test]
+    fn test_select_single_binary_name_multiple() {
+        let err = select_single_binary_name(vec!["b".to_string(), "a".to_string()]).unwrap_err();
+        match err {
+            StarkVCompilerError::MultipleBinariesFound { bin_names } => {
+                assert_eq!(bin_names, vec!["a".to_string(), "b".to_string()]);
+            }
+            _ => panic!("expected multiple binaries error"),
+        }
     }
 }

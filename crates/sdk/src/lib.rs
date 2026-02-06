@@ -13,17 +13,18 @@
 //! # Example using ere-zkvm-interface
 //!
 //! ```ignore
-//! use ere_zkvm_interface::{Compiler, zkVM, InputItem};
+//! use ere_zkvm_interface::{Compiler, Input, ProofKind, zkVM};
 //! use stark_v_sdk::{StarkVCompiler, StarkV};
+//! use std::path::Path;
 //!
 //! // Compile a guest program
 //! let compiler = StarkVCompiler::new();
 //! let program = compiler.compile(Path::new("guest/sha256"))?;
 //!
 //! // Create VM instance and prove
-//! let mut vm = StarkV::new(program);
-//! let input = vec![InputItem::Raw(input_bytes)];
-//! let (public_values, proof, report) = vm.prove(input)?;
+//! let vm = StarkV::new(program);
+//! let input = Input::new().with_stdin(input_bytes);
+//! let (public_values, proof, report) = vm.prove(&input, ProofKind::Compressed)?;
 //!
 //! // Verify
 //! vm.verify(&proof)?;

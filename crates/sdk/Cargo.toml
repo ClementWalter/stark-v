@@ -18,6 +18,7 @@ serde = { workspace = true }
 postcard = { workspace = true, features = ["alloc", "use-std"] }
 
 # Error handling
+anyhow = { workspace = true }
 thiserror = { workspace = true }
 
 # For compiler

@@ -61,10 +61,11 @@ rustc-hash = "2.1"
 comfy-table = "7.1"
 
 # Error handling
+anyhow = "1"
 thiserror = "2.0"
 
 # External zkVM interface
-ere-zkvm-interface = { git = "https://github.com/eth-act/ere", tag = "v0.0.13" }
+ere-zkvm-interface = { git = "https://github.com/eth-act/ere", rev = "aaf2efcc78fecf5f3b7d149a0042c97057a10fb6" }
 
 # Logging
 tracing = "0.1"
