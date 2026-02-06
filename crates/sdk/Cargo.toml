@@ -8,3 +8,23 @@ description = "SDK for building and proving RISC-V programs with stark-v"
 guest-lib = { workspace = true }
 prover = { workspace = true }
 runner = { workspace = true }
+stwo = { workspace = true }
+
+# External zkVM interface
+ere-zkvm-interface = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+postcard = { workspace = true, features = ["alloc", "use-std"] }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# For compiler
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+cargo_metadata = "0.19"
+
+[features]
+default = []
+parallel = ["prover/parallel"]

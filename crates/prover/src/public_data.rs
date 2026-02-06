@@ -2,6 +2,8 @@
 //!
 //! Captures public execution state and provides LogUp compensation entries.
 
+use serde::{Deserialize, Serialize};
+
 use num_traits::{One, Zero};
 use stwo::core::channel::Channel;
 use stwo::core::fields::FieldExpOps;
@@ -11,14 +13,14 @@ use stwo_constraint_framework::Relation;
 
 use crate::relations::Relations;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputWord {
     pub addr: u32,
     pub value: u32,
     pub clk: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IoEntries {
     /// Input region start address.
     pub input_start: u32,
@@ -37,7 +39,7 @@ pub struct IoEntries {
 }
 
 /// Public data required to verify an RV32IM proof.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicData {
     /// Entry PC at start of execution.
     pub initial_pc: u32,
@@ -91,6 +93,7 @@ impl PublicData {
         let output_data_end = run_result
             .output_data_addr
             .wrapping_add(run_result.output_len);
+        let output_len_word_addr = run_result.output_len_addr & !3;
         let mut output_words = Vec::new();
         for word in &run_result.output_words {
             if let Some(&clk) = tracer.mem_clk.get(&word.addr) {
@@ -101,7 +104,9 @@ impl PublicData {
                 });
                 continue;
             }
-            if word.addr >= run_result.output_data_addr && word.addr < output_data_end {
+            if word.addr == output_len_word_addr
+                || (word.addr >= run_result.output_data_addr && word.addr < output_data_end)
+            {
                 panic!("output address 0x{:08x} was not accessed", word.addr);
             }
         }
@@ -168,23 +173,21 @@ impl PublicData {
         let mut values_to_inverse: Vec<QM31> = Vec::new();
 
         // Registers state: emit initial (pc, clk=1), consume final (pc, clk=clock+1).
-        if self.clock > 0 {
-            let initial_clk = M31::from(1u32);
-            let final_clk = M31::from(
-                self.clock
-                    .checked_add(1)
-                    .expect("clock overflow when computing final clk"),
-            );
-            values_to_inverse.push(
-                relations
-                    .registers_state
-                    .combine(&[M31::from(self.initial_pc), initial_clk]),
-            );
-            let final_state: QM31 = relations
+        let initial_clk = M31::from(1u32);
+        let final_clk = M31::from(
+            self.clock
+                .checked_add(1)
+                .expect("clock overflow when computing final clk"),
+        );
+        values_to_inverse.push(
+            relations
                 .registers_state
-                .combine(&[M31::from(self.final_pc), final_clk]);
-            values_to_inverse.push(-final_state);
-        }
+                .combine(&[M31::from(self.initial_pc), initial_clk]),
+        );
+        let final_state: QM31 = relations
+            .registers_state
+            .combine(&[M31::from(self.final_pc), final_clk]);
+        values_to_inverse.push(-final_state);
 
         // Merkle roots: emit each tree root once.
         for root in [self.program_root, self.initial_rw_root, self.final_rw_root]
@@ -202,9 +205,6 @@ impl PublicData {
         // Register memory access: emit initial state (clk=0), consume final state (clk=last).
         let reg_as = M31::zero();
         for (idx, &last_clk) in self.reg_last_clk.iter().enumerate() {
-            if last_clk == 0 {
-                continue;
-            }
             let addr = M31::from(idx as u32);
             let init_bytes = self.initial_regs[idx].to_le_bytes();
             values_to_inverse.push(relations.memory_access.combine(&[
@@ -287,4 +287,117 @@ fn pack_words(bytes: &[u8]) -> Vec<u32> {
         idx = end;
     }
     words
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::relations::Relations;
+    use runner::{IoWord, RunResult, Tracer};
+
+    fn empty_public_data() -> PublicData {
+        PublicData {
+            initial_pc: 0,
+            final_pc: 0,
+            clock: 0,
+            initial_regs: [0; 32],
+            final_regs: [0; 32],
+            reg_last_clk: [0; 32],
+            program_root: None,
+            initial_rw_root: None,
+            final_rw_root: None,
+            io_entries: IoEntries {
+                input_start: 0,
+                input_len: 0,
+                input_words: vec![],
+                output_len: 0,
+                output_len_addr: 0,
+                output_data_addr: 0,
+                output_words: vec![],
+            },
+        }
+    }
+
+    fn output_clock_run_result(with_output_len_clock: bool) -> RunResult {
+        let mut tracer = Tracer::default();
+        if with_output_len_clock {
+            tracer.mem_clk.insert(0x1004, 3);
+        }
+        tracer.mem_clk.insert(0x1008, 4);
+
+        RunResult {
+            cycles: 1,
+            initial_pc: 0,
+            final_pc: 0,
+            initial_regs: [0; 32],
+            final_regs: [0; 32],
+            output: Some(vec![1, 2, 3, 4]),
+            input: vec![],
+            input_start: 0,
+            input_end: 0,
+            output_len: 4,
+            output_len_addr: 0x1004,
+            output_data_addr: 0x1008,
+            output_end_addr: 0x1010,
+            output_words: vec![
+                IoWord {
+                    addr: 0x1004,
+                    value: 4,
+                },
+                IoWord {
+                    addr: 0x1008,
+                    value: u32::from_le_bytes([1, 2, 3, 4]),
+                },
+            ],
+            tracer,
+        }
+    }
+
+    #[test]
+    fn logup_sum_constrains_registers_state_even_at_clock_zero() {
+        let relations = Relations::dummy();
+        let mut data = empty_public_data();
+
+        data.initial_pc = 7;
+        data.final_pc = 8;
+        let non_zero = data.logup_sum(&relations);
+        assert_ne!(non_zero, QM31::zero());
+
+        data.final_pc = data.initial_pc;
+        let zero = data.logup_sum(&relations);
+        assert_eq!(zero, QM31::zero());
+    }
+
+    #[test]
+    fn logup_sum_constrains_never_accessed_registers_at_clock_zero() {
+        let relations = Relations::dummy();
+        let mut data = empty_public_data();
+
+        data.initial_pc = 1;
+        data.final_pc = 1;
+        data.initial_regs[31] = 11;
+        data.final_regs[31] = 12;
+        let non_zero = data.logup_sum(&relations);
+        assert_ne!(non_zero, QM31::zero());
+
+        data.final_regs[31] = data.initial_regs[31];
+        let zero = data.logup_sum(&relations);
+        assert_eq!(zero, QM31::zero());
+    }
+
+    #[test]
+    #[should_panic(expected = "output address 0x00001004 was not accessed")]
+    fn new_panics_when_output_len_word_clock_is_missing() {
+        let run_result = output_clock_run_result(false);
+        let _ = PublicData::new(&run_result);
+    }
+
+    #[test]
+    fn new_accepts_output_len_word_clock_when_present() {
+        let run_result = output_clock_run_result(true);
+        let public_data = PublicData::new(&run_result);
+        assert_eq!(public_data.io_entries.output_words.len(), 2);
+        assert_eq!(public_data.io_entries.output_words[0].addr, 0x1004);
+        assert_eq!(public_data.io_entries.output_words[0].clk, 3);
+    }
 }

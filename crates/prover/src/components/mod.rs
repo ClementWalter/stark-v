@@ -26,6 +26,8 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::TraceLocationAllocator;
 use stwo_constraint_framework::relation_tracker::RelationSummary;
 
+use serde::{Deserialize, Serialize};
+
 use crate::relations::Relations;
 
 /// Aggregate of all trace columns (opcodes + preprocessed multiplicity).
@@ -96,7 +98,7 @@ impl Traces {
 }
 
 /// Claim containing log_size for each component.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claim {
     /// Opcode claims (log_size per instruction).
     pub opcodes: opcodes::Claim,
@@ -203,7 +205,7 @@ impl Claim {
 }
 
 /// Aggregate of all claimed sums from interaction traces.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClaimedSum {
     /// Claimed sums from opcode components.
     pub opcodes: opcodes::ClaimedSum,

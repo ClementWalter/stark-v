@@ -247,6 +247,7 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
     });
 
     quote! {
+        use serde::{Serialize, Deserialize};
         use stwo::core::fields::qm31::QM31;
         use stwo::core::fields::m31::BaseField;
         use stwo::core::ColumnVec;
@@ -291,7 +292,7 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             }
         }
 
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct Claim {
             #(#claim_fields)*
         }
@@ -316,7 +317,7 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             }
         }
 
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, Serialize, Deserialize)]
         pub struct ClaimedSum {
             #(#claimed_sum_fields)*
         }
@@ -713,6 +714,7 @@ pub fn preprocessed_components(input: TokenStream) -> TokenStream {
     });
 
     quote! {
+        use serde::{Serialize, Deserialize};
         use stwo::core::fields::qm31::QM31;
         use stwo::core::fields::m31::BaseField;
         use stwo::core::ColumnVec;
@@ -765,7 +767,7 @@ pub fn preprocessed_components(input: TokenStream) -> TokenStream {
             }
         }
 
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct Claim {
             #(#claim_fields)*
         }
@@ -790,7 +792,7 @@ pub fn preprocessed_components(input: TokenStream) -> TokenStream {
             }
         }
 
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, Serialize, Deserialize)]
         pub struct ClaimedSum {
             #(#claimed_sum_fields)*
         }

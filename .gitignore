@@ -4,3 +4,5 @@ tmp*
 .claude/settings.local.json
 .claude/cache/
 .cursor
+.claude
+.codex

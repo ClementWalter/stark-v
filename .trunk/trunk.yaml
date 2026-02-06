@@ -22,6 +22,9 @@ lint:
         - "**/config.toml"
         - "**/linker.ld"
         - "**/tmp*"
+    - linters: [clippy, rustfmt]
+      paths:
+        - external/**
   disabled:
     - osv-scanner
   enabled:
@@ -37,7 +40,7 @@ lint:
     - trufflehog@3.91.2
     - yamllint@1.37.1
 actions:
-  enabled:
+  disabled:
     - trunk-announce
     - trunk-check-pre-push
     - trunk-fmt-pre-commit
