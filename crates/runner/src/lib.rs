@@ -12,6 +12,7 @@ mod program;
 #[macro_use]
 pub mod trace;
 mod ops;
+pub mod profiler;
 
 use decode::get_or_decode;
 use thiserror::Error;
@@ -22,6 +23,7 @@ pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
 pub use execute::execute;
 pub use memory::Memory;
+pub use profiler::{ExecutionProfile, HotSpot, InstructionStats, Profiler};
 pub use trace::{Access, Tracer};
 
 /// Errors that can occur during program execution.
