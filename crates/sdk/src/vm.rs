@@ -111,8 +111,7 @@ impl zkVM for StarkV {
         let output = run_result.output.clone().unwrap_or_default();
 
         // Generate the proof
-        let proof = prover::prove_rv32im(run_result, self.config)
-            .map_err(|e| zkVMError::other(e.to_string()))?;
+        let proof = prover::prove_rv32im(run_result, self.config);
         let duration = start.elapsed();
 
         // Serialize the proof using postcard

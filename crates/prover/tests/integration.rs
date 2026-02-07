@@ -68,7 +68,7 @@ fn test_prove_fibonacci() {
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
     // Generate proof
-    let _proof = prove_rv32im(run_result, PcsConfig::default()).expect("Failed to generate proof");
+    let _proof = prove_rv32im(run_result, PcsConfig::default());
 }
 
 /// Full end-to-end proof + verification for Fibonacci.
@@ -85,7 +85,7 @@ fn test_prove_verify_fibonacci() {
 
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run fib");
 
-    let proof = prove_rv32im(run_result, PcsConfig::default()).expect("Failed to generate proof");
+    let proof = prove_rv32im(run_result, PcsConfig::default());
     verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");
 }
 
@@ -103,7 +103,7 @@ fn test_prove_verify_sha2() {
 
     let run_result = run(&elf_bytes, 100_000_000).expect("Failed to run sha2");
 
-    let proof = prove_rv32im(run_result, PcsConfig::default()).expect("Failed to generate proof");
+    let proof = prove_rv32im(run_result, PcsConfig::default());
     verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");
 }
 
@@ -170,7 +170,7 @@ fn test_e2e_fibonacci_benchmark() {
     assert!(cycles > 0, "No cycles reported");
 
     let prove_start = Instant::now();
-    let proof = prove_rv32im(run_result, PcsConfig::default()).expect("Failed to generate proof");
+    let proof = prove_rv32im(run_result, PcsConfig::default());
     let prove_elapsed = prove_start.elapsed();
 
     verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");
@@ -325,7 +325,7 @@ fn test_e2e_sha2_benchmark() {
     assert!(cycles > 0, "No cycles reported");
 
     let prove_start = Instant::now();
-    let proof = prove_rv32im(run_result, PcsConfig::default()).expect("Failed to generate proof");
+    let proof = prove_rv32im(run_result, PcsConfig::default());
     let prove_elapsed = prove_start.elapsed();
 
     verify_rv32im(proof, PcsConfig::default()).expect("Verification failed");

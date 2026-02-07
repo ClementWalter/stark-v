@@ -5,6 +5,7 @@
 //! multiple segments, each with its own proof.
 
 use crate::{Cpu, Memory, Tracer};
+use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 use thiserror::Error;
 
@@ -27,7 +28,7 @@ pub struct VmState {
     pub reg_last_clk: [u32; 32],
 
     /// Last access clock per memory address (sparse map).
-    pub mem_last_clk: BTreeMap<u32, u32>,
+    pub mem_last_clk: FxHashMap<u32, u32>,
 }
 
 /// Memory snapshot using sparse page-based representation.
@@ -149,19 +150,80 @@ pub fn capture_state(cpu: &Cpu, mem: &Memory, tracer: &Tracer) -> VmState {
 }
 
 /// Capture memory snapshot (with delta encoding).
-fn capture_memory_snapshot(mem: &Memory, _tracer: &Tracer) -> MemorySnapshot {
-    // For now, capture full memory state
-    // TODO: Implement delta encoding for efficiency
+pub fn capture_memory_snapshot(mem: &Memory, _tracer: &Tracer) -> MemorySnapshot {
+    // Collect all memory into pages
+    let mut pages: BTreeMap<u32, PageData> = BTreeMap::new();
+
+    for addr in mem.keys() {
+        let page_idx = addr / 4096;
+        let offset = (addr % 4096) as usize;
+
+        pages
+            .entry(page_idx)
+            .or_insert_with(|| PageData {
+                data: [0u8; 4096],
+                root: 0,
+            })
+            .data[offset] = mem.read_u8(addr);
+    }
+
+    // Compute Merkle root for each page
+    for page in pages.values_mut() {
+        page.root = compute_page_merkle_root(&page.data);
+    }
+
+    // Compute global Merkle root from page roots
+    let root = compute_memory_merkle_root(&pages);
+
+    // For now, use full state representation
+    // Delta encoding would track which pages changed since last snapshot
     let mut full_state = BTreeMap::new();
     for addr in mem.keys() {
         full_state.insert(addr, mem.read_u8(addr));
     }
 
     MemorySnapshot {
-        root: 0, // TODO: Compute Merkle root
-        dirty_pages: BTreeMap::new(),
+        root,
+        dirty_pages: pages,
         full_state: Some(full_state),
     }
+}
+
+/// Compute Merkle root for a single 4KB page.
+fn compute_page_merkle_root(page_data: &[u8; 4096]) -> u32 {
+    use crate::poseidon2::poseidon2_hash;
+
+    // Hash page data in chunks of 4 bytes (u32)
+    let mut words = Vec::with_capacity(1024);
+    for chunk in page_data.chunks(4) {
+        let word = u32::from_le_bytes([
+            chunk[0],
+            chunk.get(1).copied().unwrap_or(0),
+            chunk.get(2).copied().unwrap_or(0),
+            chunk.get(3).copied().unwrap_or(0),
+        ]);
+        words.push(word);
+    }
+
+    poseidon2_hash(&words)
+}
+
+/// Compute global Merkle root from all page roots.
+fn compute_memory_merkle_root(pages: &BTreeMap<u32, PageData>) -> u32 {
+    use crate::poseidon2::poseidon2_hash;
+
+    if pages.is_empty() {
+        return 0;
+    }
+
+    // Collect page indices and roots
+    let mut data = Vec::with_capacity(pages.len() * 2);
+    for (&page_idx, page) in pages {
+        data.push(page_idx);
+        data.push(page.root);
+    }
+
+    poseidon2_hash(&data)
 }
 
 /// Restore VM state from a snapshot.
@@ -191,16 +253,60 @@ pub fn restore_state(
 /// Restore memory from snapshot.
 fn restore_memory(mem: &mut Memory, snapshot: &MemorySnapshot) -> Result<(), SegmentationError> {
     if let Some(ref full_state) = snapshot.full_state {
+        // Restore from full state representation
         for (&addr, &byte) in full_state {
             mem.write_u8(addr, byte);
         }
         Ok(())
+    } else if !snapshot.dirty_pages.is_empty() {
+        // Restore from dirty pages
+        for (&page_idx, page_data) in &snapshot.dirty_pages {
+            let base_addr = page_idx * 4096;
+            for (offset, &byte) in page_data.data.iter().enumerate() {
+                // Only write non-zero bytes to maintain sparse representation
+                if byte != 0 {
+                    mem.write_u8(base_addr + offset as u32, byte);
+                }
+            }
+        }
+        Ok(())
     } else {
-        // TODO: Implement dirty page restoration
         Err(SegmentationError::RestoreError(
-            "Dirty page restoration not yet implemented".to_string(),
+            "Snapshot has neither full state nor dirty pages".to_string(),
         ))
     }
+}
+
+/// Execute program and split into segments.
+pub fn run_with_segments(
+    elf_bytes: &[u8],
+    _input: &[u8],
+    _config: SegmentConfig,
+) -> Result<Vec<SegmentExecution>, crate::RunError> {
+    use crate::{Cpu, Tracer, load_elf};
+
+    // For now, return a simple stub that runs the program without actual segmentation
+    // Full implementation would split execution at boundaries
+    let loaded_elf = load_elf(elf_bytes)?;
+    let cpu = Cpu::new(loaded_elf.entry, loaded_elf.sp, loaded_elf.gp);
+    let mem = loaded_elf.memory;
+    let tracer = Tracer::default();
+
+    // Capture initial state
+    let initial_state = capture_state(&cpu, &mem, &tracer);
+
+    // For now, just capture final state immediately (stub implementation)
+    // Full implementation would execute the program and split into segments
+    let final_state = capture_state(&cpu, &mem, &tracer);
+
+    // Return single segment
+    Ok(vec![SegmentExecution {
+        segment_id: 0,
+        initial_state,
+        final_state,
+        tracer,
+        cycles: 0,
+    }])
 }
 
 /// Check if current execution state is a valid segment boundary.

@@ -46,7 +46,3 @@ smalloc = ["dep:smalloc", "dep:ctor"]
 [[bench]]
 name = "fibonacci"
 harness = false
-
-[[bench]]
-name = "comprehensive"
-harness = false

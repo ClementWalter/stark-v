@@ -9,13 +9,8 @@ fn test_mulh_witness_gen_empty_table() {
     let trace = table.into_witness();
     // Empty table produces minimal log_size = 4 (16 rows)
     assert!(!trace.is_empty());
-    // Note: trace is guaranteed non-empty by the assert above
     assert_eq!(
-        trace
-            .first()
-            .expect("trace has columns - guaranteed by assert")
-            .domain
-            .log_size(),
+        trace.first().expect("trace has columns").domain.log_size(),
         4
     );
 }

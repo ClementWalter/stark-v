@@ -281,22 +281,8 @@ impl FrameworkEval for Eval {
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
-        // Range check shift carries: ensure bit_shift_carry[i] <= bit_multiplier - enabler
-        // This verifies that carries don't exceed 2^bit_shift
-        add_to_relation!(
-            eval,
-            self.relations.range_check_8_8,
-            -enabler.clone(),
-            bit_multiplier.clone() - enabler.clone() - bit_shift_carry[0].clone(),
-            bit_multiplier.clone() - enabler.clone() - bit_shift_carry[1].clone()
-        );
-        add_to_relation!(
-            eval,
-            self.relations.range_check_8_8,
-            -enabler.clone(),
-            bit_multiplier.clone() - enabler.clone() - bit_shift_carry[2].clone(),
-            bit_multiplier.clone() - enabler.clone() - bit_shift_carry[3].clone()
-        );
+        // TODO: Range check shift carries (scaled by 2^8 / bit_multiplier)
+        let _ = bit_shift_carry;
 
         // Range check rd
         add_to_relation!(

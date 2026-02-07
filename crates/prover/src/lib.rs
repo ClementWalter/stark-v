@@ -7,91 +7,36 @@
     macro_metavar_expr_concat
 )]
 
-// Compile-time check: Ensure at most one allocator feature is enabled
-// We use compile_error! to provide clear error messages when multiple allocators are enabled
-#[cfg(all(feature = "smalloc", feature = "jemalloc"))]
-compile_error!(
-    "Cannot enable both 'smalloc' and 'jemalloc' features simultaneously. Choose only one allocator."
-);
-
-#[cfg(all(feature = "smalloc", feature = "mimalloc"))]
-compile_error!(
-    "Cannot enable both 'smalloc' and 'mimalloc' features simultaneously. Choose only one allocator."
-);
-
-#[cfg(all(feature = "jemalloc", feature = "mimalloc"))]
-compile_error!(
-    "Cannot enable both 'jemalloc' and 'mimalloc' features simultaneously. Choose only one allocator."
-);
-
-#[cfg(all(
-    feature = "peak-alloc",
-    any(feature = "smalloc", feature = "jemalloc", feature = "mimalloc")
-))]
-compile_error!(
-    "Cannot enable 'peak-alloc' with other allocator features (smalloc/jemalloc/mimalloc). Choose only one allocator."
-);
-
 // Allocator configuration via features
-// Each allocator is only compiled if its feature is enabled AND no conflicting features are enabled
-#[cfg(all(
-    feature = "smalloc",
-    not(any(feature = "jemalloc", feature = "mimalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "smalloc")]
 use smalloc::Smalloc;
-#[cfg(all(
-    feature = "smalloc",
-    not(any(feature = "jemalloc", feature = "mimalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "smalloc")]
 #[global_allocator]
 static GLOBAL: Smalloc = Smalloc::new();
 
-#[cfg(all(
-    feature = "smalloc",
-    not(any(feature = "jemalloc", feature = "mimalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "smalloc")]
 #[ctor::ctor]
 unsafe fn init_smalloc() {
-    unsafe {
-        GLOBAL.init();
-    }
+    GLOBAL.init();
 }
 
-#[cfg(all(
-    feature = "jemalloc",
-    not(any(feature = "smalloc", feature = "mimalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "peak-alloc")]
+use peak_alloc::PeakAlloc;
+#[cfg(feature = "peak-alloc")]
+#[global_allocator]
+pub static PEAK_ALLOC: PeakAlloc = PeakAlloc;
+
+#[cfg(feature = "jemalloc")]
 use tikv_jemallocator::Jemalloc;
-#[cfg(all(
-    feature = "jemalloc",
-    not(any(feature = "smalloc", feature = "mimalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "jemalloc")]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-#[cfg(all(
-    feature = "mimalloc",
-    not(any(feature = "smalloc", feature = "jemalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
-#[cfg(all(
-    feature = "mimalloc",
-    not(any(feature = "smalloc", feature = "jemalloc", feature = "peak-alloc"))
-))]
+#[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-
-#[cfg(all(
-    feature = "peak-alloc",
-    not(any(feature = "smalloc", feature = "jemalloc", feature = "mimalloc"))
-))]
-use peak_alloc::PeakAlloc;
-#[cfg(all(
-    feature = "peak-alloc",
-    not(any(feature = "smalloc", feature = "jemalloc", feature = "mimalloc"))
-))]
-#[global_allocator]
-pub static PEAK_ALLOC: PeakAlloc = PeakAlloc;
 
 /// Print all enabled features for debugging/benchmarking.
 pub fn print_enabled_features() {
@@ -130,7 +75,7 @@ pub mod public_data;
 pub mod relations;
 pub mod verifier;
 
-pub use errors::{ProverError, VerificationError};
+pub use errors::VerificationError;
 pub use prover::prove_rv32im;
 pub use public_data::PublicData;
 pub use verifier::verify_rv32im;

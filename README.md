@@ -180,47 +180,6 @@ cargo bench --package prover --bench fibonacci --features parallel
 
 # With jemalloc allocator
 cargo bench --package prover --bench fibonacci --features "parallel,jemalloc"
-
-# Comprehensive benchmarks with detailed metrics
-cargo bench --package prover --bench comprehensive
-
-# With memory profiling
-cargo bench --package prover --bench comprehensive --features peak-alloc
-```
-
-### Comprehensive Benchmarking
-
-The `comprehensive` benchmark suite provides detailed performance analysis:
-
-- **proof_generation**: End-to-end proof generation with proof size measurements
-- **verification**: Separate verification time benchmarking
-- **proof_size**: Proof size scaling analysis across different cycle counts
-- **component_breakdown**: Time breakdown across VM execution, proving, and
-  verification
-- **memory_profile**: Memory usage profiling (requires `peak-alloc` feature)
-- **parallel_throughput**: Aggregate throughput when running multiple proofs in
-  parallel
-
-Results include:
-
-- Throughput in kHz (thousands of cycles/second)
-- Proof sizes in bytes and KB
-- Component-level timing percentages
-- Memory usage per cycle
-- Peak memory consumption
-
-Example output:
-
-```text
-=== Component Breakdown Benchmark (N=500000) ===
-Breakdown for 2500170 cycles:
-  VM execution:      3.19s ( 11.2%)
-  Proving:          24.88s ( 87.5%)
-  Verification:      0.37s (  1.3%)
-  Total:            28.44s
-  Throughput:       87.92 kHz
-Proof size: 83396 bytes (81.44 KB)
-Peak memory: 156.25 MB
 ```
 
 ### Results
