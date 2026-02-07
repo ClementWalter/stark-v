@@ -1,4 +1,4 @@
-//! Build script to auto-generate binary wrappers for guest-lib programs.
+∏//! Build script to auto-generate binary wrappers for guest-lib programs.
 //!
 //! This scans the guest-lib/examples/ directory and generates a binary
 //! wrapper for each example. Manual binaries (opcode tests) are preserved.

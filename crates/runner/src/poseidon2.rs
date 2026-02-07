@@ -133,6 +133,30 @@ fn apply_internal_round_matrix(state: &mut [u32; 16]) {
     }
 }
 
+/// Hash a variable-length input by repeatedly absorbing pairs of u32 values.
+/// This is a simplified sponge construction using Poseidon2.
+pub fn poseidon2_hash(input: &[u32]) -> u32 {
+    if input.is_empty() {
+        return 0;
+    }
+
+    // Process input in pairs, accumulating the hash
+    let mut accumulator = 0u32;
+    for chunk in input.chunks(2) {
+        let left = chunk[0];
+        let right = if chunk.len() > 1 { chunk[1] } else { 0 };
+        // Use the poseidon2 permutation and extract first output
+        let trace = poseidon2_traced(add_m31(accumulator, left), right);
+        // Extract the first state element after the full permutation
+        // The final state is at the end of the trace (last T elements)
+        // POSEIDON2_TRACE_COLUMNS = 1 + T * (1 + FULL_ROUNDS * 3) + PARTIAL_ROUNDS * 3
+        let final_state_idx = POSEIDON2_TRACE_COLUMNS - T;
+        accumulator = trace[final_state_idx];
+    }
+
+    accumulator
+}
+
 pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS] {
     let mut row = [0u32; POSEIDON2_TRACE_COLUMNS];
     let mut idx = 0usize;

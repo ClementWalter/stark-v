@@ -18,7 +18,12 @@ words:
   - clément
   - clippy
   - condvar
+  - csrrc
+  - csrrci
+  - csrrs
+  - csrrsi
   - csrrw
+  - csrrwi
   - divu
   - doctest
   - doubleword
@@ -61,8 +66,10 @@ words:
   - madvise
   - memsz
   - MEPC
+  - mcause
   - merkle
   - mersenne
+  - mstatus
   - metavar
   - mimalloc
   - mispredictions
@@ -90,7 +97,9 @@ words:
   - pairable
   - popcount
   - precomputation
+  - preimage
   - println
+  - ratatui
   - readelf
   - regs
   - remu
@@ -143,4 +152,5 @@ words:
   - writeback
   - XLEN
   - xori
+  - Zicsr
   - zkvm

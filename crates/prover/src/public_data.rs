@@ -64,7 +64,7 @@ pub struct PublicData {
 }
 
 impl PublicData {
-    pub fn new(run_result: &runner::RunResult) -> Self {
+    pub fn new(run_result: &runner::RunResult) -> Result<Self, crate::ProverError> {
         let tracer = &run_result.tracer;
 
         let program_root = tracer.program.root.first().copied();
@@ -88,7 +88,8 @@ impl PublicData {
             }
         }
 
-        let clock = u32::try_from(run_result.cycles).expect("cycles overflow u32");
+        let clock = u32::try_from(run_result.cycles)
+            .map_err(|_| crate::ProverError::CyclesOverflow(run_result.cycles))?;
         let input_words = pack_words(&run_result.input);
         let output_data_end = run_result
             .output_data_addr
@@ -117,7 +118,7 @@ impl PublicData {
             output_words,
         };
 
-        Self {
+        Ok(Self {
             initial_pc: run_result.initial_pc,
             final_pc: run_result.final_pc,
             clock,
@@ -128,7 +129,7 @@ impl PublicData {
             initial_rw_root,
             final_rw_root,
             io_entries,
-        }
+        })
     }
 
     /// Mix public data into the channel transcript.
@@ -172,11 +173,11 @@ impl PublicData {
         // Registers state: emit initial (pc, clk=1), consume final (pc, clk=clock+1).
         if self.clock > 0 {
             let initial_clk = M31::from(1u32);
-            let final_clk = M31::from(
-                self.clock
-                    .checked_add(1)
-                    .expect("clock overflow when computing final clk"),
-            );
+            // Note: clock is guaranteed to be < u32::MAX since it comes from valid execution cycles
+            // The check below is defensive but should never overflow in practice
+            let final_clk = M31::from(self.clock.checked_add(1).expect(
+                "clock overflow when computing final clk - execution exceeded u32::MAX-1 cycles",
+            ));
             values_to_inverse.push(
                 relations
                     .registers_state

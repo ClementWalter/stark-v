@@ -38,6 +38,64 @@ slow-tests = []
 parallel = ["stwo/parallel", "stwo-constraint-framework/parallel"]
 track-relations = []
 default = []
+
+# Allocator Features
+# ==================
+#
+# CRITICAL: These allocator features are MUTUALLY EXCLUSIVE. Only one allocator
+# can be enabled at compile time. Attempting to enable multiple allocators will
+# result in a compile-time error enforced by guards in src/lib.rs (lines 10-33).
+#
+# Available Allocators:
+#
+# 1. peak-alloc (Memory Profiling)
+#    Usage: cargo bench --features peak-alloc
+#    Purpose: Tracks peak memory usage during proof generation
+#    Performance: Development/profiling use only - DO NOT use in production
+#    Use case: Memory debugging and analysis
+#
+# 2. jemalloc (Production Allocator)
+#    Usage: cargo bench --features jemalloc
+#    Purpose: High-performance general-purpose allocator with good fragmentation characteristics
+#    Performance: ~877 kHz throughput on M2 Max (see README benchmarks, lines 277-294)
+#    Use case: Production deployments requiring balanced performance
+#    Best for: Multi-threaded workloads with varying allocation patterns
+#
+# 3. mimalloc (High-Throughput Allocator)
+#    Usage: cargo bench --features mimalloc
+#    Purpose: Microsoft's fast allocator optimized for throughput
+#    Performance: ~932 kHz throughput on M2 Max (see README benchmarks, lines 316-334)
+#    Use case: Maximum single-proof throughput
+#    Best for: Latency-sensitive applications or single-threaded proving
+#
+# 4. smalloc (Experimental Allocator)
+#    Usage: cargo bench --features smalloc
+#    Purpose: Simple custom allocator (experimental)
+#    Performance: ~839 kHz throughput on M2 Max (see README benchmarks, lines 296-313)
+#    Use case: Research and experimentation
+#    Note: Requires manual initialization via ctor crate
+#
+# Default (No Allocator Feature):
+#    When no allocator feature is enabled, Rust's system allocator is used.
+#    Performance: ~921 kHz throughput on M2 Max (see README benchmarks, lines 258-275)
+#    Use case: Development and testing
+#
+# Compile-Time Safety:
+# The prover crate enforces mutual exclusion via compile_error! macros in src/lib.rs.
+# These guards prevent accidental multi-allocator builds by checking all feature
+# combinations at compile time. Attempting to build with multiple allocator features
+# will fail with a clear error message indicating which features conflict.
+#
+# Performance Comparison (Apple M2 Max, 12 cores, 64GB RAM):
+# See README.md lines 226-334 for detailed benchmark results.
+#
+# Summary:
+# - mimalloc: Best throughput (~932 kHz)
+# - jemalloc: Balanced performance (~877 kHz)
+# - system: Good default (~921 kHz)
+# - smalloc: Experimental (~839 kHz)
+# - peak-alloc: Profiling only (not for benchmarking)
+
 peak-alloc = ["dep:peak_alloc"]
 jemalloc = ["dep:tikv-jemallocator"]
 mimalloc = ["dep:mimalloc"]
@@ -45,4 +103,8 @@ smalloc = ["dep:smalloc", "dep:ctor"]
 
 [[bench]]
 name = "fibonacci"
+harness = false
+
+[[bench]]
+name = "comprehensive"
 harness = false

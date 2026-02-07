@@ -8,10 +8,12 @@ mod io;
 mod memory;
 mod poseidon2;
 mod program;
+pub mod segment;
 // trace module must come before ops so trace_op! macro is available
 #[macro_use]
 pub mod trace;
 mod ops;
+pub mod profiler;
 
 use decode::get_or_decode;
 use thiserror::Error;
@@ -22,6 +24,12 @@ pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
 pub use execute::execute;
 pub use memory::Memory;
+pub use profiler::{ExecutionProfile, HotSpot, InstructionStats, Profiler};
+pub use segment::{
+    BoundaryStrategy, MemorySnapshot, PageData, SegmentConfig, SegmentExecution,
+    SegmentationError, StateCommitment, VmState, capture_state, compute_state_commitment,
+    is_valid_boundary, restore_state, run_with_segments,
+};
 pub use trace::{Access, Tracer};
 
 /// Errors that can occur during program execution.
