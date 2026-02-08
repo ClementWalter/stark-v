@@ -318,40 +318,77 @@ claudeth/
 
 **Phase 3 Status**: ✅ 100% COMPLETE (All 3 waves done)
 
-### Phase 4: Transaction Execution (Week 5-6) - ❌ NOT STARTED
+### Phase 4: Transaction Execution (Week 5-6) - 🔄 READY TO START
 
 **Goal**: Execute Ethereum transactions
 
-**Tasks**:
+**Status**: ✅ Transaction types complete, ✅ EVM interpreter complete, ready for execution logic
 
-1. **Implement transaction validation** [P0]
-   - Signature verification
-   - Nonce checking
-   - Gas limit validation
-   - Transaction type handling (legacy, EIP-2930, EIP-1559)
+### Phase 4 Parallel Work Streams
 
-2. **Implement state transitions** [P0]
-   - Pre-execution state setup
-   - Contract deployment (CREATE/CREATE2)
-   - Message calls (CALL/STATICCALL/DELEGATECALL)
-   - Post-execution state updates
+Phase 4 can be broken into 3 independent parallel streams:
 
-3. **Implement receipt generation** [P0]
-   - Transaction receipt structure
-   - Log generation (EVM events)
-   - Status codes (success/failure)
-   - Gas used calculation
+#### Stream A: Transaction Validation (tx-validation-expert) - ⏸️ READY NOW
+**File**: `src/stf/transaction.rs` (new)
+**Goal**: Validate transactions before execution
+**Work**:
+- Signature verification (use existing secp256k1)
+- Nonce checking against account state
+- Gas limit validation
+- Sufficient balance checks
+- Transaction type handling (Legacy, EIP-2930, EIP-1559)
+- Intrinsic gas calculation (21000 + calldata + access list)
+- 30+ validation tests
+**Dependencies**: Transaction types ✅, State ✅ (UNBLOCKED)
+**Estimated Time**: 35-40 minutes
+**Status**: READY TO START NOW ⚡
 
-4. **Add transaction tests** [P0]
-   - Unit tests for validation
-   - Integration tests for execution
-   - EELS transaction test vectors
+#### Stream B: Receipt Types (receipt-expert) - ⏸️ READY NOW
+**File**: `src/stf/receipt.rs` (new)
+**Goal**: Define receipt structures and generation
+**Work**:
+- TransactionReceipt struct (status, cumulative_gas, logs, logs_bloom)
+- Log struct (address, topics, data)
+- Bloom filter implementation for logs
+- RLP encoding/decoding for receipts
+- Receipt root computation
+- 25+ receipt tests
+**Dependencies**: Core types ✅ (UNBLOCKED)
+**Estimated Time**: 30-35 minutes
+**Status**: READY TO START NOW ⚡
 
-**Exit Criteria**:
+#### Stream C: State Execution (tx-execution-expert) - ⏸️ BLOCKED (needs A & B)
+**File**: `src/stf/executor.rs` (new)
+**Goal**: Execute transactions and update state
+**Work**:
+- Pre-execution setup (deduct gas cost, increment nonce)
+- Contract deployment (CREATE/CREATE2 opcodes)
+- Message calls (CALL/STATICCALL/DELEGATECALL opcodes)
+- Post-execution state updates (refund gas, update balances)
+- Receipt generation
+- Integration with EVM interpreter
+- 40+ execution tests
+**Dependencies**: Validation (Stream A) ✅, Receipts (Stream B) ✅, EVM ✅
+**Estimated Time**: 50-60 minutes
+**Status**: BLOCKED by Streams A & B
 
-- [ ] Transaction validation is correct
-- [ ] State transitions match EELS specification
-- [ ] Receipts are generated correctly
+### Phase 4 Execution Plan
+
+**Wave 1 (Parallel)**: Streams A & B (no dependencies)
+- tx-validation-expert: Transaction validation
+- receipt-expert: Receipt types and bloom filters
+
+**Wave 2 (Sequential)**: Stream C (depends on A & B)
+- tx-execution-expert: State transitions and execution
+
+### Phase 4 Exit Criteria
+
+- [ ] Transaction validation is correct (Stream A)
+- [ ] Receipts are generated correctly (Stream B)
+- [ ] State transitions match EELS specification (Stream C)
+- [ ] 95+ total tests (30+25+40)
+- [ ] Zero clippy warnings
+- [ ] All tests pass in --release mode
 - [ ] 100% test coverage on transaction execution
 
 ### Phase 5: Block Processing (Week 6-7) - ❌ NOT STARTED
@@ -654,9 +691,50 @@ scratch.
 
 ---
 
-## Current Status: Phase 3 COMPLETE ✅ + Transaction Types Ready - Starting Phase 4
+## Current Status: Phase 4 Wave 1 COMPLETE ✅ - Ready for Wave 2 (State Execution)
 
-**Actual State** (2026-02-08 - Session 7):
+**Actual State** (2026-02-08 - Session 8 - Commit: TBD):
+
+### ✅ COMPLETED: Phase 4 Wave 1 (2 PARALLEL TASKS)
+
+**What's Needed**: Transaction validation and receipt structures before execution
+
+**Parallel Work Available**: 2 independent tasks can run NOW
+
+#### ✅ Task 1: Transaction Validation (tx-validation-expert) - COMPLETE
+- **File**: `src/stf/transaction.rs` (1,242 lines)
+- **Status**: ✅ COMPLETE
+- **Results**:
+  - Complete validation suite (signature, nonce, gas, balance, chain ID)
+  - Intrinsic gas calculation (21000 + data + access list + creation)
+  - Transaction getter methods for unified interface
+  - 46 comprehensive tests (exceeds 30 requirement)
+  - All tests pass, zero clippy warnings
+
+#### ✅ Task 2: Receipt Types (receipt-expert) - COMPLETE
+- **File**: `src/stf/receipt.rs` (1,089 lines)
+- **Status**: ✅ COMPLETE
+- **Results**:
+  - Log structure with RLP encoding
+  - Bloom filter (2048-bit, Ethereum Yellow Paper algorithm)
+  - TransactionReceipt with auto bloom generation
+  - Receipt root calculation using MPT
+  - 35 comprehensive tests (exceeds 25 requirement)
+  - All tests pass, zero clippy warnings
+
+**Session 8 Summary**:
+- Added 81 new tests (46 validation + 35 receipts)
+- Total tests: 964 (up from 883)
+- Total lines: ~23,000 (up from ~20,500)
+- Zero clippy warnings ✅
+- All tests passing ✅
+- Phase 4 Wave 1 100% COMPLETE ✅
+
+### ⚡ NEXT TASK: Phase 4 Wave 2 - State Execution
+
+**Wave 2 is now UNBLOCKED** - Can start immediately!
+
+---
 
 ### ✅ COMPLETED: Phase 3 Wave 3 + Transaction Types (2 PARALLEL TASKS)
 

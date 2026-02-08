@@ -29,6 +29,7 @@ extern crate alloc;
 pub mod crypto;
 pub mod evm;
 pub mod state;
+pub mod stf;
 pub mod types;
 
 // =============================================================================
