@@ -4,9 +4,13 @@
 //! It supports proving state transitions without requiring the full trie.
 
 pub mod node;
+pub mod trie;
+pub mod proof;
 
 pub use node::{
     Node, NodeError,
     bytes_to_nibbles, nibbles_to_bytes, common_prefix_length,
     encode_compact_path, decode_compact_path,
 };
+pub use trie::Trie;
+pub use proof::{Proof, ProofError, verify_proof};
