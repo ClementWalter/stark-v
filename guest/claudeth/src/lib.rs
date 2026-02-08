@@ -14,6 +14,7 @@
 //!
 //! - [`types`]: Core Ethereum types (U256, Address, BlockHeader, etc.)
 //! - [`crypto`]: Cryptographic primitives (Keccak256, ECDSA, etc.)
+//! - [`state`]: State management and Merkle Patricia Trie
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
@@ -25,6 +26,7 @@ extern crate alloc;
 // =============================================================================
 
 pub mod crypto;
+pub mod state;
 pub mod types;
 
 // =============================================================================
