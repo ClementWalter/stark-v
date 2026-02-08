@@ -210,13 +210,22 @@ pub fn execute_transaction<S: State + Clone>(
     // TODO: Refactor execute API to work with mutable references
     let exec_state = state.clone();
 
-    let (success, gas_used_execution, return_data, contract_address) = if tx.to().is_none() {
+    let exec_result = if tx.to().is_none() {
         // Contract creation
-        execute_create(tx, exec_state, &sender, gas_available)?
+        execute_create(tx, exec_state, &sender, gas_available)
     } else {
         // Contract call or value transfer
         let to = tx.to().unwrap();
-        execute_call(tx, exec_state, &sender, &to, gas_available)?
+        execute_call(tx, exec_state, &sender, &to, gas_available)
+    };
+
+    let (success, gas_used_execution, return_data, contract_address) = match exec_result {
+        Ok(result) => result,
+        Err(err) => {
+            state.clear_transient_storage();
+            state.clear_selfdestructs();
+            return Err(err);
+        }
     };
 
     // Step 4: Post-execution gas refund and finalization
@@ -242,6 +251,9 @@ pub fn execute_transaction<S: State + Clone>(
     // Step 5: Build result
     // TODO: Extract logs from execution (requires interpreter changes)
     let logs = Vec::new();
+
+    state.clear_transient_storage();
+    state.clear_selfdestructs();
 
     Ok(TransactionExecutionResult {
         sender,

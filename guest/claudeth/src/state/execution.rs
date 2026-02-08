@@ -68,6 +68,12 @@ pub trait State {
 
     /// Returns the list of self-destructed accounts and their beneficiaries
     fn get_selfdestructs(&self) -> &[(Address, Address)];
+
+    /// Clears transient storage (called at transaction end)
+    fn clear_transient_storage(&mut self);
+
+    /// Clears self-destruct list (called at transaction end)
+    fn clear_selfdestructs(&mut self);
 }
 
 /// In-memory implementation of State for testing and simulation
@@ -278,6 +284,14 @@ impl State for InMemoryState {
 
     fn get_selfdestructs(&self) -> &[(Address, Address)] {
         &self.selfdestructs
+    }
+
+    fn clear_transient_storage(&mut self) {
+        self.transient_storage.clear();
+    }
+
+    fn clear_selfdestructs(&mut self) {
+        self.selfdestructs.clear();
     }
 }
 

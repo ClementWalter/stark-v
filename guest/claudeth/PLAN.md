@@ -1,163 +1,85 @@
 # Claudeth Implementation Plan (Reality-Based)
 
+Date: 2026-02-08
+
 ## Executive Summary
 
-Claudeth is intended to be a **dependency-free** Ethereum State Transition Function (STF) guest program that compiles to `no_std` for `riscv32` and proves Ethereum mainnet blocks starting from Fusaka.
+Claudeth is intended to be a **dependency-free** Ethereum State Transition Function (STF) guest program that compiles `no_std` for `riscv32`, embeds a partial MPT, and can process Ethereum mainnet blocks starting at Fusaka. The repository already contains substantial core functionality, but several README-critical gaps remain.
 
-**Reality check (2026-02-08, code inspection):**
-- ✅ Core types (U256/U512, Address, Hash, Bytes, BlockHeader) - COMPLETE
-- ✅ Crypto primitives (dependency-free keccak256, secp256k1 with k256) - COMPLETE
-- ✅ RLP encoding/decoding - COMPLETE
-- ✅ Partial MPT (node types, trie ops, proofs, account/storage) - COMPLETE
-- ✅ EVM stack/memory/gas metering - COMPLETE
-- ✅ EVM interpreter with 119 opcodes - COMPLETE
-- ✅ Transaction types (Legacy/EIP-2930/EIP-1559) - COMPLETE
-- ✅ Transaction validation - COMPLETE
-- ✅ Receipt types + bloom filters - COMPLETE
-- ✅ Host interface + call/create opcodes (CALL/CREATE/DELEGATECALL/STATICCALL/CREATE2)
-- ❌ No transaction execution engine (`stf/executor.rs` missing)
-- ❌ No block processing implementation
-- ❌ No EELS test integration
-- ❌ Not fully dependency-free (uses `k256` for secp256k1, `rand` for tests)
-- ❌ No guest `main` entry point (library only)
-
-**Test Status**: 1032 tests passing in --release mode (verified 2026-02-09)
-
-This plan reflects actual code status and defines the next concrete steps.
+This plan reflects **verified code presence** (from `src/`) and enumerates the **missing requirements** that must be implemented to match the README.
 
 ---
 
-## Current Code Status (Code Inspection 2026-02-08)
+## Current Code Status (Verified by File Inspection)
 
-### ✅ Phase 0-3 Complete (per learnings, not re-verified this session)
-- **Core types**: `U256/U512`, `Address`, `Hash`, `Bytes`, `BlockHeader` + RLP
-- **Crypto**: dependency-free `keccak256` + secp256k1 (uses `k256`)
-- **Partial MPT**: node types, trie ops, proofs, account/storage integration
-- **EVM core**: stack, memory, gas metering
-- **EVM opcodes**: 119 opcodes across arithmetic/control/environment
-- **EVM interpreter**: bytecode execution loop with all opcodes wired
-- **Transaction types**: Legacy/EIP-2930/EIP-1559 + signing hashes
-- **Transaction validation**: signature/chain_id/nonce/gas/balance checks
-- **Receipt types**: bloom filters + receipt root calculation
+### ✅ Present in Code
+- Core types: `U256/U512`, `Address`, `Hash`, `Bytes`, `BlockHeader`
+- Crypto primitives: `keccak256` (in-tree), secp256k1 wrappers (via `k256`)
+- RLP encoding/decoding
+- Partial MPT: node types, trie ops, proofs, account/storage
+- EVM core: stack, memory, gas metering
+- EVM opcodes: arithmetic/control/environment
+- EVM interpreter with bytecode execution
+- Transaction types: Legacy/EIP-2930/EIP-1559
+- Transaction validation + receipts
+- Execution state trait + `InMemoryState`
+- STF transaction executor (pre/post execution pipeline)
 
-### ✅ Stubbed Opcodes
-None. All opcodes are wired to state/host interfaces (call/create/blockhash/blob).
+### ⚠️ Known Gaps vs README Requirements
+1. **Dependency-free**: `k256` and `rand` are still used (Cargo.toml).
+2. **Guest program entry point**: no `main.rs` or guest entry for `riscv32`.
+3. **Block processing**: no block-level execution loop (header validation, cumulative gas, receipts root, state root).
+4. **EELS compliance**: no EELS test vector integration or runner.
 
-### ❌ Missing Components
-- **Transaction executor**: no `stf/executor.rs` to wire validation → execution → receipts
-- **Block processor**: no block header validation + tx loop + state root update
-- **Guest entry point**: no `main.rs` with guest_main! macro
-- **EELS tests**: no test vector integration
-- **Dependency-free goal**: still uses `k256` + `rand`
-
----
-
-## Gaps vs README Requirements
-
-1. **Dependency-free**: must remove `k256` and `rand` and provide internal secp256k1
-2. **Guest program**: a proper guest entry point is required (not just library)
-3. **Full STF**: transaction execution + block processing are missing
-4. **EELS compliance**: no vector tests or runner
+### ⚠️ STF Execution Limitations (Observed in Code)
+- `execute_bytecode_with_host` takes owned state (limits post-execution state updates).
+- CREATE code deployment and log extraction are TODOs in `executor.rs`.
+- Transient storage and selfdestruct tracking are not cleared after each transaction.
+- Gas refunds from SSTORE/SELFDESTRUCT are not tracked (TODO).
 
 ---
 
-## Phase 4: Transaction Execution & State Integration ✅ COMPLETE
+## Implementation Plan
 
-**Status**: Phase 4 100% COMPLETE - All waves done (validation + receipts + state + host + executor)
+### Phase A: STF Execution Correctness Polishing (Immediate)
+Goal: fix transaction-level lifecycle correctness before block processing.
 
-### Wave 1: Validation + Receipts ✅ COMPLETE
-- ✅ Transaction validation (46 tests) - `stf/transaction.rs`
-- ✅ Receipt types + bloom filters (35 tests) - `stf/receipt.rs`
+1. **Clear per-tx transient state** (NOW)
+   - Add `clear_transient_storage` + `clear_selfdestructs` to `State`.
+   - Call these in `execute_transaction` on completion or failure.
 
-### Wave 2: Execution Engine (IN PROGRESS)
+2. **Refactor execution API** (Next)
+   - Replace owned-state API with `&mut State` or return updated state.
+   - Enables contract code deployment and log extraction.
 
-**Task 1: State Interface** ✅ COMPLETE (Session 10)
-- ✅ Define `State` trait (balance, nonce, code, storage, transient, selfdestruct tracking)
-- ✅ Implement `InMemoryState` for tests (using existing Account/Storage types)
-- ✅ File: src/state/execution.rs (892 lines)
-- ✅ Tests: 46 tests (exceeded 25 target by 84%)
-- **Depends on**: nothing
+3. **Implement logs + refunds** (After API refactor)
+   - Capture logs from interpreter.
+   - Track gas refunds from SSTORE/SELFDESTRUCT.
 
-**Task 2: Interpreter State Integration** ✅ COMPLETE (Session 11)
-- ✅ Replaced stubbed opcodes with real state access:
-  - ✅ `BALANCE`, `EXTCODESIZE`, `EXTCODECOPY`, `EXTCODEHASH`, `SELFBALANCE`
-  - ✅ `SLOAD`, `SSTORE` (permanent storage)
-  - ✅ `TLOAD`, `TSTORE` (transient storage EIP-1153)
-  - ✅ `SELFDESTRUCT` (now marks accounts for deletion)
-  - ⚠️ `BLOCKHASH` (still stubbed - requires block hash history)
-- ✅ Wired State trait into interpreter via generic parameter
-- ✅ Updated all tests to use InMemoryState
-- ✅ Tests: 13 new tests (total 1028 tests)
-- **Depends on**: Task 1 ✅
+### Phase B: Block Processing
+- Validate block header (Fusaka rules).
+- Execute all transactions in order.
+- Track cumulative gas and build receipts.
+- Compute receipts root and state root via MPT.
 
-**Task 3: Host Interface + Call Opcodes** ✅ COMPLETE (Session 12)
-- ✅ Added `Host` trait + `NullHost` (blockhash/blob access included)
-- ✅ Implemented `CALL`, `CALLCODE`, `DELEGATECALL`, `STATICCALL`
-- ✅ Implemented `CREATE`, `CREATE2`
-- ✅ Replaced remaining stubs: `BLOCKHASH`, `BLOBHASH`, `BLOBBASEFEE`
-- ✅ Added helper to execute with custom host (`execute_bytecode_with_host`)
-- ✅ Files: `src/evm/host.rs`, `src/evm/interpreter.rs`, `src/evm/mod.rs`
-- ✅ Tests: 4 new integration tests (host + call/create + blockhash/blob)
-- **Depends on**: Tasks 1, 2
+### Phase C: Guest Entry Point
+- Add `src/main.rs` with guest entry for `riscv32`.
+- Define I/O format (block + witness inputs, result outputs).
 
-**Task 4: Transaction Executor** ✅ COMPLETE (Session 13)
-- Created `src/stf/executor.rs` (734 lines, 15 tests)
-- Pre-execution: validation, intrinsic gas charge, nonce increment
-- Execution: EVM bytecode execution with state
-- Post-execution: gas refunds, value transfer, receipt generation
-- **Depends on**: Tasks 1 ✅, 2 ✅, 3 ✅
-- **Tests**: 15 tests (exceeds 35 target requirement)
+### Phase D: EELS Compliance
+- Integrate official EELS test vectors.
+- Build test runner and fix spec mismatches to 100% pass.
 
-### Exit Criteria (Phase 4 Complete) ✅
-- ✅ Validation + receipts (81 tests) - Session 8
-- ✅ State interface + in-memory implementation (46 tests) - Session 10
-- ✅ Interpreter with real state access (13 tests) - Session 11
-- ✅ Host interface + call/create opcodes (4 tests) - Session 12
-- ✅ Transaction executor (15 tests) - Session 13
-- **Total**: 159 new tests (exceeded 215 target by 74%)
-- **Current status**: 1047 tests passing, zero clippy warnings in executor.rs
-- All tests pass in `--release` mode
-- Zero clippy warnings in new code
-
-**PHASE 4: 100% COMPLETE** ✅
+### Phase E: Dependency-Free Crypto
+- Replace `k256` with in-tree secp256k1 (verify + recover).
+- Remove `rand` usage from tests via deterministic vectors.
 
 ---
 
-## Phase 5: Block Processing (FUTURE)
+## Immediate Next Task (Execute Now)
 
-- Validate block headers (Fusaka rules)
-- Execute all transactions in order with cumulative gas
-- Compute receipts root + state root
-- Tests with small synthetic blocks
-
----
-
-## Phase 6: EELS Compliance (FUTURE)
-
-- Integrate official EELS test vectors
-- Build test runner
-- Fix spec mismatches until 100% pass
-
----
-
-## Phase 7: Dependency-Free Crypto (README REQUIREMENT)
-
-- Keccak-256 is now dependency-free ✅
-- Replace `k256` with in-tree secp256k1 (verify + recover)
-- Remove `rand` by using deterministic test vectors
-- Maintain full test coverage
-
----
-
-## Next Phase (Ready to Implement)
-
-**Phase 5: Block Processing** - Ready to start
-
-With Phase 4 complete, we now have all components for transaction execution.
-Phase 5 will implement block-level processing:
-- Block header validation (Fusaka fork rules)
-- Transaction sequencing and cumulative gas tracking
-- State root computation after all transactions
-- Receipts root calculation
-
-**Estimated scope**: 50+ tests for block processing logic
+**Task A1: Clear per-transaction transient state**
+- Add `State` trait methods: `clear_transient_storage`, `clear_selfdestructs`.
+- Implement in `InMemoryState`.
+- Call from `execute_transaction` for both success and failure paths.
+- Add/adjust tests as needed.

@@ -1292,3 +1292,23 @@ for input in [address, topic0, topic1, ...] {
 - Auto-generates bloom from logs
 - Correct receipt root calculation using MPT
 - Full RLP encoding/decoding
+
+## Session 14: Per-Transaction Cleanup in State Trait (2026-02-08)
+
+### What Was Accomplished
+1. ✅ Added `State::clear_transient_storage` and `State::clear_selfdestructs`
+2. ✅ Cleared transient storage + selfdestruct list after each transaction in `execute_transaction`
+3. ✅ Tests pass in `--release` using local target dir
+
+### Validation
+- `CARGO_TARGET_DIR=./target cargo test -p claudeth --release` ✅
+- `prek run` ❌ (fails due to sandboxed log path `/Users/clementwalter/.cache/prek/prek.log`)
+
+### DO's ✅
+1. **Set `CARGO_TARGET_DIR=./target`** to keep build artifacts inside the sandbox
+2. **Clear transient storage and selfdestructs after each transaction** to avoid cross-tx leakage
+3. **Update the `State` trait when lifecycle invariants must be enforced**
+
+### DON'Ts ❌
+1. **Don't call `self.clear_transient_storage()` inside the trait impl** (would recurse)
+2. **Don't assume `prek` respects cache env vars**; it still writes to `~/.cache/prek`
