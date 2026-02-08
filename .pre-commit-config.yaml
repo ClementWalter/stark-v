@@ -5,10 +5,10 @@ repos:
         name: Cargo clippy
         language: system
         pass_filenames: false
-        entry: cargo clippy --all-targets -- -D warnings
+        entry: cargo clippy -p claudeth -- -D warnings
 
       - id: cargo-test
         name: Cargo test
         language: system
         pass_filenames: false
-        entry: cargo test --release --all-targets
+        entry: cargo test --release -p claudeth

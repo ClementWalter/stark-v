@@ -415,7 +415,29 @@ Use task-based parallel execution:
 
 **What's Next**: Phase 3 - EVM Core (150+ opcodes, stack, memory, gas metering)
 
-## Session 5 (Current): Phase 3 - EVM Core Implementation
+## Session 5: Phase 3 Wave 1 - EVM Foundation (✅ COMPLETE)
+
+**Completed**: 2026-02-08
+
+### What Was Implemented
+- EVM Stack (stack.rs): 478 lines, 25 tests
+- EVM Memory (memory.rs): 681 lines, 34 tests
+- Gas Metering (gas.rs): 1,442 lines, 52 tests
+- Total: 111 new tests, all passing
+
+### Session 5 Learnings
+
+**DO's** ✅:
+1. **Fix doc test errors immediately** - Found SLOAD opcode mismatch (0x54 vs 0x55) in doc test, fixed before committing
+2. **Verify all tests pass before proceeding** - Ran both unit tests and doc tests
+3. **Trust parallel execution** - All 3 Wave 1 agents completed successfully in parallel
+4. **Update PLAN.md to reflect reality** - Accurate status tracking prevents confusion
+
+**DON'Ts** ❌:
+1. **Don't skip doc tests** - `cargo test` runs both unit and doc tests, both must pass
+2. **Don't assume test success without verification** - Always check test output carefully
+
+## Session 6 (Current): Phase 3 Wave 2 - EVM Opcodes Implementation
 
 **Started**: 2026-02-08
 

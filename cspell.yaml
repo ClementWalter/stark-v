@@ -15,6 +15,7 @@ words:
   - bytemuck
   - cfgs
   - Circom
+  - claudeth
   - clément
   - clippy
   - condvar

@@ -512,7 +512,7 @@ pub const CALL_DEPTH_LIMIT: usize = 1024;
 ///
 /// assert_eq!(opcode_gas_cost(0x01), 3); // ADD
 /// assert_eq!(opcode_gas_cost(0x02), 5); // MUL
-/// assert_eq!(opcode_gas_cost(0x55), 2100); // SLOAD (cold)
+/// assert_eq!(opcode_gas_cost(0x54), 2100); // SLOAD (cold)
 /// ```
 pub fn opcode_gas_cost(opcode: u8) -> u64 {
     match opcode {

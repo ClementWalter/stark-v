@@ -2,7 +2,7 @@
 
 Claudeth is a dependency free guest program that implements the Ethereum State
 Transition Function (STF). It is written in Rust is used to generate proofs of
-ethereum mainnet blocks.
+ethereum mainnet blocks. It compiles in no_std for the riscv32 target.
 
 It also embeds a Partial MPT for deriving the minimal state required from the
 state root to apply the STF at any given block. This Partial MPT lib needs also

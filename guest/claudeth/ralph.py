@@ -15,8 +15,6 @@ Shell template:
 
 Usage:
   uv run --script ralph.py                    # reads PROMPT.md
-  uv run --script ralph.py "your prompt here" # override file
-  uv run --script ralph.py --interactive      # type/paste prompt, end with Ctrl-D
 
   uv run --script ralph.py "your prompt here" --iterations 50
   uv run --script ralph.py "your prompt here" --no-change-exit-after 10
@@ -48,20 +46,20 @@ def _repo_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def _resolve_prompt_file(prompt_file: Path, repo_dir: Path) -> Path:
+def _resolve_prompt_file(prompt_file: Path, cwd: Path) -> Path:
     if prompt_file.is_absolute():
         return prompt_file
-    return repo_dir / prompt_file
+    return cwd / prompt_file
 
 
-def _load_prompt(prompt: Optional[str], prompt_file: Path, repo_dir: Path) -> str:
+def _load_prompt(prompt: Optional[str], prompt_file: Path, cwd: Path) -> str:
     if prompt is not None:
         if not prompt.strip():
             typer.echo("PROMPT argument cannot be empty.", err=True)
             raise typer.Exit(code=2)
         return prompt
 
-    path = _resolve_prompt_file(prompt_file, repo_dir)
+    path = _resolve_prompt_file(prompt_file, cwd)
     try:
         contents = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -82,26 +80,11 @@ def _load_prompt(prompt: Optional[str], prompt_file: Path, repo_dir: Path) -> st
     return contents
 
 
-def _load_prompt_interactive() -> str:
-    if sys.stdin.isatty():
-        typer.echo(
-            "Enter prompt below. Finish with EOF (Ctrl-D on macOS/Linux; Ctrl-Z then Enter on Windows).",
-            err=True,
-        )
-        typer.echo("", err=True)
-
-    contents = sys.stdin.read()
-    if not contents.strip():
-        typer.echo("Interactive prompt was empty.", err=True)
-        raise typer.Exit(code=2)
-    return contents
-
-
-def _git_bytes(repo_dir: Path, *args: str) -> bytes:
+def _git_bytes(cwd: Path, *args: str) -> bytes:
     try:
         completed = subprocess.run(
             ["git", *args],
-            cwd=repo_dir,
+            cwd=cwd,
             check=False,
             capture_output=True,
         )
@@ -117,22 +100,11 @@ def _git_bytes(repo_dir: Path, *args: str) -> bytes:
     return completed.stdout
 
 
-def _git_text(repo_dir: Path, *args: str) -> str:
-    return _git_bytes(repo_dir, *args).decode(errors="replace").strip()
-
-
-def _ensure_git_repo(repo_dir: Path) -> None:
-    inside = _git_text(repo_dir, "rev-parse", "--is-inside-work-tree")
-    if inside != "true":
-        typer.echo(f"Not a git work tree: {repo_dir}", err=True)
-        raise typer.Exit(code=2)
-
-
-def _head_sha(repo_dir: Path) -> Optional[str]:
+def _head_sha(cwd: Path) -> Optional[str]:
     try:
         completed = subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD"],
-            cwd=repo_dir,
+            cwd=cwd,
             check=False,
             capture_output=True,
             text=True,
@@ -146,7 +118,7 @@ def _head_sha(repo_dir: Path) -> Optional[str]:
     return completed.stdout.strip()
 
 
-def _git_state_fingerprint(repo_dir: Path) -> str:
+def _git_state_fingerprint(cwd: Path) -> str:
     """
     Content-sensitive fingerprint of the git working state.
 
@@ -160,7 +132,7 @@ def _git_state_fingerprint(repo_dir: Path) -> str:
     h.update(b"unstaged\0")
     h.update(
         _git_bytes(
-            repo_dir,
+            cwd,
             "diff",
             "--no-ext-diff",
             "--binary",
@@ -171,7 +143,7 @@ def _git_state_fingerprint(repo_dir: Path) -> str:
     h.update(b"\0staged\0")
     h.update(
         _git_bytes(
-            repo_dir,
+            cwd,
             "diff",
             "--cached",
             "--no-ext-diff",
@@ -181,14 +153,14 @@ def _git_state_fingerprint(repo_dir: Path) -> str:
     )
 
     h.update(b"\0untracked\0")
-    untracked_raw = _git_bytes(repo_dir, "ls-files", "--others", "--exclude-standard", "-z")
+    untracked_raw = _git_bytes(cwd, "ls-files", "--others", "--exclude-standard", "-z")
     untracked = [p for p in untracked_raw.split(b"\0") if p]
     for rel_b in sorted(untracked):
         h.update(rel_b)
         h.update(b"\0")
 
         rel = os.fsdecode(rel_b)
-        path = repo_dir / rel
+        path = cwd / rel
         try:
             if path.is_file():
                 h.update(hashlib.sha256(path.read_bytes()).digest())
@@ -206,20 +178,6 @@ def cli(
         None,
         help=f"Prompt to pass to Claude. If omitted, reads {DEFAULT_PROMPT_FILE}.",
     ),
-    prompt_file: Path = typer.Option(
-        Path(DEFAULT_PROMPT_FILE),
-        "--prompt-file",
-        "-f",
-        help=f"Prompt file to read when PROMPT is omitted (default: {DEFAULT_PROMPT_FILE}).",
-        show_default=True,
-    ),
-    interactive: bool = typer.Option(
-        False,
-        "--interactive",
-        "-i",
-        help="Read prompt from stdin interactively (multi-line) before starting.",
-        show_default=True,
-    ),
     iterations: int = typer.Option(
         DEFAULT_ITERATIONS,
         "--iterations",
@@ -233,12 +191,6 @@ def cli(
         "--claude-bin",
         envvar="CLAUDE_BIN",
         help='Claude executable (default: "claude", or $CLAUDE_BIN).',
-        show_default=True,
-    ),
-    continue_on_error: bool = typer.Option(
-        True,
-        "--continue-on-error/--stop-on-error",
-        help="Keep looping even if Claude exits non-zero.",
         show_default=True,
     ),
     no_change_exit_after: int = typer.Option(
@@ -256,17 +208,10 @@ def cli(
     Run Claude in a loop.
     """
 
-    repo_dir = _repo_dir()
-    _ensure_git_repo(repo_dir)
-    if interactive:
-        if prompt is not None:
-            typer.echo("Do not pass PROMPT when using --interactive.", err=True)
-            raise typer.Exit(code=2)
-        resolved_prompt = _load_prompt_interactive()
-    else:
-        resolved_prompt = _load_prompt(prompt, prompt_file, repo_dir)
-    previous_head = _head_sha(repo_dir) if no_change_exit_after else None
-    previous_fingerprint = _git_state_fingerprint(repo_dir) if no_change_exit_after else ""
+    cwd = Path(__file__).resolve().parent
+    resolved_prompt = _load_prompt(prompt, Path(DEFAULT_PROMPT_FILE), cwd)
+    previous_head = _head_sha(cwd) if no_change_exit_after else None
+    previous_fingerprint = _git_state_fingerprint(cwd) if no_change_exit_after else ""
     no_change_streak = 0
 
     try:
@@ -275,11 +220,18 @@ def cli(
             try:
                 typer.echo(f"Running Claude with prompt: {resolved_prompt}", err=True)
                 completed = subprocess.run(
-                    [claude_bin, "--dangerously-skip-permissions", "-p", resolved_prompt],
-                    cwd=repo_dir,
+                    ["claude", "--dangerously-skip-permissions", "-p", resolved_prompt,  "--output-format", "stream-json", "--verbose"],
+                    cwd=cwd,
                     check=False,
                 )
                 typer.echo(f"Claude exited with status {completed.returncode}", err=True)
+                typer.echo(f"Running Codex with prompt: {resolved_prompt}", err=True)
+                completed = subprocess.run(
+                    ["codex", "exec", resolved_prompt],
+                    cwd=cwd,
+                    check=False,
+                )
+                typer.echo(f"Codex exited with status {completed.returncode}", err=True)
             except FileNotFoundError:
                 typer.echo(
                     f'Could not find "{claude_bin}". Is the Claude CLI installed and on PATH? '
@@ -293,12 +245,10 @@ def cli(
                     f"Claude exited with status {completed.returncode}.",
                     err=True,
                 )
-                if not continue_on_error:
-                    raise typer.Exit(code=completed.returncode)
 
             if no_change_exit_after:
-                current_head = _head_sha(repo_dir)
-                current_fingerprint = _git_state_fingerprint(repo_dir)
+                current_head = _head_sha(cwd)
+                current_fingerprint = _git_state_fingerprint(cwd)
 
                 # NOTE: We do NOT stop when HEAD changes; a HEAD change resets the streak.
                 if current_head == previous_head and current_fingerprint == previous_fingerprint:
