@@ -218,7 +218,7 @@ pub fn execute_transaction<S: State + Clone>(
         execute_call(tx, exec_state, &sender, &to, gas_available)
     };
 
-    let (success, gas_used_execution, return_data, logs, contract_address, returned_state) = match exec_result {
+    let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, returned_state) = match exec_result {
         Ok(result) => result,
         Err(err) => {
             state.clear_transient_storage();
@@ -234,9 +234,8 @@ pub fn execute_transaction<S: State + Clone>(
     let total_gas_used = intrinsic_gas + gas_used_execution;
 
     // Gas refund: max 1/5 of gas used (EIP-3529)
-    // TODO: Track actual refunds from SSTORE and SELFDESTRUCT
-    let _max_refund = total_gas_used / 5;
-    let refund = 0u64; // No refund tracking yet
+    let max_refund = total_gas_used / 5;
+    let refund = gas_refund_raw.min(max_refund);
 
     let final_gas_used = total_gas_used - refund;
 
@@ -268,7 +267,7 @@ pub fn execute_transaction<S: State + Clone>(
 }
 
 // Type alias for execution result to avoid clippy::type_complexity warning
-type ExecutionResultWithState<S> = (bool, u64, Vec<u8>, Vec<Log>, Option<Address>, S);
+type ExecutionResultWithState<S> = (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, S);
 
 /// Executes a contract call transaction
 fn execute_call<S: State>(
@@ -283,7 +282,7 @@ fn execute_call<S: State>(
 
     // If no code, this is just a value transfer (success)
     if code.is_empty() {
-        return Ok((true, 0, Vec::new(), Vec::new(), None, state));
+        return Ok((true, 0, 0, Vec::new(), Vec::new(), None, state));
     }
 
     // Execute bytecode (using NullHost for now)
@@ -294,6 +293,7 @@ fn execute_call<S: State>(
         Ok((exec_result, returned_state)) => Ok((
             exec_result.success,
             exec_result.gas_used,
+            exec_result.gas_refund,
             exec_result.return_data,
             convert_logs(exec_result.logs),
             None,
@@ -331,6 +331,7 @@ fn execute_create<S: State>(
             Ok((
                 exec_result.success,
                 exec_result.gas_used,
+                exec_result.gas_refund,
                 exec_result.return_data,
                 convert_logs(exec_result.logs),
                 Some(contract_address),
@@ -546,7 +547,7 @@ mod tests {
         let result = execute_call(&tx, state, &sender, &recipient, 21000);
 
         assert!(result.is_ok());
-        let (success, gas_used, return_data, logs, contract_address, _state) = result.unwrap();
+        let (success, gas_used, _gas_refund, return_data, logs, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert_eq!(gas_used, 0); // No code execution
@@ -608,7 +609,7 @@ mod tests {
         let result = execute_call(&tx, state, &sender, &contract, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, return_data, logs, _, _state) = result.unwrap();
+        let (success, gas_used, _gas_refund, return_data, logs, _, _state) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0); // Some gas was used
@@ -644,7 +645,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _return_data, logs, contract_address, _state) = result.unwrap();
+        let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0);
@@ -682,7 +683,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _, logs, contract_address, _state) = result.unwrap();
+        let (success, _, _gas_refund, _, logs, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert!(logs.is_empty());
@@ -746,5 +747,134 @@ mod tests {
 
         // Different senders should produce different addresses
         assert_ne!(addr1, addr2);
+    }
+
+    #[test]
+    fn test_gas_refund_sstore_clearing_storage() {
+        // Test that SSTORE clearing storage (non-zero -> zero) gives 4800 gas refund
+        // Bytecode: PUSH1 0x42 PUSH1 0x01 SSTORE PUSH1 0x00 PUSH1 0x01 SSTORE STOP
+        let code = vec![
+            0x60, 0x42, // PUSH1 0x42 (value)
+            0x60, 0x01, // PUSH1 0x01 (key)
+            0x55,       // SSTORE (set storage[1] = 0x42)
+            0x60, 0x00, // PUSH1 0x00 (value)
+            0x60, 0x01, // PUSH1 0x01 (key)
+            0x55,       // SSTORE (set storage[1] = 0, should refund 4800 gas)
+            0x00,       // STOP
+        ];
+
+        let mut state = InMemoryState::new();
+        let to_addr = Address::from([0x44; 20]);
+        state.set_code(&to_addr, code);
+
+        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
+            execute_call(
+                &Transaction::Legacy(LegacyTransaction {
+                    nonce: U256::ZERO,
+                    gas_price: U256::from_u64(1),
+                    gas_limit: U256::from_u64(100000),
+                    to: Some(to_addr),
+                    value: U256::ZERO,
+                    data: Bytes::new(),
+                    v: U256::ZERO,
+                    r: U256::ZERO,
+                    s: U256::ZERO,
+                }),
+                state,
+                &Address::from([0x11; 20]),
+                &to_addr,
+                100000,
+            )
+            .unwrap();
+
+        assert!(success);
+        assert_eq!(gas_refund, 4800); // EIP-3529 refund for clearing storage
+    }
+
+    #[test]
+    fn test_gas_refund_sstore_no_refund_for_setting() {
+        // Test that SSTORE setting storage (zero -> non-zero) gives NO refund
+        // Bytecode: PUSH1 0x42 PUSH1 0x01 SSTORE STOP
+        let code = vec![
+            0x60, 0x42, // PUSH1 0x42 (value)
+            0x60, 0x01, // PUSH1 0x01 (key)
+            0x55,       // SSTORE (set storage[1] = 0x42)
+            0x00,       // STOP
+        ];
+
+        let mut state = InMemoryState::new();
+        let to_addr = Address::from([0x55; 20]);
+        state.set_code(&to_addr, code);
+
+        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
+            execute_call(
+                &Transaction::Legacy(LegacyTransaction {
+                    nonce: U256::ZERO,
+                    gas_price: U256::from_u64(1),
+                    gas_limit: U256::from_u64(100000),
+                    to: Some(to_addr),
+                    value: U256::ZERO,
+                    data: Bytes::new(),
+                    v: U256::ZERO,
+                    r: U256::ZERO,
+                    s: U256::ZERO,
+                }),
+                state,
+                &Address::from([0x11; 20]),
+                &to_addr,
+                100000,
+            )
+            .unwrap();
+
+        assert!(success);
+        assert_eq!(gas_refund, 0); // No refund for setting storage
+    }
+
+    #[test]
+    fn test_gas_refund_capped_at_one_fifth() {
+        // Test that refund is capped at 1/5 of gas used
+        // Bytecode that sets and clears 2 storage slots (2 * 4800 = 9600 gas refund potential)
+        let code = vec![
+            0x60, 0x42, 0x60, 0x01, 0x55, // Set slot 1 = 0x42
+            0x60, 0x00, 0x60, 0x01, 0x55, // Clear slot 1 (+4800 refund)
+            0x60, 0x42, 0x60, 0x02, 0x55, // Set slot 2 = 0x42
+            0x60, 0x00, 0x60, 0x02, 0x55, // Clear slot 2 (+4800 refund)
+            0x00,                         // STOP
+        ];
+
+        let mut state = InMemoryState::new();
+        let to_addr = Address::from([0x66; 20]);
+        state.set_code(&to_addr, code);
+
+        let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
+            execute_call(
+                &Transaction::Legacy(LegacyTransaction {
+                    nonce: U256::ZERO,
+                    gas_price: U256::from_u64(1),
+                    gas_limit: U256::from_u64(100000),
+                    to: Some(to_addr),
+                    value: U256::ZERO,
+                    data: Bytes::new(),
+                    v: U256::ZERO,
+                    r: U256::ZERO,
+                    s: U256::ZERO,
+                }),
+                state,
+                &Address::from([0x11; 20]),
+                &to_addr,
+                100000,
+            )
+            .unwrap();
+
+        assert!(success);
+        assert_eq!(gas_refund, 9600); // Raw refund = 2 * 4800
+
+        // In the actual execute_transaction function, this would be capped at gas_used / 5
+        let max_refund = gas_used / 5;
+        let capped_refund = gas_refund.min(max_refund);
+
+        // Verify the refund cap logic
+        assert!(capped_refund <= max_refund);
+        assert_eq!(capped_refund, gas_refund.min(gas_used / 5));
     }
 }

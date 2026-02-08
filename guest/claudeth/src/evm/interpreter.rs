@@ -93,6 +93,8 @@ pub struct ExecutionResult {
     pub success: bool,
     /// Gas used during execution
     pub gas_used: u64,
+    /// Gas refund accumulated during execution (from SSTORE clearing storage)
+    pub gas_refund: u64,
     /// Return data (from RETURN or REVERT)
     pub return_data: Vec<u8>,
     /// Logs emitted during execution
@@ -186,6 +188,7 @@ pub struct Evm<S, H> {
     stack: Stack,
     memory: Memory,
     gas_remaining: u64,
+    gas_refund: u64,      // Accumulated gas refund (from SSTORE clearing storage)
     pc: usize,
     code: Vec<u8>,
     stopped: bool,
@@ -233,6 +236,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             stack: Stack::new(),
             memory: Memory::new(),
             gas_remaining: gas_limit,
+            gas_refund: 0,
             pc: 0,
             code,
             stopped: false,
@@ -673,8 +677,18 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             0x55 => {
                 // SSTORE: store to permanent storage
                 let key = self.stack.pop()?;
-                let value = self.stack.pop()?;
-                self.state.sstore(&self.call_ctx.address, &key, value);
+                let new_value = self.stack.pop()?;
+
+                // Get current value to determine refund (EIP-3529)
+                let current_value = self.state.sload(&self.call_ctx.address, &key);
+
+                // EIP-3529: Only refund when clearing storage (non-zero -> zero)
+                // Refund: 4800 gas when setting storage to zero from non-zero
+                if !current_value.is_zero() && new_value.is_zero() {
+                    self.gas_refund += 4800;
+                }
+
+                self.state.sstore(&self.call_ctx.address, &key, new_value);
             }
             0x56 => {
                 // JUMP
@@ -1136,6 +1150,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         Ok(ExecutionResult {
             success: true,
             gas_used: initial_gas - self.gas_remaining,
+            gas_refund: self.gas_refund,
             return_data: self.return_data.clone(),
             logs: self.logs.clone(),
             stack: self.stack.clone(),
