@@ -29,6 +29,7 @@ pub(crate) struct MemoryLayout {
 }
 
 impl MemoryLayout {
+    #[allow(clippy::too_many_arguments)]
     #[cfg(test)]
     pub(crate) fn new(
         program_base: u32,
