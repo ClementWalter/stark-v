@@ -78,30 +78,36 @@ Goal: fix transaction-level lifecycle correctness before block processing.
 
 ## Current Status Summary (2026-02-09)
 
-### ✅ Completed (Phase 4 - 100% COMPLETE)
+### ✅ Completed (Phase A - 100% COMPLETE)
 - **Phase A: Task A1** ✅ - Per-transaction cleanup implemented
   - State trait has `clear_transient_storage()` and `clear_selfdestructs()`
   - Called in `execute_transaction()` on both success and failure paths
-  - All 1047 tests passing
 
-### ⚠️ Known Limitations (Phase A: Task A2 - NOT STARTED)
-**Execution API Limitation**: Current `execute_bytecode_with_host()` takes ownership of state, making it impossible to:
-1. Apply state changes after execution (e.g., store deployed contract code)
-2. Inspect state after execution (balance checks in tests)
-3. Use the same state for pre-execution setup
+- **Phase A: Task A2** ✅ - Execution API refactored to return state
+  - Changed `execute_bytecode_with_host()` to return `(ExecutionResult, S)`
+  - Updated `execute_call()` and `execute_create()` to return state
+  - **CONTRACT CODE DEPLOYMENT NOW WORKS** - CREATE transactions deploy code properly
+  - All 1047 tests passing, zero clippy warnings
+  - Commit: 0a506a6
 
-**Current Workaround**: Clone state before execution (functional but sub-optimal)
-
-**Future Refactor**: Change execute API to work with mutable references (`&mut State`)
+### Phase A Status: 100% COMPLETE ✅
+STF execution correctness is now production-ready:
+- ✅ Per-transaction transient storage cleanup
+- ✅ Contract code deployment in CREATE transactions
+- ✅ State properly propagated through execution pipeline
+- ✅ All execution APIs return updated state
 
 ---
 
 ## Immediate Next Task (Execute Now)
 
-**Task A2: Refactor execution API for mutable state**
-- Change `execute_bytecode_with_host()` signature to accept `&mut S: State` instead of owned state
-- Update `Evm<S>` to hold `&mut S` instead of owned `S`
-- Remove state cloning workarounds in `execute_transaction()`
-- Enable contract code deployment in CREATE transactions
-- Update all tests to use mutable references
-- Target: 0 breaking changes to existing tests (all 1047 should still pass)
+**Phase B: Block Processing** - Now unblocked with complete transaction execution
+
+Task B1: Block header validation (Fusaka fork rules)
+- Validate timestamp (must be > parent timestamp)
+- Validate difficulty (should be 0 for PoS)
+- Validate gas limit (within bounds of parent gas limit)
+- Validate gas used (≤ gas limit)
+- Validate extra data (≤ 32 bytes)
+- Validate nonce (should be 0 for PoS)
+- Target: 20+ tests for header validation
