@@ -206,8 +206,7 @@ pub fn execute_transaction<S: State + Clone>(
     // Step 4: Execute transaction
     let gas_available = gas_limit - intrinsic_gas;
 
-    // Clone state for execution (current API limitation - execute_bytecode_with_host takes ownership)
-    // TODO: Refactor execute API to work with mutable references
+    // Clone state for execution (we'll get it back with modifications)
     let exec_state = state.clone();
 
     let exec_result = if tx.to().is_none() {
@@ -219,7 +218,7 @@ pub fn execute_transaction<S: State + Clone>(
         execute_call(tx, exec_state, &sender, &to, gas_available)
     };
 
-    let (success, gas_used_execution, return_data, contract_address) = match exec_result {
+    let (success, gas_used_execution, return_data, contract_address, returned_state) = match exec_result {
         Ok(result) => result,
         Err(err) => {
             state.clear_transient_storage();
@@ -227,6 +226,9 @@ pub fn execute_transaction<S: State + Clone>(
             return Err(err);
         }
     };
+
+    // Update state with execution results (includes deployed contract code, state changes, etc.)
+    *state = returned_state;
 
     // Step 4: Post-execution gas refund and finalization
     let total_gas_used = intrinsic_gas + gas_used_execution;
@@ -267,6 +269,9 @@ pub fn execute_transaction<S: State + Clone>(
     })
 }
 
+// Type alias for execution result to avoid clippy::type_complexity warning
+type ExecutionResultWithState<S> = (bool, u64, Vec<u8>, Option<Address>, S);
+
 /// Executes a contract call transaction
 fn execute_call<S: State>(
     _tx: &Transaction,
@@ -274,13 +279,13 @@ fn execute_call<S: State>(
     _sender: &Address,
     _to: &Address,
     gas_available: u64,
-) -> Result<(bool, u64, Vec<u8>, Option<Address>), ExecutionError> {
+) -> Result<ExecutionResultWithState<S>, ExecutionError> {
     // Get contract code
     let code = state.get_code(_to).to_vec();
 
     // If no code, this is just a value transfer (success)
     if code.is_empty() {
-        return Ok((true, 0, Vec::new(), None));
+        return Ok((true, 0, Vec::new(), None, state));
     }
 
     // Execute bytecode (using NullHost for now)
@@ -288,11 +293,12 @@ fn execute_call<S: State>(
     let result = execute_bytecode_with_host(&code, gas_available, state, NullHost);
 
     match result {
-        Ok(exec_result) => Ok((
+        Ok((exec_result, returned_state)) => Ok((
             exec_result.success,
             exec_result.gas_used,
             exec_result.return_data,
             None,
+            returned_state,
         )),
         Err(_) => Err(ExecutionError::ExecutionFailed),
     }
@@ -304,7 +310,7 @@ fn execute_create<S: State>(
     state: S,
     sender: &Address,
     gas_available: u64,
-) -> Result<(bool, u64, Vec<u8>, Option<Address>), ExecutionError> {
+) -> Result<ExecutionResultWithState<S>, ExecutionError> {
     // Compute contract address
     let nonce = state.get_nonce(sender);
     let contract_address = compute_create_address(sender, nonce.saturating_sub(U256::ONE));
@@ -317,11 +323,10 @@ fn execute_create<S: State>(
     let result = execute_bytecode_with_host(&init_code, gas_available, state, NullHost);
 
     match result {
-        Ok(exec_result) => {
+        Ok((exec_result, mut returned_state)) => {
             if exec_result.success && !exec_result.return_data.is_empty() {
-                // Note: state is moved into execute_bytecode_with_host, so we can't modify it here
-                // TODO: Need to refactor execute API to return state for modifications
-                // For now, just record success
+                // Deploy the contract code returned by the constructor
+                returned_state.set_code(&contract_address, exec_result.return_data.clone());
             }
 
             Ok((
@@ -329,6 +334,7 @@ fn execute_create<S: State>(
                 exec_result.gas_used,
                 exec_result.return_data,
                 Some(contract_address),
+                returned_state,
             ))
         }
         Err(_) => Err(ExecutionError::ExecutionFailed),
@@ -534,7 +540,7 @@ mod tests {
         let result = execute_call(&tx, state, &sender, &recipient, 21000);
 
         assert!(result.is_ok());
-        let (success, gas_used, return_data, contract_address) = result.unwrap();
+        let (success, gas_used, return_data, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert_eq!(gas_used, 0); // No code execution
@@ -595,7 +601,7 @@ mod tests {
         let result = execute_call(&tx, state, &sender, &contract, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, return_data, _) = result.unwrap();
+        let (success, gas_used, return_data, _, _state) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0); // Some gas was used
@@ -630,7 +636,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _return_data, contract_address) = result.unwrap();
+        let (success, gas_used, _return_data, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0);
@@ -667,7 +673,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _, contract_address) = result.unwrap();
+        let (success, _, _, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert!(contract_address.is_some());

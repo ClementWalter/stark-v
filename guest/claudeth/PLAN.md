@@ -76,10 +76,32 @@ Goal: fix transaction-level lifecycle correctness before block processing.
 
 ---
 
+## Current Status Summary (2026-02-09)
+
+### ✅ Completed (Phase 4 - 100% COMPLETE)
+- **Phase A: Task A1** ✅ - Per-transaction cleanup implemented
+  - State trait has `clear_transient_storage()` and `clear_selfdestructs()`
+  - Called in `execute_transaction()` on both success and failure paths
+  - All 1047 tests passing
+
+### ⚠️ Known Limitations (Phase A: Task A2 - NOT STARTED)
+**Execution API Limitation**: Current `execute_bytecode_with_host()` takes ownership of state, making it impossible to:
+1. Apply state changes after execution (e.g., store deployed contract code)
+2. Inspect state after execution (balance checks in tests)
+3. Use the same state for pre-execution setup
+
+**Current Workaround**: Clone state before execution (functional but sub-optimal)
+
+**Future Refactor**: Change execute API to work with mutable references (`&mut State`)
+
+---
+
 ## Immediate Next Task (Execute Now)
 
-**Task A1: Clear per-transaction transient state**
-- Add `State` trait methods: `clear_transient_storage`, `clear_selfdestructs`.
-- Implement in `InMemoryState`.
-- Call from `execute_transaction` for both success and failure paths.
-- Add/adjust tests as needed.
+**Task A2: Refactor execution API for mutable state**
+- Change `execute_bytecode_with_host()` signature to accept `&mut S: State` instead of owned state
+- Update `Evm<S>` to hold `&mut S` instead of owned `S`
+- Remove state cloning workarounds in `execute_transaction()`
+- Enable contract code deployment in CREATE transactions
+- Update all tests to use mutable references
+- Target: 0 breaking changes to existing tests (all 1047 should still pass)
