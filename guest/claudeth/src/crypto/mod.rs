@@ -5,7 +5,11 @@
 //! - ECDSA signature verification
 //! - RLP encoding/decoding
 
+pub mod keccak;
 pub mod rlp;
+
+// Re-export Keccak-256 function
+pub use keccak::keccak256;
 
 // Re-export RLP functions
 pub use rlp::{

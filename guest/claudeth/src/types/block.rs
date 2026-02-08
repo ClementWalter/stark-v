@@ -18,6 +18,7 @@ use core::hash::{Hash as StdHash, Hasher};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::crypto::keccak256;
 use crate::crypto::rlp::{self, RlpError};
 use crate::types::{Address, Bytes, Hash, U256};
 
@@ -229,14 +230,21 @@ impl BlockHeader {
 
     /// Computes the block hash (Keccak-256 of RLP encoding).
     ///
-    /// Note: This method is stubbed with `todo!()` as Keccak-256
-    /// implementation is part of Phase 1 crypto.
+    /// The block hash is computed by first encoding the header as RLP,
+    /// then computing the Keccak-256 hash of the RLP-encoded data.
     ///
-    /// # Panics
+    /// # Examples
     ///
-    /// Currently panics with `todo!()` - will be implemented in Phase 1.
+    /// ```
+    /// use claudeth::types::BlockHeader;
+    ///
+    /// let header = BlockHeader::default();
+    /// let hash = header.compute_hash();
+    /// assert_eq!(hash.as_bytes().len(), 32);
+    /// ```
     pub fn compute_hash(&self) -> Hash {
-        todo!("Keccak-256 implementation required (Phase 1)")
+        let rlp_encoded = self.encode_rlp();
+        keccak256(&rlp_encoded)
     }
 
     /// Encodes the block header as RLP.
@@ -860,5 +868,187 @@ mod tests {
         let json = serde_json::to_string(&header1).unwrap();
         let header2: BlockHeader = serde_json::from_str(&json).unwrap();
         assert_eq!(header1, header2);
+    }
+
+    // =========================================================================
+    // Block Hash Tests
+    // =========================================================================
+
+    #[test]
+    fn test_compute_hash_default_header() {
+        let header = BlockHeader::default();
+        let hash = header.compute_hash();
+        // Just verify it produces a 32-byte hash
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_hash_deterministic() {
+        let header = BlockHeader::default();
+        let hash1 = header.compute_hash();
+        let hash2 = header.compute_hash();
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compute_hash_different_headers() {
+        let header1 = BlockHeader::default();
+        let mut header2 = BlockHeader::default();
+        header2.number = 1;
+
+        let hash1 = header1.compute_hash();
+        let hash2 = header2.compute_hash();
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compute_hash_with_custom_fields() {
+        let mut header = BlockHeader::default();
+        header.number = 12345;
+        header.timestamp = 1234567890;
+        header.gas_used = 15_000_000;
+
+        let hash = header.compute_hash();
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_hash_with_all_optional_fields() {
+        let mut header = BlockHeader::default();
+        header.base_fee_per_gas = Some(2_000_000_000);
+        header.withdrawals_root = Some(Hash::from([0x42; 32]));
+        header.blob_gas_used = Some(131072);
+        header.excess_blob_gas = Some(262144);
+        header.parent_beacon_block_root = Some(Hash::from([0x43; 32]));
+
+        let hash = header.compute_hash();
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_hash_without_optional_fields() {
+        let mut header = BlockHeader::default();
+        header.base_fee_per_gas = None;
+        header.withdrawals_root = None;
+        header.blob_gas_used = None;
+        header.excess_blob_gas = None;
+        header.parent_beacon_block_root = None;
+
+        let hash = header.compute_hash();
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_hash_sensitivity() {
+        // Test that hash changes with each field modification
+        let base_header = BlockHeader::default();
+        let base_hash = base_header.compute_hash();
+
+        // Modify each field and verify hash changes
+        let mut modified = base_header.clone();
+        modified.parent_hash = Hash::from([0x01; 32]);
+        assert_ne!(modified.compute_hash(), base_hash);
+
+        let mut modified = base_header.clone();
+        modified.number = 1;
+        assert_ne!(modified.compute_hash(), base_hash);
+
+        let mut modified = base_header.clone();
+        modified.timestamp = 1;
+        assert_ne!(modified.compute_hash(), base_hash);
+
+        let mut modified = base_header.clone();
+        modified.gas_used = 1;
+        assert_ne!(modified.compute_hash(), base_hash);
+
+        let mut modified = base_header.clone();
+        modified.extra_data = Bytes::from_slice(&[0x42]);
+        assert_ne!(modified.compute_hash(), base_hash);
+    }
+
+    #[test]
+    fn test_compute_hash_roundtrip_consistency() {
+        // Verify that hash of a decoded header matches the original
+        let header1 = BlockHeader::default();
+        let hash1 = header1.compute_hash();
+
+        let encoded = header1.encode_rlp();
+        let header2 = BlockHeader::decode_rlp(&encoded).unwrap();
+        let hash2 = header2.compute_hash();
+
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compute_hash_ethereum_genesis() {
+        // Ethereum mainnet genesis block header (simplified test)
+        let mut header = BlockHeader::default();
+        header.number = 0;
+        header.timestamp = 0;
+        header.gas_limit = 5000;
+        header.gas_used = 0;
+        header.base_fee_per_gas = None;
+
+        let hash = header.compute_hash();
+        // Just verify it produces a valid hash
+        assert_eq!(hash.as_bytes().len(), 32);
+    }
+
+    #[test]
+    fn test_compute_hash_post_merge_block() {
+        // Test a typical post-merge block
+        let mut header = BlockHeader::default();
+        header.number = 15537394; // First post-merge block
+        header.difficulty = U256::ZERO;
+        header.mix_hash = Hash::ZERO;
+        header.nonce = 0;
+        header.base_fee_per_gas = Some(12_000_000_000);
+
+        let hash = header.compute_hash();
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_hash_cancun_block() {
+        // Test a Cancun fork block with blob fields
+        let mut header = BlockHeader::default();
+        header.number = 19426589; // Example Cancun block
+        header.base_fee_per_gas = Some(10_000_000_000);
+        header.withdrawals_root = Some(Hash::from([0x11; 32]));
+        header.blob_gas_used = Some(131072);
+        header.excess_blob_gas = Some(262144);
+        header.parent_beacon_block_root = Some(Hash::from([0x22; 32]));
+
+        let hash = header.compute_hash();
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_hash_with_extra_data() {
+        // Test with various extra_data sizes
+        let mut header = BlockHeader::default();
+
+        // Empty extra_data
+        header.extra_data = Bytes::new();
+        let hash1 = header.compute_hash();
+
+        // Small extra_data
+        header.extra_data = Bytes::from_slice(b"Geth/v1.0.0");
+        let hash2 = header.compute_hash();
+
+        // Max extra_data
+        header.extra_data = Bytes::from_slice(&[0x42; 32]);
+        let hash3 = header.compute_hash();
+
+        // All hashes should be different
+        assert_ne!(hash1, hash2);
+        assert_ne!(hash2, hash3);
+        assert_ne!(hash1, hash3);
     }
 }

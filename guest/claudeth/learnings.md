@@ -103,6 +103,17 @@ Instead of implementing crypto from scratch (slow, error-prone), we'll use prove
 
 These are battle-tested, no_std compatible, and already proven to work in stark-v zkVM context.
 
+### Team Structure
+- **Team**: claudeth-phase1
+- **Task #1**: Implement Keccak-256 wrapper (keccak-expert) - IN PROGRESS
+- **Task #2**: Implement secp256k1 signatures (secp256k1-expert) - BLOCKED by Task #1
+
+### Phase 0 Commit
+✅ Committed Phase 0 completion (commit 3363686)
+- 14 files changed, 7192 insertions
+- All foundation types, RLP, and BlockHeader complete
+- 374 total tests passing
+
 ## Additional Learnings from Setup Phase
 
 ### no_std Configuration for Library Crates
