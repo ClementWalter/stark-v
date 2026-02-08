@@ -1,5 +1,110 @@
 # Claudeth Development Learnings
 
+## Session 11: Phase 4 Wave 2 Task #2 COMPLETE - Interpreter State Integration (2026-02-09)
+
+**Status**: Task #2 complete (Interpreter State Integration), 1028 tests passing
+
+### What Was Accomplished
+1. ✅ Integrated State trait into EVM interpreter as generic parameter
+2. ✅ Implemented 10 state-dependent opcodes with real state access
+3. ✅ Updated all 47 existing interpreter tests to use InMemoryState
+4. ✅ Added 13 comprehensive new tests for state integration
+5. ✅ Fixed borrow checker issues in EXTCODECOPY
+6. ✅ Moved helper functions outside generic impl block to fix type inference
+
+### Task #2 Implementation Details
+**Opcodes Implemented**:
+- 0x31 BALANCE - get balance of account
+- 0x3B EXTCODESIZE - get code size of account
+- 0x3C EXTCODECOPY - copy code from external account
+- 0x3F EXTCODEHASH - get code hash of account
+- 0x47 SELFBALANCE - get balance of current contract
+- 0x54 SLOAD - load from permanent storage
+- 0x55 SSTORE - store to permanent storage
+- 0x5C TLOAD - load from transient storage (EIP-1153)
+- 0x5D TSTORE - store to transient storage (EIP-1153)
+- 0xFF SELFDESTRUCT - mark account for deletion
+
+**Changes Made**:
+- Added `S: State` generic parameter to `Evm<S>` struct
+- Updated `Evm::new()` to accept state parameter
+- Updated `execute_bytecode()` to accept state parameter
+- Moved `address_to_u256`, `u256_to_address`, `hash_to_u256` outside impl block
+- Fixed all test calls to `execute_bytecode()` with InMemoryState::new()
+- Cloned code in EXTCODECOPY to avoid borrow checker conflict
+
+### Statistics
+- **Starting tests**: 1015 (Session 10)
+- **Ending tests**: 1028 (+13 new tests)
+- **Zero clippy warnings**: ✅
+- **All tests pass --release**: ✅
+- **Files modified**: 2 (interpreter.rs +451/-119, PLAN.md)
+
+### DO's ✅
+
+1. **Use generic parameters for traits** - Added `S: State` to `Evm<S>` for flexible state implementation
+2. **Move helper functions outside generic impl blocks** - Fixes type inference issues in tests
+3. **Clone borrowed data when needed** - EXTCODECOPY clones code to avoid borrow checker conflicts
+4. **Update all callers when changing signatures** - Used perl for bulk updates to execute_bytecode calls
+5. **Test state isolation** - Added test_transient_storage_isolated to verify storage separation
+6. **Test edge cases** - Added tests for zero/uninitialized state values
+7. **Use vec! macro idiomatically** - Refactored test_extcodecopy_opcode to avoid vec_init_then_push warning
+
+### DON'Ts ❌
+
+1. **Don't dereference when not needed** - stack.pop() returns U256, not &U256
+2. **Don't forget to update doc tests** - Module doc tests need imports too
+3. **Don't ignore borrow checker** - Fix borrowing issues properly, don't fight the compiler
+4. **Don't assume type inference works** - Helper functions in generic impl need explicit types in tests
+
+### Key Patterns for State Integration
+
+**Generic State Parameter**:
+```rust
+pub struct Evm<S> {
+    // ... fields
+    state: S,
+}
+
+impl<S: State> Evm<S> {
+    pub fn new(code: Vec<u8>, gas_limit: u64, state: S) -> Self {
+        // ...
+    }
+}
+```
+
+**Using State in Opcodes**:
+```rust
+0x31 => {
+    // BALANCE
+    let address_u256 = self.stack.pop()?;
+    let address = u256_to_address(&address_u256);
+    let balance = self.state.get_balance(&address);
+    self.stack.push(balance)?;
+}
+```
+
+**Avoiding Borrow Checker Issues**:
+```rust
+// Clone data when you need to mutate self while holding a reference
+let code = self.state.get_code(&address).to_vec();
+// Now we can mutate self without borrow conflicts
+self.consume_gas(cost)?;
+```
+
+### Session 11 Result
+**Task #2 COMPLETE** ✅ - Interpreter now has full state access:
+- 10 opcodes implemented with real state access
+- 1028 tests passing (up from 1015)
+- Zero technical debt (no warnings, all tests pass)
+- Foundation ready for Task #3 (Host Interface + Call Opcodes)
+
+### Next Session Should
+1. **Task #3**: Implement Host trait for CREATE/CALL/DELEGATECALL/STATICCALL/CREATE2
+2. This is the most complex remaining task (40+ tests expected)
+3. After Task #3, only Task #4 remains (Transaction Executor)
+4. Phase 4 Wave 2 is 2/4 tasks complete (50%)
+
 ## Session 10: Phase 4 Wave 2 Task #1 COMPLETE - State Interface (2026-02-08)
 
 **Status**: Task #1 complete (State trait + InMemoryState), 1015 tests passing
