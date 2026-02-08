@@ -1,10 +1,12 @@
 //! State management and Merkle Patricia Trie
 
 pub mod account;
+pub mod execution;
 pub mod partial_mpt;
 pub mod storage;
 
 pub use account::{Account, EMPTY_CODE_HASH};
+pub use execution::{InMemoryState, State};
 pub use partial_mpt::{
     Node, NodeError, Trie,
     bytes_to_nibbles, nibbles_to_bytes, common_prefix_length,

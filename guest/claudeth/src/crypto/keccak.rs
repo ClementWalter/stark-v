@@ -41,7 +41,10 @@ pub fn keccak256(input: &[u8]) -> Hash {
     let mut offset = 0;
 
     while input.len().saturating_sub(offset) >= KECCAK_RATE_BYTES {
-        absorb_block(&mut state, &input[offset..offset + KECCAK_RATE_BYTES]);
+        let block: &[u8; KECCAK_RATE_BYTES] = input[offset..offset + KECCAK_RATE_BYTES]
+            .try_into()
+            .expect("slice is exactly KECCAK_RATE_BYTES");
+        absorb_block(&mut state, block);
         keccak_f1600(&mut state);
         offset += KECCAK_RATE_BYTES;
     }
