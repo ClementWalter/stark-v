@@ -1,5 +1,18 @@
 # Claudeth Development Learnings
 
+## Session 9: Dependency-Free Keccak + Interpreter Context (2026-02-08)
+
+### DO's ✅
+
+1. **Replace external crypto dependencies with in-tree implementations** when the README requires “dependency-free”.
+2. **Keep opcode semantics in the interpreter consistent with a shared execution context** (address/caller/value/calldata/returndata).
+3. **Prefer deterministic property tests** if you cannot verify a large external test vector in a restricted sandbox.
+
+### DON'Ts ❌
+
+1. **Don't add unverified test vectors** when you can’t validate them locally.
+2. **Don't rely on tooling that writes outside the workspace** (e.g., `uv` cache paths) without confirming sandbox access.
+
 ## Session 1: Initial Analysis (2026-02-08)
 
 ### DO's ✅

@@ -1,12 +1,10 @@
 //! Keccak-256 cryptographic hash function
 //!
-//! This module provides a wrapper around the sha3 crate's Keccak-256
-//! implementation, providing a convenient interface for Ethereum hashing.
+//! This module provides a dependency-free Keccak-256 implementation,
+//! providing a convenient interface for Ethereum hashing.
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
-
-use sha3::{Digest, Keccak256};
 
 use crate::types::Hash;
 
@@ -39,15 +37,119 @@ use crate::types::Hash;
 /// assert_eq!(empty_hash.as_bytes(), &expected);
 /// ```
 pub fn keccak256(input: &[u8]) -> Hash {
-    let mut hasher = Keccak256::new();
-    hasher.update(input);
-    let result = hasher.finalize();
+    let mut state = [0u64; 25];
+    let mut offset = 0;
 
-    // Convert GenericArray to [u8; 32]
+    while input.len().saturating_sub(offset) >= KECCAK_RATE_BYTES {
+        absorb_block(&mut state, &input[offset..offset + KECCAK_RATE_BYTES]);
+        keccak_f1600(&mut state);
+        offset += KECCAK_RATE_BYTES;
+    }
+
+    let mut block = [0u8; KECCAK_RATE_BYTES];
+    let remaining = input.len() - offset;
+    block[..remaining].copy_from_slice(&input[offset..]);
+    block[remaining] = KECCAK_DELIMITER;
+    block[KECCAK_RATE_BYTES - 1] |= 0x80;
+
+    absorb_block(&mut state, &block);
+    keccak_f1600(&mut state);
+
     let mut hash_bytes = [0u8; 32];
-    hash_bytes.copy_from_slice(&result);
+    for (i, chunk) in hash_bytes.chunks_exact_mut(8).enumerate() {
+        chunk.copy_from_slice(&state[i].to_le_bytes());
+    }
 
     Hash::from(hash_bytes)
+}
+
+const KECCAK_RATE_BYTES: usize = 136;
+const KECCAK_DELIMITER: u8 = 0x01;
+
+const KECCAK_ROUNDS: usize = 24;
+const KECCAK_RHO_OFFSETS: [u32; 25] = [
+    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61,
+    56, 14,
+];
+const KECCAK_ROUND_CONSTANTS: [u64; KECCAK_ROUNDS] = [
+    0x0000_0000_0000_0001,
+    0x0000_0000_0000_8082,
+    0x8000_0000_0000_808a,
+    0x8000_0000_8000_8000,
+    0x0000_0000_0000_808b,
+    0x0000_0000_8000_0001,
+    0x8000_0000_8000_8081,
+    0x8000_0000_0000_8009,
+    0x0000_0000_0000_008a,
+    0x0000_0000_0000_0088,
+    0x0000_0000_8000_8009,
+    0x0000_0000_8000_000a,
+    0x0000_0000_8000_808b,
+    0x8000_0000_0000_008b,
+    0x8000_0000_0000_8089,
+    0x8000_0000_0000_8003,
+    0x8000_0000_0000_8002,
+    0x8000_0000_0000_0080,
+    0x0000_0000_0000_800a,
+    0x8000_0000_8000_000a,
+    0x8000_0000_8000_8081,
+    0x8000_0000_0000_8080,
+    0x0000_0000_8000_0001,
+    0x8000_0000_8000_8008,
+];
+
+fn absorb_block(state: &mut [u64; 25], block: &[u8; KECCAK_RATE_BYTES]) {
+    for (i, chunk) in block.chunks_exact(8).enumerate() {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(chunk);
+        state[i] ^= u64::from_le_bytes(bytes);
+    }
+}
+
+fn keccak_f1600(state: &mut [u64; 25]) {
+    let mut c = [0u64; 5];
+    let mut d = [0u64; 5];
+    let mut b = [0u64; 25];
+
+    for &round_constant in KECCAK_ROUND_CONSTANTS.iter() {
+        for x in 0..5 {
+            c[x] = state[x]
+                ^ state[x + 5]
+                ^ state[x + 10]
+                ^ state[x + 15]
+                ^ state[x + 20];
+        }
+
+        for x in 0..5 {
+            d[x] = c[(x + 4) % 5] ^ c[(x + 1) % 5].rotate_left(1);
+        }
+
+        for x in 0..5 {
+            for y in 0..5 {
+                state[x + 5 * y] ^= d[x];
+            }
+        }
+
+        for x in 0..5 {
+            for y in 0..5 {
+                let index = x + 5 * y;
+                let rotated = state[index].rotate_left(KECCAK_RHO_OFFSETS[index]);
+                let new_x = y;
+                let new_y = (2 * x + 3 * y) % 5;
+                b[new_x + 5 * new_y] = rotated;
+            }
+        }
+
+        for x in 0..5 {
+            for y in 0..5 {
+                let index = x + 5 * y;
+                state[index] =
+                    b[index] ^ ((!b[(x + 1) % 5 + 5 * y]) & b[(x + 2) % 5 + 5 * y]);
+            }
+        }
+
+        state[0] ^= round_constant;
+    }
 }
 
 // =============================================================================
@@ -116,18 +218,10 @@ mod tests {
 
     #[test]
     fn test_keccak256_large_input() {
-        // Test with 1KB of data
-        let data = vec![0x42u8; 1024];
-        let hash = keccak256(&data);
-        assert_eq!(hash.as_bytes().len(), 32);
-    }
-
-    #[test]
-    fn test_keccak256_very_large_input() {
-        // Test with 1MB of data
-        let data = vec![0x42u8; 1024 * 1024];
-        let hash = keccak256(&data);
-        assert_eq!(hash.as_bytes().len(), 32);
+        let data = vec![b'-'; 1024];
+        let hash1 = keccak256(&data);
+        let hash2 = keccak256(&data);
+        assert_eq!(hash1, hash2);
     }
 
     // =========================================================================

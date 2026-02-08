@@ -8,7 +8,6 @@ crate-type = ["lib", "staticlib"]
 
 [dependencies]
 serde = { workspace = true, features = ["derive", "alloc"] }
-sha3 = { version = "0.10", default-features = false }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 
 [dev-dependencies]

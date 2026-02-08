@@ -141,6 +141,26 @@ impl Default for TxContext {
     }
 }
 
+/// Call context for contract execution
+#[derive(Debug, Clone)]
+pub struct CallContext {
+    pub address: Address,
+    pub caller: Address,
+    pub call_value: U256,
+    pub call_data: Vec<u8>,
+}
+
+impl Default for CallContext {
+    fn default() -> Self {
+        CallContext {
+            address: Address::ZERO,
+            caller: Address::ZERO,
+            call_value: U256::ZERO,
+            call_data: Vec::new(),
+        }
+    }
+}
+
 // =============================================================================
 // EVM State
 // =============================================================================
@@ -156,6 +176,7 @@ pub struct Evm {
     return_data: Vec<u8>,
     block_ctx: BlockContext,
     tx_ctx: TxContext,
+    call_ctx: CallContext,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
 }
 
@@ -173,8 +194,15 @@ impl Evm {
             return_data: Vec::new(),
             block_ctx: BlockContext::default(),
             tx_ctx: TxContext::default(),
+            call_ctx: CallContext::default(),
             jumpdests,
         }
+    }
+
+    fn address_to_u256(address: &Address) -> U256 {
+        let mut bytes = [0u8; 32];
+        bytes[12..].copy_from_slice(&address.to_bytes());
+        U256::from_be_bytes(bytes)
     }
 
     /// Analyze code to find valid JUMPDEST positions
@@ -299,8 +327,9 @@ impl Evm {
 
             // 0x30-0x3F: Environment
             0x30 => {
-                // ADDRESS: stub for now
-                self.stack.push(U256::ZERO)?;
+                // ADDRESS
+                let address_u256 = Self::address_to_u256(&self.call_ctx.address);
+                self.stack.push(address_u256)?;
             }
             0x31 => {
                 // BALANCE: stub (pop address, push 0)
@@ -309,35 +338,60 @@ impl Evm {
             }
             0x32 => {
                 // ORIGIN
-                let origin_u256 = U256::from_be_bytes({
-                    let mut bytes = [0u8; 32];
-                    bytes[12..].copy_from_slice(&self.tx_ctx.origin.to_bytes());
-                    bytes
-                });
+                let origin_u256 = Self::address_to_u256(&self.tx_ctx.origin);
                 self.stack.push(origin_u256)?;
             }
             0x33 => {
-                // CALLER: stub for now
-                self.stack.push(U256::ZERO)?;
+                // CALLER
+                let caller_u256 = Self::address_to_u256(&self.call_ctx.caller);
+                self.stack.push(caller_u256)?;
             }
             0x34 => {
-                // CALLVALUE: stub for now
-                self.stack.push(U256::ZERO)?;
+                // CALLVALUE
+                self.stack.push(self.call_ctx.call_value)?;
             }
             0x35 => {
-                // CALLDATALOAD: stub (pop index, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // CALLDATALOAD
+                let offset = self.stack.pop()?.as_usize();
+                let mut data = [0u8; 32];
+
+                let call_data_len = self.call_ctx.call_data.len();
+                if offset < call_data_len {
+                    let end = (offset + 32).min(call_data_len);
+                    let copy_len = end - offset;
+                    data[..copy_len].copy_from_slice(&self.call_ctx.call_data[offset..end]);
+                }
+
+                self.stack.push(U256::from_be_bytes(data))?;
             }
             0x36 => {
-                // CALLDATASIZE: stub
-                self.stack.push(U256::ZERO)?;
+                // CALLDATASIZE
+                self.stack
+                    .push(U256::from_u64(self.call_ctx.call_data.len() as u64))?;
             }
             0x37 => {
-                // CALLDATACOPY: stub (pop 3 args)
-                self.stack.pop()?;
-                self.stack.pop()?;
-                self.stack.pop()?;
+                // CALLDATACOPY
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                // Copy call data to memory (zero-padded)
+                for i in 0..size {
+                    let byte = if offset + i < self.call_ctx.call_data.len() {
+                        self.call_ctx.call_data[offset + i]
+                    } else {
+                        0
+                    };
+                    self.memory.mstore8(dest + i, byte)?;
+                }
             }
             0x38 => {
                 // CODESIZE
@@ -388,10 +442,29 @@ impl Evm {
                 self.stack.push(U256::from_u64(self.return_data.len() as u64))?;
             }
             0x3E => {
-                // RETURNDATACOPY: stub (pop 3 args)
-                self.stack.pop()?;
-                self.stack.pop()?;
-                self.stack.pop()?;
+                // RETURNDATACOPY
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                let end = offset
+                    .checked_add(size)
+                    .ok_or(EvmError::MemoryError(MemoryError::InvalidOffset))?;
+                if end > self.return_data.len() {
+                    return Err(EvmError::MemoryError(MemoryError::InvalidOffset));
+                }
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                for i in 0..size {
+                    self.memory.mstore8(dest + i, self.return_data[offset + i])?;
+                }
             }
             0x3F => {
                 // EXTCODEHASH: stub (pop address, push 0)
@@ -1047,6 +1120,124 @@ mod tests {
         assert_eq!(bytes[0], 0x60);
         assert_eq!(bytes[1], 0x03);
         assert_eq!(bytes[2], 0x60);
+    }
+
+    // =============================================================================
+    // Environment Opcode Tests
+    // =============================================================================
+
+    #[test]
+    fn test_address_caller_callvalue() {
+        // ADDRESS CALLER CALLVALUE STOP
+        let code = vec![0x30, 0x33, 0x34, 0x00];
+        let mut evm = Evm::new(code, 1000);
+        let address = Address::new([0x11; 20]);
+        let caller = Address::new([0x22; 20]);
+        let call_value = U256::from_u64(0x1234);
+        evm.call_ctx = CallContext {
+            address,
+            caller,
+            call_value,
+            call_data: Vec::new(),
+        };
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        assert_eq!(
+            result.stack.peek(2).unwrap(),
+            &Evm::address_to_u256(&address)
+        );
+        assert_eq!(
+            result.stack.peek(1).unwrap(),
+            &Evm::address_to_u256(&caller)
+        );
+        assert_eq!(result.stack.peek(0).unwrap(), &call_value);
+    }
+
+    #[test]
+    fn test_calldata_load_and_size() {
+        // PUSH1 0x00 CALLDATALOAD CALLDATASIZE STOP
+        let code = vec![0x60, 0x00, 0x35, 0x36, 0x00];
+        let mut evm = Evm::new(code, 1000);
+        evm.call_ctx.call_data = vec![0xAA, 0xBB, 0xCC];
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        let value = result.stack.peek(1).unwrap();
+        let bytes = value.to_be_bytes();
+        assert_eq!(bytes[0], 0xAA);
+        assert_eq!(bytes[1], 0xBB);
+        assert_eq!(bytes[2], 0xCC);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(3));
+    }
+
+    #[test]
+    fn test_calldata_load_out_of_range() {
+        // PUSH1 0x05 CALLDATALOAD STOP
+        let code = vec![0x60, 0x05, 0x35, 0x00];
+        let mut evm = Evm::new(code, 1000);
+        evm.call_ctx.call_data = vec![0xAA, 0xBB, 0xCC];
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_calldatacopy_zero_pad() {
+        // Copy 6 bytes of calldata starting at offset 2 into memory at 0.
+        // PUSH1 0x06 PUSH1 0x02 PUSH1 0x00 CALLDATACOPY PUSH1 0x00 MLOAD STOP
+        let code = vec![
+            0x60, 0x06, 0x60, 0x02, 0x60, 0x00, 0x37, 0x60, 0x00, 0x51, 0x00,
+        ];
+        let mut evm = Evm::new(code, 1000);
+        evm.call_ctx.call_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        let value = result.stack.peek(0).unwrap();
+        let bytes = value.to_be_bytes();
+        assert_eq!(bytes[0], 0xBE);
+        assert_eq!(bytes[1], 0xEF);
+        assert_eq!(bytes[2], 0x00);
+        assert_eq!(bytes[3], 0x00);
+        assert_eq!(bytes[4], 0x00);
+        assert_eq!(bytes[5], 0x00);
+    }
+
+    #[test]
+    fn test_returndata_size_and_copy() {
+        // Copy 4 bytes of returndata into memory at 0, then load and check size.
+        // PUSH1 0x04 PUSH1 0x00 PUSH1 0x00 RETURNDATACOPY PUSH1 0x00 MLOAD RETURNDATASIZE STOP
+        let code = vec![
+            0x60, 0x04, 0x60, 0x00, 0x60, 0x00, 0x3E, 0x60, 0x00, 0x51, 0x3D, 0x00,
+        ];
+        let mut evm = Evm::new(code, 1000);
+        evm.return_data = vec![0x01, 0x02, 0x03, 0x04];
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        let value = result.stack.peek(1).unwrap();
+        let bytes = value.to_be_bytes();
+        assert_eq!(bytes[0], 0x01);
+        assert_eq!(bytes[1], 0x02);
+        assert_eq!(bytes[2], 0x03);
+        assert_eq!(bytes[3], 0x04);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(4));
+    }
+
+    #[test]
+    fn test_returndatacopy_out_of_bounds() {
+        // PUSH1 0x04 PUSH1 0x02 PUSH1 0x00 RETURNDATACOPY
+        let code = vec![0x60, 0x04, 0x60, 0x02, 0x60, 0x00, 0x3E];
+        let mut evm = Evm::new(code, 1000);
+        evm.return_data = vec![0x01, 0x02, 0x03, 0x04];
+
+        let result = evm.run();
+        assert!(matches!(
+            result,
+            Err(EvmError::MemoryError(MemoryError::InvalidOffset))
+        ));
     }
 
     #[test]
