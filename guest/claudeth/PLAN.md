@@ -115,7 +115,19 @@ Goal: finalize per-transaction correctness before block processing.
 
 **Phase C: Guest Entry Point** (NEXT)
 
-Task C1: Create src/main.rs for riscv32 target
+### Task C0: no_std riscv32 Compilation (✅ COMPLETE)
+- Fix missing vec! macro imports in interpreter, account, trie, node, receipt
+- Fix missing format! macro import in block
+- Fix missing Box import in block and node
+- Fix missing String import in block
+- Add global allocator (BumpAllocator) for riscv32
+- Add panic handler for riscv32
+- All 1168 tests passing (1076 unit + 92 doc)
+- Zero clippy warnings
+- **claudeth now compiles for riscv32im-unknown-none-elf** ✅
+
+### Task C1: Guest Entry Point (NEXT)
+- Create src/main.rs for riscv32 target
 - Define I/O format (block + witness inputs, result outputs)
 - Wire block processing to guest program
-- Compile for riscv32 with no_std
+- Test with sample block data

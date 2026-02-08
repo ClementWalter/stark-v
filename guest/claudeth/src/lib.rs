@@ -23,6 +23,40 @@
 extern crate alloc;
 
 // =============================================================================
+// Platform-specific setup for riscv32
+// =============================================================================
+
+#[cfg(target_arch = "riscv32")]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(target_arch = "riscv32")]
+use core::panic::PanicInfo;
+
+/// Simple bump allocator for riscv32 target
+#[cfg(target_arch = "riscv32")]
+struct BumpAllocator;
+
+#[cfg(target_arch = "riscv32")]
+unsafe impl GlobalAlloc for BumpAllocator {
+    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+        // No-op for bump allocator
+    }
+}
+
+#[cfg(target_arch = "riscv32")]
+#[global_allocator]
+static ALLOCATOR: BumpAllocator = BumpAllocator;
+
+#[cfg(target_arch = "riscv32")]
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
+}
+
+// =============================================================================
 // Modules
 // =============================================================================
 

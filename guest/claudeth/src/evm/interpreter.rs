@@ -23,7 +23,7 @@ extern crate alloc;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
 use crate::evm::memory::{Memory, MemoryError};

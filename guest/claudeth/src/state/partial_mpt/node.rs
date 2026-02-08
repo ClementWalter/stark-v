@@ -31,7 +31,7 @@ extern crate alloc;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec, vec::Vec};
 
 use crate::crypto::{keccak256, rlp};
 use crate::types::Hash;

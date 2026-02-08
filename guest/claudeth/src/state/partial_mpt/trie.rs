@@ -12,9 +12,7 @@ use std::collections::HashMap;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::collections::BTreeMap as HashMap;
-#[cfg(target_arch = "riscv32")]
-use alloc::vec::Vec;
+use alloc::{vec, collections::BTreeMap as HashMap, vec::Vec};
 
 use crate::types::Hash;
 use super::node::{Node, bytes_to_nibbles, common_prefix_length};

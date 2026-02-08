@@ -6,9 +6,6 @@
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
 
-#[cfg(target_arch = "riscv32")]
-use alloc::vec::Vec;
-
 use crate::crypto::rlp;
 use crate::state::partial_mpt::{Trie, proof::Proof};
 use crate::types::{Hash, U256};
