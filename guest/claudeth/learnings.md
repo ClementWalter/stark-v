@@ -1,5 +1,114 @@
 # Claudeth Development Learnings
 
+## Session 17: Gas Refund Tracking (EIP-3529) (2026-02-09)
+
+**Status**: Phase A 100% COMPLETE - Gas refunds implemented and tested
+
+### What Was Accomplished
+1. ✅ Added `gas_refund` field to `ExecutionResult` and `Evm` state
+2. ✅ Implemented SSTORE refund tracking (4800 gas when clearing storage)
+3. ✅ Applied 1/5 cap on gas refunds in executor
+4. ✅ Propagated gas_refund through execute_call and execute_create
+5. ✅ Added 3 comprehensive tests for refund tracking
+6. ✅ All 1051 tests passing, zero clippy warnings
+7. ✅ Phase A (STF Execution Correctness) 100% COMPLETE
+
+### EIP-3529 Implementation (London Fork)
+**Refund Rules**:
+- SSTORE clearing storage (non-zero -> zero): 4800 gas refund
+- SSTORE setting storage (zero -> non-zero): 0 refund
+- SSTORE updating storage (non-zero -> non-zero): 0 refund
+- SELFDESTRUCT: 0 refund (EIP-3529 removed the 24000 gas refund)
+- **Max refund cap**: 1/5 of total gas used (intrinsic + execution)
+
+**Implementation Details**:
+```rust
+// In SSTORE opcode (0x55):
+let current_value = self.state.sload(&self.call_ctx.address, &key);
+if !current_value.is_zero() && new_value.is_zero() {
+    self.gas_refund += 4800; // EIP-3529 refund
+}
+
+// In execute_transaction:
+let max_refund = total_gas_used / 5;
+let refund = gas_refund_raw.min(max_refund);
+let final_gas_used = total_gas_used - refund;
+```
+
+### DO's ✅
+1. **Read current storage value before SSTORE** - Required to determine if refund applies
+2. **Cap refunds at 1/5 of gas used** - EIP-3529 cap prevents gaming the system
+3. **Track refunds in EVM state** - Accumulate refunds during execution, apply in executor
+4. **Update tuple return types systematically** - Use perl for bulk updates to avoid errors
+5. **Test refund logic at EVM level** - Test raw refund accumulation separately from capping
+6. **Use U256::from_u64() for gas_limit in tests** - Type safety for transaction construction
+7. **Document EIP rules in code** - Clear comments about which EIP and what behavior
+
+### DON'Ts ❌
+1. **Don't forget to propagate new fields** - When adding fields to tuples, update all call sites
+2. **Don't apply refund in SSTORE** - Only track it; executor applies the cap and refund
+3. **Don't assume signature validation** - Simple tests should use execute_call, not execute_transaction
+4. **Don't test implementation details** - Test observable behavior (refund amount), not internals
+5. **Don't forget SELFDESTRUCT has no refund** - EIP-3529 removed the 24000 gas refund
+
+### Key Patterns for Gas Refund Tracking
+
+**State Tracking**:
+```rust
+pub struct Evm<S, H> {
+    gas_refund: u64,  // Accumulated during execution
+    // ... other fields
+}
+```
+
+**Result Propagation**:
+```rust
+pub struct ExecutionResult {
+    pub gas_refund: u64,  // Returned to executor
+    // ... other fields
+}
+```
+
+**Refund Application**:
+```rust
+let total_gas = intrinsic_gas + execution_gas;
+let max_refund = total_gas / 5;
+let capped_refund = raw_refund.min(max_refund);
+let final_gas = total_gas - capped_refund;
+```
+
+### Statistics
+- **Starting tests**: 1048
+- **Ending tests**: 1051 (+3 new tests)
+- **Files modified**: 3 (interpreter.rs, executor.rs, PLAN.md)
+- **Zero clippy warnings**: ✅
+- **Phase A**: 100% COMPLETE ✅
+
+### Session 17 Result
+**Phase A: 100% COMPLETE** ✅ - STF Execution Correctness Production-Ready:
+- Task A1: Per-transaction cleanup ✅
+- Task A2: Execution API returns state ✅
+- Task A3: LOG capture and receipt wiring ✅
+- Task A4: Gas refund tracking (EIP-3529) ✅
+
+**All STF execution features implemented**:
+- Transaction validation
+- Contract creation and deployment
+- Contract calls with state updates
+- Log emission and bloom filters
+- Gas refunds with EIP-3529 cap
+- Receipt generation
+- State cleanup between transactions
+
+**Foundation complete for Phase B: Block Processing**
+
+### Next Session Should
+1. **Phase B: Block Processing** - Now fully unblocked
+2. Task B1: Block header validation (Fusaka rules)
+3. Validate timestamp, gas limit, difficulty, nonce, extra data
+4. Target: 20+ tests for header validation
+5. This is a clean, isolated task with no dependencies
+
 ## Session 16: LOG Capture + Receipt Wiring (2026-02-08)
 
 **Status**: LOG capture implemented end-to-end
