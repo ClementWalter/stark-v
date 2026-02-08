@@ -16,8 +16,9 @@ project. Always run tests with --release mode.
    and the plan for the implementation.
 5. If there is nothing to be done, exit.
 6. Based on the PLAN.md file, derive what can be implemented in parallel NOW.
-   Ask a _team_ of rust experts to work on these identified tasks ONLY. Don't
-   work on sequential tasks, just on what can be implemented in parallel NOW.
+   Spawn as many rust experts sub agents as needed to work on these identified
+   tasks ONLY. Don't work on sequential tasks, just on what can be implemented
+   in parallel NOW.
 7. The experts NEED to have 100% test coverage on their work. You are
    responsible for a final validation of the whole work of the team.
 8. If everything looks good, commit the changes to the repository.

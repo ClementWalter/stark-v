@@ -8,6 +8,7 @@
 
 pub mod gas;
 pub mod memory;
+pub mod opcodes;
 pub mod stack;
 
 // Re-export Gas functions and constants
@@ -25,3 +26,6 @@ pub use memory::{Memory, MemoryError};
 
 // Re-export Stack types
 pub use stack::{Stack, StackError, MAX_STACK_SIZE};
+
+// Re-export Opcode types and functions
+// pub use opcodes::{EvmError, arithmetic::*};

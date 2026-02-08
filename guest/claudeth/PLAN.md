@@ -739,10 +739,17 @@ scratch.
 - Zero clippy warnings ✅
 - All tests pass in --release mode ✅
 
-**Next: Phase 3 Wave 2 (Opcodes) - 3 Parallel Streams READY**:
-- Stream D: Arithmetic & Logic Opcodes - READY TO START NOW ⚡
-- Stream E: Memory/Storage/Control Opcodes - READY TO START NOW ⚡
-- Stream F: Environment & Block Opcodes - READY TO START NOW ⚡
+**Phase 3 Wave 2 Status (98.2% Complete - IN PROGRESS)**:
+- Stream D: Arithmetic & Logic Opcodes - 🔄 98% (70/72 tests passing, 2 failures)
+- Stream E: Memory/Storage/Control Opcodes - ✅ 100% (40/40 tests passing)
+- Stream F: Environment & Block Opcodes - ✅ 100% (46/46 tests passing)
+
+**Wave 2 Summary**:
+- Total tests: 158 new opcode tests
+- Passing: 156/158 (98.7% for opcode tests only)
+- Overall: 870/886 tests passing (98.2% project-wide)
+- Files created but not committed (have test failures): arithmetic.rs, control.rs, environment.rs
+- Remaining work: Fix 2 arithmetic test failures, then commit
 
 ---
 
