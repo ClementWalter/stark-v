@@ -1,5 +1,31 @@
 # Claudeth Development Learnings
 
+## Session 12: Phase 4 Wave 2 Task #3 COMPLETE - Host Interface + Call/Create Opcodes (2026-02-08)
+
+**Status**: Task #3 complete (host interface + CALL/CREATE opcodes), tests not runnable due to sandbox write restrictions
+
+### What Was Accomplished
+1. ✅ Added `Host` trait + `NullHost` in `src/evm/host.rs`
+2. ✅ Implemented `CALL`, `CALLCODE`, `DELEGATECALL`, `STATICCALL`, `CREATE`, `CREATE2`
+3. ✅ Wired `BLOCKHASH`, `BLOBHASH`, `BLOBBASEFEE` to host
+4. ✅ Added `execute_bytecode_with_host` while keeping `execute_bytecode` API
+5. ✅ Added 4 integration tests for host/call/create and block/blob opcodes
+
+### Sandbox Constraints Encountered
+- `cargo test -p claudeth --release` failed: cannot write `/Users/.../target/release/.cargo-lock`
+- `prek run` failed: cannot write `/Users/.../.cache/prek/prek.log`
+
+### DO's ✅
+1. **Keep the default API stable** - add `execute_bytecode_with_host` and keep `execute_bytecode` using `NullHost`
+2. **Use a host abstraction for block/blob data** - avoids stuffing extra fields into `BlockContext`/`TxContext`
+3. **Read/write memory bytes via helpers** - reduces duplicated byte extraction logic (RETURN/REVERT/CALL)
+4. **Use `Rc<RefCell<...>>` for test hosts** - allows inspecting captured calls after execution
+
+### DON'Ts ❌
+1. **Don't double-charge base call gas** - opcode base gas is already charged in `opcode_gas_cost`
+2. **Don't forget no_std vec imports** - new modules using `Vec` must mirror the `alloc`/`std` pattern
+3. **Don't assume tests ran** - record sandbox write failures so the next iteration can re-run locally
+
 ## Session 11: Phase 4 Wave 2 Task #2 COMPLETE - Interpreter State Integration (2026-02-09)
 
 **Status**: Task #2 complete (Interpreter State Integration), 1028 tests passing

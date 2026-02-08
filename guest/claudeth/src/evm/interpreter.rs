@@ -25,10 +25,14 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
+use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
 use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
-use crate::evm::{memory_expansion_cost, opcode_gas_cost};
+use crate::evm::{
+    create2_hash_cost, init_code_gas_cost, memory_expansion_cost, opcode_gas_cost,
+    GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
+};
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
 
@@ -168,7 +172,7 @@ impl Default for CallContext {
 // =============================================================================
 
 /// EVM execution state
-pub struct Evm<S> {
+pub struct Evm<S, H> {
     stack: Stack,
     memory: Memory,
     gas_remaining: u64,
@@ -181,6 +185,7 @@ pub struct Evm<S> {
     call_ctx: CallContext,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
     state: S,             // State interface for account/storage access
+    host: H,              // Host interface for calls/creates
 }
 
 // =============================================================================
@@ -205,9 +210,9 @@ fn hash_to_u256(hash: &Hash) -> U256 {
     U256::from_be_bytes(*hash.as_bytes())
 }
 
-impl<S: State> Evm<S> {
+impl<S: State, H: Host<S>> Evm<S, H> {
     /// Create a new EVM instance
-    pub fn new(code: Vec<u8>, gas_limit: u64, state: S) -> Self {
+    pub fn new(code: Vec<u8>, gas_limit: u64, state: S, host: H) -> Self {
         let jumpdests = Self::analyze_jumpdests(&code);
         Evm {
             stack: Stack::new(),
@@ -222,6 +227,7 @@ impl<S: State> Evm<S> {
             call_ctx: CallContext::default(),
             jumpdests,
             state,
+            host,
         }
     }
 
@@ -252,6 +258,34 @@ impl<S: State> Evm<S> {
             return Err(EvmError::OutOfGas);
         }
         self.gas_remaining -= amount;
+        Ok(())
+    }
+
+    fn read_memory_bytes(&mut self, offset: usize, size: usize) -> Result<Vec<u8>, EvmError> {
+        let mut out = Vec::with_capacity(size);
+        for i in 0..size {
+            if offset + i < self.memory.msize() {
+                let value = self.memory.mload((offset + i) & !31)?;
+                let byte_offset = (offset + i) % 32;
+                let bytes = value.to_be_bytes();
+                out.push(bytes[byte_offset]);
+            } else {
+                out.push(0);
+            }
+        }
+        Ok(out)
+    }
+
+    fn write_memory_bytes(
+        &mut self,
+        offset: usize,
+        data: &[u8],
+        size: usize,
+    ) -> Result<(), EvmError> {
+        for i in 0..size {
+            let byte = if i < data.len() { data[i] } else { 0 };
+            self.memory.mstore8(offset + i, byte)?;
+        }
         Ok(())
     }
 
@@ -531,9 +565,10 @@ impl<S: State> Evm<S> {
 
             // 0x40-0x4A: Block information
             0x40 => {
-                // BLOCKHASH: stub (pop number, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // BLOCKHASH
+                let number = self.stack.pop()?;
+                let hash = self.host.blockhash(&number).unwrap_or(Hash::ZERO);
+                self.stack.push(hash_to_u256(&hash))?;
             }
             0x41 => {
                 // COINBASE
@@ -574,13 +609,14 @@ impl<S: State> Evm<S> {
                 self.stack.push(self.block_ctx.base_fee)?;
             }
             0x49 => {
-                // BLOBHASH: stub (pop index, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // BLOBHASH
+                let index = self.stack.pop()?;
+                let hash = self.host.blobhash(&index).unwrap_or(Hash::ZERO);
+                self.stack.push(hash_to_u256(&hash))?;
             }
             0x4A => {
-                // BLOBBASEFEE: stub
-                self.stack.push(U256::ZERO)?;
+                // BLOBBASEFEE
+                self.stack.push(self.host.blobbasefee())?;
             }
 
             // 0x50-0x5F: Stack, Memory, Storage, Flow
@@ -738,29 +774,149 @@ impl<S: State> Evm<S> {
 
             // 0xF0: CREATE
             0xF0 => {
-                // Stub: pop 3 args, push 0
-                self.stack.pop()?;
-                self.stack.pop()?;
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                let value = self.stack.pop()?;
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                let init_code = self.read_memory_bytes(offset, size)?;
+                let init_code_cost = init_code_gas_cost(size);
+                self.consume_gas(init_code_cost)?;
+
+                let max_gas = self.gas_remaining - (self.gas_remaining / 64);
+                let msg = CreateMessage {
+                    gas: max_gas,
+                    caller: self.call_ctx.address,
+                    value,
+                    init_code,
+                    salt: None,
+                };
+                let result = self.host.create(&mut self.state, msg);
+                if result.gas_used > max_gas {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+                self.return_data = result.return_data.clone();
+
+                if result.success {
+                    let address = result.address.unwrap_or(Address::ZERO);
+                    self.stack.push(address_to_u256(&address))?;
+                } else {
+                    self.stack.push(U256::ZERO)?;
+                }
             }
 
             // 0xF1: CALL
             0xF1 => {
-                // Stub: pop 7 args, push 0
-                for _ in 0..7 {
-                    self.stack.pop()?;
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let value = self.stack.pop()?;
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let is_value_transfer = !value.is_zero();
+                if is_value_transfer {
+                    self.consume_gas(GAS_CALL_VALUE_TRANSFER)?;
+                    if !self.state.account_exists(&to) {
+                        self.consume_gas(GAS_CALL_NEW_ACCOUNT)?;
+                    }
                 }
-                self.stack.push(U256::ZERO)?;
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
+                }
+                if is_value_transfer {
+                    gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+                }
+
+                let msg = CallMessage {
+                    kind: CallKind::Call,
+                    gas: gas_to_forward,
+                    address: to,
+                    caller: self.call_ctx.address,
+                    value,
+                    code_address: to,
+                    input,
+                    is_static: false,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
             }
 
             // 0xF2: CALLCODE
             0xF2 => {
-                // Stub: pop 7 args, push 0
-                for _ in 0..7 {
-                    self.stack.pop()?;
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let value = self.stack.pop()?;
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let is_value_transfer = !value.is_zero();
+                if is_value_transfer {
+                    self.consume_gas(GAS_CALL_VALUE_TRANSFER)?;
                 }
-                self.stack.push(U256::ZERO)?;
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
+                }
+                if is_value_transfer {
+                    gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+                }
+
+                let msg = CallMessage {
+                    kind: CallKind::CallCode,
+                    gas: gas_to_forward,
+                    address: self.call_ctx.address,
+                    caller: self.call_ctx.address,
+                    value,
+                    code_address: to,
+                    input,
+                    is_static: false,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
             }
 
             // 0xF3: RETURN
@@ -772,46 +928,137 @@ impl<S: State> Evm<S> {
                 let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
                 self.consume_gas(mem_cost)?;
 
-                // Read return data
-                for i in 0..size {
-                    if offset + i < self.memory.msize() {
-                        let value = self.memory.mload((offset + i) & !31)?;
-                        let byte_offset = (offset + i) % 32;
-                        let bytes = value.to_be_bytes();
-                        self.return_data.push(bytes[byte_offset]);
-                    } else {
-                        self.return_data.push(0);
-                    }
-                }
+                self.return_data = self.read_memory_bytes(offset, size)?;
 
                 self.stopped = true;
             }
 
             // 0xF4: DELEGATECALL
             0xF4 => {
-                // Stub: pop 6 args, push 0
-                for _ in 0..6 {
-                    self.stack.pop()?;
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
                 }
-                self.stack.push(U256::ZERO)?;
+
+                let msg = CallMessage {
+                    kind: CallKind::DelegateCall,
+                    gas: gas_to_forward,
+                    address: self.call_ctx.address,
+                    caller: self.call_ctx.caller,
+                    value: self.call_ctx.call_value,
+                    code_address: to,
+                    input,
+                    is_static: false,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
             }
 
             // 0xF5: CREATE2
             0xF5 => {
-                // Stub: pop 4 args, push 0
-                for _ in 0..4 {
-                    self.stack.pop()?;
+                let value = self.stack.pop()?;
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+                let salt = self.stack.pop()?;
+
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                let init_code = self.read_memory_bytes(offset, size)?;
+                let init_code_cost = init_code_gas_cost(size);
+                let hash_cost = create2_hash_cost(size);
+                self.consume_gas(init_code_cost + hash_cost)?;
+
+                let max_gas = self.gas_remaining - (self.gas_remaining / 64);
+                let msg = CreateMessage {
+                    gas: max_gas,
+                    caller: self.call_ctx.address,
+                    value,
+                    init_code,
+                    salt: Some(salt),
+                };
+                let result = self.host.create(&mut self.state, msg);
+                if result.gas_used > max_gas {
+                    return Err(EvmError::OutOfGas);
                 }
-                self.stack.push(U256::ZERO)?;
+                self.consume_gas(result.gas_used)?;
+                self.return_data = result.return_data.clone();
+
+                if result.success {
+                    let address = result.address.unwrap_or(Address::ZERO);
+                    self.stack.push(address_to_u256(&address))?;
+                } else {
+                    self.stack.push(U256::ZERO)?;
+                }
             }
 
             // 0xFA: STATICCALL
             0xFA => {
-                // Stub: pop 6 args, push 0
-                for _ in 0..6 {
-                    self.stack.pop()?;
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
                 }
-                self.stack.push(U256::ZERO)?;
+
+                let msg = CallMessage {
+                    kind: CallKind::StaticCall,
+                    gas: gas_to_forward,
+                    address: to,
+                    caller: self.call_ctx.address,
+                    value: U256::ZERO,
+                    code_address: to,
+                    input,
+                    is_static: true,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
             }
 
             // 0xFD: REVERT
@@ -823,18 +1070,7 @@ impl<S: State> Evm<S> {
                 let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
                 self.consume_gas(mem_cost)?;
 
-                // Read revert data
-                let mut revert_data = Vec::new();
-                for i in 0..size {
-                    if offset + i < self.memory.msize() {
-                        let value = self.memory.mload((offset + i) & !31)?;
-                        let byte_offset = (offset + i) % 32;
-                        let bytes = value.to_be_bytes();
-                        revert_data.push(bytes[byte_offset]);
-                    } else {
-                        revert_data.push(0);
-                    }
-                }
+                let revert_data = self.read_memory_bytes(offset, size)?;
 
                 return Err(EvmError::Revert(revert_data));
             }
@@ -917,7 +1153,17 @@ pub fn execute_bytecode<S: State>(
     gas_limit: u64,
     state: S,
 ) -> Result<ExecutionResult, EvmError> {
-    let mut evm = Evm::new(code.to_vec(), gas_limit, state);
+    execute_bytecode_with_host(code, gas_limit, state, NullHost)
+}
+
+/// Execute bytecode with a custom host implementation.
+pub fn execute_bytecode_with_host<S: State, H: Host<S>>(
+    code: &[u8],
+    gas_limit: u64,
+    state: S,
+    host: H,
+) -> Result<ExecutionResult, EvmError> {
+    let mut evm = Evm::new(code.to_vec(), gas_limit, state, host);
     evm.run()
 }
 
@@ -928,7 +1174,53 @@ pub fn execute_bytecode<S: State>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::evm::host::{CallResult, CreateResult};
     use crate::state::InMemoryState;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Debug, Default)]
+    struct TestHost {
+        last_call: Option<CallMessage>,
+        last_create: Option<CreateMessage>,
+        call_result: CallResult,
+        create_result: CreateResult,
+        blockhash: Option<Hash>,
+        blobhash: Option<Hash>,
+        blobbasefee: U256,
+    }
+
+    impl Host<InMemoryState> for Rc<RefCell<TestHost>> {
+        fn call(&mut self, _state: &mut InMemoryState, msg: CallMessage) -> CallResult {
+            let mut inner = self.borrow_mut();
+            inner.last_call = Some(msg);
+            inner.call_result.clone()
+        }
+
+        fn create(&mut self, _state: &mut InMemoryState, msg: CreateMessage) -> CreateResult {
+            let mut inner = self.borrow_mut();
+            inner.last_create = Some(msg);
+            inner.create_result.clone()
+        }
+
+        fn blockhash(&self, number: &U256) -> Option<Hash> {
+            let inner = self.borrow();
+            inner
+                .blockhash
+                .filter(|_| *number != U256::ZERO)
+        }
+
+        fn blobhash(&self, index: &U256) -> Option<Hash> {
+            let inner = self.borrow();
+            inner
+                .blobhash
+                .filter(|_| *index != U256::ZERO)
+        }
+
+        fn blobbasefee(&self) -> U256 {
+            self.borrow().blobbasefee
+        }
+    }
 
     // =============================================================================
     // Basic Execution Tests
@@ -1202,7 +1494,7 @@ mod tests {
     fn test_address_caller_callvalue() {
         // ADDRESS CALLER CALLVALUE STOP
         let code = vec![0x30, 0x33, 0x34, 0x00];
-        let mut evm = Evm::new(code, 1000, InMemoryState::new());
+        let mut evm = Evm::new(code, 1000, InMemoryState::new(), NullHost);
         let address = Address::new([0x11; 20]);
         let caller = Address::new([0x22; 20]);
         let call_value = U256::from_u64(0x1234);
@@ -1230,7 +1522,7 @@ mod tests {
     fn test_calldata_load_and_size() {
         // PUSH1 0x00 CALLDATALOAD CALLDATASIZE STOP
         let code = vec![0x60, 0x00, 0x35, 0x36, 0x00];
-        let mut evm = Evm::new(code, 1000, InMemoryState::new());
+        let mut evm = Evm::new(code, 1000, InMemoryState::new(), NullHost);
         evm.call_ctx.call_data = vec![0xAA, 0xBB, 0xCC];
 
         let result = evm.run().unwrap();
@@ -1247,7 +1539,7 @@ mod tests {
     fn test_calldata_load_out_of_range() {
         // PUSH1 0x05 CALLDATALOAD STOP
         let code = vec![0x60, 0x05, 0x35, 0x00];
-        let mut evm = Evm::new(code, 1000, InMemoryState::new());
+        let mut evm = Evm::new(code, 1000, InMemoryState::new(), NullHost);
         evm.call_ctx.call_data = vec![0xAA, 0xBB, 0xCC];
 
         let result = evm.run().unwrap();
@@ -1262,7 +1554,7 @@ mod tests {
         let code = vec![
             0x60, 0x06, 0x60, 0x02, 0x60, 0x00, 0x37, 0x60, 0x00, 0x51, 0x00,
         ];
-        let mut evm = Evm::new(code, 1000, InMemoryState::new());
+        let mut evm = Evm::new(code, 1000, InMemoryState::new(), NullHost);
         evm.call_ctx.call_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
 
         let result = evm.run().unwrap();
@@ -1284,7 +1576,7 @@ mod tests {
         let code = vec![
             0x60, 0x04, 0x60, 0x00, 0x60, 0x00, 0x3E, 0x60, 0x00, 0x51, 0x3D, 0x00,
         ];
-        let mut evm = Evm::new(code, 1000, InMemoryState::new());
+        let mut evm = Evm::new(code, 1000, InMemoryState::new(), NullHost);
         evm.return_data = vec![0x01, 0x02, 0x03, 0x04];
 
         let result = evm.run().unwrap();
@@ -1302,7 +1594,7 @@ mod tests {
     fn test_returndatacopy_out_of_bounds() {
         // PUSH1 0x04 PUSH1 0x02 PUSH1 0x00 RETURNDATACOPY
         let code = vec![0x60, 0x04, 0x60, 0x02, 0x60, 0x00, 0x3E];
-        let mut evm = Evm::new(code, 1000, InMemoryState::new());
+        let mut evm = Evm::new(code, 1000, InMemoryState::new(), NullHost);
         evm.return_data = vec![0x01, 0x02, 0x03, 0x04];
 
         let result = evm.run();
@@ -1686,7 +1978,7 @@ mod tests {
         let contract_addr = Address::new([0x11; 20]);
         state.set_balance(&contract_addr, U256::from_u64(999));
 
-        let mut evm = Evm::new(code, 100000, state);
+        let mut evm = Evm::new(code, 100000, state, NullHost);
         evm.call_ctx.address = contract_addr;
 
         let result = evm.run().unwrap();
@@ -1765,7 +2057,7 @@ mod tests {
         let contract_addr = Address::new([0xCC; 20]);
         state.set_balance(&contract_addr, U256::from_u64(1000));
 
-        let mut evm = Evm::new(code, 100000, state);
+        let mut evm = Evm::new(code, 100000, state, NullHost);
         evm.call_ctx.address = contract_addr;
 
         let result = evm.run().unwrap();
@@ -1825,5 +2117,163 @@ mod tests {
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0xBB));
         // Transient storage should have 0xAA
         assert_eq!(result.stack.peek(1).unwrap(), &U256::from_u64(0xAA));
+    }
+
+    #[test]
+    fn test_blockhash_blobhash_blobbasefee_opcodes() {
+        let mut host_state = TestHost::default();
+        let block_hash = Hash::new([0x11; 32]);
+        let blob_hash = Hash::new([0x22; 32]);
+        host_state.blockhash = Some(block_hash);
+        host_state.blobhash = Some(blob_hash);
+        host_state.blobbasefee = U256::from_u64(7);
+
+        let host = Rc::new(RefCell::new(host_state));
+        let code = vec![
+            0x60, 0x01, // PUSH1 0x01
+            0x40,       // BLOCKHASH
+            0x60, 0x02, // PUSH1 0x02
+            0x49,       // BLOBHASH
+            0x4A,       // BLOBBASEFEE
+            0x00,       // STOP
+        ];
+
+        let result =
+            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(7));
+        assert_eq!(result.stack.peek(1).unwrap(), &hash_to_u256(&blob_hash));
+        assert_eq!(result.stack.peek(2).unwrap(), &hash_to_u256(&block_hash));
+    }
+
+    #[test]
+    fn test_call_opcode_invokes_host_and_writes_output() {
+        let mut host_state = TestHost::default();
+        host_state.call_result = CallResult {
+            success: true,
+            return_data: vec![0xAA, 0xBB],
+            gas_used: 5,
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let mut to_bytes = [0u8; 20];
+        to_bytes[19] = 0x01;
+        let to = Address::from_slice(&to_bytes).unwrap();
+
+        let mut code = vec![
+            0x60, 0x01, // PUSH1 0x01
+            0x60, 0x00, // PUSH1 0x00
+            0x53,       // MSTORE8 (memory[0] = 0x01)
+            0x60, 0x03, // PUSH1 0x03 (out_size)
+            0x60, 0x20, // PUSH1 0x20 (out_offset)
+            0x60, 0x01, // PUSH1 0x01 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x60, 0x00, // PUSH1 0x00 (value)
+            0x73,       // PUSH20
+        ];
+        code.extend_from_slice(&to.to_bytes());
+        code.extend_from_slice(&[
+            0x60, 0x10, // PUSH1 0x10 (gas)
+            0xF1,       // CALL
+            0x00,       // STOP
+        ]);
+
+        let result = execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
+            .unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
+        assert_eq!(result.return_data, vec![0xAA, 0xBB]);
+
+        let mut memory = result.memory;
+        let word = memory.mload(0x20).unwrap().to_be_bytes();
+        assert_eq!(&word[0..3], &[0xAA, 0xBB, 0x00]);
+
+        let recorded = host.borrow().last_call.clone().unwrap();
+        assert_eq!(recorded.kind, CallKind::Call);
+        assert_eq!(recorded.address, to);
+        assert_eq!(recorded.caller, Address::ZERO);
+        assert_eq!(recorded.value, U256::ZERO);
+        assert_eq!(recorded.code_address, to);
+        assert_eq!(recorded.input, vec![0x01]);
+        assert_eq!(recorded.gas, 0x10);
+    }
+
+    #[test]
+    fn test_create2_opcode_forwards_init_code_and_salt() {
+        let mut host_state = TestHost::default();
+        let created_addr = Address::new([0xAB; 20]);
+        host_state.create_result = CreateResult {
+            success: true,
+            address: Some(created_addr),
+            return_data: Vec::new(),
+            gas_used: 7,
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let code = vec![
+            0x60, 0xAA, // PUSH1 0xAA
+            0x60, 0x00, // PUSH1 0x00
+            0x53,       // MSTORE8 (init code byte)
+            0x61, 0x12, 0x34, // PUSH2 0x1234 (salt)
+            0x60, 0x01, // PUSH1 0x01 (size)
+            0x60, 0x00, // PUSH1 0x00 (offset)
+            0x60, 0x00, // PUSH1 0x00 (value)
+            0xF5,       // CREATE2
+            0x00,       // STOP
+        ];
+
+        let result = execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
+            .unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &address_to_u256(&created_addr));
+
+        let recorded = host.borrow().last_create.clone().unwrap();
+        assert_eq!(recorded.salt, Some(U256::from_u64(0x1234)));
+        assert_eq!(recorded.init_code, vec![0xAA]);
+    }
+
+    #[test]
+    fn test_delegatecall_uses_caller_and_value_from_context() {
+        let mut host_state = TestHost::default();
+        host_state.call_result = CallResult {
+            success: true,
+            return_data: Vec::new(),
+            gas_used: 1,
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let mut to_bytes = [0u8; 20];
+        to_bytes[19] = 0x02;
+        let to = Address::from_slice(&to_bytes).unwrap();
+
+        let mut code = vec![
+            0x60, 0x00, // PUSH1 0x00 (out_size)
+            0x60, 0x00, // PUSH1 0x00 (out_offset)
+            0x60, 0x00, // PUSH1 0x00 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x73,       // PUSH20
+        ];
+        code.extend_from_slice(&to.to_bytes());
+        code.extend_from_slice(&[
+            0x60, 0x20, // PUSH1 0x20 (gas)
+            0xF4,       // DELEGATECALL
+            0x00,       // STOP
+        ]);
+
+        let mut evm = Evm::new(code, 100000, InMemoryState::new(), host.clone());
+        evm.call_ctx.address = Address::new([0x11; 20]);
+        evm.call_ctx.caller = Address::new([0x22; 20]);
+        evm.call_ctx.call_value = U256::from_u64(77);
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
+
+        let recorded = host.borrow().last_call.clone().unwrap();
+        assert_eq!(recorded.kind, CallKind::DelegateCall);
+        assert_eq!(recorded.address, Address::new([0x11; 20]));
+        assert_eq!(recorded.caller, Address::new([0x22; 20]));
+        assert_eq!(recorded.value, U256::from_u64(77));
+        assert_eq!(recorded.code_address, to);
     }
 }
