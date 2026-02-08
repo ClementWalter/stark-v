@@ -1,5 +1,26 @@
 # Claudeth Development Learnings
 
+## Session 22: State Root Computation + Validation (2026-02-08)
+
+**Status**: Phase B fully complete (state root no longer placeholder)
+
+### What Was Accomplished
+1. ✅ Added `State::compute_state_root()` and implemented it for `InMemoryState`
+2. ✅ Updated `sstore` to keep `storage_root` in sync and create accounts on first storage write
+3. ✅ Enabled state root validation in `process_block()`
+4. ✅ Added state root tests and storage-based account existence test
+
+### DO's ✅
+1. **Update account `storage_root` on every SSTORE** to keep `account_exists`/`is_empty` correct
+2. **Compute state root from non-empty accounts only** (skip empty accounts in trie)
+3. **Keep state root logic in the `State` trait** so block processing stays backend-agnostic
+4. **Test empty and non-empty state roots** to lock in trie behavior
+
+### DON'Ts ❌
+1. **Don't leave placeholder state roots in block validation** - it hides correctness bugs
+2. **Don't allow storage updates without creating the account** - breaks account existence checks
+3. **Don't forget storage-root recomputation** when storage entries are deleted
+
 ## Session 21: Transactions Root + Logs Bloom Validation (2026-02-09)
 
 **Status**: Phase B 100% COMPLETE - All root validations implemented

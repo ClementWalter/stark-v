@@ -172,11 +172,8 @@ fn calculate_logs_bloom(receipts: &[TransactionReceipt]) -> [u8; 256] {
 /// # Note
 /// This requires the State trait to provide access to all accounts.
 /// For InMemoryState, we need to iterate over all accounts.
-fn calculate_state_root<S: State>(_state: &S) -> Hash {
-    // For now, we return a placeholder since the State trait doesn't expose
-    // account iteration. This will be implemented in a future update.
-    // TODO: Add account iteration to State trait or add compute_state_root method
-    Hash::ZERO
+fn calculate_state_root<S: State>(state: &S) -> Hash {
+    state.compute_state_root()
 }
 
 // =============================================================================
@@ -342,15 +339,13 @@ pub fn process_block<S: State + Clone>(
         });
     }
 
-    // Validate state root (placeholder - TODO: implement full state root computation)
-    // For now, we skip this check as calculate_state_root returns Hash::ZERO
-    // Uncomment when full state root computation is implemented:
-    // if state_root != block.state_root {
-    //     return Err(BlockProcessingError::StateRootMismatch {
-    //         expected: block.state_root,
-    //         computed: state_root,
-    //     });
-    // }
+    // Validate state root
+    if state_root != block.state_root {
+        return Err(BlockProcessingError::StateRootMismatch {
+            expected: block.state_root,
+            computed: state_root,
+        });
+    }
 
     Ok(BlockProcessingResult {
         gas_used: cumulative_gas_used,

@@ -26,15 +26,12 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 - STF transaction executor (pre/post execution pipeline)
 - Block header validation helpers (gas used <= limit, extra data size, post-merge fields)
  - Block header parent validation (parent hash, number, timestamp, gas-limit bounds)
+- Block processing with receipts, transactions, logs bloom, and state root validation
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` and `rand` are still used (`Cargo.toml`).
 2. **Guest program entry point**: no `main.rs` or guest entry for `riscv32`.
-3. **Block processing is incomplete**:
-   - `process_block()` exists, but **state root is a placeholder** (not computed from state).
-   - No validation of `transactions_root` or `logs_bloom` against header.
-4. **Code hash correctness**: `InMemoryState::set_code` uses a placeholder hash, not Keccak-256.
-5. **EELS compliance**: no EELS test vector integration or runner.
+3. **EELS compliance**: no EELS test vector integration or runner.
 
 ---
 
@@ -100,6 +97,7 @@ Goal: finalize per-transaction correctness before block processing.
 - **Task B1: Block header validation against parent** ✅
 - **Task B2: Block execution loop + receipts root** ✅
 - **Task B3: Transactions root + logs bloom validation** ✅
+- **Task B4: State root computation + validation** ✅
 
 ### Phase B Status: 100% COMPLETE ✅
 
@@ -109,9 +107,7 @@ Goal: finalize per-transaction correctness before block processing.
 - Receipts root computation and validation
 - **Transactions root computation and validation** (NEW)
 - **Logs bloom computation and validation** (NEW)
-- State root computation (placeholder - returns Hash::ZERO)
-
-**Note**: State root validation is commented out because full state trie iteration is not yet implemented. The `calculate_state_root` function currently returns `Hash::ZERO` as a placeholder. This will be implemented in Phase C when the guest entry point requires full state root computation.
+- **State root computation and validation** (NEW)
 
 ---
 

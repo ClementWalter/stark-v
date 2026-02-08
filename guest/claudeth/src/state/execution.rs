@@ -16,7 +16,7 @@ use alloc::collections::BTreeMap as HashMap;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::state::{Account, Storage, EMPTY_CODE_HASH};
+use crate::state::{Account, Storage, Trie, EMPTY_CODE_HASH};
 use crate::crypto::keccak256;
 use crate::types::{Address, Hash, U256};
 
@@ -75,6 +75,9 @@ pub trait State {
 
     /// Clears self-destruct list (called at transaction end)
     fn clear_selfdestructs(&mut self);
+
+    /// Computes the current state root
+    fn compute_state_root(&self) -> Hash;
 }
 
 /// In-memory implementation of State for testing and simulation
@@ -243,8 +246,21 @@ impl State for InMemoryState {
     }
 
     fn sstore(&mut self, address: &Address, key: &U256, value: U256) {
-        let storage = self.get_storage_mut(address);
-        storage.set(key, value);
+        self.ensure_account(address);
+
+        let (storage_root, storage_empty) = {
+            let storage = self.get_storage_mut(address);
+            storage.set(key, value);
+            (storage.compute_root(), storage.is_empty())
+        };
+
+        if let Some(account) = self.accounts.get_mut(address) {
+            account.storage_root = storage_root;
+        }
+
+        if storage_empty {
+            self.storage.remove(address);
+        }
     }
 
     fn tload(&self, address: &Address, key: &U256) -> U256 {
@@ -287,6 +303,28 @@ impl State for InMemoryState {
 
     fn clear_selfdestructs(&mut self) {
         self.selfdestructs.clear();
+    }
+
+    fn compute_state_root(&self) -> Hash {
+        if self.accounts.is_empty() {
+            return Hash::ZERO;
+        }
+
+        let mut trie = Trie::new();
+        for (address, account) in &self.accounts {
+            let mut account = account.clone();
+            account.storage_root = self.storage.get(address)
+                .map(Storage::compute_root)
+                .unwrap_or(Hash::ZERO);
+
+            if account.is_empty() {
+                continue;
+            }
+
+            trie.insert(address.as_bytes(), account.encode_rlp());
+        }
+
+        trie.compute_root()
     }
 }
 
@@ -664,6 +702,16 @@ mod tests {
     }
 
     #[test]
+    fn test_account_exists_with_storage() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x01; 20]);
+
+        state.sstore(&addr, &U256::from(1u64), U256::from(2u64));
+        assert!(state.account_exists(&addr));
+        assert!(!state.is_empty(&addr));
+    }
+
+    #[test]
     fn test_is_empty_nonexistent_account() {
         let state = InMemoryState::new();
         let addr = Address::from([0x01; 20]);
@@ -860,6 +908,51 @@ mod tests {
 
         assert_eq!(state.tload(&addr, &U256::from(0u64)), U256::ZERO);
         assert_eq!(state.get_selfdestructs().len(), 0);
+    }
+
+    // =========================================================================
+    // State Root Tests
+    // =========================================================================
+
+    #[test]
+    fn test_compute_state_root_empty() {
+        let state = InMemoryState::new();
+        assert_eq!(state.compute_state_root(), Hash::ZERO);
+    }
+
+    #[test]
+    fn test_compute_state_root_with_account() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x11; 20]);
+
+        state.set_balance(&addr, U256::from(100u64));
+        state.increment_nonce(&addr);
+
+        let computed = state.compute_state_root();
+
+        let mut trie = Trie::new();
+        let account = Account::new_eoa(U256::from(1u64), U256::from(100u64));
+        trie.insert(addr.as_bytes(), account.encode_rlp());
+
+        assert_eq!(computed, trie.compute_root());
+    }
+
+    #[test]
+    fn test_compute_state_root_with_storage() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x22; 20]);
+
+        state.sstore(&addr, &U256::from(1u64), U256::from(2u64));
+        let computed = state.compute_state_root();
+
+        let mut storage = Storage::new();
+        storage.set(&U256::from(1u64), U256::from(2u64));
+        let account = Account::new(U256::ZERO, U256::ZERO, storage.compute_root(), EMPTY_CODE_HASH);
+
+        let mut trie = Trie::new();
+        trie.insert(addr.as_bytes(), account.encode_rlp());
+
+        assert_eq!(computed, trie.compute_root());
     }
 
     #[test]
