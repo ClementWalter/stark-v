@@ -2,14 +2,18 @@
 //!
 //! This module provides cryptographic functions required for Ethereum:
 //! - Keccak256 hashing
-//! - ECDSA signature verification
+//! - ECDSA signature verification (secp256k1)
 //! - RLP encoding/decoding
 
 pub mod keccak;
 pub mod rlp;
+pub mod secp256k1;
 
 // Re-export Keccak-256 function
 pub use keccak::keccak256;
+
+// Re-export secp256k1 functions
+pub use secp256k1::{recover_address, recover_public_key, verify_signature, Secp256k1Error};
 
 // Re-export RLP functions
 pub use rlp::{
