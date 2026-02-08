@@ -423,6 +423,25 @@ impl U256 {
 
         U256(result)
     }
+
+    /// Convert to usize (truncates to lower 64 bits, then to usize)
+    ///
+    /// # Panics
+    ///
+    /// Panics on 32-bit platforms if the value doesn't fit in usize
+    pub fn as_usize(&self) -> usize {
+        self.0[0] as usize
+    }
+
+    /// Convert to u8 (truncates to lowest byte)
+    pub fn as_u8(&self) -> u8 {
+        self.0[0] as u8
+    }
+
+    /// Convert to u64 (truncates to lower 64 bits)
+    pub fn as_u64(&self) -> u64 {
+        self.0[0]
+    }
 }
 
 // Helper function for 64x64 -> 128-bit multiplication

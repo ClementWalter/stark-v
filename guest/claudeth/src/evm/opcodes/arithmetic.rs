@@ -17,6 +17,12 @@
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
 
+#[cfg(not(target_arch = "riscv32"))]
+use std::vec;
+
+#[cfg(target_arch = "riscv32")]
+use alloc::vec;
+
 use crate::evm::stack::{Stack, StackError};
 use crate::types::U256;
 
@@ -29,11 +35,19 @@ use crate::types::U256;
 pub enum EvmError {
     /// Stack error (overflow, underflow, invalid index)
     Stack(StackError),
+    /// Memory error (invalid offset, overflow)
+    Memory(crate::evm::memory::MemoryError),
 }
 
 impl From<StackError> for EvmError {
     fn from(err: StackError) -> Self {
         EvmError::Stack(err)
+    }
+}
+
+impl From<crate::evm::memory::MemoryError> for EvmError {
+    fn from(err: crate::evm::memory::MemoryError) -> Self {
+        EvmError::Memory(err)
     }
 }
 
@@ -537,6 +551,45 @@ pub fn sar(stack: &mut Stack) -> Result<(), EvmError> {
     };
 
     stack.push(result)?;
+    Ok(())
+}
+
+// =============================================================================
+// Hashing Operations
+// =============================================================================
+
+/// KECCAK256 (0x20): Compute Keccak-256 hash
+///
+/// Pops offset and size from stack, reads data from memory,
+/// computes the hash, and pushes the result.
+pub fn keccak256(stack: &mut Stack, memory: &mut crate::evm::memory::Memory) -> Result<(), EvmError> {
+    use crate::crypto::keccak256 as keccak;
+
+    let offset = stack.pop()?;
+    let size = stack.pop()?;
+
+    // Convert to usize (will truncate if too large)
+    let offset_usize = offset.as_usize();
+    let size_usize = size.as_usize();
+
+    // Read data from memory
+    let mut data = vec![0u8; size_usize];
+    for (i, byte) in data.iter_mut().enumerate().take(size_usize) {
+        if offset_usize + i < memory.msize() {
+            let word = memory.mload((offset_usize + i) & !31)?;
+            let byte_offset = (offset_usize + i) % 32;
+            let bytes = word.to_be_bytes();
+            *byte = bytes[byte_offset];
+        } else {
+            *byte = 0;
+        }
+    }
+
+    // Compute hash
+    let hash = keccak(&data);
+
+    // Push result (convert Hash to bytes)
+    stack.push(U256::from_be_bytes(*hash.as_bytes()))?;
     Ok(())
 }
 

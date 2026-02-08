@@ -11,10 +11,14 @@ pub mod address;
 pub mod block;
 pub mod bytes;
 pub mod hash;
+pub mod transaction;
 pub mod uint;
 
 pub use address::Address;
 pub use block::{BlockHeader, ValidationError};
 pub use bytes::Bytes;
 pub use hash::{Hash, H256};
+pub use transaction::{
+    AccessListEntry, Eip1559Transaction, Eip2930Transaction, LegacyTransaction, Transaction,
+};
 pub use uint::{U256, U512};

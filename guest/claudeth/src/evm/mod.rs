@@ -5,8 +5,10 @@
 //! - Stack: 256-bit word stack with depth limits
 //! - Gas metering: Gas cost calculation and tracking
 //! - Opcodes: EVM instruction execution
+//! - Interpreter: Bytecode execution engine
 
 pub mod gas;
+pub mod interpreter;
 pub mod memory;
 pub mod opcodes;
 pub mod stack;
@@ -29,3 +31,6 @@ pub use stack::{Stack, StackError, MAX_STACK_SIZE};
 
 // Re-export Opcode types and functions
 // pub use opcodes::{EvmError, arithmetic::*};
+
+// Re-export Interpreter types and functions
+pub use interpreter::{execute_bytecode, BlockContext, EvmError, ExecutionResult, TxContext};

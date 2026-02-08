@@ -63,7 +63,7 @@ impl fmt::Display for StackError {
 ///
 /// The stack stores U256 values and enforces a maximum size of 1024 items.
 /// All operations return Result types to handle overflow/underflow conditions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stack {
     /// Stack items (top of stack is at the end of the vector)
     items: Vec<U256>,

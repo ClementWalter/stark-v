@@ -114,6 +114,22 @@ impl Address {
         &mut self.0
     }
 
+    /// Returns a copy of the address as a 20-byte array.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::Address;
+    ///
+    /// let addr = Address::new([0x42; 20]);
+    /// let bytes = addr.to_bytes();
+    /// assert_eq!(bytes, [0x42; 20]);
+    /// ```
+    #[inline]
+    pub fn to_bytes(&self) -> [u8; 20] {
+        self.0
+    }
+
     /// Computes the Keccak-256 hash of the address in hex (without 0x prefix).
     ///
     /// This is used internally for EIP-55 checksumming.
