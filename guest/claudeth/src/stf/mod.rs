@@ -1,12 +1,14 @@
 //! State Transition Function (STF) module
 //!
 //! This module implements the Ethereum state transition function, including
-//! transaction validation, execution, and receipt generation.
+//! transaction validation, execution, receipt generation, and block processing.
 
+pub mod block;
 pub mod executor;
 pub mod receipt;
 pub mod transaction;
 
+pub use block::{process_block, BlockProcessingError, BlockProcessingResult};
 pub use executor::{execute_transaction, ExecutionError, TransactionExecutionResult};
 pub use receipt::{calculate_receipts_root, Bloom, Log, TransactionReceipt};
 pub use transaction::{

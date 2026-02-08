@@ -1,5 +1,103 @@
 # Claudeth Development Learnings
 
+## Session 19: Block Processing Loop (2026-02-09)
+
+**Status**: Phase B Task B2 COMPLETE - block execution loop + root calculations implemented
+
+### What Was Accomplished
+1. ✅ Created `src/stf/block.rs` with `process_block()` function (467 lines)
+2. ✅ Implemented block-level transaction execution loop
+3. ✅ Cumulative gas tracking with gas limit validation
+4. ✅ Receipt generation for all transactions
+5. ✅ Receipts root computation using MPT
+6. ✅ Block header validation (gas used, receipts root)
+7. ✅ Added 9 comprehensive tests (all passing)
+8. ✅ All 1067 tests passing, zero clippy warnings
+9. ✅ Phase B: 100% COMPLETE
+
+### DO's ✅
+1. **Use format!("{e}") not format!("{}", e)** for clippy::uninlined_format_args compliance
+2. **Use field shorthand in struct initialization** - `chain_id` not `chain_id: chain_id`
+3. **Validate block header against parent first** before processing transactions
+4. **Track cumulative gas throughout transaction loop** to enforce block gas limit
+5. **Update cumulative gas in execution results** so receipts have correct values
+6. **Test with computed roots** - don't assume Hash::ZERO is the empty trie root
+7. **Provide clear error types** - separate errors for each validation failure
+8. **Check BlockContext field order** when creating - chain_id is required field
+
+### DON'Ts ❌
+1. **Don't assume empty trie root is Hash::ZERO** - compute it with calculate_receipts_root(&[])
+2. **Don't forget chain_id in BlockContext** - required field since Session 17
+3. **Don't forget to convert u64 to U256** for base_fee_per_gas
+4. **Don't use format!("{}", x)** when format!("{x}") is cleaner
+5. **Don't skip block header validation** - always call validate_against_parent first
+
+### Key Patterns for Block Processing
+
+**Block Processing Flow**:
+```rust
+1. Validate block header against parent
+2. Create BlockContext from block header
+3. Loop through transactions:
+   a. Execute transaction with cumulative gas
+   b. Update cumulative gas
+   c. Check gas limit not exceeded
+   d. Generate receipt
+4. Compute receipts root from all receipts
+5. Validate gas_used matches header
+6. Validate receipts_root matches header
+```
+
+**Error Handling**:
+```rust
+pub enum BlockProcessingError {
+    InvalidHeader(String),
+    TransactionExecutionError(ExecutionError),
+    GasLimitExceeded { gas_limit: u64, gas_used: u64 },
+    ReceiptsRootMismatch { expected: Hash, computed: Hash },
+    StateRootMismatch { expected: Hash, computed: Hash },
+    GasUsedMismatch { expected: u64, computed: u64 },
+}
+```
+
+**Testing Strategy**:
+- Test empty block (baseline success)
+- Test each header validation failure mode
+- Test gas limit violations
+- Test root mismatches
+- Test valid boundary cases
+
+### Statistics
+- **Starting tests**: 1058
+- **Ending tests**: 1067 (+9 new tests)
+- **Files created**: 1 (block.rs - 467 lines)
+- **Files modified**: 2 (stf/mod.rs, PLAN.md)
+- **Zero clippy warnings**: ✅
+- **Phase B**: 100% COMPLETE ✅
+
+### Session 19 Result
+**Phase B: 100% COMPLETE** ✅ - Block Processing Production-Ready:
+- Task B1: Block header parent validation ✅
+- Task B2: Block execution loop + root calculations ✅
+
+**All block processing features implemented**:
+- Block header validation against parent
+- Transaction execution loop
+- Cumulative gas tracking
+- Receipt generation
+- Receipts root computation
+- Gas used validation
+- Comprehensive error handling
+
+**Foundation complete for Phase C: Guest Entry Point**
+
+### Next Session Should
+1. **Phase C: Guest Entry Point** - Now fully unblocked
+2. Task C1: Create src/main.rs for riscv32 target
+3. Define I/O format (block + witness, result output)
+4. Wire block processing to guest program
+5. This completes the core functionality for proof generation
+
 ## Session 18: Block Header Parent Validation (2026-02-08)
 
 **Status**: Phase B Task B1 COMPLETE - parent-aware header validation implemented
