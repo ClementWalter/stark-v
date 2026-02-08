@@ -25,6 +25,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 - Execution state trait + `InMemoryState`
 - STF transaction executor (pre/post execution pipeline)
 - Block header validation helpers (gas used <= limit, extra data size, post-merge fields)
+ - Block header parent validation (parent hash, number, timestamp, gas-limit bounds)
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` and `rand` are still used (`Cargo.toml`).
@@ -77,7 +78,7 @@ Goal: finalize per-transaction correctness before block processing.
 
 ---
 
-## Current Status Summary (2026-02-09)
+## Current Status Summary (2026-02-08)
 
 ### ✅ Completed (Phase A - 100% COMPLETE)
 - **Per-transaction cleanup** ✅ (Session 14)
@@ -91,15 +92,21 @@ Goal: finalize per-transaction correctness before block processing.
 
 **Phase A is production-ready** - All STF execution correctness features are fully implemented and tested.
 
+### ✅ Completed (Phase B - In Progress)
+- **Task B1: Block header validation against parent** ✅ (Session 18)
+  - Added `BlockHeader::validate_against_parent` with parent hash, number, timestamp, gas-limit bounds, and minimum gas limit validation.
+  - Added comprehensive tests for all validation rules.
+
 ---
 
 ## Immediate Next Task (Execute Now)
 
 **Phase B: Block Processing** - Implement block-level execution
 
-Task B1: Block header validation (Fusaka fork rules)
-- Validate block header against parent (timestamp, gas limit bounds).
-- Validate gas used <= gas limit.
-- Validate extra data size (<= 32 bytes).
-- Validate post-merge fields (difficulty = 0, nonce = 0, ommers hash = empty).
-- Add comprehensive tests for all validation rules (20+ tests).
+Task B2: Block execution loop + root calculations
+- Execute all transactions in order.
+- Track cumulative gas used; enforce gas used <= gas limit.
+- Generate receipts for each transaction and compute receipts root (MPT).
+- Compute updated state root from Partial MPT.
+- Ensure block header validation (including `validate_against_parent`) is called.
+- Add tests for block processing (success path, gas overflow, invalid header).

@@ -132,6 +132,10 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// Maximum allowed extra data size (32 bytes)
     pub const MAX_EXTRA_DATA_SIZE: usize = 32;
+    /// Maximum gas limit change per block (1/1024 of parent gas limit)
+    pub const GAS_LIMIT_BOUND_DIVISOR: u64 = 1024;
+    /// Minimum gas limit per block
+    pub const MIN_GAS_LIMIT: u64 = 5000;
 
     /// Validates gas fields (gas_used <= gas_limit).
     ///
@@ -225,6 +229,76 @@ impl BlockHeader {
         self.validate_gas_fields()?;
         self.validate_extra_data()?;
         self.validate_post_merge_fields()?;
+        Ok(())
+    }
+
+    /// Validates this header against a parent header.
+    ///
+    /// This checks:
+    /// - parent hash matches the parent header hash
+    /// - block number is parent.number + 1
+    /// - timestamp is strictly greater than parent timestamp
+    /// - gas limit is within allowed bounds and above minimum
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::BlockHeader;
+    ///
+    /// let parent = BlockHeader::default();
+    /// let mut child = BlockHeader::default();
+    /// child.parent_hash = parent.compute_hash();
+    /// child.number = parent.number + 1;
+    /// child.timestamp = parent.timestamp + 1;
+    ///
+    /// assert!(child.validate_against_parent(&parent).is_ok());
+    /// ```
+    pub fn validate_against_parent(&self, parent: &BlockHeader) -> Result<(), ValidationError> {
+        let parent_hash = parent.compute_hash();
+        if self.parent_hash != parent_hash {
+            return Err(ValidationError::ParentHashMismatch);
+        }
+
+        let expected_number = parent.number.saturating_add(1);
+        if self.number != expected_number {
+            return Err(ValidationError::InvalidBlockNumber {
+                expected: expected_number,
+                actual: self.number,
+            });
+        }
+
+        if self.timestamp <= parent.timestamp {
+            return Err(ValidationError::InvalidTimestamp {
+                parent: parent.timestamp,
+                actual: self.timestamp,
+            });
+        }
+
+        if self.gas_limit < Self::MIN_GAS_LIMIT {
+            return Err(ValidationError::GasLimitBelowMinimum {
+                gas_limit: self.gas_limit,
+                min_gas_limit: Self::MIN_GAS_LIMIT,
+            });
+        }
+
+        let max_change = parent.gas_limit / Self::GAS_LIMIT_BOUND_DIVISOR;
+        let min_gas_limit = parent.gas_limit.saturating_sub(max_change);
+        let max_gas_limit = parent.gas_limit.saturating_add(max_change);
+
+        if self.gas_limit < min_gas_limit {
+            return Err(ValidationError::GasLimitTooLow {
+                gas_limit: self.gas_limit,
+                min_gas_limit,
+            });
+        }
+
+        if self.gas_limit > max_gas_limit {
+            return Err(ValidationError::GasLimitTooHigh {
+                gas_limit: self.gas_limit,
+                max_gas_limit,
+            });
+        }
+
         Ok(())
     }
 
@@ -488,6 +562,18 @@ pub enum ValidationError {
     NonZeroMixHash,
     /// Non-zero nonce in post-merge block
     NonZeroNonce,
+    /// Parent hash does not match provided parent header hash
+    ParentHashMismatch,
+    /// Block number is not parent.number + 1
+    InvalidBlockNumber { expected: u64, actual: u64 },
+    /// Timestamp is not strictly greater than parent timestamp
+    InvalidTimestamp { parent: u64, actual: u64 },
+    /// Gas limit below minimum allowed
+    GasLimitBelowMinimum { gas_limit: u64, min_gas_limit: u64 },
+    /// Gas limit below allowed bound (parent - parent/1024)
+    GasLimitTooLow { gas_limit: u64, min_gas_limit: u64 },
+    /// Gas limit above allowed bound (parent + parent/1024)
+    GasLimitTooHigh { gas_limit: u64, max_gas_limit: u64 },
 }
 
 impl fmt::Display for ValidationError {
@@ -507,6 +593,45 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::NonZeroNonce => {
                 write!(f, "nonce must be zero in post-merge blocks")
+            }
+            ValidationError::ParentHashMismatch => {
+                write!(f, "parent hash does not match provided parent header")
+            }
+            ValidationError::InvalidBlockNumber { expected, actual } => {
+                write!(f, "block number {actual} does not match expected {expected}")
+            }
+            ValidationError::InvalidTimestamp { parent, actual } => {
+                write!(
+                    f,
+                    "timestamp {actual} is not greater than parent timestamp {parent}"
+                )
+            }
+            ValidationError::GasLimitBelowMinimum {
+                gas_limit,
+                min_gas_limit,
+            } => {
+                write!(
+                    f,
+                    "gas limit {gas_limit} below minimum {min_gas_limit}"
+                )
+            }
+            ValidationError::GasLimitTooLow {
+                gas_limit,
+                min_gas_limit,
+            } => {
+                write!(
+                    f,
+                    "gas limit {gas_limit} below allowed minimum {min_gas_limit}"
+                )
+            }
+            ValidationError::GasLimitTooHigh {
+                gas_limit,
+                max_gas_limit,
+            } => {
+                write!(
+                    f,
+                    "gas limit {gas_limit} exceeds allowed maximum {max_gas_limit}"
+                )
             }
         }
     }
@@ -631,6 +756,131 @@ mod tests {
     fn test_validate_all_valid() {
         let header = BlockHeader::default();
         assert!(header.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_against_parent_valid() {
+        let parent = BlockHeader::default();
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        child.gas_limit = parent.gas_limit;
+        assert!(child.validate_against_parent(&parent).is_ok());
+    }
+
+    #[test]
+    fn test_validate_against_parent_hash_mismatch() {
+        let parent = BlockHeader::default();
+        let mut child = BlockHeader::default();
+        child.parent_hash = Hash::from([0x11; 32]);
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(err, ValidationError::ParentHashMismatch);
+    }
+
+    #[test]
+    fn test_validate_against_parent_number_invalid() {
+        let parent = BlockHeader::default();
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 2;
+        child.timestamp = parent.timestamp + 1;
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::InvalidBlockNumber {
+                expected: parent.number + 1,
+                actual: parent.number + 2
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_against_parent_timestamp_invalid() {
+        let parent = BlockHeader::default();
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp;
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::InvalidTimestamp {
+                parent: parent.timestamp,
+                actual: parent.timestamp
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_against_parent_gas_limit_below_minimum() {
+        let mut parent = BlockHeader::default();
+        parent.gas_limit = BlockHeader::MIN_GAS_LIMIT;
+
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        child.gas_limit = BlockHeader::MIN_GAS_LIMIT - 1;
+
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::GasLimitBelowMinimum {
+                gas_limit: BlockHeader::MIN_GAS_LIMIT - 1,
+                min_gas_limit: BlockHeader::MIN_GAS_LIMIT
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_against_parent_gas_limit_too_low() {
+        let mut parent = BlockHeader::default();
+        parent.gas_limit = 100_000;
+
+        let max_change = parent.gas_limit / BlockHeader::GAS_LIMIT_BOUND_DIVISOR;
+        let min_allowed = parent.gas_limit - max_change;
+
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        child.gas_limit = min_allowed - 1;
+
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::GasLimitTooLow {
+                gas_limit: min_allowed - 1,
+                min_gas_limit: min_allowed
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_against_parent_gas_limit_too_high() {
+        let mut parent = BlockHeader::default();
+        parent.gas_limit = 100_000;
+
+        let max_change = parent.gas_limit / BlockHeader::GAS_LIMIT_BOUND_DIVISOR;
+        let max_allowed = parent.gas_limit + max_change;
+
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        child.gas_limit = max_allowed + 1;
+
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::GasLimitTooHigh {
+                gas_limit: max_allowed + 1,
+                max_gas_limit: max_allowed
+            }
+        );
     }
 
     // =========================================================================

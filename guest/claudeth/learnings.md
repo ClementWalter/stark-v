@@ -1,5 +1,31 @@
 # Claudeth Development Learnings
 
+## Session 18: Block Header Parent Validation (2026-02-08)
+
+**Status**: Phase B Task B1 COMPLETE - parent-aware header validation implemented
+
+### What Was Accomplished
+1. ✅ Added `BlockHeader::validate_against_parent` with parent hash, number, timestamp checks
+2. ✅ Enforced gas limit bounds (parent ± parent/1024) and minimum gas limit
+3. ✅ Added comprehensive validation tests for each failure mode
+4. ✅ Updated PLAN.md to reflect Phase B progress
+5. ✅ All tests passing in `--release` mode
+6. ⚠️ `prek run` still tries to write `/Users/clementwalter/.cache/prek/prek.log` (sandbox denied)
+
+### DO's ✅
+1. **Validate parent hash using `parent.compute_hash()`** to avoid mismatched header linkage
+2. **Enforce gas limit bounds using parent/1024** for both min and max
+3. **Require timestamp strictly greater than parent** (not equal)
+4. **Keep a minimum gas limit constant** to avoid invalidly small blocks
+5. **Add focused tests per failure mode** (hash, number, timestamp, bounds)
+
+### DON'Ts ❌
+1. **Don't compare against `self.compute_hash()`** when checking parent linkage
+2. **Don't allow gas limit drift beyond parent/1024** (both directions matter)
+3. **Don't use non-strict timestamp checks** (must be `>` not `>=`)
+4. **Don't forget to update PLAN.md** when a task completes
+5. **Don't assume `XDG_CACHE_HOME` redirects `prek` logs**; it still uses `~/.cache/prek`
+
 ## Session 17: Gas Refund Tracking (EIP-3529) (2026-02-09)
 
 **Status**: Phase A 100% COMPLETE - Gas refunds implemented and tested
