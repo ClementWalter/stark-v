@@ -12,18 +12,16 @@ project. Always run tests with --release mode.
 1. Read the [Claudeth README.md file](README.md).
 2. Read the [Claudeth source code](src/).
 3. Read the [Claudeth PLAN.md file](PLAN.md).
-4. Based on your analysis, update the PLAN.md file to reflect the current status
+4. Read past [learnings.md](learnings.md) about what works and what doesn't. Be
+   cautious about what you read, some of it may be outdated.
+5. Based on your analysis, update the PLAN.md file to reflect the current status
    and the plan for the implementation.
-5. If there is nothing to be done, exit.
-6. Based on the PLAN.md file, derive what can be implemented in parallel NOW.
-   Spawn as many rust experts sub agents as needed to work on these identified
-   tasks ONLY. Don't work on sequential tasks, just on what can be implemented
-   in parallel NOW.
-7. The experts NEED to have 100% test coverage on their work. You are
-   responsible for a final validation of the whole work of the team.
-8. If everything looks good, commit the changes to the repository.
-9. Else, send feedback to the experts and prompt new team.
-10. Go back to step 4.
+6. If there is nothing to be done, exit.
+7. Based on the PLAN.md file, derive what can be implemented in parallel NOW.
+   Pick only ONE task at a time and do it. Don't work on several tasks, just one
+   that can be implemented 100% NOW.
+8. Commit the changes to the repository.
+9. Dump learnings in learnings.md and exit.
 
 **CRITICAL**: Never dismiss linter errors, nothing is optional. Don't update
 linter rules. You need to fix errors, not remove them.
