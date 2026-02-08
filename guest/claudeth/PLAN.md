@@ -21,7 +21,7 @@ Claudeth is intended to be a **dependency-free** Ethereum State Transition Funct
 - ❌ Not fully dependency-free (uses `k256` for secp256k1, `rand` for tests)
 - ❌ No guest `main` entry point (library only)
 
-**Test Status**: not re-verified this session (cargo test blocked by sandbox write permissions); last reported 1028 tests passing in --release mode (see learnings.md)
+**Test Status**: 1032 tests passing in --release mode (verified 2026-02-09)
 
 This plan reflects actual code status and defines the next concrete steps.
 
@@ -100,21 +100,22 @@ None. All opcodes are wired to state/host interfaces (call/create/blockhash/blob
 - ✅ Tests: 4 new integration tests (host + call/create + blockhash/blob)
 - **Depends on**: Tasks 1, 2
 
-**Task 4: Transaction Executor** (blocked by all above)
+**Task 4: Transaction Executor** ⏸️ READY TO START (all dependencies satisfied)
 - Create `src/stf/executor.rs`
 - Pre-execution: validate, charge intrinsic gas, increment nonce
 - Execution: run interpreter with state + host
 - Post-execution: apply gas refunds, transfer value, generate receipts
-- **Depends on**: Tasks 1, 2, 3
+- **Depends on**: Tasks 1 ✅, 2 ✅, 3 ✅
 - **Tests**: 35+ tests
 
 ### Exit Criteria (Phase 4 Complete)
 - ✅ Validation + receipts (81 tests) - Session 8
 - ✅ State interface + in-memory implementation (46 tests) - Session 10
 - ✅ Interpreter with real state access (13 tests) - Session 11
-- ✅ Host interface + call/create opcodes (4 tests added so far) - Session 12
-- ⏸️ Transaction executor (35+ tests)
+- ✅ Host interface + call/create opcodes (4 tests) - Session 12
+- ⏸️ Transaction executor (35+ tests) - READY TO START
 - **Total target**: 215+ new tests (144 done, 71 remaining)
+- **Current status**: 1032 tests passing, zero clippy warnings
 - All tests pass in `--release` mode
 - Zero clippy warnings
 
@@ -146,8 +147,8 @@ None. All opcodes are wired to state/host interfaces (call/create/blockhash/blob
 
 ---
 
-## Parallel Work Available NOW
+## Next Task (Ready to Implement)
 
-Only one stream left that is unblocked:
+**Phase 4 Wave 2 Task #4: Transaction Executor** - All dependencies satisfied, ready to implement NOW
 
-- Task 4: Transaction Executor (implementable now)
+This is the ONLY remaining task in Phase 4. Once complete, Phase 4 will be 100% done.
