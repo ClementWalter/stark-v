@@ -39,5 +39,6 @@ pub use host::{
     CallKind, CallMessage, CallResult, CreateMessage, CreateResult, Host, NullHost,
 };
 pub use interpreter::{
-    execute_bytecode, execute_bytecode_with_host, BlockContext, EvmError, ExecutionResult, TxContext,
+    execute_bytecode, execute_bytecode_with_host, BlockContext, EvmError, ExecutionResult,
+    LogEntry, TxContext,
 };

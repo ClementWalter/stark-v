@@ -1,5 +1,28 @@
 # Claudeth Development Learnings
 
+## Session 16: LOG Capture + Receipt Wiring (2026-02-08)
+
+**Status**: LOG capture implemented end-to-end
+
+### What Was Accomplished
+1. ✅ Added `LogEntry` to EVM execution results
+2. ✅ LOG0–LOG4 now read memory data and record topics/data/address
+3. ✅ LOG gas cost uses `log_gas_cost` helper
+4. ✅ Executor converts EVM logs into receipt `Log` entries
+5. ✅ Added `test_log1_captures_data_and_topic` in interpreter tests
+
+### DO's ✅
+1. **Use `log_gas_cost`** for LOG opcodes to keep gas logic consistent
+2. **Preserve topic order** by collecting topics in stack-pop order (topic1..topicN)
+3. **Convert U256 to Hash via `to_be_bytes`** for topic encoding
+4. **Add log storage to EVM state** instead of introducing an evm→stf dependency
+5. **Update tuple return types + tests together** when adding fields
+
+### DON'Ts ❌
+1. **Don't create dependency cycles** between `evm` and `stf`
+2. **Don't forget memory expansion cost** before reading log data
+3. **Don't skip `prek run`** even if it fails due to sandbox log path
+
 ## Session 15: Phase A Complete - Execution API Refactor (2026-02-09)
 
 **Status**: Phase A 100% COMPLETE - Task A2 execution API refactored, contract deployment working

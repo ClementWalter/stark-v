@@ -24,40 +24,41 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 - Transaction validation + receipts
 - Execution state trait + `InMemoryState`
 - STF transaction executor (pre/post execution pipeline)
+- Block header validation helpers (gas used <= limit, extra data size, post-merge fields)
 
 ### ⚠️ Known Gaps vs README Requirements
-1. **Dependency-free**: `k256` and `rand` are still used (Cargo.toml).
+1. **Dependency-free**: `k256` and `rand` are still used (`Cargo.toml`).
 2. **Guest program entry point**: no `main.rs` or guest entry for `riscv32`.
-3. **Block processing**: no block-level execution loop (header validation, cumulative gas, receipts root, state root).
+3. **Block processing**: no block-level execution loop (header validation vs parent, cumulative gas, receipts root, state root).
 4. **EELS compliance**: no EELS test vector integration or runner.
 
 ### ⚠️ STF Execution Limitations (Observed in Code)
-- `execute_bytecode_with_host` takes owned state (limits post-execution state updates).
-- CREATE code deployment and log extraction are TODOs in `executor.rs`.
-- Transient storage and selfdestruct tracking are not cleared after each transaction.
-- Gas refunds from SSTORE/SELFDESTRUCT are not tracked (TODO).
+- **Log capture missing**: LOG0–LOG4 consume gas but do not record logs; executor returns empty logs.
+- **Gas refunds not tracked**: SSTORE/SELFDESTRUCT refund accounting is TODO in `executor.rs`.
+- **Host wiring**: executor uses `NullHost` (TODO in `executor.rs`).
 
 ---
 
 ## Implementation Plan
 
 ### Phase A: STF Execution Correctness Polishing (Immediate)
-Goal: fix transaction-level lifecycle correctness before block processing.
+Goal: finalize per-transaction correctness before block processing.
 
-1. **Clear per-tx transient state** (NOW)
-   - Add `clear_transient_storage` + `clear_selfdestructs` to `State`.
-   - Call these in `execute_transaction` on completion or failure.
+1. **Per-tx cleanup** (DONE)
+   - `clear_transient_storage` + `clear_selfdestructs` in `State`.
+   - Called in `execute_transaction` on completion or failure.
 
-2. **Refactor execution API** (Next)
-   - Replace owned-state API with `&mut State` or return updated state.
-   - Enables contract code deployment and log extraction.
+2. **Execution API refactor** (DONE)
+   - `execute_bytecode_with_host` returns `(ExecutionResult, S)`.
+   - CREATE deployment now writes code to state.
 
-3. **Implement logs + refunds** (After API refactor)
-   - Capture logs from interpreter.
-   - Track gas refunds from SSTORE/SELFDESTRUCT.
+3. **Log capture + gas refunds** (NEXT)
+   - Record LOG0–LOG4 data during execution.
+   - Plumb logs into receipts.
+   - Track gas refunds from SSTORE/SELFDESTRUCT (EIP-3529 cap).
 
 ### Phase B: Block Processing
-- Validate block header (Fusaka rules).
+- Validate block header vs parent (timestamp, gas limit bounds, gas used, extra data, PoS fields).
 - Execute all transactions in order.
 - Track cumulative gas and build receipts.
 - Compute receipts root and state root via MPT.
@@ -76,38 +77,24 @@ Goal: fix transaction-level lifecycle correctness before block processing.
 
 ---
 
-## Current Status Summary (2026-02-09)
+## Current Status Summary (2026-02-08)
 
-### ✅ Completed (Phase A - 100% COMPLETE)
-- **Phase A: Task A1** ✅ - Per-transaction cleanup implemented
-  - State trait has `clear_transient_storage()` and `clear_selfdestructs()`
-  - Called in `execute_transaction()` on both success and failure paths
+### ✅ Completed (Phase A Partial)
+- **Per-transaction cleanup** ✅
+- **Execution API refactor** ✅
+- **CREATE deployment** ✅
 
-- **Phase A: Task A2** ✅ - Execution API refactored to return state
-  - Changed `execute_bytecode_with_host()` to return `(ExecutionResult, S)`
-  - Updated `execute_call()` and `execute_create()` to return state
-  - **CONTRACT CODE DEPLOYMENT NOW WORKS** - CREATE transactions deploy code properly
-  - All 1047 tests passing, zero clippy warnings
-  - Commit: 0a506a6
-
-### Phase A Status: 100% COMPLETE ✅
-STF execution correctness is now production-ready:
-- ✅ Per-transaction transient storage cleanup
-- ✅ Contract code deployment in CREATE transactions
-- ✅ State properly propagated through execution pipeline
-- ✅ All execution APIs return updated state
+### Phase A Status: Partially Complete
+- Remaining: log capture, gas refund tracking, host plumbing
 
 ---
 
 ## Immediate Next Task (Execute Now)
 
-**Phase B: Block Processing** - Now unblocked with complete transaction execution
+**Phase A: Log Capture** - Complete the execution pipeline output surface
 
-Task B1: Block header validation (Fusaka fork rules)
-- Validate timestamp (must be > parent timestamp)
-- Validate difficulty (should be 0 for PoS)
-- Validate gas limit (within bounds of parent gas limit)
-- Validate gas used (≤ gas limit)
-- Validate extra data (≤ 32 bytes)
-- Validate nonce (should be 0 for PoS)
-- Target: 20+ tests for header validation
+Task A3: LOG0–LOG4 capture and receipt wiring
+- Record log address/topics/data during execution.
+- Use correct LOG gas cost (base + topics + data).
+- Propagate logs into `TransactionExecutionResult` / receipts.
+- Add focused tests for log capture and topic ordering.

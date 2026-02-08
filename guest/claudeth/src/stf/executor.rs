@@ -27,7 +27,7 @@ use std::vec::Vec;
 use alloc::vec::Vec;
 
 use crate::evm::host::NullHost;
-use crate::evm::interpreter::{execute_bytecode_with_host, BlockContext};
+use crate::evm::interpreter::{execute_bytecode_with_host, BlockContext, LogEntry};
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
@@ -218,7 +218,7 @@ pub fn execute_transaction<S: State + Clone>(
         execute_call(tx, exec_state, &sender, &to, gas_available)
     };
 
-    let (success, gas_used_execution, return_data, contract_address, returned_state) = match exec_result {
+    let (success, gas_used_execution, return_data, logs, contract_address, returned_state) = match exec_result {
         Ok(result) => result,
         Err(err) => {
             state.clear_transient_storage();
@@ -251,8 +251,6 @@ pub fn execute_transaction<S: State + Clone>(
     state.set_balance(&block_ctx.coinbase, coinbase_balance.saturating_add(gas_fee));
 
     // Step 5: Build result
-    // TODO: Extract logs from execution (requires interpreter changes)
-    let logs = Vec::new();
 
     state.clear_transient_storage();
     state.clear_selfdestructs();
@@ -270,7 +268,7 @@ pub fn execute_transaction<S: State + Clone>(
 }
 
 // Type alias for execution result to avoid clippy::type_complexity warning
-type ExecutionResultWithState<S> = (bool, u64, Vec<u8>, Option<Address>, S);
+type ExecutionResultWithState<S> = (bool, u64, Vec<u8>, Vec<Log>, Option<Address>, S);
 
 /// Executes a contract call transaction
 fn execute_call<S: State>(
@@ -285,7 +283,7 @@ fn execute_call<S: State>(
 
     // If no code, this is just a value transfer (success)
     if code.is_empty() {
-        return Ok((true, 0, Vec::new(), None, state));
+        return Ok((true, 0, Vec::new(), Vec::new(), None, state));
     }
 
     // Execute bytecode (using NullHost for now)
@@ -297,6 +295,7 @@ fn execute_call<S: State>(
             exec_result.success,
             exec_result.gas_used,
             exec_result.return_data,
+            convert_logs(exec_result.logs),
             None,
             returned_state,
         )),
@@ -333,6 +332,7 @@ fn execute_create<S: State>(
                 exec_result.success,
                 exec_result.gas_used,
                 exec_result.return_data,
+                convert_logs(exec_result.logs),
                 Some(contract_address),
                 returned_state,
             ))
@@ -357,6 +357,12 @@ fn compute_create_address(sender: &Address, nonce: U256) -> Address {
     let mut address_bytes = [0u8; 20];
     address_bytes.copy_from_slice(&hash.as_bytes()[12..]);
     Address::from(address_bytes)
+}
+
+fn convert_logs(logs: Vec<LogEntry>) -> Vec<Log> {
+    logs.into_iter()
+        .map(|log| Log::new(log.address, log.topics, log.data.into()))
+        .collect()
 }
 
 // =============================================================================
@@ -540,11 +546,12 @@ mod tests {
         let result = execute_call(&tx, state, &sender, &recipient, 21000);
 
         assert!(result.is_ok());
-        let (success, gas_used, return_data, contract_address, _state) = result.unwrap();
+        let (success, gas_used, return_data, logs, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert_eq!(gas_used, 0); // No code execution
         assert_eq!(return_data.len(), 0);
+        assert!(logs.is_empty());
         assert!(contract_address.is_none());
     }
 
@@ -601,11 +608,12 @@ mod tests {
         let result = execute_call(&tx, state, &sender, &contract, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, return_data, _, _state) = result.unwrap();
+        let (success, gas_used, return_data, logs, _, _state) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0); // Some gas was used
         assert_eq!(return_data.len(), 32); // Returns 32 bytes
+        assert!(logs.is_empty());
     }
 
     #[test]
@@ -636,10 +644,11 @@ mod tests {
         let result = execute_create(&tx, state, &sender, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _return_data, contract_address, _state) = result.unwrap();
+        let (success, gas_used, _return_data, logs, contract_address, _state) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0);
+        assert!(logs.is_empty());
         assert!(contract_address.is_some());
 
         // Verify contract was created
@@ -673,9 +682,10 @@ mod tests {
         let result = execute_create(&tx, state, &sender, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _, contract_address, _state) = result.unwrap();
+        let (success, _, _, logs, contract_address, _state) = result.unwrap();
 
         assert!(success);
+        assert!(logs.is_empty());
         assert!(contract_address.is_some());
 
         // Contract address should be computed deterministically

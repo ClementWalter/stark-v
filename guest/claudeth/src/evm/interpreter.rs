@@ -30,7 +30,7 @@ use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
 use crate::evm::{
-    create2_hash_cost, init_code_gas_cost, memory_expansion_cost, opcode_gas_cost,
+    create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
     GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
 };
 use crate::state::State;
@@ -95,10 +95,20 @@ pub struct ExecutionResult {
     pub gas_used: u64,
     /// Return data (from RETURN or REVERT)
     pub return_data: Vec<u8>,
+    /// Logs emitted during execution
+    pub logs: Vec<LogEntry>,
     /// Final stack state (for debugging)
     pub stack: Stack,
     /// Final memory state (for debugging)
     pub memory: Memory,
+}
+
+/// Log entry emitted by LOG0-LOG4 opcodes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    pub address: Address,
+    pub topics: Vec<Hash>,
+    pub data: Vec<u8>,
 }
 
 // =============================================================================
@@ -184,6 +194,7 @@ pub struct Evm<S, H> {
     tx_ctx: TxContext,
     call_ctx: CallContext,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
+    logs: Vec<LogEntry>,
     state: S,             // State interface for account/storage access
     host: H,              // Host interface for calls/creates
 }
@@ -210,6 +221,10 @@ fn hash_to_u256(hash: &Hash) -> U256 {
     U256::from_be_bytes(*hash.as_bytes())
 }
 
+fn u256_to_hash(value: &U256) -> Hash {
+    Hash::from(value.to_be_bytes())
+}
+
 impl<S: State, H: Host<S>> Evm<S, H> {
     /// Create a new EVM instance
     pub fn new(code: Vec<u8>, gas_limit: u64, state: S, host: H) -> Self {
@@ -226,6 +241,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             tx_ctx: TxContext::default(),
             call_ctx: CallContext::default(),
             jumpdests,
+            logs: Vec::new(),
             state,
             host,
         }
@@ -760,8 +776,10 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
 
                 // Pop topics
+                let mut topics = Vec::with_capacity(num_topics);
                 for _ in 0..num_topics {
-                    self.stack.pop()?;
+                    let topic = self.stack.pop()?;
+                    topics.push(u256_to_hash(&topic));
                 }
 
                 // Memory expansion
@@ -769,7 +787,14 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.consume_gas(mem_cost)?;
 
                 // Log cost
-                self.consume_gas(375 * (num_topics as u64) + 8 * (size as u64))?;
+                self.consume_gas(log_gas_cost(num_topics as u8, size))?;
+
+                let data = self.read_memory_bytes(offset, size)?;
+                self.logs.push(LogEntry {
+                    address: self.call_ctx.address,
+                    topics,
+                    data,
+                });
             }
 
             // 0xF0: CREATE
@@ -1112,6 +1137,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             success: true,
             gas_used: initial_gas - self.gas_remaining,
             return_data: self.return_data.clone(),
+            logs: self.logs.clone(),
             stack: self.stack.clone(),
             memory: self.memory.clone(),
         })
@@ -2280,5 +2306,33 @@ mod tests {
         assert_eq!(recorded.caller, Address::new([0x22; 20]));
         assert_eq!(recorded.value, U256::from_u64(77));
         assert_eq!(recorded.code_address, to);
+    }
+
+    #[test]
+    fn test_log1_captures_data_and_topic() {
+        let code = vec![
+            0x60, 0xAA, // PUSH1 0xAA
+            0x60, 0x00, // PUSH1 0x00
+            0x53, // MSTORE8
+            0x60, 0xBB, // PUSH1 0xBB
+            0x60, 0x01, // PUSH1 0x01
+            0x53, // MSTORE8
+            0x60, 0x01, // PUSH1 topic
+            0x60, 0x02, // PUSH1 size
+            0x60, 0x00, // PUSH1 offset
+            0xA1, // LOG1
+            0x00, // STOP
+        ];
+
+        let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
+
+        assert_eq!(result.logs.len(), 1);
+        let log = &result.logs[0];
+        assert_eq!(log.address, Address::ZERO);
+        assert_eq!(log.data, vec![0xAA, 0xBB]);
+
+        let mut topic_bytes = [0u8; 32];
+        topic_bytes[31] = 1;
+        assert_eq!(log.topics, vec![Hash::from(topic_bytes)]);
     }
 }
