@@ -8,10 +8,11 @@
 //!
 //! ```no_run
 //! use claudeth::evm::interpreter::{execute_bytecode, ExecutionResult};
+//! use claudeth::state::InMemoryState;
 //!
 //! // Execute simple bytecode: PUSH1 0x42 PUSH1 0x00 MSTORE STOP
 //! let code = vec![0x60, 0x42, 0x60, 0x00, 0x52, 0x00];
-//! let result = execute_bytecode(&code, 100000).unwrap();
+//! let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
 //! assert!(result.success);
 //! ```
 
@@ -28,7 +29,8 @@ use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
 use crate::evm::{memory_expansion_cost, opcode_gas_cost};
-use crate::types::{Address, U256};
+use crate::state::State;
+use crate::types::{Address, Hash, U256};
 
 // =============================================================================
 // Error Types
@@ -166,7 +168,7 @@ impl Default for CallContext {
 // =============================================================================
 
 /// EVM execution state
-pub struct Evm {
+pub struct Evm<S> {
     stack: Stack,
     memory: Memory,
     gas_remaining: u64,
@@ -178,11 +180,34 @@ pub struct Evm {
     tx_ctx: TxContext,
     call_ctx: CallContext,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
+    state: S,             // State interface for account/storage access
 }
 
-impl Evm {
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+fn address_to_u256(address: &Address) -> U256 {
+    let mut bytes = [0u8; 32];
+    bytes[12..].copy_from_slice(&address.to_bytes());
+    U256::from_be_bytes(bytes)
+}
+
+fn u256_to_address(u256: &U256) -> Address {
+    let bytes = u256.to_be_bytes();
+    // Address is the last 20 bytes
+    let mut addr_bytes = [0u8; 20];
+    addr_bytes.copy_from_slice(&bytes[12..]);
+    Address::from_slice(&addr_bytes).expect("20 bytes should always create an address")
+}
+
+fn hash_to_u256(hash: &Hash) -> U256 {
+    U256::from_be_bytes(*hash.as_bytes())
+}
+
+impl<S: State> Evm<S> {
     /// Create a new EVM instance
-    pub fn new(code: Vec<u8>, gas_limit: u64) -> Self {
+    pub fn new(code: Vec<u8>, gas_limit: u64, state: S) -> Self {
         let jumpdests = Self::analyze_jumpdests(&code);
         Evm {
             stack: Stack::new(),
@@ -196,13 +221,8 @@ impl Evm {
             tx_ctx: TxContext::default(),
             call_ctx: CallContext::default(),
             jumpdests,
+            state,
         }
-    }
-
-    fn address_to_u256(address: &Address) -> U256 {
-        let mut bytes = [0u8; 32];
-        bytes[12..].copy_from_slice(&address.to_bytes());
-        U256::from_be_bytes(bytes)
     }
 
     /// Analyze code to find valid JUMPDEST positions
@@ -328,22 +348,24 @@ impl Evm {
             // 0x30-0x3F: Environment
             0x30 => {
                 // ADDRESS
-                let address_u256 = Self::address_to_u256(&self.call_ctx.address);
+                let address_u256 = address_to_u256(&self.call_ctx.address);
                 self.stack.push(address_u256)?;
             }
             0x31 => {
-                // BALANCE: stub (pop address, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // BALANCE: get balance of account
+                let address_u256 = self.stack.pop()?;
+                let address = u256_to_address(&address_u256);
+                let balance = self.state.get_balance(&address);
+                self.stack.push(balance)?;
             }
             0x32 => {
                 // ORIGIN
-                let origin_u256 = Self::address_to_u256(&self.tx_ctx.origin);
+                let origin_u256 = address_to_u256(&self.tx_ctx.origin);
                 self.stack.push(origin_u256)?;
             }
             0x33 => {
                 // CALLER
-                let caller_u256 = Self::address_to_u256(&self.call_ctx.caller);
+                let caller_u256 = address_to_u256(&self.call_ctx.caller);
                 self.stack.push(caller_u256)?;
             }
             0x34 => {
@@ -426,16 +448,48 @@ impl Evm {
                 self.stack.push(self.tx_ctx.gas_price)?;
             }
             0x3B => {
-                // EXTCODESIZE: stub (pop address, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // EXTCODESIZE: get code size of account
+                let address_u256 = self.stack.pop()?;
+                let address = u256_to_address(&address_u256);
+                let code = self.state.get_code(&address);
+                self.stack.push(U256::from_u64(code.len() as u64))?;
             }
             0x3C => {
-                // EXTCODECOPY: stub (pop 4 args)
-                self.stack.pop()?;
-                self.stack.pop()?;
-                self.stack.pop()?;
-                self.stack.pop()?;
+                // EXTCODECOPY: copy code from external account
+                let address_u256 = self.stack.pop()?;
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                let address = u256_to_address(&address_u256);
+                // Clone the code to avoid borrow checker issues
+                #[cfg(not(target_arch = "riscv32"))]
+                let code = self.state.get_code(&address).to_vec();
+                #[cfg(target_arch = "riscv32")]
+                let code = {
+                    let slice = self.state.get_code(&address);
+                    let mut vec = alloc::vec::Vec::new();
+                    vec.extend_from_slice(slice);
+                    vec
+                };
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                // Copy code to memory
+                for i in 0..size {
+                    let byte = if offset + i < code.len() {
+                        code[offset + i]
+                    } else {
+                        0
+                    };
+                    self.memory.mstore8(dest + i, byte)?;
+                }
             }
             0x3D => {
                 // RETURNDATASIZE
@@ -467,9 +521,12 @@ impl Evm {
                 }
             }
             0x3F => {
-                // EXTCODEHASH: stub (pop address, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // EXTCODEHASH: get code hash of account
+                let address_u256 = self.stack.pop()?;
+                let address = u256_to_address(&address_u256);
+                let code_hash = self.state.get_code_hash(&address);
+                let hash_u256 = hash_to_u256(&code_hash);
+                self.stack.push(hash_u256)?;
             }
 
             // 0x40-0x4A: Block information
@@ -508,8 +565,9 @@ impl Evm {
                 self.stack.push(self.block_ctx.chain_id)?;
             }
             0x47 => {
-                // SELFBALANCE: stub
-                self.stack.push(U256::ZERO)?;
+                // SELFBALANCE: get balance of current contract
+                let balance = self.state.get_balance(&self.call_ctx.address);
+                self.stack.push(balance)?;
             }
             0x48 => {
                 // BASEFEE
@@ -555,14 +613,16 @@ impl Evm {
                 self.memory.mstore8(offset, value.as_u8())?;
             }
             0x54 => {
-                // SLOAD: stub (pop key, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // SLOAD: load from permanent storage
+                let key = self.stack.pop()?;
+                let value = self.state.sload(&self.call_ctx.address, &key);
+                self.stack.push(value)?;
             }
             0x55 => {
-                // SSTORE: stub (pop 2 args)
-                self.stack.pop()?;
-                self.stack.pop()?;
+                // SSTORE: store to permanent storage
+                let key = self.stack.pop()?;
+                let value = self.stack.pop()?;
+                self.state.sstore(&self.call_ctx.address, &key, value);
             }
             0x56 => {
                 // JUMP
@@ -601,14 +661,16 @@ impl Evm {
                 // JUMPDEST: no-op
             }
             0x5C => {
-                // TLOAD: stub (pop key, push 0)
-                self.stack.pop()?;
-                self.stack.push(U256::ZERO)?;
+                // TLOAD: load from transient storage (EIP-1153)
+                let key = self.stack.pop()?;
+                let value = self.state.tload(&self.call_ctx.address, &key);
+                self.stack.push(value)?;
             }
             0x5D => {
-                // TSTORE: stub (pop 2 args)
-                self.stack.pop()?;
-                self.stack.pop()?;
+                // TSTORE: store to transient storage (EIP-1153)
+                let key = self.stack.pop()?;
+                let value = self.stack.pop()?;
+                self.state.tstore(&self.call_ctx.address, &key, value);
             }
             0x5E => {
                 // MCOPY
@@ -784,8 +846,10 @@ impl Evm {
 
             // 0xFF: SELFDESTRUCT
             0xFF => {
-                // Stub: pop address
-                self.stack.pop()?;
+                // SELFDESTRUCT: mark account for deletion and transfer balance
+                let beneficiary_u256 = self.stack.pop()?;
+                let beneficiary = u256_to_address(&beneficiary_u256);
+                self.state.selfdestruct(&self.call_ctx.address, &beneficiary);
                 self.stopped = true;
             }
 
@@ -822,7 +886,7 @@ impl Evm {
 // Public API
 // =============================================================================
 
-/// Execute bytecode with a gas limit
+/// Execute bytecode with a gas limit and state
 ///
 /// This is the main entry point for executing EVM bytecode.
 ///
@@ -830,6 +894,7 @@ impl Evm {
 ///
 /// * `code` - The bytecode to execute
 /// * `gas_limit` - Maximum gas allowed for execution
+/// * `state` - State interface for account/storage access
 ///
 /// # Returns
 ///
@@ -839,14 +904,20 @@ impl Evm {
 ///
 /// ```
 /// use claudeth::evm::interpreter::execute_bytecode;
+/// use claudeth::state::InMemoryState;
 ///
 /// // PUSH1 0x42 PUSH1 0x00 MSTORE STOP
 /// let code = vec![0x60, 0x42, 0x60, 0x00, 0x52, 0x00];
-/// let result = execute_bytecode(&code, 100000).unwrap();
+/// let state = InMemoryState::new();
+/// let result = execute_bytecode(&code, 100000, state).unwrap();
 /// assert!(result.success);
 /// ```
-pub fn execute_bytecode(code: &[u8], gas_limit: u64) -> Result<ExecutionResult, EvmError> {
-    let mut evm = Evm::new(code.to_vec(), gas_limit);
+pub fn execute_bytecode<S: State>(
+    code: &[u8],
+    gas_limit: u64,
+    state: S,
+) -> Result<ExecutionResult, EvmError> {
+    let mut evm = Evm::new(code.to_vec(), gas_limit, state);
     evm.run()
 }
 
@@ -857,6 +928,7 @@ pub fn execute_bytecode(code: &[u8], gas_limit: u64) -> Result<ExecutionResult, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::InMemoryState;
 
     // =============================================================================
     // Basic Execution Tests
@@ -864,7 +936,7 @@ mod tests {
 
     #[test]
     fn test_empty_code() {
-        let result = execute_bytecode(&[], 1000).unwrap();
+        let result = execute_bytecode(&[], 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.gas_used, 0);
     }
@@ -872,7 +944,7 @@ mod tests {
     #[test]
     fn test_stop() {
         let code = vec![0x00]; // STOP
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.gas_used, 0);
     }
@@ -885,7 +957,7 @@ mod tests {
     fn test_add() {
         // PUSH1 0x02 PUSH1 0x03 ADD STOP
         let code = vec![0x60, 0x02, 0x60, 0x03, 0x01, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(5));
     }
@@ -894,7 +966,7 @@ mod tests {
     fn test_mul() {
         // PUSH1 0x03 PUSH1 0x04 MUL STOP
         let code = vec![0x60, 0x03, 0x60, 0x04, 0x02, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(12));
     }
@@ -903,7 +975,7 @@ mod tests {
     fn test_sub() {
         // PUSH1 0x05 PUSH1 0x03 SUB STOP (5 - 3 = 2)
         let code = vec![0x60, 0x05, 0x60, 0x03, 0x03, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(2));
     }
@@ -912,7 +984,7 @@ mod tests {
     fn test_div() {
         // PUSH1 0x08 PUSH1 0x02 DIV STOP (8 / 2 = 4)
         let code = vec![0x60, 0x08, 0x60, 0x02, 0x04, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(4));
     }
@@ -925,7 +997,7 @@ mod tests {
     fn test_push_pop() {
         // PUSH1 0x42 POP STOP
         let code = vec![0x60, 0x42, 0x50, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.len(), 0);
     }
@@ -934,7 +1006,7 @@ mod tests {
     fn test_dup1() {
         // PUSH1 0x42 DUP1 STOP
         let code = vec![0x60, 0x42, 0x80, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.len(), 2);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x42));
@@ -945,7 +1017,7 @@ mod tests {
     fn test_swap1() {
         // PUSH1 0x01 PUSH1 0x02 SWAP1 STOP
         let code = vec![0x60, 0x01, 0x60, 0x02, 0x90, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x01));
         assert_eq!(result.stack.peek(1).unwrap(), &U256::from_u64(0x02));
@@ -959,7 +1031,7 @@ mod tests {
     fn test_mstore_mload() {
         // PUSH1 0x42 PUSH1 0x00 MSTORE PUSH1 0x00 MLOAD STOP
         let code = vec![0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x00, 0x51, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x42));
     }
@@ -968,7 +1040,7 @@ mod tests {
     fn test_mstore8() {
         // PUSH1 0xFF PUSH1 0x00 MSTORE8 PUSH1 0x00 MLOAD STOP
         let code = vec![0x60, 0xFF, 0x60, 0x00, 0x53, 0x60, 0x00, 0x51, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         let value = result.stack.peek(0).unwrap();
         let bytes = value.to_be_bytes();
@@ -983,7 +1055,7 @@ mod tests {
     fn test_jump() {
         // PUSH1 0x05 JUMP INVALID JUMPDEST PUSH1 0x42 STOP
         let code = vec![0x60, 0x05, 0x56, 0xFE, 0xFE, 0x5B, 0x60, 0x42, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x42));
     }
@@ -992,7 +1064,7 @@ mod tests {
     fn test_jumpi_taken() {
         // PUSH1 0x01 PUSH1 0x06 JUMPI INVALID JUMPDEST PUSH1 0x42 STOP
         let code = vec![0x60, 0x01, 0x60, 0x06, 0x57, 0xFE, 0x5B, 0x60, 0x42, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x42));
     }
@@ -1001,7 +1073,7 @@ mod tests {
     fn test_jumpi_not_taken() {
         // PUSH1 0x00 PUSH1 0x06 JUMPI PUSH1 0x99 STOP
         let code = vec![0x60, 0x00, 0x60, 0x06, 0x57, 0x60, 0x99, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x99));
     }
@@ -1010,7 +1082,7 @@ mod tests {
     fn test_invalid_jump() {
         // PUSH1 0x03 JUMP STOP
         let code = vec![0x60, 0x03, 0x56, 0x00];
-        let result = execute_bytecode(&code, 1000);
+        let result = execute_bytecode(&code, 1000, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::InvalidJump)));
     }
 
@@ -1022,7 +1094,7 @@ mod tests {
     fn test_out_of_gas() {
         // PUSH1 0x01 ADD (requires at least 6 gas: 3+3)
         let code = vec![0x60, 0x01, 0x01];
-        let result = execute_bytecode(&code, 5);
+        let result = execute_bytecode(&code, 5, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::OutOfGas)));
     }
 
@@ -1030,7 +1102,7 @@ mod tests {
     fn test_gas_tracking() {
         // PUSH1 0x01 STOP (costs 3 + 0 = 3 gas)
         let code = vec![0x60, 0x01, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.gas_used, 3);
     }
@@ -1043,7 +1115,7 @@ mod tests {
     fn test_return_empty() {
         // PUSH1 0x00 PUSH1 0x00 RETURN
         let code = vec![0x60, 0x00, 0x60, 0x00, 0xF3];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.return_data.len(), 0);
     }
@@ -1052,7 +1124,7 @@ mod tests {
     fn test_revert() {
         // PUSH1 0x00 PUSH1 0x00 REVERT
         let code = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
-        let result = execute_bytecode(&code, 1000);
+        let result = execute_bytecode(&code, 1000, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::Revert(_))));
     }
 
@@ -1063,14 +1135,14 @@ mod tests {
     #[test]
     fn test_invalid_opcode() {
         let code = vec![0xFE]; // INVALID
-        let result = execute_bytecode(&code, 1000);
+        let result = execute_bytecode(&code, 1000, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::InvalidOpcode(0xFE))));
     }
 
     #[test]
     fn test_undefined_opcode() {
         let code = vec![0x0C]; // Undefined
-        let result = execute_bytecode(&code, 1000);
+        let result = execute_bytecode(&code, 1000, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::InvalidOpcode(0x0C))));
     }
 
@@ -1092,7 +1164,7 @@ mod tests {
             0x01,       // ADD (result: 8)
             0x00,       // STOP
         ];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(8));
     }
@@ -1102,7 +1174,7 @@ mod tests {
         // Store at high memory offset
         // PUSH1 0x42 PUSH1 0xFF MSTORE STOP
         let code = vec![0x60, 0x42, 0x60, 0xFF, 0x52, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert!(result.gas_used > 6); // Base gas + memory expansion
     }
@@ -1112,7 +1184,7 @@ mod tests {
         // Copy 3 bytes of code to memory at offset 0
         // PUSH1 0x03 PUSH1 0x00 PUSH1 0x00 CODECOPY PUSH1 0x00 MLOAD STOP
         let code = vec![0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0x39, 0x60, 0x00, 0x51, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Memory should contain first 3 bytes of code (0x60, 0x03, 0x60)
         let value = result.stack.peek(0).unwrap();
@@ -1130,7 +1202,7 @@ mod tests {
     fn test_address_caller_callvalue() {
         // ADDRESS CALLER CALLVALUE STOP
         let code = vec![0x30, 0x33, 0x34, 0x00];
-        let mut evm = Evm::new(code, 1000);
+        let mut evm = Evm::new(code, 1000, InMemoryState::new());
         let address = Address::new([0x11; 20]);
         let caller = Address::new([0x22; 20]);
         let call_value = U256::from_u64(0x1234);
@@ -1145,11 +1217,11 @@ mod tests {
         assert!(result.success);
         assert_eq!(
             result.stack.peek(2).unwrap(),
-            &Evm::address_to_u256(&address)
+            &address_to_u256(&address)
         );
         assert_eq!(
             result.stack.peek(1).unwrap(),
-            &Evm::address_to_u256(&caller)
+            &address_to_u256(&caller)
         );
         assert_eq!(result.stack.peek(0).unwrap(), &call_value);
     }
@@ -1158,7 +1230,7 @@ mod tests {
     fn test_calldata_load_and_size() {
         // PUSH1 0x00 CALLDATALOAD CALLDATASIZE STOP
         let code = vec![0x60, 0x00, 0x35, 0x36, 0x00];
-        let mut evm = Evm::new(code, 1000);
+        let mut evm = Evm::new(code, 1000, InMemoryState::new());
         evm.call_ctx.call_data = vec![0xAA, 0xBB, 0xCC];
 
         let result = evm.run().unwrap();
@@ -1175,7 +1247,7 @@ mod tests {
     fn test_calldata_load_out_of_range() {
         // PUSH1 0x05 CALLDATALOAD STOP
         let code = vec![0x60, 0x05, 0x35, 0x00];
-        let mut evm = Evm::new(code, 1000);
+        let mut evm = Evm::new(code, 1000, InMemoryState::new());
         evm.call_ctx.call_data = vec![0xAA, 0xBB, 0xCC];
 
         let result = evm.run().unwrap();
@@ -1190,7 +1262,7 @@ mod tests {
         let code = vec![
             0x60, 0x06, 0x60, 0x02, 0x60, 0x00, 0x37, 0x60, 0x00, 0x51, 0x00,
         ];
-        let mut evm = Evm::new(code, 1000);
+        let mut evm = Evm::new(code, 1000, InMemoryState::new());
         evm.call_ctx.call_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
 
         let result = evm.run().unwrap();
@@ -1212,7 +1284,7 @@ mod tests {
         let code = vec![
             0x60, 0x04, 0x60, 0x00, 0x60, 0x00, 0x3E, 0x60, 0x00, 0x51, 0x3D, 0x00,
         ];
-        let mut evm = Evm::new(code, 1000);
+        let mut evm = Evm::new(code, 1000, InMemoryState::new());
         evm.return_data = vec![0x01, 0x02, 0x03, 0x04];
 
         let result = evm.run().unwrap();
@@ -1230,7 +1302,7 @@ mod tests {
     fn test_returndatacopy_out_of_bounds() {
         // PUSH1 0x04 PUSH1 0x02 PUSH1 0x00 RETURNDATACOPY
         let code = vec![0x60, 0x04, 0x60, 0x02, 0x60, 0x00, 0x3E];
-        let mut evm = Evm::new(code, 1000);
+        let mut evm = Evm::new(code, 1000, InMemoryState::new());
         evm.return_data = vec![0x01, 0x02, 0x03, 0x04];
 
         let result = evm.run();
@@ -1244,7 +1316,7 @@ mod tests {
     fn test_pc_opcode() {
         // PC STOP
         let code = vec![0x58, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
     }
@@ -1253,7 +1325,7 @@ mod tests {
     fn test_gas_opcode() {
         // GAS STOP
         let code = vec![0x5A, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Gas should be less than initial (2 gas consumed)
         let remaining = result.stack.peek(0).unwrap();
@@ -1264,7 +1336,7 @@ mod tests {
     fn test_msize() {
         // PUSH1 0x42 PUSH1 0x40 MSTORE MSIZE STOP
         let code = vec![0x60, 0x42, 0x60, 0x40, 0x52, 0x59, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Memory should be expanded to cover offset 0x40 + 32 = 0x60 (96 bytes)
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(96));
@@ -1276,7 +1348,7 @@ mod tests {
         // Stack after PUSHes: [3, 5] (top is 5)
         // LT pops a=5, then b=3, compares b < a: 3 < 5 = true = 1
         let code = vec![0x60, 0x03, 0x60, 0x05, 0x10, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
     }
@@ -1285,7 +1357,7 @@ mod tests {
     fn test_bitwise_operations() {
         // PUSH1 0x0F PUSH1 0xF0 AND STOP (0xF0 & 0x0F = 0)
         let code = vec![0x60, 0x0F, 0x60, 0xF0, 0x16, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
     }
@@ -1294,7 +1366,7 @@ mod tests {
     fn test_push0() {
         // PUSH0 STOP
         let code = vec![0x5F, 0x00];
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
     }
@@ -1305,7 +1377,7 @@ mod tests {
         let mut code = vec![0x7F];
         code.extend_from_slice(&[0xFF; 32]);
         code.push(0x00);
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::MAX);
     }
@@ -1321,7 +1393,7 @@ mod tests {
         code.push(0x8F); // DUP16
         code.push(0x00); // STOP
 
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.len(), 17);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE); // Should duplicate first value
@@ -1338,7 +1410,7 @@ mod tests {
         code.push(0x9F); // SWAP16
         code.push(0x00); // STOP
 
-        let result = execute_bytecode(&code, 1000).unwrap();
+        let result = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE); // Top should be swapped with 16th
     }
@@ -1353,7 +1425,7 @@ mod tests {
         }
         code.push(0x00); // STOP
 
-        let result = execute_bytecode(&code, 1000000);
+        let result = execute_bytecode(&code, 1000000, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::StackError(StackError::Overflow))));
     }
 
@@ -1361,7 +1433,7 @@ mod tests {
     fn test_stack_underflow() {
         // Try to POP from empty stack
         let code = vec![0x50]; // POP
-        let result = execute_bytecode(&code, 1000);
+        let result = execute_bytecode(&code, 1000, InMemoryState::new());
         assert!(matches!(result, Err(EvmError::StackError(StackError::Underflow))));
     }
 
@@ -1382,7 +1454,7 @@ mod tests {
             0x60, 0x00,       // PUSH1 0x00 (offset)
             0xF3,             // RETURN
         ];
-        let result = execute_bytecode(&code, 100000).unwrap();
+        let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.return_data.len(), 32);
         assert_eq!(result.return_data[31], 0x42);
@@ -1406,7 +1478,7 @@ mod tests {
             0x5B,             // JUMPDEST (offset 17)
             0x00,             // STOP
         ];
-        let result = execute_bytecode(&code, 100000).unwrap();
+        let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
     }
@@ -1423,7 +1495,7 @@ mod tests {
             0x01,             // ADD (1+5=6)
             0x00,             // STOP
         ];
-        let result = execute_bytecode(&code, 100000).unwrap();
+        let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(6));
     }
@@ -1445,7 +1517,7 @@ mod tests {
             0x51,             // MLOAD
             0x00,             // STOP
         ];
-        let result = execute_bytecode(&code, 100000).unwrap();
+        let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x42));
     }
@@ -1460,7 +1532,7 @@ mod tests {
             0x01,             // ADD
             0x00,             // STOP
         ];
-        let result = execute_bytecode(&code, 100000).unwrap();
+        let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x1234 + 0x56));
     }
@@ -1493,7 +1565,265 @@ mod tests {
 
         code.push(0x00); // STOP
 
-        let result = execute_bytecode(&code, 100000).unwrap();
+        let result = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
+    }
+
+    // =============================================================================
+    // State Integration Tests
+    // =============================================================================
+
+    #[test]
+    fn test_balance_opcode() {
+        // PUSH20 <address> BALANCE STOP
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let test_addr = Address::new([0x42; 20]);
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.push(0x31); // BALANCE
+        code.push(0x00); // STOP
+
+        let mut state = InMemoryState::new();
+        state.set_balance(&test_addr, U256::from_u64(12345));
+
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(12345));
+    }
+
+    #[test]
+    fn test_balance_zero_account() {
+        // PUSH20 <address> BALANCE STOP
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let test_addr = Address::new([0x99; 20]);
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.push(0x31); // BALANCE
+        code.push(0x00); // STOP
+
+        let state = InMemoryState::new(); // Empty state
+
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_extcodesize_opcode() {
+        // PUSH20 <address> EXTCODESIZE STOP
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let test_addr = Address::new([0x55; 20]);
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.push(0x3B); // EXTCODESIZE
+        code.push(0x00); // STOP
+
+        let mut state = InMemoryState::new();
+        state.set_code(&test_addr, vec![0x60, 0x42, 0x60, 0x00, 0x52]); // 5 bytes
+
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(5));
+    }
+
+    #[test]
+    fn test_extcodecopy_opcode() {
+        // PUSH20 <address> PUSH1 4 PUSH1 0 PUSH1 0 EXTCODECOPY PUSH1 0 MLOAD STOP
+        let test_addr = Address::new([0xAB; 20]);
+        let mut code = vec![
+            0x60, 0x04, // PUSH1 4 (size)
+            0x60, 0x00, // PUSH1 0 (offset in code)
+            0x60, 0x00, // PUSH1 0 (dest in memory)
+            0x73,       // PUSH20
+        ];
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.extend_from_slice(&[
+            0x3C,       // EXTCODECOPY
+            0x60, 0x00, // PUSH1 0
+            0x51,       // MLOAD
+            0x00,       // STOP
+        ]);
+
+        let mut state = InMemoryState::new();
+        state.set_code(&test_addr, vec![0xDE, 0xAD, 0xBE, 0xEF, 0x99]);
+
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        let value = result.stack.peek(0).unwrap();
+        let bytes = value.to_be_bytes();
+        assert_eq!(bytes[0], 0xDE);
+        assert_eq!(bytes[1], 0xAD);
+        assert_eq!(bytes[2], 0xBE);
+        assert_eq!(bytes[3], 0xEF);
+    }
+
+    #[test]
+    fn test_extcodehash_opcode() {
+        // PUSH20 <address> EXTCODEHASH STOP
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let test_addr = Address::new([0x77; 20]);
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.push(0x3F); // EXTCODEHASH
+        code.push(0x00); // STOP
+
+        let mut state = InMemoryState::new();
+        let test_code = vec![0x60, 0x42];
+        state.set_code(&test_addr, test_code.clone());
+
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        // Hash should not be zero (it's the keccak of the code)
+        assert_ne!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_selfbalance_opcode() {
+        // SELFBALANCE STOP
+        let code = vec![0x47, 0x00]; // SELFBALANCE STOP
+
+        let mut state = InMemoryState::new();
+        let contract_addr = Address::new([0x11; 20]);
+        state.set_balance(&contract_addr, U256::from_u64(999));
+
+        let mut evm = Evm::new(code, 100000, state);
+        evm.call_ctx.address = contract_addr;
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(999));
+    }
+
+    #[test]
+    fn test_sload_sstore_opcodes() {
+        // PUSH1 0x99 PUSH1 0x42 SSTORE PUSH1 0x42 SLOAD STOP
+        let code = vec![
+            0x60, 0x99, // PUSH1 0x99 (value)
+            0x60, 0x42, // PUSH1 0x42 (key)
+            0x55,       // SSTORE
+            0x60, 0x42, // PUSH1 0x42 (key)
+            0x54,       // SLOAD
+            0x00,       // STOP
+        ];
+
+        let state = InMemoryState::new();
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x99));
+    }
+
+    #[test]
+    fn test_sload_uninitialized() {
+        // PUSH1 0xFF SLOAD STOP
+        let code = vec![0x60, 0xFF, 0x54, 0x00]; // PUSH1 0xFF SLOAD STOP
+
+        let state = InMemoryState::new();
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_tload_tstore_opcodes() {
+        // PUSH1 0x77 PUSH1 0x33 TSTORE PUSH1 0x33 TLOAD STOP
+        let code = vec![
+            0x60, 0x77, // PUSH1 0x77 (value)
+            0x60, 0x33, // PUSH1 0x33 (key)
+            0x5D,       // TSTORE
+            0x60, 0x33, // PUSH1 0x33 (key)
+            0x5C,       // TLOAD
+            0x00,       // STOP
+        ];
+
+        let state = InMemoryState::new();
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x77));
+    }
+
+    #[test]
+    fn test_tload_uninitialized() {
+        // PUSH1 0xAA TLOAD STOP
+        let code = vec![0x60, 0xAA, 0x5C, 0x00]; // PUSH1 0xAA TLOAD STOP
+
+        let state = InMemoryState::new();
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_selfdestruct_opcode() {
+        // PUSH20 <beneficiary> SELFDESTRUCT
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let beneficiary = Address::new([0xBB; 20]);
+        code.extend_from_slice(&beneficiary.to_bytes());
+        code.push(0xFF); // SELFDESTRUCT
+
+        let mut state = InMemoryState::new();
+        let contract_addr = Address::new([0xCC; 20]);
+        state.set_balance(&contract_addr, U256::from_u64(1000));
+
+        let mut evm = Evm::new(code, 100000, state);
+        evm.call_ctx.address = contract_addr;
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        // Check that selfdestruct was recorded
+        let selfdestructs = evm.state.get_selfdestructs();
+        assert_eq!(selfdestructs.len(), 1);
+        assert_eq!(selfdestructs[0].0, contract_addr);
+        assert_eq!(selfdestructs[0].1, beneficiary);
+    }
+
+    #[test]
+    fn test_sstore_multiple_keys() {
+        // Store multiple values and load them back
+        let code = vec![
+            0x60, 0x11, // PUSH1 0x11
+            0x60, 0x01, // PUSH1 0x01 (key)
+            0x55,       // SSTORE
+            0x60, 0x22, // PUSH1 0x22
+            0x60, 0x02, // PUSH1 0x02 (key)
+            0x55,       // SSTORE
+            0x60, 0x01, // PUSH1 0x01 (key)
+            0x54,       // SLOAD
+            0x60, 0x02, // PUSH1 0x02 (key)
+            0x54,       // SLOAD
+            0x00,       // STOP
+        ];
+
+        let state = InMemoryState::new();
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x22));
+        assert_eq!(result.stack.peek(1).unwrap(), &U256::from_u64(0x11));
+    }
+
+    #[test]
+    fn test_transient_storage_isolated() {
+        // Transient storage should not affect permanent storage
+        let code = vec![
+            0x60, 0xAA, // PUSH1 0xAA
+            0x60, 0x10, // PUSH1 0x10 (key)
+            0x5D,       // TSTORE (transient)
+            0x60, 0xBB, // PUSH1 0xBB
+            0x60, 0x10, // PUSH1 0x10 (key)
+            0x55,       // SSTORE (permanent)
+            0x60, 0x10, // PUSH1 0x10 (key)
+            0x5C,       // TLOAD (transient)
+            0x60, 0x10, // PUSH1 0x10 (key)
+            0x54,       // SLOAD (permanent)
+            0x00,       // STOP
+        ];
+
+        let state = InMemoryState::new();
+        let result = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        // Permanent storage should have 0xBB
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0xBB));
+        // Transient storage should have 0xAA
+        assert_eq!(result.stack.peek(1).unwrap(), &U256::from_u64(0xAA));
     }
 }
