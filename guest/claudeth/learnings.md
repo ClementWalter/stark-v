@@ -1,5 +1,28 @@
 # Claudeth Development Learnings
 
+## Session 20: Code Hash Correctness + PLAN Audit (2026-02-08)
+
+**Status**: Phase A complete with Keccak-256 code hash
+
+### What Was Accomplished
+1. ✅ Replaced placeholder code hash with Keccak-256 in `InMemoryState::set_code`
+2. ✅ Updated tests to assert deterministic Keccak-256 code hash
+3. ✅ Audited PLAN against README and corrected Phase B status
+
+### DO's ✅
+1. **Use Keccak-256 for code hash** in `InMemoryState::set_code`
+2. **Assert exact code hash values** in tests, not just non-empty
+3. **Verify PLAN claims against code** before acting on next tasks
+
+### DON'Ts ❌
+1. **Don't use placeholder hashes** for code (breaks Ethereum correctness)
+2. **Don't assume block processing is complete** without state/tx/logs root validation
+
+### Pre-commit Hook Note
+- `prek run` failed due to sandbox permissions creating git temp files in the parent repo `.git`.
+- Attempts: `HOME=$PWD`, `GIT_INDEX_FILE=$PWD/.git-index`, `TMPDIR=/tmp` still failed.
+- Next iteration: run `prek run` from an environment with write access to the repo `.git`.
+
 ## Session 19: Block Processing Loop (2026-02-09)
 
 **Status**: Phase B Task B2 COMPLETE - block execution loop + root calculations implemented

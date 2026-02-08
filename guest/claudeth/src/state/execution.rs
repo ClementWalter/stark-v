@@ -17,6 +17,7 @@ use alloc::collections::BTreeMap as HashMap;
 use alloc::vec::Vec;
 
 use crate::state::{Account, Storage, EMPTY_CODE_HASH};
+use crate::crypto::keccak256;
 use crate::types::{Address, Hash, U256};
 
 /// EVM execution state interface
@@ -207,13 +208,7 @@ impl State for InMemoryState {
         let code_hash = if code.is_empty() {
             EMPTY_CODE_HASH
         } else {
-            // For now, use a simple hash - in production, this would be Keccak256
-            let mut hash_bytes = [0u8; 32];
-            hash_bytes[0] = code.len() as u8;
-            if !code.is_empty() {
-                hash_bytes[1] = code[0];
-            }
-            Hash::from(hash_bytes)
+            keccak256(&code)
         };
 
         // Update account code hash
@@ -298,6 +293,7 @@ impl State for InMemoryState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::keccak256;
 
     // =========================================================================
     // Balance Tests
@@ -439,7 +435,8 @@ mod tests {
 
         state.set_code(&addr, code);
         let hash_after = state.get_code_hash(&addr);
-        assert_ne!(hash_after, EMPTY_CODE_HASH);
+        let expected = keccak256(&[0x60, 0x00]);
+        assert_eq!(hash_after, expected);
     }
 
     #[test]

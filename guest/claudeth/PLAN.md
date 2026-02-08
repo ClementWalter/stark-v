@@ -30,13 +30,11 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` and `rand` are still used (`Cargo.toml`).
 2. **Guest program entry point**: no `main.rs` or guest entry for `riscv32`.
-3. **Block processing**: no block-level execution loop (header validation vs parent, cumulative gas, receipts root, state root).
-4. **EELS compliance**: no EELS test vector integration or runner.
-
-### ⚠️ STF Execution Limitations (Observed in Code)
-- **Log capture missing**: LOG0–LOG4 consume gas but do not record logs; executor returns empty logs.
-- **Gas refunds not tracked**: SSTORE/SELFDESTRUCT refund accounting is TODO in `executor.rs`.
-- **Host wiring**: executor uses `NullHost` (TODO in `executor.rs`).
+3. **Block processing is incomplete**:
+   - `process_block()` exists, but **state root is a placeholder** (not computed from state).
+   - No validation of `transactions_root` or `logs_bloom` against header.
+4. **Code hash correctness**: `InMemoryState::set_code` uses a placeholder hash, not Keccak-256.
+5. **EELS compliance**: no EELS test vector integration or runner.
 
 ---
 
@@ -53,16 +51,22 @@ Goal: finalize per-transaction correctness before block processing.
    - `execute_bytecode_with_host` returns `(ExecutionResult, S)`.
    - CREATE deployment now writes code to state.
 
-3. **Log capture + gas refunds** (NEXT)
+3. **Log capture + gas refunds** (DONE)
    - Record LOG0–LOG4 data during execution.
    - Plumb logs into receipts.
    - Track gas refunds from SSTORE/SELFDESTRUCT (EIP-3529 cap).
+
+4. **Correct code hash** (DONE)
+   - Use Keccak-256 for code hash in `InMemoryState::set_code`.
+   - Ensure tests validate deterministic code hash values.
 
 ### Phase B: Block Processing
 - Validate block header vs parent (timestamp, gas limit bounds, gas used, extra data, PoS fields).
 - Execute all transactions in order.
 - Track cumulative gas and build receipts.
-- Compute receipts root and state root via MPT.
+- Compute receipts root via MPT.
+- **Compute state root from state trie** and validate against header.
+- Validate `transactions_root` and `logs_bloom` against header.
 
 ### Phase C: Guest Entry Point
 - Add `src/main.rs` with guest entry for `riscv32`.
@@ -90,36 +94,26 @@ Goal: finalize per-transaction correctness before block processing.
 
 ### Phase A Status: 100% COMPLETE ✅
 
-**Phase A is production-ready** - All STF execution correctness features are fully implemented and tested.
+**Phase A is production-ready** - All STF execution correctness features are implemented and tested.
 
-### ✅ Completed (Phase B - 100% COMPLETE)
-- **Task B1: Block header validation against parent** ✅ (Session 18)
-  - Added `BlockHeader::validate_against_parent` with parent hash, number, timestamp, gas-limit bounds, and minimum gas limit validation.
-  - Added comprehensive tests for all validation rules.
+### 🟡 Partially Complete (Phase B)
+- **Task B1: Block header validation against parent** ✅
+- **Task B2: Block execution loop + receipts root** ✅
+- **Missing**:
+  - State root computation and validation
+  - `transactions_root` validation
+  - `logs_bloom` validation
 
-- **Task B2: Block execution loop + root calculations** ✅ (Session 19)
-  - Created `src/stf/block.rs` with `process_block()` function (467 lines)
-  - Executes all transactions in order with cumulative gas tracking
-  - Validates block header against parent before execution
-  - Generates receipts for each transaction
-  - Computes receipts root using MPT
-  - Validates gas used matches block header
-  - Validates receipts root matches block header
-  - Added 9 comprehensive tests covering all validation paths
-  - All 1067 tests passing, zero clippy warnings
+### Phase B Status: 60% COMPLETE ⚠️
 
-### Phase B Status: 100% COMPLETE ✅
-
-**Phase B is production-ready** - All block processing features are fully implemented and tested.
+**Phase B is not production-ready** - state/tx/logs roots are not validated.
 
 ---
 
 ## Immediate Next Task (Execute Now)
 
-**Phase C: Guest Entry Point** - Add riscv32 guest program entry
+**Phase B: State/Tx/Logs Root Validation** (NEXT)
 
-Task C1: Implement guest entry point
-- Create `src/main.rs` for riscv32 target
-- Define I/O format (block + witness inputs, result outputs)
-- Wire block processing to guest program
-- Add integration tests
+Task B3: Compute and validate roots
+- Compute state root from state trie and validate against header.
+- Validate `transactions_root` and `logs_bloom` against header.
