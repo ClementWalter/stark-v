@@ -18,11 +18,12 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
+use crate::crypto::rlp::encode_u256;
 use crate::evm::interpreter::BlockContext;
-use crate::state::State;
+use crate::state::{State, Trie};
 use crate::stf::{
-    calculate_receipts_root, execute_transaction, ExecutionError, TransactionExecutionResult,
-    TransactionReceipt,
+    calculate_receipts_root, execute_transaction, Bloom, ExecutionError,
+    TransactionExecutionResult, TransactionReceipt,
 };
 use crate::types::{BlockHeader, Hash, Transaction, U256};
 
@@ -84,12 +85,98 @@ pub enum BlockProcessingError {
         /// Computed gas used
         computed: u64,
     },
+    /// Transactions root doesn't match header
+    TransactionsRootMismatch {
+        /// Expected transactions root from header
+        expected: Hash,
+        /// Computed transactions root
+        computed: Hash,
+    },
+    /// Logs bloom doesn't match header
+    LogsBloomMismatch {
+        /// Expected logs bloom from header
+        expected: Box<[u8; 256]>,
+        /// Computed logs bloom
+        computed: Box<[u8; 256]>,
+    },
 }
 
 impl From<ExecutionError> for BlockProcessingError {
     fn from(err: ExecutionError) -> Self {
         BlockProcessingError::TransactionExecutionError(err)
     }
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Computes the transactions root from a list of transactions
+///
+/// The transactions root is the root of a Merkle Patricia Trie where:
+/// - Key: RLP-encoded transaction index (0, 1, 2, ...)
+/// - Value: RLP-encoded transaction
+///
+/// # Arguments
+/// * `transactions` - The transactions to include in the trie
+///
+/// # Returns
+/// The computed transactions root hash
+fn calculate_transactions_root(transactions: &[Transaction]) -> Hash {
+    if transactions.is_empty() {
+        return Hash::ZERO;
+    }
+
+    let mut trie = Trie::new();
+    for (index, tx) in transactions.iter().enumerate() {
+        let key = encode_u256(&U256::from(index as u64));
+        let value = tx.encode_rlp();
+        trie.insert(&key, value);
+    }
+    trie.compute_root()
+}
+
+/// Computes the logs bloom from a list of receipts
+///
+/// The logs bloom is the bitwise OR of all individual receipt blooms.
+///
+/// # Arguments
+/// * `receipts` - The receipts to extract blooms from
+///
+/// # Returns
+/// The combined logs bloom as a 256-byte array
+fn calculate_logs_bloom(receipts: &[TransactionReceipt]) -> [u8; 256] {
+    if receipts.is_empty() {
+        return [0u8; 256];
+    }
+
+    let mut combined_bloom = Bloom::new();
+    for receipt in receipts {
+        combined_bloom.combine(&receipt.logs_bloom);
+    }
+    *combined_bloom.as_bytes()
+}
+
+/// Computes the state root from the current state
+///
+/// The state root is the root of a Merkle Patricia Trie where:
+/// - Key: Address (20 bytes)
+/// - Value: RLP-encoded Account
+///
+/// # Arguments
+/// * `state` - The state to compute the root from
+///
+/// # Returns
+/// The computed state root hash
+///
+/// # Note
+/// This requires the State trait to provide access to all accounts.
+/// For InMemoryState, we need to iterate over all accounts.
+fn calculate_state_root<S: State>(_state: &S) -> Hash {
+    // For now, we return a placeholder since the State trait doesn't expose
+    // account iteration. This will be implemented in a future update.
+    // TODO: Add account iteration to State trait or add compute_state_root method
+    Hash::ZERO
 }
 
 // =============================================================================
@@ -216,16 +303,13 @@ pub fn process_block<S: State + Clone>(
         transaction_results.push(exec_result);
     }
 
-    // Step 4: Compute receipts root
+    // Step 4: Compute roots and bloom
     let receipts_root = calculate_receipts_root(&receipts);
+    let transactions_root = calculate_transactions_root(transactions);
+    let logs_bloom = calculate_logs_bloom(&receipts);
+    let state_root = calculate_state_root(state);
 
-    // Step 5: Compute state root
-    // NOTE: This is a placeholder. A full implementation would compute the actual
-    // state root by building a Merkle Patricia Trie of all accounts and their storage.
-    // For now, we return the state_root from the block header for validation.
-    let state_root = block.state_root;
-
-    // Step 6: Validate results match block header
+    // Step 5: Validate results match block header
     // Validate gas used
     if cumulative_gas_used != block.gas_used {
         return Err(BlockProcessingError::GasUsedMismatch {
@@ -242,8 +326,25 @@ pub fn process_block<S: State + Clone>(
         });
     }
 
-    // Validate state root (when full state trie is implemented)
-    // For now, we skip this check as we don't compute the actual state root
+    // Validate transactions root
+    if transactions_root != block.transactions_root {
+        return Err(BlockProcessingError::TransactionsRootMismatch {
+            expected: block.transactions_root,
+            computed: transactions_root,
+        });
+    }
+
+    // Validate logs bloom
+    if logs_bloom != block.logs_bloom {
+        return Err(BlockProcessingError::LogsBloomMismatch {
+            expected: Box::new(block.logs_bloom),
+            computed: Box::new(logs_bloom),
+        });
+    }
+
+    // Validate state root (placeholder - TODO: implement full state root computation)
+    // For now, we skip this check as calculate_state_root returns Hash::ZERO
+    // Uncomment when full state root computation is implemented:
     // if state_root != block.state_root {
     //     return Err(BlockProcessingError::StateRootMismatch {
     //         expected: block.state_root,
@@ -458,5 +559,77 @@ mod tests {
 
         let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_process_block_transactions_root_mismatch() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+
+        // Set transactions_root to a non-zero value that won't match
+        block.transactions_root = Hash::from([1u8; 32]);
+
+        let transactions = vec![];
+        let mut state = InMemoryState::new();
+
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        assert!(matches!(
+            result,
+            Err(BlockProcessingError::TransactionsRootMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_process_block_logs_bloom_mismatch() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+
+        // Set logs_bloom to a non-zero value that won't match (empty block has all zeros)
+        block.logs_bloom = [1u8; 256];
+
+        let transactions = vec![];
+        let mut state = InMemoryState::new();
+
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        assert!(matches!(
+            result,
+            Err(BlockProcessingError::LogsBloomMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_calculate_transactions_root_empty() {
+        let transactions = vec![];
+        let root = calculate_transactions_root(&transactions);
+        assert_eq!(root, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_calculate_logs_bloom_empty() {
+        let receipts = vec![];
+        let bloom = calculate_logs_bloom(&receipts);
+        assert_eq!(bloom, [0u8; 256]);
+    }
+
+    #[test]
+    fn test_calculate_logs_bloom_combines_multiple_receipts() {
+        use crate::stf::Log;
+
+        // Create two receipts with logs (bloom is auto-generated from logs)
+        let log1 = Log::new(Address::from([1u8; 20]), vec![Hash::from([2u8; 32])], Bytes::new());
+        let receipt1 =
+            TransactionReceipt::new(true, U256::from(100u64), vec![log1.clone()]);
+
+        let log2 = Log::new(Address::from([3u8; 20]), vec![Hash::from([4u8; 32])], Bytes::new());
+        let receipt2 = TransactionReceipt::new(true, U256::from(200u64), vec![log2.clone()]);
+
+        let receipts = vec![receipt1.clone(), receipt2.clone()];
+        let combined_bloom_bytes = calculate_logs_bloom(&receipts);
+
+        // Manually create expected bloom by combining both receipt blooms
+        let mut expected_bloom = receipt1.logs_bloom;
+        expected_bloom.combine(&receipt2.logs_bloom);
+
+        assert_eq!(combined_bloom_bytes, *expected_bloom.as_bytes());
     }
 }
