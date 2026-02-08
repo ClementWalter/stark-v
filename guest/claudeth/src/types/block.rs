@@ -1,0 +1,864 @@
+//! Ethereum block header type
+//!
+//! This module provides the [`BlockHeader`] type for Ethereum blocks,
+//! with support for all Fusaka fork fields including EIP-1559, EIP-4895,
+//! EIP-4844, and EIP-4788.
+
+#[cfg(target_arch = "riscv32")]
+extern crate alloc;
+
+#[cfg(not(target_arch = "riscv32"))]
+use std::{vec, vec::Vec};
+
+#[cfg(target_arch = "riscv32")]
+use alloc::{vec, vec::Vec};
+
+use core::fmt;
+use core::hash::{Hash as StdHash, Hasher};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::crypto::rlp::{self, RlpError};
+use crate::types::{Address, Bytes, Hash, U256};
+
+// Helper functions for serializing/deserializing [u8; 256]
+fn serialize_logs_bloom<S>(bloom: &[u8; 256], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_bytes(bloom)
+}
+
+fn deserialize_logs_bloom<'de, D>(deserializer: D) -> Result<[u8; 256], D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    if bytes.len() != 256 {
+        return Err(D::Error::custom("logs bloom must be exactly 256 bytes"));
+    }
+    let mut bloom = [0u8; 256];
+    bloom.copy_from_slice(&bytes);
+    Ok(bloom)
+}
+
+/// Ethereum block header supporting all Fusaka fork fields.
+///
+/// This structure contains all 20 fields required for a complete
+/// Ethereum block header post-Fusaka fork, including support for:
+/// - EIP-1559 (base_fee_per_gas)
+/// - EIP-4895 (withdrawals_root)
+/// - EIP-4844 (blob_gas_used, excess_blob_gas)
+/// - EIP-4788 (parent_beacon_block_root)
+///
+/// # Examples
+///
+/// ```
+/// use claudeth::types::{BlockHeader, Address, Hash, U256, Bytes};
+///
+/// let header = BlockHeader {
+///     parent_hash: Hash::ZERO,
+///     ommers_hash: Hash::ZERO,
+///     coinbase: Address::ZERO,
+///     state_root: Hash::ZERO,
+///     transactions_root: Hash::ZERO,
+///     receipts_root: Hash::ZERO,
+///     logs_bloom: [0u8; 256],
+///     difficulty: U256::ZERO,
+///     number: 0,
+///     gas_limit: 30_000_000,
+///     gas_used: 0,
+///     timestamp: 0,
+///     extra_data: Bytes::new(),
+///     mix_hash: Hash::ZERO,
+///     nonce: 0,
+///     base_fee_per_gas: Some(1_000_000_000),
+///     withdrawals_root: None,
+///     blob_gas_used: None,
+///     excess_blob_gas: None,
+///     parent_beacon_block_root: None,
+/// };
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockHeader {
+    /// Hash of the parent block
+    pub parent_hash: Hash,
+    /// Hash of the ommers (uncles) list
+    pub ommers_hash: Hash,
+    /// Address of the miner/validator (coinbase)
+    pub coinbase: Address,
+    /// Root hash of the state trie
+    pub state_root: Hash,
+    /// Root hash of the transactions trie
+    pub transactions_root: Hash,
+    /// Root hash of the receipts trie
+    pub receipts_root: Hash,
+    /// Bloom filter for logs (256 bytes)
+    #[serde(
+        serialize_with = "serialize_logs_bloom",
+        deserialize_with = "deserialize_logs_bloom"
+    )]
+    pub logs_bloom: [u8; 256],
+    /// Difficulty (always 0 post-merge)
+    pub difficulty: U256,
+    /// Block number
+    pub number: u64,
+    /// Gas limit for this block
+    pub gas_limit: u64,
+    /// Gas used by transactions in this block
+    pub gas_used: u64,
+    /// Block timestamp (Unix epoch seconds)
+    pub timestamp: u64,
+    /// Extra data (max 32 bytes)
+    pub extra_data: Bytes,
+    /// Mix hash (always 0 post-merge)
+    pub mix_hash: Hash,
+    /// Nonce (always 0 post-merge)
+    pub nonce: u64,
+    /// Base fee per gas (EIP-1559, London fork)
+    pub base_fee_per_gas: Option<u64>,
+    /// Withdrawals root (EIP-4895, Shanghai fork)
+    pub withdrawals_root: Option<Hash>,
+    /// Blob gas used (EIP-4844, Cancun fork)
+    pub blob_gas_used: Option<u64>,
+    /// Excess blob gas (EIP-4844, Cancun fork)
+    pub excess_blob_gas: Option<u64>,
+    /// Parent beacon block root (EIP-4788, Cancun fork)
+    pub parent_beacon_block_root: Option<Hash>,
+}
+
+impl BlockHeader {
+    /// Maximum allowed extra data size (32 bytes)
+    pub const MAX_EXTRA_DATA_SIZE: usize = 32;
+
+    /// Validates gas fields (gas_used <= gas_limit).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::BlockHeader;
+    ///
+    /// let mut header = BlockHeader::default();
+    /// header.gas_limit = 30_000_000;
+    /// header.gas_used = 15_000_000;
+    /// assert!(header.validate_gas_fields().is_ok());
+    ///
+    /// header.gas_used = 35_000_000;
+    /// assert!(header.validate_gas_fields().is_err());
+    /// ```
+    pub fn validate_gas_fields(&self) -> Result<(), ValidationError> {
+        if self.gas_used > self.gas_limit {
+            return Err(ValidationError::GasUsedExceedsLimit {
+                gas_used: self.gas_used,
+                gas_limit: self.gas_limit,
+            });
+        }
+        Ok(())
+    }
+
+    /// Validates extra data size (must be <= 32 bytes).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::{BlockHeader, Bytes};
+    ///
+    /// let mut header = BlockHeader::default();
+    /// header.extra_data = Bytes::from_slice(&[0x42; 32]);
+    /// assert!(header.validate_extra_data().is_ok());
+    ///
+    /// header.extra_data = Bytes::from_slice(&[0x42; 33]);
+    /// assert!(header.validate_extra_data().is_err());
+    /// ```
+    pub fn validate_extra_data(&self) -> Result<(), ValidationError> {
+        if self.extra_data.len() > Self::MAX_EXTRA_DATA_SIZE {
+            return Err(ValidationError::ExtraDataTooLarge {
+                size: self.extra_data.len(),
+                max_size: Self::MAX_EXTRA_DATA_SIZE,
+            });
+        }
+        Ok(())
+    }
+
+    /// Validates post-merge fields (difficulty, mix_hash, nonce should be zero).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::{BlockHeader, U256, Hash};
+    ///
+    /// let mut header = BlockHeader::default();
+    /// header.difficulty = U256::ZERO;
+    /// header.mix_hash = Hash::ZERO;
+    /// header.nonce = 0;
+    /// assert!(header.validate_post_merge_fields().is_ok());
+    ///
+    /// header.difficulty = U256::from(1u64);
+    /// assert!(header.validate_post_merge_fields().is_err());
+    /// ```
+    pub fn validate_post_merge_fields(&self) -> Result<(), ValidationError> {
+        if !self.difficulty.is_zero() {
+            return Err(ValidationError::NonZeroDifficulty);
+        }
+        if self.mix_hash != Hash::ZERO {
+            return Err(ValidationError::NonZeroMixHash);
+        }
+        if self.nonce != 0 {
+            return Err(ValidationError::NonZeroNonce);
+        }
+        Ok(())
+    }
+
+    /// Validates all fields.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::BlockHeader;
+    ///
+    /// let header = BlockHeader::default();
+    /// assert!(header.validate().is_ok());
+    /// ```
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        self.validate_gas_fields()?;
+        self.validate_extra_data()?;
+        self.validate_post_merge_fields()?;
+        Ok(())
+    }
+
+    /// Computes the block hash (Keccak-256 of RLP encoding).
+    ///
+    /// Note: This method is stubbed with `todo!()` as Keccak-256
+    /// implementation is part of Phase 1 crypto.
+    ///
+    /// # Panics
+    ///
+    /// Currently panics with `todo!()` - will be implemented in Phase 1.
+    pub fn compute_hash(&self) -> Hash {
+        todo!("Keccak-256 implementation required (Phase 1)")
+    }
+
+    /// Encodes the block header as RLP.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::BlockHeader;
+    ///
+    /// let header = BlockHeader::default();
+    /// let encoded = header.encode_rlp();
+    /// assert!(!encoded.is_empty());
+    /// ```
+    pub fn encode_rlp(&self) -> Vec<u8> {
+        let mut items = vec![
+            rlp::encode_hash(&self.parent_hash),
+            rlp::encode_hash(&self.ommers_hash),
+            rlp::encode_address(&self.coinbase),
+            rlp::encode_hash(&self.state_root),
+            rlp::encode_hash(&self.transactions_root),
+            rlp::encode_hash(&self.receipts_root),
+            rlp::encode_bytes(&self.logs_bloom),
+            rlp::encode_u256(&self.difficulty),
+            rlp::encode_u64(self.number),
+            rlp::encode_u64(self.gas_limit),
+            rlp::encode_u64(self.gas_used),
+            rlp::encode_u64(self.timestamp),
+            rlp::encode_bytes(self.extra_data.as_ref()),
+            rlp::encode_hash(&self.mix_hash),
+            rlp::encode_u64(self.nonce),
+        ];
+
+        // Add optional fields if present
+        if let Some(base_fee) = self.base_fee_per_gas {
+            items.push(rlp::encode_u64(base_fee));
+        }
+
+        if let Some(withdrawals_root) = self.withdrawals_root {
+            items.push(rlp::encode_hash(&withdrawals_root));
+        }
+
+        if let Some(blob_gas_used) = self.blob_gas_used {
+            items.push(rlp::encode_u64(blob_gas_used));
+        }
+
+        if let Some(excess_blob_gas) = self.excess_blob_gas {
+            items.push(rlp::encode_u64(excess_blob_gas));
+        }
+
+        if let Some(parent_beacon_block_root) = self.parent_beacon_block_root {
+            items.push(rlp::encode_hash(&parent_beacon_block_root));
+        }
+
+        rlp::encode_list(&items)
+    }
+
+    /// Decodes a block header from RLP encoding.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use claudeth::types::BlockHeader;
+    ///
+    /// let header = BlockHeader::default();
+    /// let encoded = header.encode_rlp();
+    /// let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
+    /// assert_eq!(header, decoded);
+    /// ```
+    pub fn decode_rlp(input: &[u8]) -> Result<Self, RlpError> {
+        let (items, _rest) = rlp::decode_list(input)?;
+
+        // Minimum 15 fields required (pre-London)
+        if items.len() < 15 {
+            return Err(RlpError::InvalidEncoding);
+        }
+
+        // Decode mandatory fields
+        let (parent_hash, _) = rlp::decode_hash(&items[0])?;
+        let (ommers_hash, _) = rlp::decode_hash(&items[1])?;
+        let (coinbase, _) = rlp::decode_address(&items[2])?;
+        let (state_root, _) = rlp::decode_hash(&items[3])?;
+        let (transactions_root, _) = rlp::decode_hash(&items[4])?;
+        let (receipts_root, _) = rlp::decode_hash(&items[5])?;
+
+        let (logs_bloom_bytes, _) = rlp::decode_bytes(&items[6])?;
+        if logs_bloom_bytes.len() != 256 {
+            return Err(RlpError::InvalidLength);
+        }
+        let mut logs_bloom = [0u8; 256];
+        logs_bloom.copy_from_slice(&logs_bloom_bytes);
+
+        let (difficulty, _) = rlp::decode_u256(&items[7])?;
+        let (number, _) = rlp::decode_u64(&items[8])?;
+        let (gas_limit, _) = rlp::decode_u64(&items[9])?;
+        let (gas_used, _) = rlp::decode_u64(&items[10])?;
+        let (timestamp, _) = rlp::decode_u64(&items[11])?;
+
+        let (extra_data_bytes, _) = rlp::decode_bytes(&items[12])?;
+        let extra_data = Bytes::from_slice(&extra_data_bytes);
+
+        let (mix_hash, _) = rlp::decode_hash(&items[13])?;
+        let (nonce, _) = rlp::decode_u64(&items[14])?;
+
+        // Decode optional fields if present
+        let base_fee_per_gas = if items.len() > 15 {
+            let (base_fee, _) = rlp::decode_u64(&items[15])?;
+            Some(base_fee)
+        } else {
+            None
+        };
+
+        let withdrawals_root = if items.len() > 16 {
+            let (root, _) = rlp::decode_hash(&items[16])?;
+            Some(root)
+        } else {
+            None
+        };
+
+        let blob_gas_used = if items.len() > 17 {
+            let (blob_gas, _) = rlp::decode_u64(&items[17])?;
+            Some(blob_gas)
+        } else {
+            None
+        };
+
+        let excess_blob_gas = if items.len() > 18 {
+            let (excess, _) = rlp::decode_u64(&items[18])?;
+            Some(excess)
+        } else {
+            None
+        };
+
+        let parent_beacon_block_root = if items.len() > 19 {
+            let (root, _) = rlp::decode_hash(&items[19])?;
+            Some(root)
+        } else {
+            None
+        };
+
+        Ok(BlockHeader {
+            parent_hash,
+            ommers_hash,
+            coinbase,
+            state_root,
+            transactions_root,
+            receipts_root,
+            logs_bloom,
+            difficulty,
+            number,
+            gas_limit,
+            gas_used,
+            timestamp,
+            extra_data,
+            mix_hash,
+            nonce,
+            base_fee_per_gas,
+            withdrawals_root,
+            blob_gas_used,
+            excess_blob_gas,
+            parent_beacon_block_root,
+        })
+    }
+}
+
+impl Default for BlockHeader {
+    fn default() -> Self {
+        BlockHeader {
+            parent_hash: Hash::ZERO,
+            ommers_hash: Hash::ZERO,
+            coinbase: Address::ZERO,
+            state_root: Hash::ZERO,
+            transactions_root: Hash::ZERO,
+            receipts_root: Hash::ZERO,
+            logs_bloom: [0u8; 256],
+            difficulty: U256::ZERO,
+            number: 0,
+            gas_limit: 30_000_000,
+            gas_used: 0,
+            timestamp: 0,
+            extra_data: Bytes::new(),
+            mix_hash: Hash::ZERO,
+            nonce: 0,
+            base_fee_per_gas: Some(1_000_000_000),
+            withdrawals_root: None,
+            blob_gas_used: None,
+            excess_blob_gas: None,
+            parent_beacon_block_root: None,
+        }
+    }
+}
+
+impl StdHash for BlockHeader {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.parent_hash.hash(state);
+        self.ommers_hash.hash(state);
+        self.coinbase.hash(state);
+        self.state_root.hash(state);
+        self.transactions_root.hash(state);
+        self.receipts_root.hash(state);
+        self.logs_bloom.hash(state);
+        self.difficulty.hash(state);
+        self.number.hash(state);
+        self.gas_limit.hash(state);
+        self.gas_used.hash(state);
+        self.timestamp.hash(state);
+        self.extra_data.hash(state);
+        self.mix_hash.hash(state);
+        self.nonce.hash(state);
+        self.base_fee_per_gas.hash(state);
+        self.withdrawals_root.hash(state);
+        self.blob_gas_used.hash(state);
+        self.excess_blob_gas.hash(state);
+        self.parent_beacon_block_root.hash(state);
+    }
+}
+
+impl fmt::Display for BlockHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Block #{} (hash computation pending Phase 1)",
+            self.number
+        )
+    }
+}
+
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/// Validation errors for block headers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    /// Gas used exceeds gas limit
+    GasUsedExceedsLimit { gas_used: u64, gas_limit: u64 },
+    /// Extra data exceeds maximum size
+    ExtraDataTooLarge { size: usize, max_size: usize },
+    /// Non-zero difficulty in post-merge block
+    NonZeroDifficulty,
+    /// Non-zero mix hash in post-merge block
+    NonZeroMixHash,
+    /// Non-zero nonce in post-merge block
+    NonZeroNonce,
+}
+
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ValidationError::GasUsedExceedsLimit { gas_used, gas_limit } => {
+                write!(f, "gas used ({gas_used}) exceeds gas limit ({gas_limit})")
+            }
+            ValidationError::ExtraDataTooLarge { size, max_size } => {
+                write!(f, "extra data size ({size}) exceeds maximum ({max_size})")
+            }
+            ValidationError::NonZeroDifficulty => {
+                write!(f, "difficulty must be zero in post-merge blocks")
+            }
+            ValidationError::NonZeroMixHash => {
+                write!(f, "mix hash must be zero in post-merge blocks")
+            }
+            ValidationError::NonZeroNonce => {
+                write!(f, "nonce must be zero in post-merge blocks")
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // Construction Tests
+    // =========================================================================
+
+    #[test]
+    fn test_default_header() {
+        let header = BlockHeader::default();
+        assert_eq!(header.parent_hash, Hash::ZERO);
+        assert_eq!(header.number, 0);
+        assert_eq!(header.gas_limit, 30_000_000);
+        assert_eq!(header.gas_used, 0);
+        assert_eq!(header.difficulty, U256::ZERO);
+        assert_eq!(header.base_fee_per_gas, Some(1_000_000_000));
+    }
+
+    #[test]
+    fn test_custom_header() {
+        let mut header = BlockHeader::default();
+        header.number = 12345;
+        header.timestamp = 1234567890;
+        header.gas_used = 15_000_000;
+
+        assert_eq!(header.number, 12345);
+        assert_eq!(header.timestamp, 1234567890);
+        assert_eq!(header.gas_used, 15_000_000);
+    }
+
+    // =========================================================================
+    // Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_gas_fields_valid() {
+        let mut header = BlockHeader::default();
+        header.gas_limit = 30_000_000;
+        header.gas_used = 15_000_000;
+        assert!(header.validate_gas_fields().is_ok());
+    }
+
+    #[test]
+    fn test_validate_gas_fields_equal() {
+        let mut header = BlockHeader::default();
+        header.gas_limit = 30_000_000;
+        header.gas_used = 30_000_000;
+        assert!(header.validate_gas_fields().is_ok());
+    }
+
+    #[test]
+    fn test_validate_gas_fields_invalid() {
+        let mut header = BlockHeader::default();
+        header.gas_limit = 30_000_000;
+        header.gas_used = 35_000_000;
+        assert!(header.validate_gas_fields().is_err());
+    }
+
+    #[test]
+    fn test_validate_extra_data_valid() {
+        let mut header = BlockHeader::default();
+        header.extra_data = Bytes::from_slice(&[0x42; 32]);
+        assert!(header.validate_extra_data().is_ok());
+    }
+
+    #[test]
+    fn test_validate_extra_data_empty() {
+        let mut header = BlockHeader::default();
+        header.extra_data = Bytes::new();
+        assert!(header.validate_extra_data().is_ok());
+    }
+
+    #[test]
+    fn test_validate_extra_data_invalid() {
+        let mut header = BlockHeader::default();
+        header.extra_data = Bytes::from_slice(&[0x42; 33]);
+        assert!(header.validate_extra_data().is_err());
+    }
+
+    #[test]
+    fn test_validate_post_merge_valid() {
+        let mut header = BlockHeader::default();
+        header.difficulty = U256::ZERO;
+        header.mix_hash = Hash::ZERO;
+        header.nonce = 0;
+        assert!(header.validate_post_merge_fields().is_ok());
+    }
+
+    #[test]
+    fn test_validate_post_merge_invalid_difficulty() {
+        let mut header = BlockHeader::default();
+        header.difficulty = U256::from(1u64);
+        assert!(header.validate_post_merge_fields().is_err());
+    }
+
+    #[test]
+    fn test_validate_post_merge_invalid_mix_hash() {
+        let mut header = BlockHeader::default();
+        header.mix_hash = Hash::from([0x42; 32]);
+        assert!(header.validate_post_merge_fields().is_err());
+    }
+
+    #[test]
+    fn test_validate_post_merge_invalid_nonce() {
+        let mut header = BlockHeader::default();
+        header.nonce = 1;
+        assert!(header.validate_post_merge_fields().is_err());
+    }
+
+    #[test]
+    fn test_validate_all_valid() {
+        let header = BlockHeader::default();
+        assert!(header.validate().is_ok());
+    }
+
+    // =========================================================================
+    // RLP Encoding Tests
+    // =========================================================================
+
+    #[test]
+    fn test_encode_rlp_basic() {
+        let header = BlockHeader::default();
+        let encoded = header.encode_rlp();
+        assert!(!encoded.is_empty());
+    }
+
+    #[test]
+    fn test_roundtrip_rlp_default() {
+        let header = BlockHeader::default();
+        let encoded = header.encode_rlp();
+        let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
+        assert_eq!(header, decoded);
+    }
+
+    #[test]
+    fn test_roundtrip_rlp_custom() {
+        let mut header = BlockHeader::default();
+        header.number = 12345;
+        header.timestamp = 1234567890;
+        header.gas_used = 15_000_000;
+        header.extra_data = Bytes::from_slice(&[0x42, 0x43, 0x44]);
+
+        let encoded = header.encode_rlp();
+        let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
+        assert_eq!(header, decoded);
+    }
+
+    #[test]
+    fn test_roundtrip_rlp_with_all_optional_fields() {
+        let mut header = BlockHeader::default();
+        header.base_fee_per_gas = Some(2_000_000_000);
+        header.withdrawals_root = Some(Hash::from([0x42; 32]));
+        header.blob_gas_used = Some(131072);
+        header.excess_blob_gas = Some(262144);
+        header.parent_beacon_block_root = Some(Hash::from([0x43; 32]));
+
+        let encoded = header.encode_rlp();
+        let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
+        assert_eq!(header, decoded);
+    }
+
+    #[test]
+    fn test_roundtrip_rlp_without_optional_fields() {
+        let mut header = BlockHeader::default();
+        header.base_fee_per_gas = None;
+        header.withdrawals_root = None;
+        header.blob_gas_used = None;
+        header.excess_blob_gas = None;
+        header.parent_beacon_block_root = None;
+
+        let encoded = header.encode_rlp();
+        let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
+        assert_eq!(header, decoded);
+    }
+
+    #[test]
+    fn test_roundtrip_rlp_partial_optional_fields() {
+        let mut header = BlockHeader::default();
+        header.base_fee_per_gas = Some(1_000_000_000);
+        header.withdrawals_root = Some(Hash::from([0x42; 32]));
+        header.blob_gas_used = None;
+        header.excess_blob_gas = None;
+        header.parent_beacon_block_root = None;
+
+        let encoded = header.encode_rlp();
+        let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
+        assert_eq!(header, decoded);
+    }
+
+    #[test]
+    fn test_decode_rlp_invalid_too_short() {
+        let items = vec![vec![0x00]; 14]; // Only 14 fields
+        let encoded = rlp::encode_list(&items);
+        assert!(BlockHeader::decode_rlp(&encoded).is_err());
+    }
+
+    #[test]
+    fn test_decode_rlp_invalid_logs_bloom_size() {
+        let items = vec![
+            rlp::encode_hash(&Hash::ZERO),
+            rlp::encode_hash(&Hash::ZERO),
+            rlp::encode_address(&Address::ZERO),
+            rlp::encode_hash(&Hash::ZERO),
+            rlp::encode_hash(&Hash::ZERO),
+            rlp::encode_hash(&Hash::ZERO),
+            rlp::encode_bytes(&[0u8; 100]), // Wrong size
+            rlp::encode_u256(&U256::ZERO),
+            rlp::encode_u64(0),
+            rlp::encode_u64(30_000_000),
+            rlp::encode_u64(0),
+            rlp::encode_u64(0),
+            rlp::encode_bytes(&[]),
+            rlp::encode_hash(&Hash::ZERO),
+            rlp::encode_u64(0),
+        ];
+        let encoded = rlp::encode_list(&items);
+        assert!(BlockHeader::decode_rlp(&encoded).is_err());
+    }
+
+    // =========================================================================
+    // Display Tests
+    // =========================================================================
+
+    #[test]
+    fn test_display() {
+        let mut header = BlockHeader::default();
+        header.number = 12345;
+        let s = header.to_string();
+        assert!(s.contains("12345"));
+    }
+
+    // =========================================================================
+    // Hash Tests
+    // =========================================================================
+
+    #[test]
+    fn test_std_hash() {
+        use std::collections::hash_map::DefaultHasher;
+
+        let header1 = BlockHeader::default();
+        let header2 = BlockHeader::default();
+
+        let mut hasher1 = DefaultHasher::new();
+        let mut hasher2 = DefaultHasher::new();
+
+        header1.hash(&mut hasher1);
+        header2.hash(&mut hasher2);
+
+        assert_eq!(hasher1.finish(), hasher2.finish());
+    }
+
+    #[test]
+    fn test_std_hash_different() {
+        use std::collections::hash_map::DefaultHasher;
+
+        let header1 = BlockHeader::default();
+        let mut header2 = BlockHeader::default();
+        header2.number = 12345;
+
+        let mut hasher1 = DefaultHasher::new();
+        let mut hasher2 = DefaultHasher::new();
+
+        header1.hash(&mut hasher1);
+        header2.hash(&mut hasher2);
+
+        assert_ne!(hasher1.finish(), hasher2.finish());
+    }
+
+    // =========================================================================
+    // Clone and Equality Tests
+    // =========================================================================
+
+    #[test]
+    fn test_clone() {
+        let header1 = BlockHeader::default();
+        let header2 = header1.clone();
+        assert_eq!(header1, header2);
+    }
+
+    #[test]
+    fn test_equality() {
+        let header1 = BlockHeader::default();
+        let header2 = BlockHeader::default();
+        assert_eq!(header1, header2);
+    }
+
+    #[test]
+    fn test_inequality() {
+        let header1 = BlockHeader::default();
+        let mut header2 = BlockHeader::default();
+        header2.number = 12345;
+        assert_ne!(header1, header2);
+    }
+
+    // =========================================================================
+    // Edge Case Tests
+    // =========================================================================
+
+    #[test]
+    fn test_max_gas_limit() {
+        let mut header = BlockHeader::default();
+        header.gas_limit = u64::MAX;
+        header.gas_used = u64::MAX;
+        assert!(header.validate_gas_fields().is_ok());
+    }
+
+    #[test]
+    fn test_max_extra_data() {
+        let mut header = BlockHeader::default();
+        header.extra_data = Bytes::from_slice(&[0xff; 32]);
+        assert!(header.validate_extra_data().is_ok());
+    }
+
+    #[test]
+    fn test_zero_gas_limit() {
+        let mut header = BlockHeader::default();
+        header.gas_limit = 0;
+        header.gas_used = 0;
+        assert!(header.validate_gas_fields().is_ok());
+    }
+
+    // =========================================================================
+    // Serialization Tests
+    // =========================================================================
+
+    #[test]
+    fn test_serialize() {
+        let header = BlockHeader::default();
+        let json = serde_json::to_string(&header).unwrap();
+        assert!(!json.is_empty());
+    }
+
+    #[test]
+    fn test_deserialize() {
+        let header1 = BlockHeader::default();
+        let json = serde_json::to_string(&header1).unwrap();
+        let header2: BlockHeader = serde_json::from_str(&json).unwrap();
+        assert_eq!(header1, header2);
+    }
+
+    #[test]
+    fn test_roundtrip_serialize() {
+        let mut header1 = BlockHeader::default();
+        header1.number = 12345;
+        header1.timestamp = 1234567890;
+        header1.gas_used = 15_000_000;
+
+        let json = serde_json::to_string(&header1).unwrap();
+        let header2: BlockHeader = serde_json::from_str(&json).unwrap();
+        assert_eq!(header1, header2);
+    }
+}

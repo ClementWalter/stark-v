@@ -8,6 +8,7 @@ members = [
   "crates/stwo-macros",
   "crates/sdk",
   "crates/simd",
+  "guest/claudeth",
   "guest/guest-lib",
 ]
 exclude = ["guest/guest-bin"]
