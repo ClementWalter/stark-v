@@ -2,13 +2,13 @@
 
 ## Session 78: EELS Test Re-baseline + Root Cause Analysis (2026-02-09)
 
-**Status**: Completed - identified two root causes
+**Status**: Completed - test categorization done, root causes require investigation
 
 ### What Was Accomplished
 1. ✅ Re-ran EELS tests in --release mode after recent fixes
 2. ✅ Categorized 18 failures: 12 StateRootMismatch, 4 GasUsedMismatch, 2 TransactionExecutionError
-3. ✅ Identified root cause #1: Missing EIP-3860 init code gas cost (2 gas/byte)
-4. ✅ Identified root cause #2: Multi-block tests only execute block 0 due to state root mismatch
+3. ✅ Verified EIP-3860 IS correctly implemented (gas.rs, interpreter.rs)
+4. ✅ Identified multi-block test structure issue (tests stop after block 0 state root mismatch)
 
 ### Key Findings
 
