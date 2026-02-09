@@ -129,7 +129,7 @@ pub fn sdiv(stack: &mut Stack) -> Result<(), EvmError> {
 
     // Check for MIN / -1 overflow case
     // MIN is 2^255, which when negated stays as 2^255
-    if a_negative && !b_negative && b == U256::ONE && a == sign_bit() {
+    if a == sign_bit() && b == U256::MAX {
         stack.push(sign_bit())?;
         return Ok(());
     }
@@ -717,8 +717,8 @@ mod tests {
     #[test]
     fn test_sub_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         sub(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(7u64));
     }
@@ -726,8 +726,8 @@ mod tests {
     #[test]
     fn test_sub_underflow() {
         let mut stack = Stack::new();
-        stack.push(U256::from(3u64)).unwrap();
         stack.push(U256::from(5u64)).unwrap();
+        stack.push(U256::from(3u64)).unwrap();
         sub(&mut stack).unwrap();
         // 3 - 5 wraps around
         assert_eq!(stack.pop().unwrap(), U256::MAX - U256::ONE);
@@ -736,8 +736,8 @@ mod tests {
     #[test]
     fn test_div_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         div(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(3u64));
     }
@@ -745,8 +745,8 @@ mod tests {
     #[test]
     fn test_div_by_zero() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::ZERO).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         div(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
@@ -754,8 +754,8 @@ mod tests {
     #[test]
     fn test_sdiv_positive() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         sdiv(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(3u64));
     }
@@ -764,8 +764,8 @@ mod tests {
     fn test_sdiv_negative_dividend() {
         let mut stack = Stack::new();
         // -10 / 3 = -3
-        stack.push(twos_complement(U256::from(10u64))).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(twos_complement(U256::from(10u64))).unwrap();
         sdiv(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), twos_complement(U256::from(3u64)));
     }
@@ -774,8 +774,8 @@ mod tests {
     fn test_sdiv_negative_divisor() {
         let mut stack = Stack::new();
         // 10 / -3 = -3
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(twos_complement(U256::from(3u64))).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         sdiv(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), twos_complement(U256::from(3u64)));
     }
@@ -784,8 +784,8 @@ mod tests {
     fn test_sdiv_both_negative() {
         let mut stack = Stack::new();
         // -10 / -3 = 3
-        stack.push(twos_complement(U256::from(10u64))).unwrap();
         stack.push(twos_complement(U256::from(3u64))).unwrap();
+        stack.push(twos_complement(U256::from(10u64))).unwrap();
         sdiv(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(3u64));
     }
@@ -793,8 +793,8 @@ mod tests {
     #[test]
     fn test_sdiv_by_zero() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::ZERO).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         sdiv(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
@@ -802,8 +802,8 @@ mod tests {
     #[test]
     fn test_mod_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         modulo(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(1u64));
     }
@@ -811,8 +811,8 @@ mod tests {
     #[test]
     fn test_mod_by_zero() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::ZERO).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         modulo(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
@@ -820,8 +820,8 @@ mod tests {
     #[test]
     fn test_smod_positive() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         smod(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(1u64));
     }
@@ -830,8 +830,8 @@ mod tests {
     fn test_smod_negative_dividend() {
         let mut stack = Stack::new();
         // -10 % 3 = -1
-        stack.push(twos_complement(U256::from(10u64))).unwrap();
         stack.push(U256::from(3u64)).unwrap();
+        stack.push(twos_complement(U256::from(10u64))).unwrap();
         smod(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), twos_complement(U256::from(1u64)));
     }
@@ -840,8 +840,8 @@ mod tests {
     fn test_smod_negative_divisor() {
         let mut stack = Stack::new();
         // 10 % -3 = 1 (result takes sign of dividend)
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(twos_complement(U256::from(3u64))).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         smod(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(1u64));
     }

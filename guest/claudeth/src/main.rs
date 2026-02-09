@@ -38,6 +38,7 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //   chain_id_u256,
 //   transactions_rlp_list,
 //   state_entries_rlp_list,
+//   block_hashes_rlp_list (optional),
 //   withdrawals_rlp_list (optional, required if withdrawals_root is present)
 // ])
 //
@@ -101,7 +102,7 @@ fn process_input(input: &[u8]) -> Vec<u8> {
 
 fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResult, GuestError> {
     let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
-    if !rest.is_empty() || !(items.len() == 5 || items.len() == 6) {
+    if !rest.is_empty() || !(5..=7).contains(&items.len()) {
         return Err(GuestError::InvalidInput);
     }
 
@@ -111,13 +112,24 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
 
     let transactions = decode_transactions(&items[3])?;
     let state_entries = decode_state_entries(&items[4])?;
-    let withdrawals = if items.len() == 6 {
-        decode_withdrawals(&items[5])?
-    } else {
-        Vec::new()
+    let (block_hashes, withdrawals) = match items.len() {
+        5 => (Vec::new(), Vec::new()),
+        6 => {
+            if block.withdrawals_root.is_some() {
+                (Vec::new(), decode_withdrawals(&items[5])?)
+            } else {
+                (decode_block_hashes(&items[5])?, Vec::new())
+            }
+        }
+        7 => (decode_block_hashes(&items[5])?, decode_withdrawals(&items[6])?),
+        _ => unreachable!("length checked above"),
     };
 
-    if block.withdrawals_root.is_some() && items.len() != 6 {
+    if block_hashes.len() > 256 {
+        return Err(GuestError::InvalidInput);
+    }
+
+    if block.withdrawals_root.is_some() && withdrawals.is_empty() {
         return Err(GuestError::InvalidInput);
     }
 
@@ -133,6 +145,7 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
         &parent,
         &transactions,
         &withdrawals,
+        &block_hashes,
         &mut state,
         chain_id,
     )
@@ -215,6 +228,24 @@ fn decode_withdrawals(input: &[u8]) -> Result<Vec<Withdrawal>, GuestError> {
         withdrawals.push(withdrawal);
     }
     Ok(withdrawals)
+}
+
+fn decode_block_hashes(input: &[u8]) -> Result<Vec<Hash>, GuestError> {
+    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let mut hashes = Vec::with_capacity(items.len());
+    for item in items {
+        let (hash, rest) = rlp::decode_hash(&item).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+        hashes.push(hash);
+    }
+
+    Ok(hashes)
 }
 
 fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {

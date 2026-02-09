@@ -132,6 +132,8 @@ pub struct RecursiveHost {
     pub block_number: u64,
     /// Parent block hash for BLOCKHASH lookups
     pub parent_hash: Option<Hash>,
+    /// Recent block hashes in increasing block number order (oldest -> newest).
+    pub recent_block_hashes: Vec<Hash>,
     /// Block context for environment opcodes
     pub block_ctx: crate::evm::interpreter::BlockContext,
     /// Transaction context for environment opcodes
@@ -145,6 +147,7 @@ impl Default for RecursiveHost {
             depth: 0,
             block_number: 0,
             parent_hash: None,
+            recent_block_hashes: Vec::new(),
             block_ctx: crate::evm::interpreter::BlockContext::default(),
             tx_ctx: crate::evm::interpreter::TxContext::default(),
         }
@@ -170,6 +173,16 @@ impl RecursiveHost {
         self
     }
 
+    /// Configure recent block hashes for BLOCKHASH lookups.
+    pub fn with_recent_block_hashes(mut self, block_hashes: &[Hash]) -> Self {
+        let mut hashes = block_hashes.to_vec();
+        if hashes.len() > 256 {
+            hashes.drain(0..hashes.len().saturating_sub(256));
+        }
+        self.recent_block_hashes = hashes;
+        self
+    }
+
     /// Configure the transaction context for child executions.
     pub fn with_tx_context(mut self, tx_ctx: crate::evm::interpreter::TxContext) -> Self {
         self.tx_ctx = tx_ctx;
@@ -186,6 +199,7 @@ impl RecursiveHost {
             depth: self.depth + 1,
             block_number: self.block_number,
             parent_hash: self.parent_hash,
+            recent_block_hashes: self.recent_block_hashes.clone(),
             block_ctx: self.block_ctx.clone(),
             tx_ctx: self.tx_ctx.clone(),
         })
@@ -418,12 +432,20 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         }
 
         let distance = self.block_number - requested;
-        if distance == 1 {
-            return self.parent_hash;
-        }
-
         if distance > 256 {
             return None;
+        }
+
+        if !self.recent_block_hashes.is_empty() {
+            let index = self
+                .recent_block_hashes
+                .len()
+                .checked_sub(distance as usize)?;
+            return self.recent_block_hashes.get(index).copied();
+        }
+
+        if distance == 1 {
+            return self.parent_hash;
         }
 
         None
@@ -500,6 +522,34 @@ mod tests {
         );
         assert_eq!(
             Host::<InMemoryState>::blockhash(&host, &U256::from_u64(98)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_recursive_host_blockhash_recent_hashes() {
+        let block_ctx = BlockContext {
+            number: U256::from_u64(100),
+            ..BlockContext::default()
+        };
+        let hash_98 = Hash::from([0x22; 32]);
+        let hash_99 = Hash::from([0x33; 32]);
+        let recent_hashes = vec![hash_98, hash_99];
+
+        let host = RecursiveHost::new()
+            .with_block_context(block_ctx)
+            .with_recent_block_hashes(&recent_hashes);
+
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &U256::from_u64(99)),
+            Some(hash_99)
+        );
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &U256::from_u64(98)),
+            Some(hash_98)
+        );
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &U256::from_u64(97)),
             None
         );
     }

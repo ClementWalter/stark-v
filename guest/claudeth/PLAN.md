@@ -8,8 +8,8 @@ Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 `riscv32im-unknown-none-elf`. It includes a full EVM interpreter, block
 processing with header validations and root checks, a partial MPT, and
 EIP-4895 withdrawals application. The block header type includes
-Shanghai/Cancun fields, but block processing does not yet apply the Cancun
-system calls.
+Shanghai/Cancun fields. Block processing applies the EIP-4788 beacon root
+system call, but EIP-2935 is still missing.
 
 ## Verified Status (from code)
 
@@ -21,48 +21,43 @@ system calls.
 - Block processing: header validation, tx execution, receipts, gas used,
   validation of receipts root, tx root, logs bloom, state root
 - EIP-4895 withdrawals application and withdrawals root validation
+- EIP-4788 beacon root system call during block processing
 - Partial MPT with proof support
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
   `parent_beacon_block_root`, `requests_hash`)
 - Guest input decoding supports withdrawals when `withdrawals_root` is present
+- Guest input decoding supports optional recent block hashes for BLOCKHASH
 - `no_std` riscv32 guest entry and bump allocator
 
 ### Known Gaps / Limitations
 
-- EIP-4788 beacon root system call not implemented
 - EIP-2935 historical block hashes system call not implemented
-- Guest input decoding does not include recent block hashes
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-09): pass (ignored EELS test not run)
+- `cargo test -p claudeth --release` (2026-02-09): pass
 - `cargo clippy -p claudeth -- -D warnings` (2026-02-09): pass
 
 ## Plan
 
 ### Completed This Iteration
 
-- Implemented EIP-4895 withdrawals end-to-end:
-  - Added `Withdrawal` type with RLP encoding/decoding
-  - Applied withdrawals after transaction execution
-  - Validated withdrawals root when present
-  - Extended guest input decoding to accept withdrawals list
-  - Added error codes and tests for withdrawals paths
+- Added recent block hashes support for BLOCKHASH:
+  - Extended guest input decoding with optional recent block hashes list
+  - Threaded recent block hashes into the RecursiveHost for BLOCKHASH lookups
 
-### P1: Implement EIP-4788 beacon root system call
+### P1: Implement EIP-2935 historical block hashes system call
 
-### P2: Implement EIP-2935 historical block hashes system call
+### P2: Add EIP-4844 blob transaction support (type 0x03)
 
-### P3: Add EIP-4844 blob transaction support (type 0x03)
+### P3: Witness-Based State Reconstruction
 
-### P4: Witness-Based State Reconstruction
-
-### P5: Remove `k256`
+### P4: Remove `k256`
 
 ## Immediate Next Task
 
-Implement EIP-4788 beacon root system call.
+Implement EIP-2935 historical block hashes system call.

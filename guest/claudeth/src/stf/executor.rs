@@ -100,6 +100,16 @@ impl From<ValidationError> for ExecutionError {
 // Transaction Executor
 // =============================================================================
 
+/// Context for executing a transaction within a block.
+#[derive(Debug, Clone, Copy)]
+pub struct TransactionExecutionContext<'a> {
+    pub block_ctx: &'a BlockContext,
+    pub parent_hash: Hash,
+    pub block_hashes: &'a [Hash],
+    pub chain_id: U256,
+    pub block_gas_limit: U256,
+}
+
 /// Executes a transaction and returns the execution result
 ///
 /// # Arguments
@@ -132,22 +142,26 @@ impl From<ValidationError> for ExecutionError {
 ///
 /// // Create a simple transaction (would need proper signature in practice)
 /// // let tx = Transaction::Legacy(...);
-/// // let result = execute_transaction(&tx, &mut state, &block_ctx, Hash::ZERO, 0, U256::ONE, U256::from_u64(30_000_000));
+/// // let exec_ctx = TransactionExecutionContext {
+/// //     block_ctx: &block_ctx,
+/// //     parent_hash: Hash::ZERO,
+/// //     block_hashes: &[],
+/// //     chain_id: U256::ONE,
+/// //     block_gas_limit: U256::from_u64(30_000_000),
+/// // };
+/// // let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 /// ```
 pub fn execute_transaction<S: State + Clone>(
     tx: &Transaction,
     state: &mut S,
-    block_ctx: &BlockContext,
-    parent_hash: Hash,
+    exec_ctx: &TransactionExecutionContext<'_>,
     cumulative_gas_used: u64,
-    expected_chain_id: U256,
-    block_gas_limit: U256,
 ) -> Result<TransactionExecutionResult, ExecutionError> {
     // Step 1: Validate transaction
     let sender = validate_signature(tx)?;
-    validate_chain_id(tx, expected_chain_id)?;
+    validate_chain_id(tx, exec_ctx.chain_id)?;
     validate_nonce(tx, state.get_nonce(&sender))?;
-    validate_gas(tx, block_gas_limit)?;
+    validate_gas(tx, exec_ctx.block_gas_limit)?;
 
     let intrinsic_gas = calculate_intrinsic_gas(tx).as_u64();
     let gas_limit = tx.gas_limit().as_u64();
@@ -165,7 +179,7 @@ pub fn execute_transaction<S: State + Clone>(
             // effective_gas_price = min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)
             let priority_fee = tx.max_priority_fee_per_gas;
             let max_fee = tx.max_fee_per_gas;
-            let base_fee = block_ctx.base_fee;
+            let base_fee = exec_ctx.block_ctx.base_fee;
 
             // Compute base_fee + priority_fee
             let total_fee = base_fee.saturating_add(priority_fee);
@@ -207,8 +221,9 @@ pub fn execute_transaction<S: State + Clone>(
     apply_value_transfer(tx, &sender, &mut exec_state);
 
     let exec_ctx = ExecutionContexts {
-        block_ctx,
-        parent_hash,
+        block_ctx: exec_ctx.block_ctx,
+        parent_hash: exec_ctx.parent_hash,
+        block_hashes: exec_ctx.block_hashes,
         tx_ctx: &tx_ctx,
     };
 
@@ -249,8 +264,11 @@ pub fn execute_transaction<S: State + Clone>(
 
     // Pay coinbase (block producer) the gas fee
     let gas_fee = U256::from_u64(final_gas_used).saturating_mul(effective_gas_price);
-    let coinbase_balance = state.get_balance(&block_ctx.coinbase);
-    state.set_balance(&block_ctx.coinbase, coinbase_balance.saturating_add(gas_fee));
+    let coinbase_balance = state.get_balance(&exec_ctx.block_ctx.coinbase);
+    state.set_balance(
+        &exec_ctx.block_ctx.coinbase,
+        coinbase_balance.saturating_add(gas_fee),
+    );
 
     // Step 5: Build result
 
@@ -274,9 +292,11 @@ pub fn execute_transaction<S: State + Clone>(
 type ExecutionResultWithState<S> =
     (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, Option<crate::evm::GasTrace>, S);
 
+#[derive(Clone, Copy)]
 struct ExecutionContexts<'a> {
     block_ctx: &'a BlockContext,
     parent_hash: Hash,
+    block_hashes: &'a [Hash],
     tx_ctx: &'a TxContext,
 }
 
@@ -329,6 +349,7 @@ fn execute_call<S: State + Clone>(
     let host = RecursiveHost::new()
         .with_block_context(contexts.block_ctx.clone())
         .with_parent_hash(contexts.parent_hash)
+        .with_recent_block_hashes(contexts.block_hashes)
         .with_tx_context(contexts.tx_ctx.clone());
 
     // Extract access list (EIP-2930) for warm/cold tracking
@@ -411,6 +432,7 @@ fn execute_create<S: State + Clone>(
     let host = RecursiveHost::new()
         .with_block_context(contexts.block_ctx.clone())
         .with_parent_hash(contexts.parent_hash)
+        .with_recent_block_hashes(contexts.block_hashes)
         .with_tx_context(contexts.tx_ctx.clone());
 
     // Extract access list (EIP-2930) for warm/cold tracking
@@ -572,15 +594,14 @@ mod tests {
         });
 
         // This will fail validation (invalid signature), but tests the flow
-        let result = execute_transaction(
-            &tx,
-            &mut state,
-            &block_ctx,
-            Hash::ZERO,
-            0,
-            U256::ONE,
-            U256::from_u64(30_000_000),
-        );
+        let exec_ctx = TransactionExecutionContext {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            chain_id: U256::ONE,
+            block_gas_limit: U256::from_u64(30_000_000),
+        };
+        let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 
         // Expect validation error (invalid signature)
         assert!(result.is_err());
@@ -607,15 +628,14 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_transaction(
-            &tx,
-            &mut state,
-            &block_ctx,
-            Hash::ZERO,
-            0,
-            U256::ONE,
-            U256::from_u64(30_000_000),
-        );
+        let exec_ctx = TransactionExecutionContext {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            chain_id: U256::ONE,
+            block_gas_limit: U256::from_u64(30_000_000),
+        };
+        let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 
         // Will fail on signature validation first, but validates the check exists
         assert!(result.is_err());
@@ -649,15 +669,14 @@ mod tests {
         });
 
         // Effective price = base_fee + priority_fee = 50 + 10 = 60 (< 100 max)
-        let result = execute_transaction(
-            &tx,
-            &mut state,
-            &block_ctx,
-            Hash::ZERO,
-            0,
-            U256::ONE,
-            U256::from_u64(30_000_000),
-        );
+        let exec_ctx = TransactionExecutionContext {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            chain_id: U256::ONE,
+            block_gas_limit: U256::from_u64(30_000_000),
+        };
+        let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 
         // Will fail on signature, but tests the effective_gas_price logic exists
         assert!(result.is_err());
@@ -684,6 +703,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -725,6 +745,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -757,6 +778,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -802,6 +824,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -849,6 +872,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -962,6 +986,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -1009,6 +1034,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 
@@ -1057,6 +1083,7 @@ mod tests {
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
             parent_hash: Hash::ZERO,
+            block_hashes: &[],
             tx_ctx: &tx_ctx,
         };
 

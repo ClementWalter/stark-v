@@ -4,18 +4,32 @@ Date: 2026-02-09
 
 ## Consensus-Critical Execution
 
-- EVM exceptional halts (OOG, InvalidJump, etc.) must be handled as **transaction-level failures** with all gas consumed and state reverted for that transaction, not as block-level errors.
-- Reverts are not exceptional halts. Preserve remaining gas per EVM rules and roll back state changes for that call frame.
+- EVM exceptional halts (OOG, InvalidJump, etc.) are **transaction-level failures**: consume all gas and revert state for that transaction only, not the entire block.
+- REVERT is not an exceptional halt: preserve remaining gas and revert state changes for that call frame.
 
 ## Gas Accounting
 
-- Memory expansion gas is quadratic and must not be capped. Let the formula drive OOG.
-- Always use `saturating_add` for offset+size to avoid overflow on large inputs.
+- Memory expansion gas is quadratic; never cap it. Let the formula drive OOG.
+- Always use `saturating_add` for offset + size to avoid overflow on large inputs.
+
+## Stack Operand Order
+
+- Arithmetic ops follow execution-specs order: pop `x` then `y`, compute `x op y`. Tests must push operands accordingly.
 
 ## Guest Input Decoding
 
-- Current guest input is an RLP list of 5 items only: block header, parent header, chain ID, transactions list, and state snapshot entries.
-- There is no support for withdrawals or recent block hashes in the guest input path yet.
+- Input is an RLP list of 5–7 items:
+  - `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries`
+  - Optional `block_hashes` (recent block hashes, oldest -> newest, max 256)
+  - Optional `withdrawals` (required when `withdrawals_root` is present)
+- If `withdrawals_root` is present, a withdrawals list must be provided.
+- If `withdrawals_root` is absent, the withdrawals list must be empty.
+
+## BLOCKHASH Data
+
+- `BLOCKHASH` accuracy depends on providing recent hashes in guest input.
+- When recent hashes are missing, only the parent hash can be returned.
+- The recent hashes list must be ordered by increasing block number and capped at 256 entries.
 
 ## Pre-commit Hygiene
 
@@ -39,10 +53,10 @@ Date: 2026-02-09
 
 **Do**
 
-- **Always** verify the code compiles (`cargo build -p claudeth`) before attempting anything else. The codebase may have been left in a broken state.
+- **Always** run `cargo test -p claudeth --release` and `cargo clippy -p claudeth -- -D warnings` before finalizing.
 - Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
 - Keep state root computation deterministic (stable address ordering before trie insertion).
-- Run `cargo test -p claudeth --release` and `cargo clippy -p claudeth -- -D warnings`.
+- Provide recent block hashes in guest input for correct `BLOCKHASH` results.
 
 **Don't**
 
@@ -50,16 +64,4 @@ Date: 2026-02-09
 - Treat EVM reverts as exceptional halts.
 - Leave unused `.rs` files under `src/` (pre-commit will fail).
 - Quote EELS test counts without rerunning.
-- Re-export types from modules that don't define them (e.g. `StorageWrite` was re-exported from `trace` but didn't exist there).
-
-## Update (2026-02-09)
-
-**Do**
-
-- Apply withdrawals after transaction execution and before computing state root.
-- Validate withdrawals root when `withdrawals_root` is present in the header.
-- Require the guest input withdrawals list only when the header includes `withdrawals_root`.
-
-**Don't**
-
 - Accept non-empty withdrawals lists for headers without `withdrawals_root`.

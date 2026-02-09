@@ -1588,8 +1588,8 @@ mod tests {
 
     #[test]
     fn test_sub() {
-        // PUSH1 0x05 PUSH1 0x03 SUB STOP (5 - 3 = 2)
-        let code = vec![0x60, 0x05, 0x60, 0x03, 0x03, 0x00];
+        // PUSH1 0x03 PUSH1 0x05 SUB STOP (5 - 3 = 2)
+        let code = vec![0x60, 0x03, 0x60, 0x05, 0x03, 0x00];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(2));
@@ -1597,8 +1597,8 @@ mod tests {
 
     #[test]
     fn test_div() {
-        // PUSH1 0x08 PUSH1 0x02 DIV STOP (8 / 2 = 4)
-        let code = vec![0x60, 0x08, 0x60, 0x02, 0x04, 0x00];
+        // PUSH1 0x02 PUSH1 0x08 DIV STOP (8 / 2 = 4)
+        let code = vec![0x60, 0x02, 0x60, 0x08, 0x04, 0x00];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(4));

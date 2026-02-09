@@ -848,6 +848,7 @@ fn test_execute_all_blockchain_tests() {
                     &parent_header,
                     &transactions,
                     &withdrawals,
+                    &[],
                     &mut state,
                     chain_id,
                 ) {

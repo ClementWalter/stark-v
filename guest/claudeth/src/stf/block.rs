@@ -256,6 +256,7 @@ fn apply_beacon_root_system_call<S: State + Clone>(
     block: &BlockHeader,
     block_ctx: &BlockContext,
     parent_hash: Hash,
+    block_hashes: &[Hash],
 ) {
     let parent_beacon_block_root = match block.parent_beacon_block_root {
         Some(root) => root,
@@ -287,6 +288,7 @@ fn apply_beacon_root_system_call<S: State + Clone>(
     let host = RecursiveHost::new()
         .with_block_context(block_ctx.clone())
         .with_parent_hash(parent_hash)
+        .with_recent_block_hashes(block_hashes)
         .with_tx_context(tx_ctx.clone());
 
     let mut evm = Evm::new(code, SYSTEM_CALL_GAS_LIMIT, state.clone(), host)
@@ -316,6 +318,7 @@ fn apply_beacon_root_system_call<S: State + Clone>(
 /// * `state` - The current state (will be mutated)
 /// * `chain_id` - The expected chain ID
 /// * `withdrawals` - The withdrawals in the block
+/// * `block_hashes` - Recent block hashes (oldest -> newest) for BLOCKHASH
 ///
 /// # Returns
 /// The block processing result with gas used, receipts, and roots
@@ -368,7 +371,15 @@ fn apply_beacon_root_system_call<S: State + Clone>(
 ///
 /// // Process empty block (should succeed)
 /// let result =
-///     process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+///     process_block(
+///         &block,
+///         &parent,
+///         &transactions,
+///         &withdrawals,
+///         &[],
+///         &mut state,
+///         U256::ONE,
+///     );
 /// assert!(result.is_ok());
 /// ```
 pub fn process_block<S: State + Clone>(
@@ -376,6 +387,7 @@ pub fn process_block<S: State + Clone>(
     parent: &BlockHeader,
     transactions: &[Transaction],
     withdrawals: &[Withdrawal],
+    block_hashes: &[Hash],
     state: &mut S,
     chain_id: U256,
 ) -> Result<BlockProcessingResult, BlockProcessingError> {
@@ -397,23 +409,28 @@ pub fn process_block<S: State + Clone>(
 
     // Step 3: Apply EIP-4788 beacon root system call (before executing transactions)
     let parent_hash = parent.compute_hash();
-    apply_beacon_root_system_call(state, block, &block_ctx, parent_hash);
+    apply_beacon_root_system_call(state, block, &block_ctx, parent_hash, block_hashes);
 
     // Step 4: Execute all transactions
     let mut cumulative_gas_used = 0u64;
     let mut receipts = Vec::with_capacity(transactions.len());
     let mut transaction_results = Vec::with_capacity(transactions.len());
 
+    let tx_exec_ctx = crate::stf::executor::TransactionExecutionContext {
+        block_ctx: &block_ctx,
+        parent_hash,
+        block_hashes,
+        chain_id,
+        block_gas_limit: U256::from_u64(block.gas_limit),
+    };
+
     for tx in transactions {
         // Execute transaction
         let mut exec_result = execute_transaction(
             tx,
             state,
-            &block_ctx,
-            parent_hash,
+            &tx_exec_ctx,
             cumulative_gas_used,
-            chain_id,
-            U256::from_u64(block.gas_limit),
         )?;
 
         // Update cumulative gas
@@ -572,7 +589,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         if let Err(ref e) = result {
             eprintln!("Error processing empty block: {e:?}");
         }
@@ -594,7 +611,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -611,7 +628,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -628,7 +645,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -646,7 +663,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -664,7 +681,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -681,7 +698,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::GasUsedMismatch { .. })
@@ -708,7 +725,7 @@ mod tests {
         };
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         // We expect this to fail since we set an incorrect receipts root
         assert!(matches!(
             result,
@@ -728,7 +745,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(result.is_ok());
 
         // Test maximum valid decrease
@@ -739,7 +756,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(result.is_ok());
     }
 
@@ -756,7 +773,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::TransactionsRootMismatch { .. })
@@ -776,7 +793,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::LogsBloomMismatch { .. })
@@ -798,7 +815,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::UnexpectedWithdrawals { .. })
@@ -821,7 +838,7 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::WithdrawalsRootMismatch { .. })
@@ -850,7 +867,7 @@ mod tests {
 
         let mut state = InMemoryState::new();
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE)
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE)
                 .expect("process block");
 
         assert_eq!(result.state_root, expected_state.compute_state_root());
@@ -932,7 +949,7 @@ mod tests {
         let parent_hash = parent.compute_hash();
 
         // Should not panic or modify state
-        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash);
+        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash, &[]);
 
         // State should remain empty
         assert_eq!(state.compute_state_root(), EMPTY_TRIE_ROOT);
@@ -960,7 +977,7 @@ mod tests {
         let parent_hash = parent.compute_hash();
 
         let state_root_before = state.compute_state_root();
-        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash);
+        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash, &[]);
 
         // State should be unchanged (only the contract code, no storage writes)
         assert_eq!(state.compute_state_root(), state_root_before);
@@ -1188,7 +1205,7 @@ mod tests {
         };
         let parent_hash = parent.compute_hash();
 
-        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash);
+        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash, &[]);
 
         // HISTORY_BUFFER_LENGTH = 0x1fff = 8191
         let history_buffer_length = 8191u64;
@@ -1242,6 +1259,7 @@ mod tests {
             &block,
             &block_ctx,
             parent_hash,
+            &[],
         );
         block.state_root = expected_state.compute_state_root();
 
@@ -1249,7 +1267,7 @@ mod tests {
         let withdrawals = vec![];
 
         let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
         if let Err(ref e) = result {
             eprintln!("Error processing block with beacon root: {e:?}");
         }

@@ -15,6 +15,8 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 - Block processing with header validation and root checks
   (state, receipts, transactions, logs bloom)
 - EIP-4895 withdrawals application and withdrawals root validation
+- EIP-4788 beacon root system call during block processing
+- Guest input decoding supports optional recent block hashes for BLOCKHASH
 - Partial Merkle Patricia Trie for account/storage roots and proofs
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
@@ -22,9 +24,7 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 
 **Known Gaps / Limitations**
 
-- EIP-4788 Beacon Block Root system call not implemented in block processing
 - EIP-2935 Historical Block Hashes system call not implemented
-- Guest input decoding does not include recent block hashes
 - Witness-based state reconstruction is not implemented
 - `k256` is still used for secp256k1
 - EELS blockchain tests require external fixtures and are ignored by default
