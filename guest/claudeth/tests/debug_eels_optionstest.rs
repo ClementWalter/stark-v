@@ -2,7 +2,9 @@
 
 use claudeth::stf::process_block;
 use claudeth::state::{InMemoryState, State};
-use claudeth::types::{Address, BlockHeader, Transaction, LegacyTransaction, U256, Bytes};
+use claudeth::types::{
+    Address, BlockHeader, Bytes, LegacyTransaction, Transaction, U256, EMPTY_OMMERS_HASH,
+};
 
 #[test]
 fn test_debug_optionstest_prague() {
@@ -44,7 +46,7 @@ fn test_debug_optionstest_prague() {
     // Create dummy block headers (we'll skip parent validation)
     let parent_header = BlockHeader {
         parent_hash: Default::default(),
-        ommers_hash: Default::default(),
+        ommers_hash: EMPTY_OMMERS_HASH,
         coinbase: Address::ZERO,
         state_root: Default::default(),
         transactions_root: Default::default(),
@@ -67,7 +69,7 @@ fn test_debug_optionstest_prague() {
 
     let block_header = BlockHeader {
         parent_hash: parent_header.compute_hash(),
-        ommers_hash: Default::default(),
+        ommers_hash: EMPTY_OMMERS_HASH,
         coinbase: Address::ZERO,
         state_root: Default::default(),
         transactions_root: Default::default(),

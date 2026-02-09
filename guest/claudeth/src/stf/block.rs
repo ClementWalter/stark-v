@@ -451,7 +451,10 @@ pub fn process_block<S: State + Clone>(
     state: &mut S,
     chain_id: U256,
 ) -> Result<BlockProcessingResult, BlockProcessingError> {
-    // Step 1: Validate block header against parent
+    // Step 1: Validate block header fields and validate against parent
+    block
+        .validate()
+        .map_err(|e| BlockProcessingError::InvalidHeader(format!("{e}")))?;
     block
         .validate_against_parent(parent)
         .map_err(|e| BlockProcessingError::InvalidHeader(format!("{e}")))?;

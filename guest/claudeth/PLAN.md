@@ -17,11 +17,13 @@ EIP-2935 historical block hashes system calls.
 
 - EVM interpreter with full opcode coverage, including `BLOBHASH`,
   `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`
-- `BLOBBASEFEE` now uses the EIP-4844 blob gas price formula when
+- `BLOBBASEFEE` uses the execution-specs Taylor expansion formula when
   `excess_blob_gas` is present in the block header
 - Transaction types: Legacy / EIP-2930 / EIP-1559
-- Block processing: header validation, tx execution, receipts, gas used,
+- Block processing: parent header validation, tx execution, receipts, gas used,
   validation of receipts root, tx root, logs bloom, state root
+- Block header validation includes gas-used bounds, extra data length, and
+  post-merge invariants (including empty ommers hash)
 - EIP-4895 withdrawals application and withdrawals root validation
 - EIP-4788 beacon root system call during block processing
 - EIP-2935 historical block hashes system call during block processing
@@ -36,6 +38,7 @@ EIP-2935 historical block hashes system calls.
 ### Known Gaps / Limitations
 
 - EIP-4844 blob transactions (type 0x03) not implemented
+- Base fee and excess blob gas header validation not implemented
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
@@ -49,15 +52,19 @@ EIP-2935 historical block hashes system calls.
 
 ### Completed This Iteration
 
-- Implemented blob base fee calculation for `BLOBBASEFEE`:
-  - Added `excess_blob_gas` to execution block context and plumbed it through
-  - Calculated blob gas price via the execution-specs Taylor expansion formula
+- Enforced `BlockHeader::validate()` at block processing entry (gas fields,
+  extra data, post-merge checks)
+- Added empty ommers hash validation for post-merge headers
 
 ### P1: Add EIP-4844 blob transaction support (type 0x03)
 
-### P2: Witness-Based State Reconstruction
+### P2: Header Validation for Base Fee / Excess Blob Gas
 
-### P3: Remove `k256`
+- Validate base fee per gas and excess blob gas against parent (execution-specs)
+
+### P3: Witness-Based State Reconstruction
+
+### P4: Remove `k256`
 
 ## Immediate Next Task
 

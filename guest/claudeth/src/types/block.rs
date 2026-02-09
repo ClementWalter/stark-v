@@ -222,6 +222,9 @@ impl BlockHeader {
         if self.nonce != 0 {
             return Err(ValidationError::NonZeroNonce);
         }
+        if self.ommers_hash != EMPTY_OMMERS_HASH {
+            return Err(ValidationError::NonEmptyOmmersHash);
+        }
         Ok(())
     }
 
@@ -572,6 +575,8 @@ pub enum ValidationError {
     NonZeroMixHash,
     /// Non-zero nonce in post-merge block
     NonZeroNonce,
+    /// Non-empty ommers hash in post-merge block
+    NonEmptyOmmersHash,
     /// Parent hash does not match provided parent header hash
     ParentHashMismatch,
     /// Block number is not parent.number + 1
@@ -603,6 +608,9 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::NonZeroNonce => {
                 write!(f, "nonce must be zero in post-merge blocks")
+            }
+            ValidationError::NonEmptyOmmersHash => {
+                write!(f, "ommers hash must be empty in post-merge blocks")
             }
             ValidationError::ParentHashMismatch => {
                 write!(f, "parent hash does not match provided parent header")
@@ -759,6 +767,13 @@ mod tests {
     fn test_validate_post_merge_invalid_nonce() {
         let mut header = BlockHeader::default();
         header.nonce = 1;
+        assert!(header.validate_post_merge_fields().is_err());
+    }
+
+    #[test]
+    fn test_validate_post_merge_invalid_ommers_hash() {
+        let mut header = BlockHeader::default();
+        header.ommers_hash = Hash::from([0x11; 32]);
         assert!(header.validate_post_merge_fields().is_err());
     }
 

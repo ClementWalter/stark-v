@@ -4,17 +4,20 @@ Date: 2026-02-09
 
 ## Consensus-Critical Execution
 
-- Exceptional halts (OOG, InvalidJump, etc.) are transaction-level failures: consume all gas and revert only that transaction’s state.
-- REVERT is not exceptional: preserve remaining gas and revert the current call frame.
+- Exceptional halts (OOG, InvalidJump, InvalidOpcode, etc.) are transaction-level failures: consume all gas and revert only that transaction’s state.
+- `REVERT` is not exceptional: preserve remaining gas and revert only the current call frame.
 
-## Gas Accounting
+## Block Processing Order
 
-- Memory expansion is quadratic; never cap it or special-case huge inputs.
-- Use `saturating_add` for offset + size to avoid overflow on large inputs.
+- Run header validation before state transition work (gas fields, extra data, post-merge fields), then validate against the parent header.
+- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls **before** executing transactions and before computing the state root.
+- Root checks are post-execution: receipts root, transactions root, logs bloom, withdrawals root (if present), state root, and gas-used vs header.
 
-## Stack Operand Order
+## Header Validation
 
-- Arithmetic ops follow execution-specs order: pop `x` then `y`, compute `x op y`.
+- Post-merge headers must have `difficulty == 0`, `mix_hash == 0`, and `nonce == 0`.
+- Extra data length is capped at 32 bytes; gas used must not exceed gas limit.
+- Ommers hash is expected to be the empty ommers hash in post-merge blocks.
 
 ## Guest Input Decoding
 
@@ -38,12 +41,22 @@ Date: 2026-02-09
 
 ## Blob Base Fee
 
-- `BLOBBASEFEE` must use the execution-specs Taylor expansion formula over `excess_blob_gas`.
+- `BLOBBASEFEE` uses the execution-specs Taylor expansion formula over `excess_blob_gas`.
 - If `excess_blob_gas` is absent (pre-Cancun), return zero; if present and zero, the minimum blob gas price is 1.
 
-## Pre-commit Hygiene
+## Gas Accounting
 
-- The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable from a crate root. Delete unused modules rather than half-wiring them.
+- Memory expansion is quadratic; never cap it or special-case huge inputs.
+- Use `saturating_add` for offset + size to avoid overflow on large inputs.
+
+## Stack Operand Order
+
+- Arithmetic ops follow execution-specs order: pop `x` then `y`, compute `x op y`.
+
+## State / Trie
+
+- Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
+- Keep state root computation deterministic by inserting accounts in a stable address order.
 
 ## Testing Reality Check
 
@@ -59,15 +72,19 @@ Date: 2026-02-09
 
 - `compute_create_address` and `compute_create2_address` in `evm/host.rs` must stay `pub` because `evm/opcodes/exec.rs` imports them.
 
+## Pre-commit Hygiene
+
+- The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable from a crate root. Delete unused modules rather than half-wiring them.
+- Run `prek run` before committing; fix linting errors instead of disabling rules.
+
 ## Do / Don't (Next Iteration)
 
 **Do**
 
 - Run `cargo test -p claudeth --release` and `cargo clippy -p claudeth -- -D warnings`.
-- Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
-- Keep state root computation deterministic (stable address ordering before trie insertion).
-- Provide recent block hashes in guest input for correct `BLOCKHASH` results.
 - Execute the EIP-2935 system call before computing the block state root.
+- Provide recent block hashes in guest input for correct `BLOCKHASH` results.
+- Use `EMPTY_OMMERS_HASH` for post-merge headers (including tests).
 
 **Don't**
 
