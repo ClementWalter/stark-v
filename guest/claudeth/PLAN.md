@@ -160,18 +160,47 @@ Goal: finalize per-transaction correctness before block processing.
 
 ---
 
-## Available Next Tasks
+## Phase D: EELS Compliance Testing (IN PROGRESS)
 
-With Phase C blocked on design work, the following tasks are available:
+### Task D1: Fetch and Parse EELS Test Vectors (CURRENT)
+**Goal**: Download ethereum/execution-spec-tests and build parsing infrastructure
 
-### Option 1: Phase D - EELS Compliance Testing
-**Concrete and verifiable** - Download EELS test vectors and run them:
-- Fetch EELS test vectors from ethereum/execution-spec-tests
-- Build test harness to parse and execute test vectors
-- Run tests and fix any spec mismatches
-- Achieve 100% pass rate on relevant test suites
+**Subtasks**:
+1. Clone or fetch ethereum/execution-spec-tests repository
+2. Identify relevant test suites for post-merge Ethereum (Fusaka fork)
+3. Understand JSON test format structure
+4. Build Rust test harness to parse JSON test vectors
+5. Create test runner infrastructure
 
-**Risk**: May discover spec gaps that require significant implementation work
+**Verification**: Successfully parse and load test vectors into Rust structs
+
+### Task D2: Execute EELS Tests Against Claudeth
+**Goal**: Run parsed test vectors through claudeth STF and identify failures
+
+**Subtasks**:
+1. Map EELS test format to claudeth input types
+2. Execute tests and collect results (pass/fail/error)
+3. Categorize failures by type (validation, execution, state)
+4. Document spec mismatches
+
+**Verification**: Test runner executes all relevant tests and reports results
+
+### Task D3: Fix Spec Mismatches
+**Goal**: Achieve 100% pass rate on EELS test suite
+
+**Subtasks**:
+1. Fix highest-priority failures first (validation errors)
+2. Fix execution mismatches (opcode behavior)
+3. Fix state computation mismatches (gas, storage, etc.)
+4. Re-run tests after each fix to track progress
+
+**Verification**: All EELS tests passing
+
+---
+
+## Available Alternative Tasks
+
+With Phase C blocked on design work, alternative tasks if Phase D proves blocked:
 
 ### Option 2: Phase E - Dependency Elimination
 **High risk but well-defined** - Replace external crypto dependencies:
@@ -190,10 +219,3 @@ With Phase C blocked on design work, the following tasks are available:
 - Implement proof deserialization and state reconstruction
 
 **Risk**: Design decisions may need iteration/refinement
-
-### Recommendation
-**Start with Phase D (EELS testing)** - It's concrete, verifiable, and will:
-1. Validate correctness of current implementation
-2. Reveal any spec gaps
-3. Provide regression suite for future changes
-4. Build confidence before tackling crypto or witness design
