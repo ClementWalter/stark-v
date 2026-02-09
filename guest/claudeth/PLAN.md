@@ -253,10 +253,10 @@ Gas Trace (initial: 340474, used: 22130)
    - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks
    - Likely issue with account/storage state computation or MPT
 
-**Current Failures** (Session 68 after EIP-2929 fix - still 0/20 passing):
+**Current Failures** (Session 70 - still 0/20 passing):
 - State root mismatches: 12 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2, tloadDoesNotPersistCrossTxn x2, transStorageBlockchain x2)
 - Gas undercharges: 2 tests (mergeExample x2: -19900 gas)
-- Gas overcharges: 2 tests (tipInsideBlock x2: +5000 gas, reduced from +9200)
+- Gas overcharges: 2 tests (tipInsideBlock x2: +5000 gas)
 - Execution failures: 4 tests (ShanghaiLove x2, StrangeContractCreation x2)
 
 **Major Progress**:

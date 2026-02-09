@@ -1,5 +1,85 @@
 # Claudeth Development Learnings
 
+## Session 70: Investigate tipInsideBlock Gas Overcharge (2026-02-09)
+
+**Status**: In Progress - root cause not yet identified
+
+### What Was Investigated
+1. ✅ Analyzed tipInsideBlock test structure: 3 txs calling contracts with COINBASE/BALANCE/NUMBER/SSTORE
+2. ✅ Disassembled contract bytecode 0x4131435500 = COINBASE BALANCE NUMBER SSTORE STOP
+3. ✅ Verified SSTORE writes BALANCE(coinbase) to storage key NUMBER(block.number)
+4. ✅ Traced storage operations:
+   - Tx 0: writes coinbase balance (0) to slot 0x01, clears 0x01→0x00 (CLEAR: 5000 gas, refund 4800)
+   - Tx 2: writes coinbase balance (fees) to slot 0x01, modifies 0x01→non-zero (RESET: 5000 gas)
+5. ✅ Confirmed SSTORE gas costs are correct per EIP-2929: CLEAR and RESET both cost 2900 + 2100 = 5000
+6. ✅ Verified gas traces show correct per-opcode costs
+7. ❌ Attempted fix for SSTORE NOOP case - reverted (not the issue here)
+
+### Current Analysis
+
+**Gas breakdown:**
+- Expected: 68411 total
+- Computed: 73411 total
+- Overcharge: +5000 gas exactly
+
+**Per-transaction:**
+- Tx 0: 23804 (21000 intrinsic + 7604 execution - 4800 refund for CLEAR)
+- Tx 1: 21003 (21000 intrinsic + 3 execution)
+- Tx 2: 28604 (21000 intrinsic + 7604 execution)
+- Total: 73411
+
+**Execution costs (from traces):**
+- Tx 0: COINBASE (2) + BALANCE (2600 cold) + NUMBER (2) + SSTORE (5000 cold CLEAR) = 7604 ✓
+- Tx 1: PUSH1 (3) = 3 ✓
+- Tx 2: COINBASE (2) + BALANCE (2600 cold) + NUMBER (2) + SSTORE (5000 cold RESET) = 7604 ✓
+
+**Refunds:**
+- Tx 0: 4800 gas refund for clearing storage (non-zero → zero per EIP-3529) ✓
+- Tx 1: no refund
+- Tx 2: no refund
+
+**Mystery:** All individual gas charges appear correct per EIP specs, but total is 5000 over expected.
+
+### Hypotheses to Investigate
+1. **Cross-transaction storage warming?** Maybe EIP-2929 access lists should persist within a block (not just within a transaction)?
+   - EIP-2929 explicitly says "duration of the transaction", so this seems wrong
+   - But worth double-checking with reference implementations
+
+2. **Different SSTORE gas schedule?** Maybe Ethereum uses a different gas model post-Berlin that we're missing?
+   - Our costs: CLEAR/RESET = 2900 + 2100 (cold) = 5000
+   - Maybe warm cost should be used in some cases within a block?
+
+3. **Missing refund logic?** Maybe there's an additional refund case we're not handling?
+   - EIP-3529 only refunds for CLEAR operations, which we implement correctly
+   - Could there be other refund scenarios?
+
+4. **Account warming?** Maybe the contract addresses should be warm for subsequent transactions in the block?
+   - Tx 0 calls 0xcccc, Tx 2 calls 0xdddd (different addresses)
+   - So this wouldn't explain savings
+
+5. **Coinbase address warming?** Maybe BALANCE(coinbase) should be warm after first access in block?
+   - All transactions are calling BALANCE on coinbase
+   - If coinbase were warm in Tx 2, would save 2500 gas (2600 → 100)
+   - But we need to save 5000 gas, not 2500
+
+### DO's ✅
+1. **Disassemble bytecode manually** when gas behavior is unexpected
+2. **Trace storage operations through multiple transactions** to understand state transitions
+3. **Verify each gas component separately** (intrinsic, execution, refunds)
+4. **Check EIP specs for warm/cold rules** across transaction boundaries
+
+### DON'Ts ❌
+1. **Don't assume SSTORE key/value order** - always verify stack operations carefully
+2. **Don't confuse transaction-level state with block-level state** in gas accounting
+3. **Don't apply fixes without understanding root cause** - I tried fixing NOOP but that wasn't the issue
+4. **Don't overlook refunds** - they affect net gas used and can explain "missing" intrinsic gas
+
+### Next Steps
+1. ⏭️ Research if EIP-2929 has any block-level warm/cold semantics (check Geth source)
+2. ⏭️ Compare with reference implementation for this exact test case
+3. ⏭️ Check if there's a special case for repeated BALANCE calls on coinbase within a block
+4. ⏭️ Move to investigating mergeExample (-19900 gas) or state root mismatches if blocked
+
 ## Session 69: Fix Block Header Hashing for Prague (2026-02-09)
 
 **Status**: Completed - Parent hash validation now passes for Cancun/Prague EELS fixtures
