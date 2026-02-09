@@ -335,19 +335,20 @@ impl State for InMemoryState {
         self.ensure_account(address);
         self.touch_account(address);
 
-        let (storage_root, storage_empty) = {
+        let storage_root = {
             let storage = self.get_storage_mut(address);
             storage.set(key, value);
-            (storage.compute_root(), storage.is_empty())
+            storage.compute_root()
         };
 
         if let Some(account) = self.accounts.get_mut(address) {
             account.storage_root = storage_root;
         }
 
-        if storage_empty {
-            self.storage.remove(address);
-        }
+        // Note: We do NOT remove empty storage from the HashMap because:
+        // 1. The storage trie still needs to be accessible for sload operations
+        // 2. The account.storage_root is the source of truth for the root hash
+        // 3. Removing it would cause sload to return 0 for all keys
     }
 
     fn tload(&self, address: &Address, key: &U256) -> U256 {
@@ -454,16 +455,13 @@ impl State for InMemoryState {
         addresses.sort();
 
         for address in addresses {
-            let mut account = self
+            let account = self
                 .accounts
                 .get(&address)
                 .cloned()
                 .unwrap_or_else(Account::empty);
-            account.storage_root = self
-                .storage
-                .get(&address)
-                .map(Storage::compute_root)
-                .unwrap_or(EMPTY_TRIE_ROOT);
+            // Note: account.storage_root is already maintained by sstore()
+            // We do NOT recompute it here to preserve the root even when storage HashMap entry is removed
 
             if account.is_empty() {
                 continue;

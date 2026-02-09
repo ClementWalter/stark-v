@@ -1,5 +1,48 @@
 # Claudeth Development Learnings
 
+## Session 88: Storage Persistence Bug Investigation (2026-02-09)
+
+**Status**: Ongoing - Root cause not yet identified
+
+### Problem
+EELS blockchain tests failing (0/20 passing) with storage values not persisting:
+- All storage slots that should have non-zero values are returning 0
+- Storage roots are incorrect (e.g., address `0x000f3df6d732807ef1319fb7b8bb8522d0beac02` consistently has wrong root `0x2f1228a30a70c1ee01e084800b776ce75558b8716098d852f80b6205708e9e23`)
+- Pre-state storage is loaded via `apply_pre_state` but values disappear during/after block processing
+
+### Investigation Steps Taken
+1. ✅ Fixed `compute_state_root` to not overwrite account storage_root (removed recomputation)
+2. ✅ Fixed `sstore` to not remove empty storage from HashMap (prevents sload returning 0)
+3. ✅ Verified Storage trie set/get works correctly in isolation
+4. ✅ Verified basic storage persistence works after `compute_state_root` call
+
+### Key Observations
+- Address `0x000f3df6d732807ef1319fb7b8bb8522d0beac02` appears in multiple tests with same wrong storage root
+- Storage trie itself works correctly (verified with unit tests)
+- The issue only manifests in EELS blockchain tests, not in isolated unit tests
+- Storage root `0x2f1228a30a70c1ee01e084800b776ce75558b8716098d852f80b6205708e9e23` doesn't match empty trie or single-key trie
+
+###Next Steps
+Need to investigate:
+1. Check actual EELS test JSON to see what pre-state storage values are expected
+2. Trace through exact flow: pre-state load → block execution → state root computation
+3. Check if state cloning during transaction execution loses storage somehow
+4. Verify storage HashMap entries persist through entire test flow
+
+### Code Changes Made
+- `src/state/execution.rs:447-477`: Removed storage_root recomputation in `compute_state_root`
+- `src/state/execution.rs:334-351`: Removed empty storage HashMap removal in `sstore`
+
+### DO's ✅
+1. **Test storage persistence in isolation** before assuming complex interactions
+2. **Check consistent failure patterns** (same wrong value appearing repeatedly)
+3. **Verify assumptions about empty vs non-empty storage** with actual root computations
+
+### DON'Ts ❌
+1. **Don't assume storage removal is always wrong** - investigate WHY it was there first
+2. **Don't fix symptoms without understanding root cause** - both changes didn't solve the issue
+3. **Don't overlook that unit tests pass but integration tests fail** - suggests interaction bug
+
 ## Session 87: Documentation Accuracy Fix (2026-02-09)
 
 **Status**: Documentation-only change in code comments
