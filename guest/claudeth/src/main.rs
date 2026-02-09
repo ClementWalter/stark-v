@@ -263,7 +263,7 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
         BlockProcessingError::TransactionExecutionError(exec_err) => {
             let detail = match exec_err {
                 ExecutionError::ValidationError(_) => 1u64,
-                ExecutionError::ExecutionFailed => 2u64,
+                ExecutionError::ExecutionFailed(_) => 2u64,
             };
             (ERROR_TX_EXECUTION, rlp::encode_list(&[encode_u64(detail)]))
         }

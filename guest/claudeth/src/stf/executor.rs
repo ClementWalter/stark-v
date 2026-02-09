@@ -28,7 +28,7 @@ use alloc::vec::Vec;
 
 use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{
-    BlockContext, CallContext, LogEntry, TxContext,
+    BlockContext, CallContext, EvmError, LogEntry, TxContext,
     execute_bytecode_with_host_contexts_and_access_list,
 };
 use crate::state::State;
@@ -109,12 +109,18 @@ pub enum ExecutionError {
     /// Transaction validation failed
     ValidationError(ValidationError),
     /// Execution failed (reverted or out of gas)
-    ExecutionFailed,
+    ExecutionFailed(EvmError),
 }
 
 impl From<ValidationError> for ExecutionError {
     fn from(err: ValidationError) -> Self {
         ExecutionError::ValidationError(err)
+    }
+}
+
+impl From<EvmError> for ExecutionError {
+    fn from(err: EvmError) -> Self {
+        ExecutionError::ExecutionFailed(err)
     }
 }
 
@@ -478,7 +484,7 @@ fn execute_call<S: State + Clone>(
             exec_result.gas_trace,
             returned_state,
         )),
-        Err(_) => Err(ExecutionError::ExecutionFailed),
+        Err(err) => Err(ExecutionError::ExecutionFailed(err)),
     }
 }
 
@@ -584,7 +590,7 @@ fn execute_create<S: State + Clone>(
                 returned_state,
             ))
         }
-        Err(_) => Err(ExecutionError::ExecutionFailed),
+        Err(err) => Err(ExecutionError::ExecutionFailed(err)),
     }
 }
 
