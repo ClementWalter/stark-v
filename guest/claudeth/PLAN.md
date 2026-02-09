@@ -27,12 +27,14 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 - Block header validation helpers (gas used <= limit, extra data size, post-merge fields)
  - Block header parent validation (parent hash, number, timestamp, gas-limit bounds)
 - Block processing with receipts, transactions, logs bloom, and state root validation
+- EIP-2929 warm/cold access tracking with unit test coverage for warm refunds
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: Test runner exists but execution mismatches remain (0/20 passing in current sample).
-4. **Gas metering accuracy**: SSTORE dynamic gas was missing and warm/cold access tracking is not implemented; BLOCKHASH always returns zero due to missing block hash history.
+4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH always returns zero due to missing block hash history.
+5. **riscv32 allocator**: `BumpAllocator` always returns null; any allocation on riscv32 will fail at runtime.
 
 ---
 
@@ -115,7 +117,12 @@ Goal: finalize per-transaction correctness before block processing.
 
 ## Immediate Next Task (Execute Now)
 
-**Phase C: Witness-based State Reconstruction** (NEXT)
+**Phase D: EELS Gas/Execution Mismatches** (NEXT)
+
+### Task D3.x: Investigate Gas/Execution Mismatches (READY)
+- Inspect EELS access lists to confirm whether warm accesses are expected.
+- Add targeted test vectors for cold vs warm access behavior if needed.
+- Trace failing transactions (ShanghaiLove, StrangeContractCreation) to pinpoint opcode/gas mismatch.
 
 ### Task C0: no_std riscv32 Compilation (✅ COMPLETE)
 - Fix missing vec! macro imports in interpreter, account, trie, node, receipt
@@ -149,7 +156,7 @@ Goal: finalize per-transaction correctness before block processing.
 ### Phase C Status: PAUSED - C2 needs design before implementation
 
 **Current State**:
-- Guest program works with full state snapshots ✅
+- Guest program compiles for riscv32, but allocator is a stub (runtime allocation likely fails) ⚠️
 - MPT proof generation/verification implemented ✅
 - Witness-based reconstruction not yet designed ⚠️
 
@@ -235,11 +242,12 @@ Goal: finalize per-transaction correctness before block processing.
 8. ✅ **FIXED**: Override parent_hash to allow execution (Session 36)
 9. ✅ **FIXED**: Charge SSTORE dynamic gas + sentry check (Session 37)
 10. ✅ **IMPLEMENTED**: EIP-2929 warm/cold access tracking (Session 38)
-11. ⚠️ **NEW ISSUE**: Gas usage STILL identical after EIP-2929 implementation
-12. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-13. TODO: Debug why gas usage unchanged despite correct EIP-2929 implementation
-14. TODO: Investigate if tests are using cold accesses or all pre-warmed
-15. TODO: Debug why exploit test transactions are failing
+11. ✅ Added unit test verifying warm BALANCE refund behavior (Session 39)
+12. ⚠️ **NEW ISSUE**: Gas usage STILL identical after EIP-2929 implementation
+13. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+14. TODO: Confirm EELS access lists and real-world warm access coverage
+15. TODO: Debug why gas usage unchanged despite correct EIP-2929 implementation
+16. TODO: Debug why exploit test transactions are failing
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 

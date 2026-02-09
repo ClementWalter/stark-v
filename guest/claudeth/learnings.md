@@ -1,5 +1,20 @@
 # Claudeth Development Learnings
 
+## Session 39: Add EIP-2929 Warm Refund Unit Test (2026-02-09)
+
+**Status**: Added targeted gas test to validate warm/cold refund behavior
+
+### What Was Accomplished
+1. ✅ Added a unit test verifying BALANCE warm refund after first access
+2. ✅ Confirmed expected gas usage for cold then warm access
+
+### DO's ✅
+1. **Use explicit tx/call contexts in gas tests** to avoid pre-warming the wrong address
+2. **Test warm access with repeated opcode usage** (e.g., BALANCE twice) to validate refund logic
+
+### DON'Ts ❌
+1. **Don't assume EIP-2929 refund logic works without tests** - confirm with a minimal opcode-level case
+
 ## Session 38: Implement EIP-2929 Warm/Cold Access Tracking (2026-02-09)
 
 **Status**: Phase D Task D3 subtask 12 COMPLETE (but gas mismatches persist)

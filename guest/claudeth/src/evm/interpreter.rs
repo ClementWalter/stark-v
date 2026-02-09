@@ -1656,6 +1656,52 @@ mod tests {
         assert_eq!(result.gas_used, 3);
     }
 
+    #[test]
+    fn test_balance_warm_refund() {
+        let target = Address::from([0x11; 20]);
+        let origin = Address::from([0x22; 20]);
+        let call_address = Address::from([0x33; 20]);
+
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        code.extend_from_slice(&target.to_bytes());
+        code.push(0x31); // BALANCE (cold)
+        code.push(0x73); // PUSH20
+        code.extend_from_slice(&target.to_bytes());
+        code.push(0x31); // BALANCE (warm)
+        code.push(0x00); // STOP
+
+        let mut state = InMemoryState::new();
+        state.set_balance(&target, U256::from_u64(1));
+
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext {
+            origin,
+            gas_price: U256::ONE,
+        };
+        let call_ctx = CallContext {
+            address: call_address,
+            caller: origin,
+            call_value: U256::ZERO,
+            call_data: Vec::new(),
+        };
+
+        let (result, _state) = execute_bytecode_with_host_and_contexts(
+            &code,
+            10_000,
+            state,
+            NullHost,
+            block_ctx,
+            tx_ctx,
+            call_ctx,
+        )
+        .unwrap();
+
+        assert!(result.success);
+        // Gas: PUSH20 (3) + BALANCE cold (2600) + PUSH20 (3) + BALANCE warm (100)
+        assert_eq!(result.gas_used, 2706);
+    }
+
     // =============================================================================
     // Return/Revert Tests
     // =============================================================================
