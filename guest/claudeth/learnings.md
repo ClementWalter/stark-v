@@ -1,5 +1,22 @@
 # Claudeth Development Learnings
 
+## Session 57: BLOCKHASH Recent History Support (2026-02-09)
+
+**Status**: Completed - RecursiveHost supports optional recent block hashes
+
+### What Was Accomplished
+1. ✅ Added `recent_block_hashes` to `RecursiveHost` and wired child hosts
+2. ✅ Implemented lookup for up to 256 recent hashes with parent-hash fallback
+3. ✅ Added unit test covering recent history + parent hash behavior
+
+### DO's ✅
+1. **Provide explicit recent block hashes when testing BLOCKHASH behavior** instead of relying only on parent hash.
+2. **Preserve parent-hash fallback** so legacy paths continue to behave the same.
+
+### DON'Ts ❌
+1. **Don't assume parent hash is enough for all BLOCKHASH use cases**; contracts can read any of the last 256 blocks.
+2. **Don't mutate shared host state between recursive calls**; clone recent hashes into child hosts.
+
 ## Session 56: Debug mergeExample Gas Undercharge (2026-02-09)
 
 **Status**: IN PROGRESS - Investigating -19900 gas undercharge in CREATE with access list
