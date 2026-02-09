@@ -1,5 +1,65 @@
 # Claudeth Development Learnings
 
+## Session 72: Implement EIP-161 Contract Nonce (2026-02-09)
+
+**Status**: Completed - EIP-161 compliant but doesn't fix state root mismatches yet
+
+### What Was Accomplished
+1. ✅ Added `set_nonce` method to `State` trait
+2. ✅ Implemented `set_nonce` for `InMemoryState`
+3. ✅ Set nonce=1 for created contracts in `RecursiveHost::create` (CREATE/CREATE2 opcodes)
+4. ✅ Set nonce=1 for created contracts in `apply_value_transfer` (CREATE transactions)
+5. ✅ Created `debug_state_root.py` script to analyze EELS state diffs
+6. ❌ State root mismatches persist - no improvement in test results (still 0/20)
+
+### Root Cause Analysis
+
+**EIP-161 Requirement**: "Account creation transactions and the CREATE operation SHALL, prior to the execution of the initialisation code, increment the nonce over and above its normal starting value by one"
+
+**What we found**:
+- Claudeth was NOT setting nonce=1 for newly created contracts
+- The `State` trait only had `increment_nonce`, not `set_nonce`
+- Analysis of `shanghaiExample` showed expected post-state had contract nonce=1
+
+**What we fixed**:
+- Added `set_nonce(&mut self, address: &Address, nonce: U256)` to `State` trait
+- Set nonce=1 immediately after value transfer, before init code execution
+- Applied fix in both paths: `RecursiveHost::create` (for opcodes) and `apply_value_transfer` (for transactions)
+
+### Why State Roots Still Don't Match
+
+Despite fixing the nonce issue, state roots remain unchanged. This suggests:
+1. **Nonce may not be the primary issue** - other state differences dominate
+2. **MPT encoding issue** - how we serialize/hash accounts into the state trie
+3. **Account representation** - missing or incorrect fields (code hash, storage root)
+4. **Empty account handling** - EIP-161 also defines when accounts are "empty" and should be deleted
+
+### Next Investigation Paths
+
+1. **Compare account serialization**: How do we RLP-encode accounts for MPT?
+   - Check if we're including all fields (nonce, balance, storage_root, code_hash)
+   - Verify field ordering matches Ethereum spec
+   - Check if empty accounts (EIP-161) are handled correctly
+
+2. **Debug actual vs expected state**: Use a working Ethereum client to dump state for same test
+   - Compare field-by-field for each account
+   - Identify which accounts differ and how
+
+3. **Simplify test case**: Find or create minimal test (1 block, 1 tx, 1-2 accounts)
+   - Easier to debug with less state
+
+### DO's ✅
+1. **Add missing trait methods when needed** - `set_nonce` was required for EIP-161
+2. **Fix compliance issues even if they don't fix the current bug** - EIP-161 nonce is correct behavior
+3. **Use scripts to analyze test fixtures** - `debug_state_root.py` helped understand expected state
+4. **Commit incremental progress** - even if the full bug isn't fixed, partial fixes are valuable
+5. **Document what DOESN'T work** - knowing nonce wasn't the issue helps narrow the search
+
+### DON'Ts ❌
+1. **Don't assume one fix will solve everything** - state root is complex (accounts, storage, code, MPT)
+2. **Don't skip analyzing test data** - understanding expected vs computed state is critical
+3. **Don't give up when a fix doesn't work** - it's still progress to eliminate hypotheses
+
 ## Session 71: Validate Recent Block Hash Inputs (2026-02-09)
 
 **Status**: Completed

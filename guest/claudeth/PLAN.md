@@ -178,6 +178,14 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 - Enforce recent block hash list length ≤ 256
 - Reject block numbers that don't fit in u64 (avoid silent truncation)
 
+### Task N12: Implement EIP-161 Contract Nonce ✅
+**Result**: Newly created contracts now have nonce=1 per EIP-161.
+**Changes**:
+- Added `set_nonce` method to `State` trait
+- Set nonce=1 in `RecursiveHost::create` (CREATE/CREATE2 opcodes)
+- Set nonce=1 in `apply_value_transfer` (CREATE transactions)
+**Impact**: No change in test results - state roots still mismatch (other issues remain)
+
 ---
 
 ## Immediate Next Task (Execute Next)
@@ -259,7 +267,7 @@ Gas Trace (initial: 340474, used: 22130)
    - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks
    - Likely issue with account/storage state computation or MPT
 
-**Current Failures** (Session 70 - still 0/20 passing):
+**Current Failures** (Session 72 - still 0/20 passing):
 - State root mismatches: 12 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2, tloadDoesNotPersistCrossTxn x2, transStorageBlockchain x2)
 - Gas undercharges: 2 tests (mergeExample x2: -19900 gas)
 - Gas overcharges: 2 tests (tipInsideBlock x2: +5000 gas)
@@ -269,6 +277,7 @@ Gas Trace (initial: 340474, used: 22130)
 - ✅ Fixed transient storage gas overcharges (+2100/+4200) → now have correct gas but wrong state
 - ✅ Reduced tipInsideBlock overcharge from +9200 to +5000 (improvement from EIP-2929 fix)
 - ✅ 6 more tests now have **correct gas** but need state root fixes
+- ✅ Implemented EIP-161 contract nonce (Session 72) - but state roots unchanged
 
 **Debugging Strategy**:
 1. Start with smallest gas discrepancies (easier to isolate root cause)
