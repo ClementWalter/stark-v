@@ -35,8 +35,12 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //   parent_header_rlp,
 //   chain_id_u256,
 //   transactions_rlp_list,
-//   state_entries_rlp_list
+//   state_entries_rlp_list,
+//   recent_block_hashes_rlp_list?   // optional (6th item)
 // ])
+//
+// recent_block_hashes_rlp_list format (RLP list):
+// [ [block_number_u256, block_hash], ... ]  // up to 256 entries
 //
 // State entry format (RLP list):
 // [address, nonce, balance, code_bytes, storage_entries]
@@ -95,7 +99,7 @@ fn process_input(input: &[u8]) -> Vec<u8> {
 
 fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResult, GuestError> {
     let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
-    if !rest.is_empty() || items.len() != 5 {
+    if !rest.is_empty() || !(items.len() == 5 || items.len() == 6) {
         return Err(GuestError::InvalidInput);
     }
 
@@ -106,11 +110,24 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
     let transactions = decode_transactions(&items[3])?;
     let state_entries = decode_state_entries(&items[4])?;
 
+    let recent_block_hashes = if items.len() == 6 {
+        decode_recent_block_hashes(&items[5])?
+    } else {
+        Vec::new()
+    };
+
     let mut state = InMemoryState::new();
     apply_state_entries(&mut state, &state_entries);
 
-    process_block(&block, &parent, &transactions, &mut state, chain_id)
-        .map_err(GuestError::Block)
+    process_block(
+        &block,
+        &parent,
+        &transactions,
+        &mut state,
+        chain_id,
+        &recent_block_hashes,
+    )
+    .map_err(GuestError::Block)
 }
 
 fn decode_transactions(input: &[u8]) -> Result<Vec<Transaction>, GuestError> {
@@ -172,6 +189,27 @@ fn decode_storage_entries(input: &[u8]) -> Result<Vec<(U256, U256)>, GuestError>
         let (key, _) = rlp::decode_u256(&fields[0]).map_err(GuestError::Rlp)?;
         let (value, _) = rlp::decode_u256(&fields[1]).map_err(GuestError::Rlp)?;
         entries.push((key, value));
+    }
+
+    Ok(entries)
+}
+
+fn decode_recent_block_hashes(input: &[u8]) -> Result<Vec<(u64, Hash)>, GuestError> {
+    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let mut entries = Vec::with_capacity(items.len());
+    for item in items {
+        let (fields, rest) = rlp::decode_list(&item).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() || fields.len() != 2 {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let (number, _) = rlp::decode_u256(&fields[0]).map_err(GuestError::Rlp)?;
+        let (hash, _) = rlp::decode_hash(&fields[1]).map_err(GuestError::Rlp)?;
+        entries.push((number.as_u64(), hash));
     }
 
     Ok(entries)

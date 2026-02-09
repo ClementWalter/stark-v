@@ -22,8 +22,8 @@ use crate::crypto::rlp::encode_u256;
 use crate::evm::interpreter::BlockContext;
 use crate::state::{State, Trie};
 use crate::stf::{
-    calculate_receipts_root_with_types, execute_transaction, Bloom, ExecutionError,
-    TransactionExecutionResult, TransactionReceipt,
+    calculate_receipts_root_with_types, execute_transaction, BlockHashContext, Bloom,
+    ExecutionError, TransactionExecutionResult, TransactionReceipt,
 };
 use crate::types::{BlockHeader, Hash, Transaction, U256};
 
@@ -199,6 +199,7 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 /// * `transactions` - The transactions in the block
 /// * `state` - The current state (will be mutated)
 /// * `chain_id` - The expected chain ID
+/// * `recent_block_hashes` - Recent block hashes for BLOCKHASH lookups (up to 256)
 ///
 /// # Returns
 /// The block processing result with gas used, receipts, and roots
@@ -249,7 +250,7 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 /// let mut state = InMemoryState::new();
 ///
 /// // Process empty block (should succeed)
-/// let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+/// let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
 /// assert!(result.is_ok());
 /// ```
 pub fn process_block<S: State + Clone>(
@@ -258,6 +259,7 @@ pub fn process_block<S: State + Clone>(
     transactions: &[Transaction],
     state: &mut S,
     chain_id: U256,
+    recent_block_hashes: &[(u64, Hash)],
 ) -> Result<BlockProcessingResult, BlockProcessingError> {
     // Step 1: Validate block header against parent
     block
@@ -277,6 +279,7 @@ pub fn process_block<S: State + Clone>(
 
     // Step 3: Execute all transactions
     let parent_hash = parent.compute_hash();
+    let block_hash_ctx = BlockHashContext::new(parent_hash, recent_block_hashes.to_vec());
     let mut cumulative_gas_used = 0u64;
     let mut receipts = Vec::with_capacity(transactions.len());
     let mut transaction_results = Vec::with_capacity(transactions.len());
@@ -287,7 +290,7 @@ pub fn process_block<S: State + Clone>(
             tx,
             state,
             &block_ctx,
-            parent_hash,
+            &block_hash_ctx,
             cumulative_gas_used,
             chain_id,
             U256::from_u64(block.gas_limit),
@@ -426,7 +429,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         if let Err(ref e) = result {
             eprintln!("Error processing empty block: {e:?}");
         }
@@ -446,7 +449,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -461,7 +464,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -476,7 +479,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -492,7 +495,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -508,7 +511,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -523,7 +526,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::GasUsedMismatch { .. })
@@ -548,7 +551,7 @@ mod tests {
             Hash::ZERO
         };
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         // We expect this to fail since we set an incorrect receipts root
         assert!(matches!(
             result,
@@ -566,7 +569,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(result.is_ok());
 
         // Test maximum valid decrease
@@ -575,7 +578,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(result.is_ok());
     }
 
@@ -590,7 +593,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::TransactionsRootMismatch { .. })
@@ -608,7 +611,7 @@ mod tests {
         let transactions = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE, &[]);
         assert!(matches!(
             result,
             Err(BlockProcessingError::LogsBloomMismatch { .. })

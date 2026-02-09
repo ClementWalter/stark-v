@@ -1,5 +1,24 @@
 # Claudeth Development Learnings
 
+## Session 65: Wire Recent BLOCKHASH Inputs (2026-02-09)
+
+**Status**: Completed - recent hashes accepted in guest input and wired into STF execution
+
+### What Was Accomplished
+1. ✅ Added optional recent block hashes to `process_block` and `execute_transaction`
+2. ✅ Threaded recent hashes into `RecursiveHost` for BLOCKHASH lookups
+3. ✅ Extended guest input format to accept a 6th item (backward-compatible)
+4. ✅ Updated tests and call sites to pass empty recent hashes when omitted
+
+### DO's ✅
+1. **Keep guest input backward-compatible** when adding fields (accept old and new formats)
+2. **Thread new context data through all execution layers** (STF → host → EVM)
+3. **Update tests and docs alongside API changes** to avoid drift
+
+### DON'Ts ❌
+1. **Don't forget to update internal test helpers** when adding struct fields
+2. **Don't assume optional context is always present**; default to empty inputs safely
+
 ## Session 64: Re-baseline EELS After EIP-1559 Fix (2026-02-09)
 
 **Status**: Completed - EELS test results unchanged

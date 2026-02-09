@@ -92,7 +92,7 @@ fn test_debug_optionstest_prague() {
 
     // Execute block
     println!("\nExecuting block with 1 transaction...");
-    let result = process_block(&block_header, &parent_header, &[tx], &mut state, chain_id);
+    let result = process_block(&block_header, &parent_header, &[tx], &mut state, chain_id, &[]);
 
     match result {
         Ok(res) => {

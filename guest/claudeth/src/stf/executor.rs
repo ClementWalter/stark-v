@@ -78,6 +78,28 @@ impl TransactionExecutionResult {
 }
 
 // =============================================================================
+// Block Hash Context
+// =============================================================================
+
+/// Block hash context for BLOCKHASH lookups
+#[derive(Debug, Clone)]
+pub struct BlockHashContext {
+    /// Parent block hash
+    pub parent_hash: Hash,
+    /// Recent block hashes (up to 256)
+    pub recent_block_hashes: Vec<(u64, Hash)>,
+}
+
+impl BlockHashContext {
+    pub fn new(parent_hash: Hash, recent_block_hashes: Vec<(u64, Hash)>) -> Self {
+        Self {
+            parent_hash,
+            recent_block_hashes,
+        }
+    }
+}
+
+// =============================================================================
 // Executor Error
 // =============================================================================
 
@@ -132,13 +154,14 @@ impl From<ValidationError> for ExecutionError {
 ///
 /// // Create a simple transaction (would need proper signature in practice)
 /// // let tx = Transaction::Legacy(...);
-/// // let result = execute_transaction(&tx, &mut state, &block_ctx, Hash::ZERO, 0, U256::ONE, U256::from_u64(30_000_000));
+/// // let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
+/// // let result = execute_transaction(&tx, &mut state, &block_ctx, &block_hash_ctx, 0, U256::ONE, U256::from_u64(30_000_000));
 /// ```
 pub fn execute_transaction<S: State + Clone>(
     tx: &Transaction,
     state: &mut S,
     block_ctx: &BlockContext,
-    parent_hash: Hash,
+    block_hash_ctx: &BlockHashContext,
     cumulative_gas_used: u64,
     expected_chain_id: U256,
     block_gas_limit: U256,
@@ -210,7 +233,7 @@ pub fn execute_transaction<S: State + Clone>(
 
     let exec_ctx = ExecutionContexts {
         block_ctx,
-        parent_hash,
+        block_hash_ctx,
         tx_ctx: &tx_ctx,
     };
 
@@ -280,7 +303,7 @@ type ExecutionResultWithState<S> =
 
 struct ExecutionContexts<'a> {
     block_ctx: &'a BlockContext,
-    parent_hash: Hash,
+    block_hash_ctx: &'a BlockHashContext,
     tx_ctx: &'a TxContext,
 }
 
@@ -332,7 +355,8 @@ fn execute_call<S: State + Clone>(
     };
     let host = RecursiveHost::new()
         .with_block_context(contexts.block_ctx.clone())
-        .with_parent_hash(contexts.parent_hash)
+        .with_parent_hash(contexts.block_hash_ctx.parent_hash)
+        .with_recent_block_hashes(contexts.block_hash_ctx.recent_block_hashes.clone())
         .with_tx_context(contexts.tx_ctx.clone());
 
     // Extract access list (EIP-2930) for warm/cold tracking
@@ -414,7 +438,8 @@ fn execute_create<S: State + Clone>(
     };
     let host = RecursiveHost::new()
         .with_block_context(contexts.block_ctx.clone())
-        .with_parent_hash(contexts.parent_hash)
+        .with_parent_hash(contexts.block_hash_ctx.parent_hash)
+        .with_recent_block_hashes(contexts.block_hash_ctx.recent_block_hashes.clone())
         .with_tx_context(contexts.tx_ctx.clone());
 
     // Extract access list (EIP-2930) for warm/cold tracking
@@ -609,6 +634,7 @@ mod tests {
     fn test_execute_transaction_value_transfer() {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         // Setup: sender with 1 ETH
         let sender = Address::from([0x01; 20]);
@@ -633,7 +659,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            Hash::ZERO,
+            &block_hash_ctx,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -647,6 +673,7 @@ mod tests {
     fn test_execute_transaction_insufficient_gas_limit() {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000_000));
@@ -668,7 +695,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            Hash::ZERO,
+            &block_hash_ctx,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -685,6 +712,7 @@ mod tests {
             base_fee: U256::from_u64(50),
             ..BlockContext::default()
         };
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000_000_000_000_000));
@@ -710,7 +738,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            Hash::ZERO,
+            &block_hash_ctx,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -729,6 +757,7 @@ mod tests {
             coinbase,
             ..BlockContext::default()
         };
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         let (tx, sender) = create_signed_eip1559_tx();
         let tx = Transaction::Eip1559(tx);
@@ -739,7 +768,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            Hash::ZERO,
+            &block_hash_ctx,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -778,9 +807,10 @@ mod tests {
         let state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -819,9 +849,10 @@ mod tests {
         let state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -851,9 +882,10 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -896,9 +928,10 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -943,9 +976,10 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -1056,9 +1090,10 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -1103,9 +1138,10 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 
@@ -1151,9 +1187,10 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            parent_hash: Hash::ZERO,
+            block_hash_ctx: &block_hash_ctx,
             tx_ctx: &tx_ctx,
         };
 

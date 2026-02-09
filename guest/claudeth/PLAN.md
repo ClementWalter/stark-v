@@ -35,9 +35,8 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: Test runner exists; last known from learnings was 0/20 passing, needs rerun to confirm current status.
-4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH now returns parent hash only (still missing full 256-block history).
+4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH now supports recent hashes when provided by caller.
 5. **riscv32 allocator**: now a fixed-size bump heap (no deallocation); heap sizing/tuning may be needed for large blocks.
-6. **BLOCKHASH history wiring**: host now supports recent hashes, but STF/guest inputs still only provide parent hash.
 
 ---
 
@@ -144,11 +143,27 @@ should reduce state root mismatches in tests that assert coinbase balances.
 unused gas plus the difference between max fee and effective fee. This aligns
 with EIP-1559 accounting and should improve gas mismatch cases.
 
+### Task N7: Wire recent BLOCKHASH history through STF + guest input ✅
+**Result**: `process_block` and `execute_transaction` now accept recent block hashes,
+`RecursiveHost` receives them for BLOCKHASH, and guest input supports an optional
+6th item (recent hashes list) while remaining backward-compatible.
+
 ---
 
-## Immediate Next Task (Execute Now)
+## Immediate Next Task (Execute Next)
 
-**Phase D: Re-baseline EELS After EIP-1559 Upfront Charge Fix** (UNBLOCKED - GAS TRACING FULLY OPERATIONAL)
+**Phase D: Resolve Smallest Gas Overcharge (tloadDoesNotPersistCrossTxn +2100)** (UNBLOCKED)
+
+**Goal**: Eliminate the +2100 gas overcharge in the smallest failing EELS case to validate gas accounting correctness.
+
+**Scope (candidate checks)**:
+1. Compare TLOAD/TSTORE gas scheduling with EIP-1153 reference costs.
+2. Validate that transient storage does not trigger EIP-2929 cold access charges.
+3. Verify SSTORE original value tracking across transactions for that test.
+
+**Completion Criteria**:
+- EELS test `tloadDoesNotPersistCrossTxn` passes with correct gas.
+- No regressions in unit tests or other EELS cases.
 
 ### Task D3.0: Re-run EELS and Re-categorize Failures ✅
 **Status**: COMPLETED - Re-ran EELS after EIP-1559 upfront charge fix.

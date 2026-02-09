@@ -9,7 +9,7 @@ pub mod receipt;
 pub mod transaction;
 
 pub use block::{process_block, BlockProcessingError, BlockProcessingResult};
-pub use executor::{execute_transaction, ExecutionError, TransactionExecutionResult};
+pub use executor::{execute_transaction, BlockHashContext, ExecutionError, TransactionExecutionResult};
 pub use receipt::{
     calculate_receipts_root, calculate_receipts_root_with_types, Bloom, Log, TransactionReceipt,
 };
