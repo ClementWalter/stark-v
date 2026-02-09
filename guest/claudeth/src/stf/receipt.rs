@@ -578,7 +578,8 @@ impl TransactionReceipt {
 /// - Values are receipt encodings (with type prefix for typed transactions per EIP-2718)
 ///
 /// For legacy transactions, the receipt is just RLP-encoded.
-/// For typed transactions (EIP-2930, EIP-1559), the receipt is: TransactionType || RLP(receipt)
+/// For typed transactions (EIP-2930, EIP-1559, EIP-4844), the receipt is:
+/// TransactionType || RLP(receipt)
 ///
 /// # Examples
 ///
@@ -624,6 +625,12 @@ pub fn calculate_receipts_root_with_types(
                 Transaction::Eip1559(_) => {
                     // EIP-1559: 0x02 || RLP(receipt)
                     let mut encoded = vec![0x02];
+                    encoded.extend(receipt.encode_rlp());
+                    encoded
+                }
+                Transaction::Blob(_) => {
+                    // EIP-4844: 0x03 || RLP(receipt)
+                    let mut encoded = vec![0x03];
                     encoded.extend(receipt.encode_rlp());
                     encoded
                 }

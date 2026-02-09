@@ -4,6 +4,7 @@
 //! - Legacy transactions (Type 0)
 //! - EIP-2930 transactions (Type 1)
 //! - EIP-1559 transactions (Type 2)
+//! - EIP-4844 blob transactions (Type 3)
 //!
 //! Each transaction type supports RLP encoding/decoding, hashing, and
 //! signature recovery for sender address verification.
@@ -788,6 +789,196 @@ impl Eip1559Transaction {
 }
 
 // =============================================================================
+// Blob Transaction (Type 3, EIP-4844)
+// =============================================================================
+
+/// EIP-4844 blob transaction (type 3).
+///
+/// Blob transactions extend the EIP-1559 format with blob fee fields and
+/// versioned blob hashes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlobTransaction {
+    /// Chain ID
+    pub chain_id: U256,
+    /// Transaction nonce
+    pub nonce: U256,
+    /// Max priority fee per gas (tip)
+    pub max_priority_fee_per_gas: U256,
+    /// Max fee per gas
+    pub max_fee_per_gas: U256,
+    /// Gas limit
+    pub gas_limit: U256,
+    /// Recipient address (contract creation is not allowed)
+    pub to: Address,
+    /// Value in wei
+    pub value: U256,
+    /// Transaction data
+    pub data: Bytes,
+    /// Access list
+    pub access_list: Vec<AccessListEntry>,
+    /// Max fee per blob gas
+    pub max_fee_per_blob_gas: U256,
+    /// Blob versioned hashes
+    pub blob_versioned_hashes: Vec<Hash>,
+    /// Signature v component (0 or 1)
+    pub v: U256,
+    /// Signature r component
+    pub r: U256,
+    /// Signature s component
+    pub s: U256,
+}
+
+impl BlobTransaction {
+    /// Encodes the transaction as RLP (including signature).
+    ///
+    /// The encoding is: 0x03 || rlp([...])
+    pub fn encode_rlp(&self) -> Vec<u8> {
+        let access_list_encoded: Vec<Vec<u8>> =
+            self.access_list.iter().map(|e| e.encode_rlp()).collect();
+
+        let blob_hashes_encoded: Vec<Vec<u8>> = self
+            .blob_versioned_hashes
+            .iter()
+            .map(rlp::encode_hash)
+            .collect();
+
+        let items = vec![
+            rlp::encode_u256(&self.chain_id),
+            rlp::encode_u256(&self.nonce),
+            rlp::encode_u256(&self.max_priority_fee_per_gas),
+            rlp::encode_u256(&self.max_fee_per_gas),
+            rlp::encode_u256(&self.gas_limit),
+            rlp::encode_address(&self.to),
+            rlp::encode_u256(&self.value),
+            rlp::encode_bytes(self.data.as_ref()),
+            rlp::encode_list(&access_list_encoded),
+            rlp::encode_u256(&self.max_fee_per_blob_gas),
+            rlp::encode_list(&blob_hashes_encoded),
+            rlp::encode_u256(&self.v),
+            rlp::encode_u256(&self.r),
+            rlp::encode_u256(&self.s),
+        ];
+
+        let mut result = vec![0x03];
+        result.extend(rlp::encode_list(&items));
+        result
+    }
+
+    /// Decodes a blob transaction from RLP (without type prefix).
+    pub fn decode_rlp(input: &[u8]) -> Result<Self, RlpError> {
+        let (items, _) = rlp::decode_list(input)?;
+
+        if items.len() != 14 {
+            return Err(RlpError::InvalidEncoding);
+        }
+
+        let (chain_id, _) = rlp::decode_u256(&items[0])?;
+        let (nonce, _) = rlp::decode_u256(&items[1])?;
+        let (max_priority_fee_per_gas, _) = rlp::decode_u256(&items[2])?;
+        let (max_fee_per_gas, _) = rlp::decode_u256(&items[3])?;
+        let (gas_limit, _) = rlp::decode_u256(&items[4])?;
+
+        let (to_bytes, _) = rlp::decode_bytes(&items[5])?;
+        if to_bytes.len() != 20 {
+            return Err(RlpError::InvalidLength);
+        }
+        let mut addr_bytes = [0u8; 20];
+        addr_bytes.copy_from_slice(&to_bytes);
+        let to = Address::from(addr_bytes);
+
+        let (value, _) = rlp::decode_u256(&items[6])?;
+        let (data_bytes, _) = rlp::decode_bytes(&items[7])?;
+        let data = Bytes::from_slice(&data_bytes);
+
+        let (access_list_items, _) = rlp::decode_list(&items[8])?;
+        let mut access_list = Vec::with_capacity(access_list_items.len());
+        for item in access_list_items {
+            let (entry, _) = AccessListEntry::decode_rlp(&item)?;
+            access_list.push(entry);
+        }
+
+        let (max_fee_per_blob_gas, _) = rlp::decode_u256(&items[9])?;
+        let (blob_hash_items, _) = rlp::decode_list(&items[10])?;
+        let mut blob_versioned_hashes = Vec::with_capacity(blob_hash_items.len());
+        for item in blob_hash_items {
+            let (hash, _) = rlp::decode_hash(&item)?;
+            blob_versioned_hashes.push(hash);
+        }
+
+        let (v, _) = rlp::decode_u256(&items[11])?;
+        let (r, _) = rlp::decode_u256(&items[12])?;
+        let (s, _) = rlp::decode_u256(&items[13])?;
+
+        Ok(BlobTransaction {
+            chain_id,
+            nonce,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            gas_limit,
+            to,
+            value,
+            data,
+            access_list,
+            max_fee_per_blob_gas,
+            blob_versioned_hashes,
+            v,
+            r,
+            s,
+        })
+    }
+
+    /// Computes the transaction hash (Keccak256 of RLP encoding with type).
+    pub fn hash(&self) -> Hash {
+        let encoded = self.encode_rlp();
+        keccak256(&encoded)
+    }
+
+    /// Computes the signing hash (hash of unsigned transaction data with type).
+    pub fn signing_hash(&self) -> Hash {
+        let access_list_encoded: Vec<Vec<u8>> =
+            self.access_list.iter().map(|e| e.encode_rlp()).collect();
+
+        let blob_hashes_encoded: Vec<Vec<u8>> = self
+            .blob_versioned_hashes
+            .iter()
+            .map(rlp::encode_hash)
+            .collect();
+
+        let items = vec![
+            rlp::encode_u256(&self.chain_id),
+            rlp::encode_u256(&self.nonce),
+            rlp::encode_u256(&self.max_priority_fee_per_gas),
+            rlp::encode_u256(&self.max_fee_per_gas),
+            rlp::encode_u256(&self.gas_limit),
+            rlp::encode_address(&self.to),
+            rlp::encode_u256(&self.value),
+            rlp::encode_bytes(self.data.as_ref()),
+            rlp::encode_list(&access_list_encoded),
+            rlp::encode_u256(&self.max_fee_per_blob_gas),
+            rlp::encode_list(&blob_hashes_encoded),
+        ];
+
+        let mut result = vec![0x03];
+        result.extend(rlp::encode_list(&items));
+        keccak256(&result)
+    }
+
+    /// Recovers the sender address from the transaction signature.
+    pub fn recover_sender(&self) -> Result<Address, Secp256k1Error> {
+        let signing_hash = self.signing_hash();
+        let recovery_id = self.v.as_u64() as u8;
+
+        let r_bytes = self.r.to_be_bytes();
+        let s_bytes = self.s.to_be_bytes();
+        let mut signature = [0u8; 64];
+        signature[..32].copy_from_slice(&r_bytes);
+        signature[32..].copy_from_slice(&s_bytes);
+
+        recover_address(&signing_hash, &signature, recovery_id)
+    }
+}
+
+// =============================================================================
 // Transaction Enum
 // =============================================================================
 
@@ -826,6 +1017,8 @@ pub enum Transaction {
     Eip2930(Eip2930Transaction),
     /// EIP-1559 transaction (type 2)
     Eip1559(Eip1559Transaction),
+    /// EIP-4844 blob transaction (type 3)
+    Blob(BlobTransaction),
 }
 
 impl Transaction {
@@ -838,6 +1031,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.encode_rlp(),
             Transaction::Eip2930(tx) => tx.encode_rlp(),
             Transaction::Eip1559(tx) => tx.encode_rlp(),
+            Transaction::Blob(tx) => tx.encode_rlp(),
         }
     }
 
@@ -859,6 +1053,10 @@ impl Transaction {
             // EIP-1559 transaction
             let tx = Eip1559Transaction::decode_rlp(&input[1..])?;
             Ok(Transaction::Eip1559(tx))
+        } else if first_byte == 0x03 {
+            // EIP-4844 blob transaction
+            let tx = BlobTransaction::decode_rlp(&input[1..])?;
+            Ok(Transaction::Blob(tx))
         } else if first_byte >= 0xc0 {
             // Legacy transaction (RLP list)
             let tx = LegacyTransaction::decode_rlp(input)?;
@@ -874,6 +1072,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.hash(),
             Transaction::Eip2930(tx) => tx.hash(),
             Transaction::Eip1559(tx) => tx.hash(),
+            Transaction::Blob(tx) => tx.hash(),
         }
     }
 
@@ -883,6 +1082,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.signing_hash(),
             Transaction::Eip2930(tx) => tx.signing_hash(),
             Transaction::Eip1559(tx) => tx.signing_hash(),
+            Transaction::Blob(tx) => tx.signing_hash(),
         }
     }
 
@@ -892,6 +1092,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.recover_sender(),
             Transaction::Eip2930(tx) => tx.recover_sender(),
             Transaction::Eip1559(tx) => tx.recover_sender(),
+            Transaction::Blob(tx) => tx.recover_sender(),
         }
     }
 }
@@ -902,6 +1103,7 @@ impl fmt::Display for Transaction {
             Transaction::Legacy(_) => write!(f, "Legacy Transaction"),
             Transaction::Eip2930(_) => write!(f, "EIP-2930 Transaction"),
             Transaction::Eip1559(_) => write!(f, "EIP-1559 Transaction"),
+            Transaction::Blob(_) => write!(f, "EIP-4844 Blob Transaction"),
         }
     }
 }
@@ -1379,6 +1581,104 @@ mod tests {
     }
 
     // =========================================================================
+    // EIP-4844 Blob Transaction Tests
+    // =========================================================================
+
+    #[test]
+    fn test_blob_tx_encode() {
+        let tx = BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(2_000_000_000u64),
+            max_fee_per_gas: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Address::ZERO,
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            access_list: vec![],
+            max_fee_per_blob_gas: U256::from(1_000_000u64),
+            blob_versioned_hashes: vec![Hash::from([0x11; 32])],
+            v: U256::from(0u64),
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+        let encoded = tx.encode_rlp();
+        assert!(!encoded.is_empty());
+        assert_eq!(encoded[0], 0x03);
+    }
+
+    #[test]
+    fn test_blob_tx_roundtrip() {
+        let tx = BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(5u64),
+            max_priority_fee_per_gas: U256::from(2_000_000_000u64),
+            max_fee_per_gas: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(50000u64),
+            to: Address::from([0x42; 20]),
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::from_slice(&[0x01, 0x02, 0x03]),
+            access_list: vec![AccessListEntry {
+                address: Address::from([0x11; 20]),
+                storage_keys: vec![Hash::from([0x22; 32])],
+            }],
+            max_fee_per_blob_gas: U256::from(1_000_000u64),
+            blob_versioned_hashes: vec![Hash::from([0x33; 32]), Hash::from([0x44; 32])],
+            v: U256::from(1u64),
+            r: U256::from(1u64),
+            s: U256::from(2u64),
+        };
+        let encoded = tx.encode_rlp();
+        let decoded = BlobTransaction::decode_rlp(&encoded[1..]).unwrap();
+        assert_eq!(tx, decoded);
+    }
+
+    #[test]
+    fn test_blob_tx_hash() {
+        let tx = BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(2_000_000_000u64),
+            max_fee_per_gas: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Address::ZERO,
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            access_list: vec![],
+            max_fee_per_blob_gas: U256::from(1_000_000u64),
+            blob_versioned_hashes: vec![Hash::from([0x11; 32])],
+            v: U256::from(0u64),
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+        let hash = tx.hash();
+        assert_eq!(hash.as_bytes().len(), 32);
+        assert_ne!(hash, Hash::ZERO);
+    }
+
+    #[test]
+    fn test_blob_tx_signing_hash() {
+        let tx = BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(2_000_000_000u64),
+            max_fee_per_gas: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Address::ZERO,
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            access_list: vec![],
+            max_fee_per_blob_gas: U256::from(1_000_000u64),
+            blob_versioned_hashes: vec![Hash::from([0x11; 32])],
+            v: U256::from(0u64),
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+        let signing_hash = tx.signing_hash();
+        assert_eq!(signing_hash.as_bytes().len(), 32);
+    }
+
+    // =========================================================================
     // Transaction Enum Tests
     // =========================================================================
 
@@ -1445,8 +1745,32 @@ mod tests {
     }
 
     #[test]
+    fn test_transaction_enum_blob() {
+        let blob = BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(2_000_000_000u64),
+            max_fee_per_gas: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Address::ZERO,
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            access_list: vec![],
+            max_fee_per_blob_gas: U256::from(1_000_000u64),
+            blob_versioned_hashes: vec![Hash::from([0x11; 32])],
+            v: U256::from(0u64),
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+        let tx = Transaction::Blob(blob);
+        let encoded = tx.encode_rlp();
+        let decoded = Transaction::decode_rlp(&encoded).unwrap();
+        assert_eq!(tx, decoded);
+    }
+
+    #[test]
     fn test_transaction_decode_invalid_type() {
-        let data = vec![0x03, 0xc0]; // Invalid type 0x03
+        let data = vec![0x04, 0xc0]; // Invalid type 0x04
         let result = Transaction::decode_rlp(&data);
         assert!(result.is_err());
     }

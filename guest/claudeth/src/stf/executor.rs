@@ -191,6 +191,19 @@ pub fn execute_transaction<S: State + Clone>(
                 total_fee
             }
         }
+        Transaction::Blob(tx) => {
+            let priority_fee = tx.max_priority_fee_per_gas;
+            let max_fee = tx.max_fee_per_gas;
+            let base_fee = exec_ctx.block_ctx.base_fee;
+
+            let total_fee = base_fee.saturating_add(priority_fee);
+
+            if total_fee > max_fee {
+                max_fee
+            } else {
+                total_fee
+            }
+        }
     };
 
     // Compute total cost = gas_limit * effective_gas_price + value
@@ -200,10 +213,15 @@ pub fn execute_transaction<S: State + Clone>(
 
     validate_balance(tx, state.get_balance(&sender), total_cost)?;
 
+    let blob_versioned_hashes = match tx {
+        Transaction::Blob(tx) => tx.blob_versioned_hashes.clone(),
+        _ => Vec::new(),
+    };
+
     let tx_ctx = TxContext {
         origin: sender,
         gas_price: effective_gas_price,
-        blob_versioned_hashes: Vec::new(),
+        blob_versioned_hashes,
     };
 
     // Step 2: Pre-execution state changes
@@ -379,6 +397,18 @@ fn execute_call<S: State + Clone>(
                 (entry.address, keys)
             })
             .collect(),
+        Transaction::Blob(tx) => tx
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
         _ => Vec::new(),
     };
 
@@ -451,6 +481,18 @@ fn execute_create<S: State + Clone>(
             })
             .collect(),
         Transaction::Eip1559(tx_data) => tx_data
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        Transaction::Blob(tx_data) => tx_data
             .access_list
             .iter()
             .map(|entry| {

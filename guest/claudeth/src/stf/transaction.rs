@@ -88,6 +88,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.nonce,
             Transaction::Eip2930(tx) => tx.nonce,
             Transaction::Eip1559(tx) => tx.nonce,
+            Transaction::Blob(tx) => tx.nonce,
         }
     }
 
@@ -97,6 +98,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.gas_limit,
             Transaction::Eip2930(tx) => tx.gas_limit,
             Transaction::Eip1559(tx) => tx.gas_limit,
+            Transaction::Blob(tx) => tx.gas_limit,
         }
     }
 
@@ -106,6 +108,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.to,
             Transaction::Eip2930(tx) => tx.to,
             Transaction::Eip1559(tx) => tx.to,
+            Transaction::Blob(tx) => Some(tx.to),
         }
     }
 
@@ -115,6 +118,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.value,
             Transaction::Eip2930(tx) => tx.value,
             Transaction::Eip1559(tx) => tx.value,
+            Transaction::Blob(tx) => tx.value,
         }
     }
 
@@ -124,6 +128,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.data.as_ref(),
             Transaction::Eip2930(tx) => tx.data.as_ref(),
             Transaction::Eip1559(tx) => tx.data.as_ref(),
+            Transaction::Blob(tx) => tx.data.as_ref(),
         }
     }
 
@@ -133,6 +138,7 @@ impl Transaction {
             Transaction::Legacy(_) => &[],
             Transaction::Eip2930(tx) => &tx.access_list,
             Transaction::Eip1559(tx) => &tx.access_list,
+            Transaction::Blob(tx) => &tx.access_list,
         }
     }
 
@@ -153,6 +159,7 @@ impl Transaction {
             }
             Transaction::Eip2930(tx) => Some(tx.chain_id),
             Transaction::Eip1559(tx) => Some(tx.chain_id),
+            Transaction::Blob(tx) => Some(tx.chain_id),
         }
     }
 
@@ -176,6 +183,17 @@ impl Transaction {
                     base_plus_priority
                 }
             }
+            Transaction::Blob(tx) => {
+                let priority_fee_per_gas = tx.max_priority_fee_per_gas;
+                let max_fee_per_gas = tx.max_fee_per_gas;
+
+                let base_plus_priority = base_fee.saturating_add(priority_fee_per_gas);
+                if max_fee_per_gas < base_plus_priority {
+                    max_fee_per_gas
+                } else {
+                    base_plus_priority
+                }
+            }
         }
     }
 
@@ -188,6 +206,7 @@ impl Transaction {
             Transaction::Legacy(tx) => tx.gas_price,
             Transaction::Eip2930(tx) => tx.gas_price,
             Transaction::Eip1559(tx) => tx.max_fee_per_gas,
+            Transaction::Blob(tx) => tx.max_fee_per_gas,
         }
     }
 
@@ -199,6 +218,7 @@ impl Transaction {
             Transaction::Legacy(_) => None,
             Transaction::Eip2930(_) => None,
             Transaction::Eip1559(tx) => Some(tx.max_priority_fee_per_gas),
+            Transaction::Blob(tx) => Some(tx.max_priority_fee_per_gas),
         }
     }
 }
@@ -272,7 +292,7 @@ pub fn validate_nonce(tx: &Transaction, account_nonce: U256) -> Result<(), Valid
 /// Checks:
 /// 1. Gas limit is sufficient to cover intrinsic gas
 /// 2. Gas limit does not exceed the block gas limit
-/// 3. For EIP-1559: max_fee_per_gas >= max_priority_fee_per_gas
+/// 3. For EIP-1559/EIP-4844: max_fee_per_gas >= max_priority_fee_per_gas
 ///
 /// # Arguments
 ///
@@ -296,11 +316,15 @@ pub fn validate_gas(tx: &Transaction, block_gas_limit: U256) -> Result<(), Valid
         return Err(ValidationError::GasLimitTooHigh);
     }
 
-    // For EIP-1559: check max_fee_per_gas >= max_priority_fee_per_gas
-    if let Transaction::Eip1559(tx) = tx
-        && tx.max_fee_per_gas < tx.max_priority_fee_per_gas
-    {
-        return Err(ValidationError::MaxPriorityFeePerGasTooHigh);
+    // For EIP-1559/4844: check max_fee_per_gas >= max_priority_fee_per_gas
+    match tx {
+        Transaction::Eip1559(tx) if tx.max_fee_per_gas < tx.max_priority_fee_per_gas => {
+            return Err(ValidationError::MaxPriorityFeePerGasTooHigh);
+        }
+        Transaction::Blob(tx) if tx.max_fee_per_gas < tx.max_priority_fee_per_gas => {
+            return Err(ValidationError::MaxPriorityFeePerGasTooHigh);
+        }
+        _ => {}
     }
 
     Ok(())
@@ -347,7 +371,7 @@ pub fn calculate_intrinsic_gas(tx: &Transaction) -> U256 {
         }
     }
 
-    // Access list cost (EIP-2930 and EIP-1559)
+    // Access list cost (EIP-2930, EIP-1559, EIP-4844)
     let access_list = tx.access_list();
     for entry in access_list {
         // 2400 gas per address
