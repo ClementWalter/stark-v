@@ -914,6 +914,7 @@ impl fmt::Display for Transaction {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
+    use k256::ecdsa::SigningKey;
 
     // =========================================================================
     // AccessListEntry Tests
@@ -1557,11 +1558,7 @@ mod tests {
 
     #[test]
     fn test_legacy_tx_sign_and_recover() {
-        use k256::ecdsa::SigningKey;
-        use rand::rngs::OsRng;
-
-        // Generate a random signing key
-        let signing_key = SigningKey::random(&mut OsRng);
+        let signing_key = test_signing_key(1);
         let verifying_key = signing_key.verifying_key();
 
         // Create unsigned transaction
@@ -1614,10 +1611,7 @@ mod tests {
 
     #[test]
     fn test_eip1559_tx_sign_and_recover() {
-        use k256::ecdsa::SigningKey;
-        use rand::rngs::OsRng;
-
-        let signing_key = SigningKey::random(&mut OsRng);
+        let signing_key = test_signing_key(2);
         let verifying_key = signing_key.verifying_key();
 
         let mut tx = Eip1559Transaction {
@@ -1741,6 +1735,12 @@ mod tests {
         let decoded = Eip1559Transaction::decode_rlp(&encoded[1..]).unwrap();
         assert_eq!(tx, decoded);
         assert_eq!(decoded.access_list.len(), 2);
+    }
+
+    fn test_signing_key(seed: u8) -> SigningKey {
+        let mut key_bytes = [0u8; 32];
+        key_bytes[31] = seed;
+        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
     }
 
     #[test]

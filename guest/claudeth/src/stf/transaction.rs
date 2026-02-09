@@ -517,13 +517,11 @@ mod tests {
     use super::*;
     use crate::types::transaction::{Eip1559Transaction, Eip2930Transaction, LegacyTransaction};
     use crate::types::Bytes;
+    use k256::ecdsa::SigningKey;
 
     // Helper to create a valid signed transaction for testing
     fn create_signed_legacy_tx() -> (LegacyTransaction, Address) {
-        use k256::ecdsa::SigningKey;
-        use rand::rngs::OsRng;
-
-        let signing_key = SigningKey::random(&mut OsRng);
+        let signing_key = test_signing_key(1);
         let verifying_key = signing_key.verifying_key();
 
         let mut tx = LegacyTransaction {
@@ -567,10 +565,7 @@ mod tests {
     }
 
     fn create_signed_eip1559_tx() -> (Eip1559Transaction, Address) {
-        use k256::ecdsa::SigningKey;
-        use rand::rngs::OsRng;
-
-        let signing_key = SigningKey::random(&mut OsRng);
+        let signing_key = test_signing_key(2);
         let verifying_key = signing_key.verifying_key();
 
         let mut tx = Eip1559Transaction {
@@ -646,6 +641,12 @@ mod tests {
 
         let result = validate_signature(&tx);
         assert_eq!(result, Err(ValidationError::InvalidSignature));
+    }
+
+    fn test_signing_key(seed: u8) -> SigningKey {
+        let mut key_bytes = [0u8; 32];
+        key_bytes[31] = seed;
+        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
     }
 
     #[test]

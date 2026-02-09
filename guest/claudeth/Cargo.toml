@@ -13,4 +13,3 @@ k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 [dev-dependencies]
 serde_json = { workspace = true }
 hex = { workspace = true }
-rand = { workspace = true, features = ["getrandom"] }

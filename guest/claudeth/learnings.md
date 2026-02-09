@@ -1,5 +1,26 @@
 # Claudeth Development Learnings
 
+## Session 27: Remove rand from Tests (2026-02-09)
+
+**Status**: Phase E Task E0 COMPLETE
+
+### What Was Accomplished
+1. ✅ Replaced random signing keys in tests with deterministic fixed keys
+2. ✅ Removed `rand` dev-dependency from `Cargo.toml`
+
+### Notes
+- `cargo test -p claudeth --release` passed (1076 unit + 92 doc tests).
+- `prek run` still fails due to sandbox permissions writing `/Users/clementwalter/.cache/prek/prek.log`.
+
+### DO's ✅
+1. **Use deterministic test keys** via `SigningKey::from_bytes` with fixed scalar bytes
+2. **Use distinct seeds for negative tests** to ensure different keys
+3. **Clean up unused imports** after removing `OsRng`
+
+### DON'Ts ❌
+1. **Don't rely on `OsRng` in tests** - it adds unnecessary dependency and nondeterminism
+2. **Don't keep unused dev-dependencies** - remove them immediately to keep `Cargo.toml` accurate
+
 ## Session 26: Rust 2024 Edition Compliance + README Accuracy (2026-02-09)
 
 **Status**: Phase C Task C1 maintenance + Documentation accuracy

@@ -200,6 +200,7 @@ pub fn recover_address(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use k256::ecdsa::SigningKey;
 
     // =========================================================================
     // Real Ethereum Transaction Test Vectors
@@ -394,11 +395,8 @@ mod tests {
 
     #[test]
     fn test_sign_and_verify_roundtrip() {
-        use k256::ecdsa::{signature::Signer, SigningKey};
-        use rand::rngs::OsRng;
-
-        // Generate a random signing key for testing
-        let signing_key = SigningKey::random(&mut OsRng);
+        use k256::ecdsa::signature::Signer;
+        let signing_key = test_signing_key(1);
         let verifying_key = signing_key.verifying_key();
 
         // Message to sign
@@ -422,11 +420,7 @@ mod tests {
 
     #[test]
     fn test_sign_and_recover_public_key() {
-        use k256::ecdsa::SigningKey;
-        use rand::rngs::OsRng;
-
-        // Generate a signing key
-        let signing_key = SigningKey::random(&mut OsRng);
+        let signing_key = test_signing_key(2);
         let verifying_key = signing_key.verifying_key();
 
         // Message to sign
@@ -457,11 +451,7 @@ mod tests {
 
     #[test]
     fn test_sign_and_recover_address() {
-        use k256::ecdsa::SigningKey;
-        use rand::rngs::OsRng;
-
-        // Generate a signing key
-        let signing_key = SigningKey::random(&mut OsRng);
+        let signing_key = test_signing_key(3);
         let verifying_key = signing_key.verifying_key();
 
         // Message to sign
@@ -494,12 +484,9 @@ mod tests {
 
     #[test]
     fn test_verify_wrong_public_key() {
-        use k256::ecdsa::{signature::Signer, SigningKey};
-        use rand::rngs::OsRng;
-
-        // Generate two different keys
-        let signing_key = SigningKey::random(&mut OsRng);
-        let wrong_key = SigningKey::random(&mut OsRng);
+        use k256::ecdsa::signature::Signer;
+        let signing_key = test_signing_key(4);
+        let wrong_key = test_signing_key(5);
 
         // Message to sign
         let message = b"Test message";
@@ -523,11 +510,8 @@ mod tests {
 
     #[test]
     fn test_verify_wrong_message() {
-        use k256::ecdsa::{signature::Signer, SigningKey};
-        use rand::rngs::OsRng;
-
-        // Generate a signing key
-        let signing_key = SigningKey::random(&mut OsRng);
+        use k256::ecdsa::signature::Signer;
+        let signing_key = test_signing_key(6);
         let verifying_key = signing_key.verifying_key();
 
         // Sign one message
@@ -549,5 +533,11 @@ mod tests {
         // Verification should fail
         let result = verify_signature(&message_hash2, &sig_bytes, &public_key);
         assert_eq!(result, Ok(false));
+    }
+
+    fn test_signing_key(seed: u8) -> SigningKey {
+        let mut key_bytes = [0u8; 32];
+        key_bytes[31] = seed;
+        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
     }
 }

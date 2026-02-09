@@ -29,7 +29,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 - Block processing with receipts, transactions, logs bloom, and state root validation
 
 ### ⚠️ Known Gaps vs README Requirements
-1. **Dependency-free**: `k256` and `rand` are still used (`Cargo.toml`).
+1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: no EELS test vector integration or runner.
 
@@ -76,7 +76,7 @@ Goal: finalize per-transaction correctness before block processing.
 
 ### Phase E: Dependency-Free Crypto
 - Replace `k256` with in-tree secp256k1 (verify + recover).
-- Remove `rand` usage from tests via deterministic vectors.
+- Remove `rand` usage from tests via deterministic vectors. ✅
 
 ---
 
@@ -154,6 +154,10 @@ Goal: finalize per-transaction correctness before block processing.
 
 **README now accurately reflects implementation status** ✅
 
+### Phase E Status: IN PROGRESS
+- **Task E0: Remove rand dev-dependency** ✅ (deterministic signing keys in tests)
+- **Remaining**: replace `k256` with in-tree secp256k1 implementation
+
 ---
 
 ## Available Next Tasks
@@ -175,7 +179,6 @@ With Phase C blocked on design work, the following tasks are available:
 - Implement ECDSA signature verification
 - Implement public key recovery
 - Replace k256 dependency
-- Remove rand from tests with deterministic vectors
 
 **Risk**: Cryptographic implementation errors could introduce vulnerabilities
 
