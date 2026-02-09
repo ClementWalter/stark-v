@@ -139,14 +139,25 @@ while preserving parent-hash fallback behavior.
 and the base fee portion is burned. This fixes EIP-1559-era balance accounting and
 should reduce state root mismatches in tests that assert coinbase balances.
 
+### Task N6: EIP-1559 upfront max-fee charge + refund fix ✅
+**Result**: Sender now prepays `gas_limit * max_fee_per_gas` and receives a refund for
+unused gas plus the difference between max fee and effective fee. This aligns
+with EIP-1559 accounting and should improve gas mismatch cases.
+
 ---
 
 ## Immediate Next Task (Execute Now)
 
-**Phase D: Re-baseline EELS After Base-Fee Burn Fix** (UNBLOCKED - GAS TRACING FULLY OPERATIONAL)
+**Phase D: Re-baseline EELS After EIP-1559 Upfront Charge Fix** (UNBLOCKED - GAS TRACING FULLY OPERATIONAL)
 
-### Task D3.0: Re-run EELS and Re-categorize Failures
-**Status**: Base-fee burn / coinbase tip fix landed; re-run EELS to confirm updated failure mix.
+### Task D3.0: Re-run EELS and Re-categorize Failures ✅
+**Status**: COMPLETED - Re-ran EELS after EIP-1559 upfront charge fix.
+
+**Results**: No change in test results (still 0/20 passing). The upfront charge fix addresses sender balance accounting but doesn't affect these test vectors. Failures remain identical to Session 59:
+- State root mismatches: 8 tests
+- Gas undercharges: 2 tests (mergeExample -19900)
+- Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage +2100/+4200)
+- Execution failures: 4 tests (ShanghaiLove, StrangeContractCreation)
 
 **Completed Infrastructure** (Sessions 48-51):
 - ✅ EVM bytecode disassembler utility (Session 48)
@@ -196,10 +207,10 @@ Gas Trace (initial: 340474, used: 22130)
    - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks
    - Likely issue with account/storage state computation or MPT
 
-**Current Failures** (Session 59 actual results - still 0/20 passing):
+**Current Failures** (Session 64 re-baseline - still 0/20 passing):
 - State root mismatches: 8 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2)
 - Gas undercharges: 2 tests (mergeExample x2: -19900 gas)
-- Gas overcharges: 6 tests (tipInsideBlock x2: +9200 gas, tloadDoesNotPersistCrossTxn x2: +2100 gas)
+- Gas overcharges: 6 tests (tipInsideBlock x2: +9200 gas, tloadDoesNotPersistCrossTxn x2: +2100 gas, transStorageBlockchain x2: +4200 gas)
 - Execution failures: 4 tests (ShanghaiLove x2, StrangeContractCreation x2)
 
 **Debugging Strategy**:

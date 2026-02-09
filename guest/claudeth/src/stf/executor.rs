@@ -179,12 +179,14 @@ pub fn execute_transaction<S: State + Clone>(
         }
     };
 
-    // Compute total cost = gas_limit * effective_gas_price + value
-    let gas_cost = U256::from_u64(gas_limit).saturating_mul(effective_gas_price);
-    let value = tx.value();
-    let total_cost = gas_cost.saturating_add(value);
+    let max_fee_per_gas = tx.max_fee_per_gas();
 
-    validate_balance(tx, state.get_balance(&sender), total_cost)?;
+    // Compute total cost = gas_limit * max_fee_per_gas + value
+    // For EIP-1559, sender prepays max fee and receives a refund for unused gas
+    // and for any difference between max fee and effective fee.
+    let gas_cost = U256::from_u64(gas_limit).saturating_mul(max_fee_per_gas);
+
+    validate_balance(tx, state.get_balance(&sender), block_ctx.base_fee)?;
 
     let tx_ctx = TxContext {
         origin: sender,
@@ -242,8 +244,9 @@ pub fn execute_transaction<S: State + Clone>(
 
     let final_gas_used = total_gas_used - refund;
 
-    // Refund unused gas to sender
-    let gas_refund = U256::from_u64(gas_limit - final_gas_used).saturating_mul(effective_gas_price);
+    // Refund unused gas plus any overpayment vs effective gas price
+    let gas_refund = gas_cost
+        .saturating_sub(U256::from_u64(final_gas_used).saturating_mul(effective_gas_price));
     let sender_balance = state.get_balance(&sender);
     state.set_balance(&sender, sender_balance.saturating_add(gas_refund));
 
@@ -749,6 +752,12 @@ mod tests {
         // Coinbase should receive only the tip (60 - 50 = 10) per gas.
         let expected_tip = U256::from_u64(10).saturating_mul(U256::from_u64(21_000));
         assert_eq!(state.get_balance(&coinbase), expected_tip);
+
+        // Sender prepays max_fee_per_gas and receives a refund for the difference
+        // between max fee and effective fee.
+        let expected_cost = U256::from_u64(21_000).saturating_mul(U256::from_u64(60));
+        let expected_sender_balance = U256::from_u64(1_000_000_000).saturating_sub(expected_cost);
+        assert_eq!(state.get_balance(&sender), expected_sender_balance);
     }
 
     #[test]

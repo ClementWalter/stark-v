@@ -1,5 +1,56 @@
 # Claudeth Development Learnings
 
+## Session 64: Re-baseline EELS After EIP-1559 Fix (2026-02-09)
+
+**Status**: Completed - EELS test results unchanged
+
+### What Was Accomplished
+1. ✅ Re-ran EELS tests after EIP-1559 upfront charge fix
+2. ✅ Categorized failures into 4 categories (state root, gas under/over, execution)
+3. ✅ Confirmed test results identical to Session 59 baseline
+
+### Key Findings
+**No change in EELS results after EIP-1559 sender prepay fix:**
+- State root mismatches: 8 tests
+- Gas undercharges: 2 tests (mergeExample -19900)
+- Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage +2100/+4200)
+- Execution failures: 4 tests
+
+**Analysis**: The EIP-1559 upfront charge fix addresses sender balance accounting correctness but doesn't affect these particular test vectors. The fix is still valuable for production correctness.
+
+### DO's ✅
+1. **Re-baseline after every accounting change** to track impact on test results
+2. **Categorize failures by type** (state, gas, execution) to guide debugging strategy
+3. **Document when changes don't affect tests** - it confirms the change was orthogonal
+
+### DON'Ts ❌
+1. **Don't assume accounting fixes will affect EELS tests** - they may test different paths
+2. **Don't skip re-baseline** - even negative results (no change) are valuable data
+
+### Next Steps (from PLAN)
+According to PLAN priorities, next investigation target is:
+1. **tipInsideBlock gas overcharge** (+9200 gas) - Session 60/62 already analyzed, needs gas tracing
+2. Investigate SSTORE gas costs - may be root cause of overcharges
+3. Use gas tracing infrastructure (Sessions 48-51) to debug per-opcode costs
+
+## Session 63: Fix EIP-1559 Upfront Gas Charge (2026-02-09)
+
+**Status**: Completed - sender prepay/refund aligned with EIP-1559
+
+### What Was Accomplished
+1. ✅ Sender now prepays `gas_limit * max_fee_per_gas` instead of `effective_gas_price`
+2. ✅ Refund now includes unused gas plus the max-fee vs effective-fee delta
+3. ✅ Added sender balance assertion in EIP-1559 execution test
+
+### DO's ✅
+1. **Precharge EIP-1559 txs at max fee** to match protocol requirements
+2. **Refund the max-fee delta** for used gas to avoid overcharging senders
+3. **Test sender balance deltas** for EIP-1559 to catch accounting regressions
+
+### DON'Ts ❌
+1. **Don't precharge at effective gas price** for EIP-1559 txs
+2. **Don't forget refund of max-fee vs effective-fee difference**
+
 ## Session 62: Investigate EIP-2929 Per-Transaction Access Lists (2026-02-09)
 
 **Status**: Completed - EIP-2929 verified correct, root cause still unknown
