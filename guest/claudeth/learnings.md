@@ -1,5 +1,24 @@
 # Claudeth Development Learnings
 
+## Session 89: Pre-State Storage Root Verification (2026-02-09)
+
+**Status**: Completed - added validation in EELS runner
+
+### What Was Accomplished
+1. ✅ Added pre-state storage root verification after `apply_pre_state`
+2. ✅ Ensured mismatches are surfaced early with precise account/root diagnostics
+
+### Tooling Notes
+- `PREK_HOME=./.prek prek run` failed: unable to create `/Users/clementwalter/Documents/starkware/stark-v/.git/index.lock` (permission issue outside sandbox)
+
+### DO's ✅
+1. **Validate pre-state loading** before debugging runtime storage persistence
+2. **Fail fast with explicit root diffs** when fixture parsing or storage loading diverges
+
+### DON'Ts ❌
+1. **Don't assume pre-state storage is correct** without validation
+2. **Don't debug execution paths** until pre-state load is confirmed accurate
+
 ## Session 88: Storage Persistence Bug Investigation (2026-02-09)
 
 **Status**: Ongoing - Root cause not yet identified

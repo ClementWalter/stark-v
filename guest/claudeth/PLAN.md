@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 87)
+Date: 2026-02-09 (Session 89)
 
 ## Summary
 
@@ -42,7 +42,7 @@ commit without actual test verification. The actual status has always been 0/20 
 **Provenance**: EELS status is from the last re-run on 2026-02-09; not re-run in this session.
 
 ### ✅ Unit/Doc Tests (Release)
-Ran `cargo test -p claudeth --release` on 2026-02-09:
+Ran `cargo test -p claudeth --release` on 2026-02-09 (Session 89):
 - Unit tests and doc tests passed
 - EELS tests remain ignored by default (`#[ignore]`), so their status is unchanged
 
@@ -157,10 +157,10 @@ Storage values are not persisting from pre-state through block execution:
 - Unit tests for storage work correctly in isolation
 - Bug only manifests in full EELS blockchain tests
 
-**Investigation Approach (Session 88)**:
+**Investigation Approach (Session 88-89)**:
 1. ~~Remove storage_root recomputation in compute_state_root~~ (tried, didn't fix)
 2. ~~Remove empty storage HashMap removal in sstore~~ (tried, didn't fix)
-3. TODO: Check actual EELS test JSON pre-state storage values
+3. ✅ Added pre-state storage root verification in EELS runner to validate pre-state loading
 4. TODO: Trace state cloning during transaction execution
 5. TODO: Add debug instrumentation to track storage HashMap throughout test flow
 6. TODO: Verify storage persists after apply_pre_state but before block execution

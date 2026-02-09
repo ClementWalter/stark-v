@@ -294,6 +294,17 @@ fn apply_pre_state(
             state.sstore(&address, &key_u256, value_u256);
         }
     }
+
+    for (address_str, account) in pre {
+        let address = parse_address(address_str)?;
+        let expected_storage_root = compute_expected_storage_root(&account.storage)?;
+        let actual_storage_root = state.storage_root(&address);
+        if actual_storage_root != expected_storage_root {
+            return Err(format!(
+                "pre-state storage root mismatch for {address_str}: expected {expected_storage_root}, got {actual_storage_root}"
+            ));
+        }
+    }
     state.set_touch_tracking(true);
 
     Ok(())
