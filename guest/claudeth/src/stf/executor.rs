@@ -451,14 +451,30 @@ fn execute_create<S: State + Clone>(
 
     match result {
         Ok((exec_result, mut returned_state)) => {
+            let mut final_gas_used = exec_result.gas_used;
+            let mut success = exec_result.success;
+
             if exec_result.success && !exec_result.return_data.is_empty() {
-                // Deploy the contract code returned by the constructor
-                returned_state.set_code(&contract_address, exec_result.return_data.clone());
+                // Calculate code deposit cost: 200 gas per byte (G_codedeposit)
+                use crate::evm::gas::GAS_CODE_DEPOSIT;
+                let code_size = exec_result.return_data.len() as u64;
+                let code_deposit_cost = code_size.saturating_mul(GAS_CODE_DEPOSIT);
+
+                // Check if we have enough gas remaining for code deposit
+                let gas_remaining = gas_available.saturating_sub(exec_result.gas_used);
+                if gas_remaining >= code_deposit_cost {
+                    // Charge the code deposit gas and deploy the contract
+                    final_gas_used = final_gas_used.saturating_add(code_deposit_cost);
+                    returned_state.set_code(&contract_address, exec_result.return_data.clone());
+                } else {
+                    // Out of gas during code deposit - transaction fails
+                    success = false;
+                }
             }
 
             Ok((
-                exec_result.success,
-                exec_result.gas_used,
+                success,
+                final_gas_used,
                 exec_result.gas_refund,
                 exec_result.return_data,
                 convert_logs(exec_result.logs),
