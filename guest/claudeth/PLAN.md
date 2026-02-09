@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-08
+Date: 2026-02-09
 
 ## Executive Summary
 
@@ -30,7 +30,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` and `rand` are still used (`Cargo.toml`).
-2. **Guest program entry point**: no `main.rs` or guest entry for `riscv32`.
+2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: no EELS test vector integration or runner.
 
 ---
@@ -67,7 +67,8 @@ Goal: finalize per-transaction correctness before block processing.
 
 ### Phase C: Guest Entry Point
 - Add `src/main.rs` with guest entry for `riscv32`.
-- Define I/O format (block + witness inputs, result outputs).
+- Define I/O format (block + state snapshot inputs, result outputs).
+- Follow up with proof-based witness format using Partial MPT proofs.
 
 ### Phase D: EELS Compliance
 - Integrate official EELS test vectors.
@@ -79,7 +80,7 @@ Goal: finalize per-transaction correctness before block processing.
 
 ---
 
-## Current Status Summary (2026-02-08)
+## Current Status Summary (2026-02-09)
 
 ### ✅ Completed (Phase A - 100% COMPLETE)
 - **Per-transaction cleanup** ✅ (Session 14)
@@ -113,7 +114,7 @@ Goal: finalize per-transaction correctness before block processing.
 
 ## Immediate Next Task (Execute Now)
 
-**Phase C: Guest Entry Point** (NEXT)
+**Phase C: Witness-based State Reconstruction** (NEXT)
 
 ### Task C0: no_std riscv32 Compilation (✅ COMPLETE)
 - Fix missing vec! macro imports in interpreter, account, trie, node, receipt
@@ -126,8 +127,12 @@ Goal: finalize per-transaction correctness before block processing.
 - Zero clippy warnings
 - **claudeth now compiles for riscv32im-unknown-none-elf** ✅
 
-### Task C1: Guest Entry Point (NEXT)
+### Task C1: Guest Entry Point (✅ COMPLETE)
 - Create src/main.rs for riscv32 target
-- Define I/O format (block + witness inputs, result outputs)
+- Define RLP I/O format (block + state snapshot inputs, result outputs)
 - Wire block processing to guest program
-- Test with sample block data
+
+### Task C2: Witness-based State Reconstruction (NEXT)
+- Define proof-based input format using Partial MPT proofs
+- Rebuild minimal account/storage state from proofs
+- Validate reconstructed state root against header

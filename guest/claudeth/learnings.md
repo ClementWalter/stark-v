@@ -1,5 +1,29 @@
 # Claudeth Development Learnings
 
+## Session 25: Guest Entry Point + State Snapshot I/O (2026-02-09)
+
+**Status**: Phase C Task C1 COMPLETE - Guest entry now wired with RLP I/O
+
+### What Was Accomplished
+1. ✅ Added `src/main.rs` with riscv32 entry and stdin fallback
+2. ✅ Defined RLP input/output format for block processing
+3. ✅ Added `InMemoryState::set_nonce` for snapshot initialization
+4. ✅ Wired block processing to guest program entry
+
+### Notes
+- `prek run` still fails in this sandbox due to inability to write to parent `.git/index.lock`.
+
+### DO's ✅
+1. **Keep guest I/O dependency-free** - use existing RLP helpers and raw buffers
+2. **Use explicit RLP list formats** - document input/output layout in `main.rs`
+3. **Initialize state via setters** - set balance, nonce, code, and storage explicitly
+4. **Return structured error codes** - keep failures machine-decodable
+
+### DON'Ts ❌
+1. **Don't rely on external guest libs** - keep the guest entry minimal
+2. **Don't skip nonce initialization** - transaction validation depends on correct nonce
+3. **Don't emit unstructured errors** - error codes are required for host tooling
+
 ## Session 24: riscv32 no_std Compilation Fixed (2026-02-09)
 
 **Status**: Phase C Task C0 COMPLETE - Claudeth now compiles for riscv32im-unknown-none-elf
