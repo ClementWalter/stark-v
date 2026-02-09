@@ -28,6 +28,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
  - Block header parent validation (parent hash, number, timestamp, gas-limit bounds)
 - Block processing with receipts, transactions, logs bloom, and state root validation
 - EIP-2929 warm/cold access tracking with unit test coverage for warm refunds
+- Storage trie keys hashed with Keccak-256 (Ethereum-compliant storage MPT)
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
@@ -120,6 +121,7 @@ Goal: finalize per-transaction correctness before block processing.
 **Phase D: EELS Gas/Execution Mismatches** (NEXT)
 
 ### Task D3.x: Investigate Gas/Execution Mismatches (READY)
+- Rerun EELS tests to confirm storage-root mismatches are resolved after storage-key hashing fix.
 - Inspect EELS access lists to confirm whether warm accesses are expected.
 - Add targeted test vectors for cold vs warm access behavior if needed.
 - Trace failing transactions (ShanghaiLove, StrangeContractCreation) to pinpoint opcode/gas mismatch.
@@ -245,10 +247,11 @@ Goal: finalize per-transaction correctness before block processing.
 11. ✅ Added unit test verifying warm BALANCE refund behavior (Session 39)
 12. ✅ **CRITICAL FIX**: Charge EIP-2929 warm/cold gas for SSTORE (Session 40)
 13. ✅ **FIXED**: Charge EIP-3860 initcode gas for CREATE transactions (Session 41)
-14. ⚠️ **REMAINING**: optionsTest + shanghaiExample state root mismatches (gas now correct!)
+14. ⚠️ **PENDING RE-VERIFY**: optionsTest + shanghaiExample state root mismatches (likely fixed by storage-key hashing; rerun EELS)
 15. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
 16. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
 17. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+18. ✅ **FIXED**: Storage trie now hashes keys with Keccak-256 (Ethereum-compliant storage MPT)
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 

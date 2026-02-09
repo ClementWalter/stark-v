@@ -6,13 +6,14 @@
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
 
-use crate::crypto::rlp;
+use crate::crypto::{keccak256, rlp};
 use crate::state::partial_mpt::{Trie, proof::Proof};
 use crate::types::{Hash, U256};
 
 /// Contract storage trie
 ///
 /// Maps 256-bit storage keys to 256-bit values using a Merkle Patricia Trie.
+/// Storage keys are hashed with Keccak-256 before insertion, matching Ethereum.
 /// Non-zero values are RLP-encoded before being stored in the trie.
 /// Zero values are treated as deletions (key is removed from trie).
 #[derive(Clone, Debug)]
@@ -31,9 +32,9 @@ impl Storage {
     ///
     /// Returns U256::ZERO if the key doesn't exist (Ethereum behavior).
     pub fn get(&self, key: &U256) -> U256 {
-        let key_bytes = key.to_be_bytes();
+        let key_hash = keccak256(&key.to_be_bytes());
 
-        if let Some(value_rlp) = self.trie.get(&key_bytes) {
+        if let Some(value_rlp) = self.trie.get(key_hash.as_bytes()) {
             // Decode RLP-encoded U256
             if let Ok((value, _)) = rlp::decode_u256(&value_rlp) {
                 value
@@ -50,11 +51,11 @@ impl Storage {
     /// If the value is zero, the key is deleted (Ethereum behavior).
     /// Returns the previous value.
     pub fn set(&mut self, key: &U256, value: U256) -> U256 {
-        let key_bytes = key.to_be_bytes();
+        let key_hash = keccak256(&key.to_be_bytes());
 
         if value == U256::ZERO {
             // Delete the key if value is zero
-            if let Some(old_rlp) = self.trie.delete(&key_bytes)
+            if let Some(old_rlp) = self.trie.delete(key_hash.as_bytes())
                 && let Ok((old_value, _)) = rlp::decode_u256(&old_rlp)
             {
                 return old_value;
@@ -64,7 +65,7 @@ impl Storage {
             // RLP-encode the value and insert
             let value_rlp = rlp::encode_u256(&value);
 
-            if let Some(old_rlp) = self.trie.insert(&key_bytes, value_rlp)
+            if let Some(old_rlp) = self.trie.insert(key_hash.as_bytes(), value_rlp)
                 && let Ok((old_value, _)) = rlp::decode_u256(&old_rlp)
             {
                 return old_value;
@@ -90,8 +91,8 @@ impl Storage {
     ///
     /// The proof can be used to verify the value at this key.
     pub fn generate_proof(&self, key: &U256) -> Result<Proof, crate::state::partial_mpt::proof::ProofError> {
-        let key_bytes = key.to_be_bytes();
-        self.trie.generate_proof(&key_bytes)
+        let key_hash = keccak256(&key.to_be_bytes());
+        self.trie.generate_proof(key_hash.as_bytes())
     }
 
     /// Returns true if the storage is empty
