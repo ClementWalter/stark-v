@@ -29,6 +29,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 - Block processing with receipts, transactions, logs bloom, and state root validation
 - EIP-2929 warm/cold access tracking with unit test coverage for warm refunds
 - Storage trie keys hashed with Keccak-256 (Ethereum-compliant storage MPT)
+- Ommers hash default uses `keccak256(rlp([]))` (EMPTY_OMMERS_HASH)
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
@@ -255,6 +256,7 @@ Goal: finalize per-transaction correctness before block processing.
 19. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
 20. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
 21. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+22. ✅ **FIXED**: Default ommers hash now uses EMPTY_OMMERS_HASH (keccak256(rlp([])))
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 

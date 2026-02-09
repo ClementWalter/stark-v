@@ -1,5 +1,23 @@
 # Claudeth Development Learnings
 
+## Session 46: Use EMPTY_OMMERS_HASH for Block Headers (2026-02-09)
+
+**Status**: Default block headers and EELS conversions now use the Ethereum empty ommers hash
+
+### What Was Accomplished
+1. ✅ **FIXED**: BlockHeader default `ommers_hash` now uses `EMPTY_OMMERS_HASH` (keccak256(rlp([])))
+2. ✅ Updated EELS test header conversion to default to `EMPTY_OMMERS_HASH` when uncle hash is absent
+3. ✅ Updated doc examples to reference `EMPTY_OMMERS_HASH`
+
+### DO's ✅
+1. **Use `EMPTY_OMMERS_HASH` for empty uncle lists** - Ethereum uses keccak256(rlp([])), not zero
+2. **Default to spec constants** in conversions (EELS headers, examples, defaults)
+3. **Update doc tests when constants change** to avoid stale examples
+
+### DON'Ts ❌
+1. **Don't use `Hash::ZERO` for ommers/uncle hash** - it breaks block hash and parent validation
+2. **Don't assume missing fields are zero** - check Ethereum spec defaults
+
 ## Session 45: Fix State Trie Address Key Hashing (2026-02-09)
 
 **Status**: State trie now hashes address keys with keccak256; state roots changed but still mismatch

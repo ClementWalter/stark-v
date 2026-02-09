@@ -201,13 +201,13 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 /// # Example
 /// ```
 /// use claudeth::stf::process_block;
-/// use claudeth::types::{BlockHeader, Transaction, U256};
+/// use claudeth::types::{BlockHeader, Transaction, U256, EMPTY_OMMERS_HASH};
 /// use claudeth::state::{InMemoryState, EMPTY_TRIE_ROOT};
 /// use claudeth::types::Address;
 ///
 /// let parent = BlockHeader {
 ///     parent_hash: Default::default(),
-///     ommers_hash: Default::default(),
+///     ommers_hash: EMPTY_OMMERS_HASH,
 ///     coinbase: Address::ZERO,
 ///     state_root: EMPTY_TRIE_ROOT,
 ///     transactions_root: EMPTY_TRIE_ROOT,
@@ -365,12 +365,12 @@ pub fn process_block<S: State + Clone>(
 mod tests {
     use super::*;
     use crate::state::InMemoryState;
-    use crate::types::{Address, Bytes, Hash};
+    use crate::types::{Address, Bytes, Hash, EMPTY_OMMERS_HASH};
 
     fn create_test_parent() -> BlockHeader {
         BlockHeader {
             parent_hash: Hash::ZERO,
-            ommers_hash: Hash::ZERO,
+            ommers_hash: EMPTY_OMMERS_HASH,
             coinbase: Address::ZERO,
             state_root: EMPTY_TRIE_ROOT,
             transactions_root: EMPTY_TRIE_ROOT,

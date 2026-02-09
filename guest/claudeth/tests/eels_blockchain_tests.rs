@@ -527,7 +527,7 @@ fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::
         .map(|h| Hash::from_str(h))
         .transpose()
         .map_err(|err| format!("invalid uncle_hash: {err}"))?
-        .unwrap_or(Hash::ZERO);
+        .unwrap_or(claudeth::types::EMPTY_OMMERS_HASH);
     let coinbase = parse_address(&test_header.coinbase)?;
     let state_root =
         Hash::from_str(&test_header.state_root).map_err(|err| format!("invalid state_root: {err}"))?;

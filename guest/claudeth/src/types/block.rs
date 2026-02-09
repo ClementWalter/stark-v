@@ -22,6 +22,16 @@ use crate::crypto::keccak256;
 use crate::crypto::rlp::{self, RlpError};
 use crate::types::{Address, Bytes, Hash, U256};
 
+/// Ethereum empty ommers hash: keccak256(rlp([]))
+///
+/// This is 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347.
+pub const EMPTY_OMMERS_HASH: Hash = Hash::new([
+    0x1d, 0xcc, 0x4d, 0xe8, 0xde, 0xc7, 0x5d, 0x7a,
+    0xab, 0x85, 0xb5, 0x67, 0xb6, 0xcc, 0xd4, 0x1a,
+    0xd3, 0x12, 0x45, 0x1b, 0x94, 0x8a, 0x74, 0x13,
+    0xf0, 0xa1, 0x42, 0xfd, 0x40, 0xd4, 0x93, 0x47,
+]);
+
 // Helper functions for serializing/deserializing [u8; 256]
 fn serialize_logs_bloom<S>(bloom: &[u8; 256], serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -56,11 +66,11 @@ where
 /// # Examples
 ///
 /// ```
-/// use claudeth::types::{BlockHeader, Address, Hash, U256, Bytes};
+/// use claudeth::types::{BlockHeader, Address, Hash, U256, Bytes, EMPTY_OMMERS_HASH};
 ///
 /// let header = BlockHeader {
 ///     parent_hash: Hash::ZERO,
-///     ommers_hash: Hash::ZERO,
+///     ommers_hash: EMPTY_OMMERS_HASH,
 ///     coinbase: Address::ZERO,
 ///     state_root: Hash::ZERO,
 ///     transactions_root: Hash::ZERO,
@@ -487,7 +497,7 @@ impl Default for BlockHeader {
     fn default() -> Self {
         BlockHeader {
             parent_hash: Hash::ZERO,
-            ommers_hash: Hash::ZERO,
+            ommers_hash: EMPTY_OMMERS_HASH,
             coinbase: Address::ZERO,
             state_root: Hash::ZERO,
             transactions_root: Hash::ZERO,
