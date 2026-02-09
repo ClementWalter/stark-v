@@ -1,5 +1,53 @@
 # Claudeth Development Learnings
 
+## Session 30: Phase D Task D2.2 - EELS Type Converters (2026-02-09)
+
+**Status**: Phase D Task D2.2 COMPLETE ✅
+
+### What Was Accomplished
+1. ✅ Added `parse_u64` helper to convert hex strings to u64 with overflow checking
+2. ✅ Implemented `convert_test_transaction` to map EELS TestTransaction to claudeth::types::Transaction
+3. ✅ Implemented `convert_test_block_header` to map EELS TestBlockHeader to claudeth::types::BlockHeader
+4. ✅ Extended EELS parsing test to validate transaction and block header conversion
+5. ✅ Updated PLAN.md to reflect D2.2 completion
+6. ✅ `cargo test -p claudeth --release` passing (1168 tests)
+
+### Key Implementation Details
+
+**Transaction Conversion**:
+- Detects transaction type from `tx_type` field (0x00, 0x01, 0x02)
+- Maps Legacy, EIP-2930, and EIP-1559 transactions correctly
+- Handles empty `to` field as contract creation (None)
+- Converts access lists with address and storage keys
+- Preserves all signature fields (v, r, s)
+
+**Block Header Conversion**:
+- Maps all 20 header fields including post-merge EIPs
+- Handles optional fields (uncle_hash, withdrawals_root, blob_gas, parent_beacon_block_root)
+- Validates logs_bloom length (256 bytes)
+- Uses `u64::try_from(U256)` for safe u64 conversion
+
+### DO's ✅
+1. **Use `u64::try_from(U256)` for safe conversions** - claudeth U256 implements TryFrom<U256> for u64
+2. **Handle empty/missing `to` field** - empty string or "0x" means contract creation (None)
+3. **Detect transaction type early** - parse tx_type field to determine which struct to build
+4. **Validate fixed-size arrays** - logs_bloom must be exactly 256 bytes
+5. **Handle optional EELS fields** - use `.as_ref().map().transpose()?` pattern for Option<String> to Option<Hash>
+
+### DON'Ts ❌
+1. **Don't assume methods exist** - U256 has `try_into()` (via TryInto trait), not `try_into_u64()`
+2. **Don't panic on missing required fields** - return Result<T, String> and use `ok_or()` for clarity
+3. **Don't forget to test conversions** - extend existing test to exercise new code paths
+
+### Next Steps for Phase D
+**Task D2.3: Execute EELS Tests** - Now ready to implement:
+1. Load test fixture (JSON parsing ✅)
+2. Initialize state from `pre` (✅)
+3. Convert test format to claudeth types (✅)
+4. Execute blocks with `process_block`
+5. Compare results with expected `postState` and block hash
+6. Report pass/fail/error for each test
+
 ## Session 29: Phase D Task D2.1 - Pre-State Loader (2026-02-09)
 
 **Status**: Phase D Task D2.1 COMPLETE ✅
