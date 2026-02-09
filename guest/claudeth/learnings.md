@@ -1,5 +1,65 @@
 # Claudeth Development Learnings
 
+## Session 45: Fix State Trie Address Key Hashing (2026-02-09)
+
+**Status**: State trie now hashes address keys with keccak256; state roots changed but still mismatch
+
+### What Was Accomplished
+1. ✅ **CRITICAL BUG FOUND**: State trie was using raw address bytes instead of keccak256(address)
+2. ✅ **FIXED**: Hash address with keccak256 before inserting into state trie (line 342 in execution.rs)
+3. ✅ Updated unit tests to use hashed keys (test_compute_state_root_with_account, test_compute_state_root_with_storage)
+4. ✅ All 1080 unit tests + 92 doc tests passing, zero clippy warnings
+5. ⚠️ State roots still mismatch but values changed (confirms fix had effect)
+
+### Critical Bug Details
+
+**The Problem**:
+State trie was inserting accounts using `address.as_bytes()` as the key, but Ethereum's state trie is a "secure trie" (StateTrie in go-ethereum) that hashes all keys with keccak256 to prevent long chain attacks.
+
+**Why It Happened**:
+- This is the same category of bug as the storage key hashing issue (session 42)
+- Both storage trie AND state trie require hashed keys in Ethereum
+- Storage trie: keccak256(storage_slot) → value
+- State trie: keccak256(address) → account_rlp
+
+**The Fix**:
+```rust
+// Before (WRONG):
+trie.insert(address.as_bytes(), account.encode_rlp());
+
+// After (CORRECT):
+let key = keccak256(address.as_bytes());
+trie.insert(key.as_bytes(), account.encode_rlp());
+```
+
+### Remaining Issues
+
+**State root still mismatches** even after the fix:
+- optionsTest: expected 0x7afb..., computed 0xeecd... (changed from 0x08f4... before fix)
+- shanghaiExample: expected 0xa328..., computed 0x4bbf... (changed from 0xf969... before fix)
+
+This suggests there may be additional bugs in:
+1. MPT node encoding/hashing implementation
+2. Account RLP encoding (order verified as correct: nonce, balance, storage_root, code_hash)
+3. Storage root computation (though we fixed key hashing in session 42)
+4. Some other aspect of trie construction
+
+### DO's ✅
+1. **Hash address keys with keccak256** before inserting into state trie
+2. **Use secure trie (hashed keys) for both state and storage tries** in Ethereum
+3. **Update unit tests when changing key format** to reflect the correct behavior
+4. **Verify test results changed after a fix** to confirm the fix had an effect
+
+### DON'Ts ❌
+1. **Don't use raw address bytes** as state trie keys (Ethereum uses keccak256(address))
+2. **Don't assume tries use raw keys** - check the specification for each trie type
+3. **Don't stop after one fix** - if roots still mismatch, there may be multiple issues
+
+### Next Steps
+- Investigate gas mismatches (mergeExample: -21100, basefeeExample: -1200, tipInsideBlock: +9200)
+- Debug why state roots still mismatch even with correct key hashing
+- Consider adding Ethereum test vectors to validate MPT implementation
+
 ## Session 44: Parent-Only BLOCKHASH + Execution Context Refactor (2026-02-09)
 
 **Status**: BLOCKHASH now returns parent hash; clippy too-many-arguments resolved via context struct

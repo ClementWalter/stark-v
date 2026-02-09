@@ -249,11 +249,12 @@ Goal: finalize per-transaction correctness before block processing.
 13. ✅ **FIXED**: Charge EIP-3860 initcode gas for CREATE transactions (Session 41)
 14. ✅ **FIXED**: Storage trie now hashes keys with Keccak-256 (Ethereum-compliant storage MPT) (Session 42)
 15. ✅ **CRITICAL FIX**: Empty tries now return EMPTY_TRIE_ROOT = keccak256(rlp([])) not Hash::ZERO (Session 43)
-16. ⚠️ **REMAINING**: optionsTest + shanghaiExample state root mismatches (changed after fix #15, needs investigation)
-17. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
-18. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
-19. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-20. ✅ **IMPLEMENTED**: BLOCKHASH returns parent hash when requested (still missing 256-block history)
+16. ✅ **IMPLEMENTED**: BLOCKHASH returns parent hash when requested (still missing 256-block history) (Session 44)
+17. ✅ **CRITICAL FIX**: State trie now hashes address keys with keccak256(address) (Session 45)
+18. ⚠️ **REMAINING**: optionsTest + shanghaiExample state root mismatches (values changed after fix #17 but still wrong)
+19. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
+20. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
+21. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 
