@@ -35,6 +35,8 @@ use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
 use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
+#[cfg(feature = "evm-trace")]
+use crate::evm::trace::{opcode_name, GasTracer};
 use crate::evm::{
     create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
     sstore_gas_cost, GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
@@ -210,6 +212,9 @@ pub struct Evm<S, H> {
     // EIP-2929: Warm/cold access tracking
     accessed_addresses: BTreeSet<Address>,
     accessed_storage: BTreeSet<(Address, U256)>,
+    // Gas tracing (enabled with evm-trace feature)
+    #[cfg(feature = "evm-trace")]
+    tracer: Option<GasTracer>,
 }
 
 // =============================================================================
@@ -260,6 +265,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             host,
             accessed_addresses: BTreeSet::new(),
             accessed_storage: BTreeSet::new(),
+            #[cfg(feature = "evm-trace")]
+            tracer: None,
         }
     }
 
@@ -304,6 +311,19 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             self.accessed_addresses.insert(*addr);
         }
         self
+    }
+
+    /// Enable gas tracing (only available with evm-trace feature)
+    #[cfg(feature = "evm-trace")]
+    pub fn with_tracing(mut self) -> Self {
+        self.tracer = Some(GasTracer::new(self.gas_remaining));
+        self
+    }
+
+    /// Get the gas tracer (only available with evm-trace feature)
+    #[cfg(feature = "evm-trace")]
+    pub fn tracer(&self) -> Option<&GasTracer> {
+        self.tracer.as_ref()
     }
 
     /// Analyze code to find valid JUMPDEST positions
@@ -390,6 +410,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         }
 
         let opcode = self.current_opcode()?;
+
+        #[cfg(feature = "evm-trace")]
+        let pc = self.pc;
+        #[cfg(feature = "evm-trace")]
+        let gas_before = self.gas_remaining;
 
         // Charge base gas
         let base_gas = opcode_gas_cost(opcode);
@@ -1274,6 +1299,16 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             // Invalid opcodes
             _ => {
                 return Err(EvmError::InvalidOpcode(opcode));
+            }
+        }
+
+        // Record gas trace (if tracing enabled)
+        #[cfg(feature = "evm-trace")]
+        {
+            let gas_after = self.gas_remaining;
+            let gas_cost = gas_before.saturating_sub(gas_after);
+            if let Some(ref mut tracer) = self.tracer {
+                tracer.trace(pc, opcode, opcode_name(opcode), gas_before, gas_cost, gas_after);
             }
         }
 

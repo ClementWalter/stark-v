@@ -6,6 +6,10 @@ edition = "2024"
 [lib]
 crate-type = ["lib", "staticlib"]
 
+[features]
+default = []
+evm-trace = []  # Enable EVM execution tracing for debugging
+
 [dependencies]
 serde = { workspace = true, features = ["derive", "alloc"] }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }

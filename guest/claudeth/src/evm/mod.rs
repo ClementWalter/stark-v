@@ -7,13 +7,14 @@
 //! - Opcodes: EVM instruction execution
 //! - Interpreter: Bytecode execution engine
 
+pub mod disassembler;
 pub mod gas;
 pub mod host;
 pub mod interpreter;
 pub mod memory;
 pub mod opcodes;
 pub mod stack;
-pub mod disassembler;
+pub mod trace;
 
 // Re-export Gas functions and constants
 pub use gas::{
@@ -45,3 +46,4 @@ pub use interpreter::{
     LogEntry, TxContext,
 };
 pub use disassembler::{disassemble, format_disassembly, Instruction};
+pub use trace::{opcode_name, GasTraceEntry, GasTracer};
