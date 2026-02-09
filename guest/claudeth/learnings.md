@@ -22,7 +22,14 @@ EELS blockchain tests failing (0/20 passing) with storage values not persisting:
 - The issue only manifests in EELS blockchain tests, not in isolated unit tests
 - Storage root `0x2f1228a30a70c1ee01e084800b776ce75558b8716098d852f80b6205708e9e23` doesn't match empty trie or single-key trie
 
-###Next Steps
+### Why Unit Tests Pass But EELS Tests Fail
+This is the critical clue - storage persistence works in isolated unit tests but fails in
+full blockchain tests. This suggests:
+- The bug is in interaction between components (state cloning, transaction execution, block processing)
+- NOT a fundamental bug in Storage trie implementation
+- Likely related to state management during transaction execution flow
+
+### Next Steps
 Need to investigate:
 1. Check actual EELS test JSON to see what pre-state storage values are expected
 2. Trace through exact flow: pre-state load → block execution → state root computation

@@ -143,24 +143,32 @@ Requirements:
 
 ## Immediate Next Task
 
-**P3: Fix EELS Test Failures (Investigation Required)**
+**P3: Fix EELS Test Failures (BLOCKED - Needs Deep Investigation)**
 
 Must fix 20/20 failing EELS tests before moving to witness-based state reconstruction.
 
-**Status**: Requires investigative debugging work. No implementation tasks can be completed
-100% without first understanding root causes of failures.
+**Status**: BLOCKED - Storage persistence bug under investigation (Session 88)
 
-**Investigation Approach**:
-1. Start with one StateRootMismatch failure (e.g., optionsTest)
-2. Add instrumentation to compare computed vs expected state roots
-3. Trace account RLP encoding, storage root computation
-4. Identify discrepancies in state trie construction
-5. Fix root cause and verify fix across all tests
+**Current Blocker**:
+Storage values are not persisting from pre-state through block execution:
+- Pre-state loads storage via `sstore`, values appear to be set initially
+- During/after block execution, `sload` returns 0 for all keys
+- Storage roots are computed but are incorrect
+- Unit tests for storage work correctly in isolation
+- Bug only manifests in full EELS blockchain tests
 
-Priority order after investigation:
-1. Debug StateRootMismatch failures (14 tests) - likely account encoding or storage root issues
-2. Fix GasUsedMismatch failures (4 tests) - gas accounting bugs
-3. Fix TransactionExecutionError failures (2 tests) - execution crashes
+**Investigation Approach (Session 88)**:
+1. ~~Remove storage_root recomputation in compute_state_root~~ (tried, didn't fix)
+2. ~~Remove empty storage HashMap removal in sstore~~ (tried, didn't fix)
+3. TODO: Check actual EELS test JSON pre-state storage values
+4. TODO: Trace state cloning during transaction execution
+5. TODO: Add debug instrumentation to track storage HashMap throughout test flow
+6. TODO: Verify storage persists after apply_pre_state but before block execution
 
-**Note**: Session 86 identified this as the blocker. No straightforward implementation
-tasks available until debugging reveals specific code changes needed.
+**Test Status**: 0/20 passing
+- 14 StateRootMismatch failures (storage root incorrect)
+- 4 GasUsedMismatch failures
+- 2 TransactionExecutionError failures
+
+**Note**: This is a complex interaction bug between state management, storage tries, and
+transaction execution. Simple fixes have not resolved it. Requires methodical debugging.
