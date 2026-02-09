@@ -1,5 +1,61 @@
 # Claudeth Development Learnings
 
+## Session 68: Fix EIP-2929 SSTORE Gas Cost Constants (2026-02-09)
+
+**Status**: Completed - Fixed SSTORE gas overcharges by correcting EIP-2929 constants
+
+### What Was Accomplished
+1. ✅ Identified root cause: GAS_SSTORE_RESET and GAS_SSTORE_CLEAR were 5000 (pre-EIP-2929) instead of 2900
+2. ✅ Updated gas constants to EIP-2929 values (2900 for RESET/CLEAR)
+3. ✅ Fixed unit test expectations to match new gas costs
+4. ✅ Resolved tloadDoesNotPersistCrossTxn gas overcharge (+2100 → 0) ✅
+5. ✅ Resolved transStorageBlockchain gas overcharge (+4200 → 0) ✅
+
+### Key Findings
+
+**EIP-2929 Gas Model**:
+- `SSTORE_SET_GAS` = 20000 (unchanged from EIP-2200)
+- `SSTORE_RESET_GAS` = 2900 (reduced from 5000 to account for separate 2100 cold cost)
+- `SSTORE_CLEAR_GAS` = 2900 (same as RESET)
+
+**Why the reduction?** EIP-2929 charges an additional 2100 gas for cold storage access. To keep total costs reasonable, the base RESET/CLEAR costs were reduced from 5000 to 2900. Combined with the 2100 cold cost, the total is still 5000 for cold accesses.
+
+**Final gas costs**:
+- SSTORE SET cold: 20000 + 2100 = 22100 ✅
+- SSTORE SET warm: 20000 + 2100 - 2000 = 20100 ✅
+- SSTORE RESET cold: 2900 + 2100 = 5000 ✅
+- SSTORE RESET warm: 2900 + 2100 - 2000 = 3000 ✅
+
+**Test improvements**:
+- tloadDoesNotPersistCrossTxn: GasUsedMismatch (+2100) → StateRootMismatch (gas correct: 64867) ✅
+- transStorageBlockchain: GasUsedMismatch (+4200) → StateRootMismatch (gas correct: 85256) ✅
+- Several other tests moved from gas mismatches to state root mismatches (progress!)
+
+### DO's ✅
+1. **Always check EIP parameter changes** - EIPs often redefine constants, not just add new ones
+2. **Verify gas constants match reference implementations** (Geth params/protocol_params.go)
+3. **Test hypothesis with failing tests first** before applying fixes broadly
+4. **Research EIP specifications thoroughly** - subtle details like RESET vs SET behavior matter
+5. **Use gas tracing** to identify exact per-opcode costs and validate assumptions
+
+### DON'Ts ❌
+1. **Don't assume gas constants are stable across EIPs** - EIP-2929 changed RESET but not SET
+2. **Don't implement fixes without understanding WHY** - my first hypothesis (SET doesn't charge 2100) was wrong
+3. **Don't trust HackMD articles alone** - cross-reference with official EIP specs and Geth source
+4. **Don't modify charging logic when the issue is in constants** - the logic was correct all along
+
+### Investigation Process (for future reference)
+1. Identified +2100 overcharge in tloadDoesNotPersistCrossTxn (Session 66)
+2. Hypothesized SET operations shouldn't charge EIP-2929 cost (WRONG)
+3. Tested hypothesis → created new undercharges (opposite problem)
+4. Re-read EIP-2929 spec → found "SSTORE_RESET_GAS changed to 5000 - COLD_SLOAD_COST"
+5. Updated constants (not logic) → all gas tests pass ✅
+
+### References
+- [EIP-2929 Specification](https://eips.ethereum.org/EIPS/eip-2929)
+- [Understanding gas costs after Berlin](https://hackmd.io/@fvictorio/gas-costs-after-berlin)
+- [Geth protocol_params.go](https://github.com/ethereum/go-ethereum/blob/master/params/protocol_params.go)
+
 ## Session 67: Align README Dependency List (2026-02-09)
 
 **Status**: Completed - README now matches Cargo dependencies
