@@ -243,11 +243,10 @@ Goal: finalize per-transaction correctness before block processing.
 9. ✅ **FIXED**: Charge SSTORE dynamic gas + sentry check (Session 37)
 10. ✅ **IMPLEMENTED**: EIP-2929 warm/cold access tracking (Session 38)
 11. ✅ Added unit test verifying warm BALANCE refund behavior (Session 39)
-12. ⚠️ **NEW ISSUE**: Gas usage STILL identical after EIP-2929 implementation
-13. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-14. TODO: Confirm EELS access lists and real-world warm access coverage
-15. TODO: Debug why gas usage unchanged despite correct EIP-2929 implementation
-16. TODO: Debug why exploit test transactions are failing
+12. ✅ **CRITICAL FIX**: Charge EIP-2929 warm/cold gas for SSTORE (Session 40)
+13. ⚠️ **REMAINING**: shanghaiExample off by 2 gas (75192 expected, 75190 computed)
+14. ⚠️ **REMAINING**: optionsTest state root mismatch (gas correct, state wrong)
+15. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 

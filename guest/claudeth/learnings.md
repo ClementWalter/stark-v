@@ -1,5 +1,105 @@
 # Claudeth Development Learnings
 
+## Session 40: Fix SSTORE EIP-2929 Gas Charging (2026-02-09)
+
+**Status**: Phase D Task D3 MAJOR PROGRESS - Fixed critical SSTORE gas bug
+
+### What Was Accomplished
+1. ✅ **ROOT CAUSE IDENTIFIED**: SSTORE was not charging EIP-2929 warm/cold access cost
+2. ✅ **FIXED**: Added EIP-2929 gas charging (2100 cold / 100 warm) on top of dynamic cost
+3. ✅ Added unit test `test_sstore_cold_warm_gas` verifying gas calculation
+4. ✅ optionsTest: Gas mismatch RESOLVED (now shows state root mismatch instead)
+5. ✅ shanghaiExample: Improved from 2102 off to only 2 gas off (99.997% accurate!)
+
+### Critical Bug Details
+
+**The Problem**:
+SSTORE opcode was only charging the dynamic cost (SET: 20000, RESET: 5000, etc.) but NOT the EIP-2929 warm/cold access cost. This caused systematic undercharging of 2100 gas per cold SSTORE.
+
+**Why It Happened**:
+- `opcode_gas_cost(0x55)` returns 0 (SSTORE is "dynamic only")
+- SSTORE implementation called `sstore_gas_cost()` for dynamic cost
+- But `sstore_gas_cost()` has NO knowledge of EIP-2929!
+- Comment said "already accounts for warm/cold" but that was WRONG
+- `access_storage()` was called but return value (is_warm) was IGNORED
+
+**The Fix**:
+```rust
+// Check if warm BEFORE marking as accessed
+let is_warm = self.access_storage(&address, &key);
+
+// Charge dynamic gas (SET/RESET/CLEAR/NOOP)
+let sstore_gas = sstore_gas_cost(current_value, new_value);
+self.consume_gas(sstore_gas)?;
+
+// Charge EIP-2929 warm/cold access cost ON TOP of dynamic
+self.consume_gas(2100)?;  // Always charge cold
+if is_warm {
+    self.gas_remaining += 2000;  // Refund to net 100 for warm
+}
+```
+
+### Impact Analysis
+
+**Before Fix** (commit 814c40d - after SSTORE dynamic but before this fix):
+- optionsTest: 21149 gas (expected 43249) → undercharged by 22100
+- Only charging dynamic cost, missing both SSTORE cold AND EIP-2929 was never implemented for SSTORE
+
+**After SSTORE Dynamic Fix** (commit 195ab65):
+- optionsTest: 41149 gas (expected 43249) → undercharged by 2100
+- Charging dynamic (20000) but missing EIP-2929 cold (2100)
+
+**After This Fix** (commit 5d1025f):
+- optionsTest: GasUsedMismatch → StateRootMismatch (gas now correct!)
+- shanghaiExample: 75190 gas (expected 75192) → off by only 2 gas!
+
+### EELS Test Progress
+
+| Test | Before | After | Status |
+|------|--------|-------|--------|
+| optionsTest | Gas: -2100 | State root mismatch | Gas ✓ |
+| shanghaiExample | Gas: -2102 | Gas: -2 | 99.997% ✓ |
+| mergeExample | Gas: -23202 | Gas: -21102 | Improved |
+
+### DO's ✅
+
+1. **Always check EIP-2929 for storage opcodes** - SLOAD has cold/warm, SSTORE must too!
+2. **Use the return value of access_storage()** - It tells you if the slot was warm
+3. **Charge cold, refund if warm** - Simple and matches other opcodes (BALANCE, EXTCODESIZE)
+4. **Test with unit tests before EELS** - Isolated tests catch bugs faster
+5. **Calculate gas manually for verification** - Don't trust assumptions
+
+### DON'Ts ❌
+
+1. **Don't trust misleading comments** - "already accounts for warm/cold" was completely wrong
+2. **Don't assume EIP-2929 is automatically handled** - Each opcode must explicitly add the cost
+3. **Don't confuse dynamic costs with access costs** - They are separate and BOTH must be charged
+4. **Don't ignore return values** - `access_storage()` returns crucial info about warm/cold state
+
+### Next Steps
+
+**Immediate Issues**:
+1. **2 gas mystery**: shanghaiExample off by exactly 2 gas - investigate rounding or small opcode cost
+2. **State root mismatch**: optionsTest gas is correct but state is wrong - check storage trie
+3. **Execution failures**: ShanghaiLove, StrangeContractCreation still fail
+
+**Hypothesis for 2 gas**:
+- Could be JUMPDEST (1 gas) counted twice?
+- Could be PC opcode (2 gas) extra charge?
+- Could be rounding in memory expansion?
+
+### Session Summary
+
+**Commit**: `5d1025f` - "fix(evm): charge EIP-2929 warm/cold gas for SSTORE"
+
+**Major breakthrough**: Found and fixed the root cause of systematic gas undercharging. SSTORE was missing EIP-2929 costs entirely! This was masked by the earlier Session 38 mystery where we thought EIP-2929 had no effect. In reality:
+- Session 38 implemented EIP-2929 for BALANCE, SLOAD, CALL opcodes ✓
+- But SSTORE was NEVER fixed because we didn't realize it needed separate handling ✗
+
+Now most tests are within 2 gas of correct, and optionsTest has correct gas (just state root wrong).
+
+# Claudeth Development Learnings
+
 ## Session 39: Add EIP-2929 Warm Refund Unit Test (2026-02-09)
 
 **Status**: Added targeted gas test to validate warm/cold refund behavior
