@@ -46,4 +46,4 @@ pub use interpreter::{
     LogEntry, TxContext,
 };
 pub use disassembler::{disassemble, format_disassembly, Instruction};
-pub use trace::{opcode_name, GasTraceEntry, GasTracer};
+pub use trace::{opcode_name, GasTrace, GasTraceEntry, GasTracer};

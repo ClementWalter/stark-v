@@ -141,15 +141,16 @@ cargo test --features evm-trace test_name
 ```
 
 **Remaining Work**:
-1. Wire gas tracing into EELS test runner to identify mismatches
-2. Build state change tracking to debug state root mismatches
-3. Add execution trace hooks for transaction failure analysis
+1. Build state change tracking to debug state root mismatches
+2. Add execution trace hooks for transaction failure analysis (capture traces on EVM errors)
+
+**Completed (Session 50)**:
+- ✅ Wire gas trace snapshots into EELS test runner (prints traces on post-state mismatch when `evm-trace` is enabled)
 
 **Next Steps**:
-- Add gas tracing to EELS test runner with per-transaction output
 - Use traces to debug gas mismatches (mergeExample, tipInsideBlock, etc.)
 - Debug execution failures (ShanghaiLove, StrangeContractCreation)
-- Then tackle state root mismatches with MPT visualization
+- Then tackle state root mismatches with MPT visualization and state diff tooling
 
 **Current Failures** (Session 47 analysis):
 - State root mismatches: 4 tests (correct gas, wrong final state)

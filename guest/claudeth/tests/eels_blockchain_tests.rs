@@ -799,6 +799,8 @@ fn test_execute_all_blockchain_tests() {
             let mut test_failed = false;
             let mut failure_reason = String::new();
 
+            let mut block_results = Vec::new();
+
             for (block_idx, test_block) in test_case.blocks.iter().enumerate() {
                 // Skip invalid blocks
                 if test_block.block_header.is_none() {
@@ -841,8 +843,9 @@ fn test_execute_all_blockchain_tests() {
 
                 // Execute block
                 match process_block(&block_header, &parent_header, &transactions, &mut state, chain_id) {
-                    Ok(_result) => {
+                    Ok(result) => {
                         parent_header = block_header;
+                        block_results.push(result);
                     }
                     Err(e) => {
                         failure_reason = format!("Block {block_idx}: Execution failed: {e:?}");
@@ -869,6 +872,21 @@ fn test_execute_all_blockchain_tests() {
                     }
                     Err(e) => {
                         eprintln!("✗ {test_name}: Post-state mismatch: {e}");
+                        #[cfg(feature = "evm-trace")]
+                        {
+                            for (block_idx, block_result) in block_results.iter().enumerate() {
+                                for (tx_idx, tx_result) in
+                                    block_result.transaction_results.iter().enumerate()
+                                {
+                                    if let Some(trace) = tx_result.gas_trace.as_ref() {
+                                        eprintln!(
+                                            "Gas trace for {test_name} block {block_idx} tx {tx_idx}:"
+                                        );
+                                        eprintln!("{}", trace.format());
+                                    }
+                                }
+                            }
+                        }
                         failed += 1;
                     }
                 }

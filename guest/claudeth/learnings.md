@@ -3380,3 +3380,21 @@ Now that empty trie roots are correct, remaining mismatches are likely due to:
 - Updated all tests (1079 unit + 92 doc tests) ✓
 
 **Major breakthrough**: Discovered and fixed fundamental Ethereum spec violation. Empty tries must return `keccak256(rlp([]))`, not zero. This affects all root computations and was causing systematic test failures. Fix is now active and EELS test outputs have changed, proving the bug is resolved.
+
+## Session 50: Add Gas Trace Snapshots to EELS Runner (2026-02-09)
+
+**Status**: Captured gas traces in execution results and printed them on post-state mismatch when `evm-trace` is enabled.
+
+### What Was Accomplished
+1. ✅ Added `GasTrace` snapshots to `ExecutionResult` and `TransactionExecutionResult`
+2. ✅ Threaded trace data through `execute_call`/`execute_create` into block results
+3. ✅ EELS runner prints per-transaction gas traces on post-state mismatch (feature-gated)
+
+### DO's ✅
+1. **Propagate debug traces through result structs** so tests can access them without global state
+2. **Gate trace output behind `evm-trace`** to avoid noisy logs in normal runs
+3. **Print traces only on failure** to keep diagnostics focused
+
+### DON'Ts ❌
+1. **Don't log traces unconditionally** in test runners or production paths
+2. **Don't forget to update tuple destructuring** when adding fields to execution results

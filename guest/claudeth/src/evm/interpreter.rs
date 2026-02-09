@@ -112,6 +112,8 @@ pub struct ExecutionResult {
     pub stack: Stack,
     /// Final memory state (for debugging)
     pub memory: Memory,
+    /// Optional gas trace (available when tracing is enabled)
+    pub gas_trace: Option<crate::evm::trace::GasTrace>,
 }
 
 /// Log entry emitted by LOG0-LOG4 opcodes.
@@ -1333,6 +1335,16 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             logs: self.logs.clone(),
             stack: self.stack.clone(),
             memory: self.memory.clone(),
+            gas_trace: {
+                #[cfg(feature = "evm-trace")]
+                {
+                    self.tracer.as_ref().map(|tracer| tracer.snapshot())
+                }
+                #[cfg(not(feature = "evm-trace"))]
+                {
+                    None
+                }
+            },
         })
     }
 }

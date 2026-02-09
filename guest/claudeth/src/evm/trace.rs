@@ -21,7 +21,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 /// Gas trace entry recording gas consumption for a single opcode
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GasTraceEntry {
     /// Program counter (bytecode offset)
     pub pc: usize,
@@ -37,6 +37,55 @@ pub struct GasTraceEntry {
     pub gas_after: u64,
     /// Cumulative gas used from start
     pub cumulative_gas: u64,
+}
+
+/// Captured gas trace for a full execution
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GasTrace {
+    /// Initial gas limit for the execution
+    pub initial_gas: u64,
+    /// Recorded trace entries
+    pub entries: Vec<GasTraceEntry>,
+}
+
+impl GasTrace {
+    /// Format trace as human-readable string
+    #[cfg(not(target_arch = "riscv32"))]
+    pub fn format(&self) -> String {
+        use std::string::String;
+        let mut output = String::new();
+        output.push_str(&format!(
+            "Gas Trace (initial: {}, used: {})\n",
+            self.initial_gas,
+            self.initial_gas
+                .saturating_sub(self.entries.last().map(|e| e.gas_after).unwrap_or(self.initial_gas))
+        ));
+        output.push_str(&format!(
+            "{:>6} {:>12} {:>10} {:>10} {:>10} {:>12}\n",
+            "PC", "Opcode", "Before", "Cost", "After", "Cumulative"
+        ));
+        output.push_str(&format!("{}\n", "-".repeat(70)));
+
+        for entry in &self.entries {
+            output.push_str(&format!(
+                "{:06x} {:12} {:10} {:10} {:10} {:12}\n",
+                entry.pc,
+                format!("{} (0x{:02x})", entry.name, entry.opcode),
+                entry.gas_before,
+                entry.gas_cost,
+                entry.gas_after,
+                entry.cumulative_gas
+            ));
+        }
+
+        output
+    }
+
+    /// Print trace to stderr (for debugging)
+    #[cfg(not(target_arch = "riscv32"))]
+    pub fn print(&self) {
+        eprintln!("{}", self.format());
+    }
 }
 
 /// Gas tracer that records per-opcode gas consumption
@@ -125,6 +174,14 @@ impl GasTracer {
     #[cfg(not(target_arch = "riscv32"))]
     pub fn print(&self) {
         eprintln!("{}", self.format());
+    }
+
+    /// Snapshot the current trace entries for later inspection
+    pub fn snapshot(&self) -> GasTrace {
+        GasTrace {
+            initial_gas: self.initial_gas,
+            entries: self.entries.clone(),
+        }
     }
 }
 

@@ -62,6 +62,8 @@ pub struct TransactionExecutionResult {
     pub return_data: Vec<u8>,
     /// Contract address (for contract creation transactions)
     pub contract_address: Option<Address>,
+    /// Optional gas trace (available when tracing is enabled)
+    pub gas_trace: Option<crate::evm::GasTrace>,
 }
 
 impl TransactionExecutionResult {
@@ -237,7 +239,7 @@ pub fn execute_transaction<S: State + Clone>(
         execute_call(tx, exec_state, &sender, &to, exec_ctx, gas_available)
     };
 
-    let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, returned_state) = match exec_result {
+    let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, gas_trace, returned_state) = match exec_result {
         Ok(result) => result,
         Err(err) => {
             state.clear_transient_storage();
@@ -282,11 +284,13 @@ pub fn execute_transaction<S: State + Clone>(
         logs,
         return_data,
         contract_address,
+        gas_trace,
     })
 }
 
 // Type alias for execution result to avoid clippy::type_complexity warning
-type ExecutionResultWithState<S> = (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, S);
+type ExecutionResultWithState<S> =
+    (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, Option<crate::evm::GasTrace>, S);
 
 struct ExecutionContexts<'a> {
     block_ctx: &'a BlockContext,
@@ -308,7 +312,7 @@ fn execute_call<S: State + Clone>(
 
     // If no code, this is just a value transfer (success)
     if code.is_empty() {
-        return Ok((true, 0, 0, Vec::new(), Vec::new(), None, state));
+        return Ok((true, 0, 0, Vec::new(), Vec::new(), None, None, state));
     }
 
     // Execute bytecode with recursive host for contract calls
@@ -371,6 +375,7 @@ fn execute_call<S: State + Clone>(
             exec_result.return_data,
             convert_logs(exec_result.logs),
             None,
+            exec_result.gas_trace,
             returned_state,
         )),
         Err(_) => Err(ExecutionError::ExecutionFailed),
@@ -458,6 +463,7 @@ fn execute_create<S: State + Clone>(
                 exec_result.return_data,
                 convert_logs(exec_result.logs),
                 Some(contract_address),
+                exec_result.gas_trace,
                 returned_state,
             ))
         }
@@ -681,7 +687,8 @@ mod tests {
             execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _gas_refund, return_data, logs, contract_address, _state) = result.unwrap();
+        let (success, gas_used, _gas_refund, return_data, logs, contract_address, _gas_trace, _state) =
+            result.unwrap();
 
         assert!(success);
         assert_eq!(gas_used, 0); // No code execution
@@ -758,7 +765,8 @@ mod tests {
             execute_call(&tx, state, &sender, &contract, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _gas_refund, return_data, logs, _, _state) = result.unwrap();
+        let (success, gas_used, _gas_refund, return_data, logs, _, _gas_trace, _state) =
+            result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0); // Some gas was used
@@ -800,7 +808,8 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _state) = result.unwrap();
+        let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _gas_trace, _state) =
+            result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0);
@@ -844,7 +853,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _gas_refund, _, logs, contract_address, _state) = result.unwrap();
+        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, _state) = result.unwrap();
 
         assert!(success);
         assert!(logs.is_empty());
@@ -866,6 +875,7 @@ mod tests {
             logs: Vec::new(),
             return_data: Vec::new(),
             contract_address: None,
+            gas_trace: None,
         };
 
         let receipt = result.to_receipt();
@@ -935,7 +945,7 @@ mod tests {
             tx_ctx: &tx_ctx,
         };
 
-        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
+        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
             execute_call(
                 &Transaction::Legacy(LegacyTransaction {
                     nonce: U256::ZERO,
@@ -982,7 +992,7 @@ mod tests {
             tx_ctx: &tx_ctx,
         };
 
-        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
+        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
             execute_call(
                 &Transaction::Legacy(LegacyTransaction {
                     nonce: U256::ZERO,
@@ -1030,7 +1040,7 @@ mod tests {
             tx_ctx: &tx_ctx,
         };
 
-        let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
+        let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
             execute_call(
                 &Transaction::Legacy(LegacyTransaction {
                     nonce: U256::ZERO,
