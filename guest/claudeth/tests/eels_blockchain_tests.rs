@@ -659,25 +659,23 @@ fn test_can_parse_blockchain_tests() {
                     }
 
                     // Test block header conversion
-                    if !block_header_converted {
-                        if let Some(ref block) = test.blocks.first() {
-                            if let Some(ref header) = block.block_header {
-                                convert_test_block_header(header)
-                                    .unwrap_or_else(|err| panic!("failed to convert block header: {err}"));
-                                block_header_converted = true;
-                            }
-                        }
+                    if !block_header_converted
+                        && let Some(block) = test.blocks.first()
+                        && let Some(header) = &block.block_header
+                    {
+                        convert_test_block_header(header)
+                            .unwrap_or_else(|err| panic!("failed to convert block header: {err}"));
+                        block_header_converted = true;
                     }
 
                     // Test transaction conversion
-                    if !transaction_converted {
-                        if let Some(ref block) = test.blocks.first() {
-                            if !block.transactions.is_empty() {
-                                convert_test_transaction(&block.transactions[0])
-                                    .unwrap_or_else(|err| panic!("failed to convert transaction: {err}"));
-                                transaction_converted = true;
-                            }
-                        }
+                    if !transaction_converted
+                        && let Some(block) = test.blocks.first()
+                        && !block.transactions.is_empty()
+                    {
+                        convert_test_transaction(&block.transactions[0])
+                            .unwrap_or_else(|err| panic!("failed to convert transaction: {err}"));
+                        transaction_converted = true;
                     }
                 }
 

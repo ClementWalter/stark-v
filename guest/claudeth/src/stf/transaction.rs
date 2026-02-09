@@ -361,6 +361,10 @@ pub fn calculate_intrinsic_gas(tx: &Transaction) -> U256 {
     // Contract creation cost
     if tx.to().is_none() {
         gas = gas.saturating_add(U256::from(32000u64));
+
+        // EIP-3860: Initcode gas (2 gas per 32-byte word)
+        let init_code_words = data.len().div_ceil(32);
+        gas = gas.saturating_add(U256::from((init_code_words * 2) as u64));
     }
 
     gas
@@ -939,8 +943,8 @@ mod tests {
         let tx = Transaction::Legacy(tx);
 
         let gas = calculate_intrinsic_gas(&tx);
-        // 21000 + 32000 + 3 * 16 = 53048
-        assert_eq!(gas, U256::from(53048u64));
+        // 21000 + 32000 + 3 * 16 + 2 (initcode: ceiling(3/32) = 1 word = 2 gas) = 53050
+        assert_eq!(gas, U256::from(53050u64));
     }
 
     // =========================================================================

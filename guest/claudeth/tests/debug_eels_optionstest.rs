@@ -144,7 +144,7 @@ impl FromHex for U256 {
     fn from_hex(s: &str) -> Result<Self, String> {
         let s = s.strip_prefix("0x").unwrap_or(s);
         // Pad to 64 hex chars (32 bytes)
-        let padded = format!("{:0>64}", s);
+        let padded = format!("{s:0>64}");
         let bytes = hex::decode(&padded).map_err(|e| format!("{e}"))?;
         Ok(U256::from_be_bytes(bytes.try_into().unwrap()))
     }
