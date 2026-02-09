@@ -2,7 +2,7 @@
 
 ## Session 77: Storage Persistence Investigation - Multi-Block Issue (2026-02-09)
 
-**Status**: Investigation in progress
+**Status**: Completed - root cause identified
 
 ### What Was Discovered
 1. ✅ All 20 EELS tests are failing with state root mismatches
@@ -4706,3 +4706,26 @@ if gas_remaining >= code_deposit_cost {
 1. **Don't delete non-created accounts post-Shanghai**; only transfer balance per EIP-6780
 2. **Don't skip marking created accounts** for CREATE/CREATE2 paths
 3. **Don't leave SELFDESTRUCT effects un-applied**; state roots will drift
+
+## Session 78: Deterministic State Root Ordering (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ State root computation now sorts account addresses before trie insertion
+2. ✅ This avoids HashMap iteration order affecting root construction
+3. ✅ All tests pass in `--release`
+
+### DO's ✅
+1. **Sort addresses when rebuilding the state trie** to keep roots deterministic
+2. **Keep running tests in `--release`** to match production behavior
+3. **Treat HashMap iteration order as nondeterministic** in consensus code
+
+### DON'Ts ❌
+1. **Don't assume HashMap iteration order is stable** for root computation
+2. **Don't rely on trie insertion order** if a deterministic ordering is easy to enforce
+
+### Note
+- `prek run` failed in this environment due to a permissions error creating
+  `.git/index.lock` in the parent repository. The hooks were attempted and
+  the error surfaced immediately.
