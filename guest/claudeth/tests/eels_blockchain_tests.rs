@@ -848,7 +848,29 @@ fn test_execute_all_blockchain_tests() {
                         block_results.push(result);
                     }
                     Err(e) => {
+                        // Extract transaction results from error for debugging
+                        let tx_results = match &e {
+                            claudeth::stf::BlockProcessingError::GasUsedMismatch { transaction_results, .. } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::ReceiptsRootMismatch { transaction_results, .. } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::StateRootMismatch { transaction_results, .. } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::TransactionsRootMismatch { transaction_results, .. } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::LogsBloomMismatch { transaction_results, .. } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::GasLimitExceeded { transaction_results, .. } => Some(transaction_results),
+                            _ => None,
+                        };
+
                         failure_reason = format!("Block {block_idx}: Execution failed: {e:?}");
+
+                        #[cfg(feature = "evm-trace")]
+                        if let Some(results) = tx_results {
+                            for (tx_idx, tx_result) in results.iter().enumerate() {
+                                if let Some(trace) = tx_result.gas_trace.as_ref() {
+                                    eprintln!("Gas trace for {test_name} block {block_idx} tx {tx_idx}:");
+                                    eprintln!("{}", trace.format());
+                                }
+                            }
+                        }
+
                         if matches!(
                             e,
                             claudeth::stf::BlockProcessingError::TransactionExecutionError(_)

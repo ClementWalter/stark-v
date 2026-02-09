@@ -225,27 +225,27 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
                 rlp::encode_list(&[encode_u64(detail)]),
             )
         }
-        BlockProcessingError::GasLimitExceeded { gas_limit, gas_used } => (
+        BlockProcessingError::GasLimitExceeded { gas_limit, gas_used, .. } => (
             ERROR_GAS_LIMIT_EXCEEDED,
             rlp::encode_list(&[encode_u64(gas_limit), encode_u64(gas_used)]),
         ),
-        BlockProcessingError::ReceiptsRootMismatch { expected, computed } => (
+        BlockProcessingError::ReceiptsRootMismatch { expected, computed, .. } => (
             ERROR_RECEIPTS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::StateRootMismatch { expected, computed } => (
+        BlockProcessingError::StateRootMismatch { expected, computed, .. } => (
             ERROR_STATE_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::GasUsedMismatch { expected, computed } => (
+        BlockProcessingError::GasUsedMismatch { expected, computed, .. } => (
             ERROR_GAS_USED_MISMATCH,
             rlp::encode_list(&[encode_u64(expected), encode_u64(computed)]),
         ),
-        BlockProcessingError::TransactionsRootMismatch { expected, computed } => (
+        BlockProcessingError::TransactionsRootMismatch { expected, computed, .. } => (
             ERROR_TRANSACTIONS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::LogsBloomMismatch { expected, computed } => (
+        BlockProcessingError::LogsBloomMismatch { expected, computed, .. } => (
             ERROR_LOGS_BLOOM_MISMATCH,
             rlp::encode_list(&[
                 rlp::encode_bytes(expected.as_ref()),

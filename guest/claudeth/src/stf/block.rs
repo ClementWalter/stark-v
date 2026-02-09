@@ -66,6 +66,8 @@ pub enum BlockProcessingError {
         gas_limit: u64,
         /// Cumulative gas used by transactions
         gas_used: u64,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
     },
     /// Computed receipts root doesn't match header
     ReceiptsRootMismatch {
@@ -73,6 +75,8 @@ pub enum BlockProcessingError {
         expected: Hash,
         /// Computed receipts root
         computed: Hash,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
     },
     /// Computed state root doesn't match header
     StateRootMismatch {
@@ -80,6 +84,8 @@ pub enum BlockProcessingError {
         expected: Hash,
         /// Computed state root
         computed: Hash,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
     },
     /// Gas used doesn't match header
     GasUsedMismatch {
@@ -87,6 +93,8 @@ pub enum BlockProcessingError {
         expected: u64,
         /// Computed gas used
         computed: u64,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
     },
     /// Transactions root doesn't match header
     TransactionsRootMismatch {
@@ -94,6 +102,8 @@ pub enum BlockProcessingError {
         expected: Hash,
         /// Computed transactions root
         computed: Hash,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
     },
     /// Logs bloom doesn't match header
     LogsBloomMismatch {
@@ -101,6 +111,8 @@ pub enum BlockProcessingError {
         expected: Box<[u8; 256]>,
         /// Computed logs bloom
         computed: Box<[u8; 256]>,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
     },
 }
 
@@ -289,6 +301,7 @@ pub fn process_block<S: State + Clone>(
             return Err(BlockProcessingError::GasLimitExceeded {
                 gas_limit: block.gas_limit,
                 gas_used: cumulative_gas_used,
+                transaction_results: transaction_results.clone(),
             });
         }
 
@@ -313,6 +326,7 @@ pub fn process_block<S: State + Clone>(
         return Err(BlockProcessingError::GasUsedMismatch {
             expected: block.gas_used,
             computed: cumulative_gas_used,
+            transaction_results: transaction_results.clone(),
         });
     }
 
@@ -321,6 +335,7 @@ pub fn process_block<S: State + Clone>(
         return Err(BlockProcessingError::ReceiptsRootMismatch {
             expected: block.receipts_root,
             computed: receipts_root,
+            transaction_results: transaction_results.clone(),
         });
     }
 
@@ -329,6 +344,7 @@ pub fn process_block<S: State + Clone>(
         return Err(BlockProcessingError::TransactionsRootMismatch {
             expected: block.transactions_root,
             computed: transactions_root,
+            transaction_results: transaction_results.clone(),
         });
     }
 
@@ -337,6 +353,7 @@ pub fn process_block<S: State + Clone>(
         return Err(BlockProcessingError::LogsBloomMismatch {
             expected: Box::new(block.logs_bloom),
             computed: Box::new(logs_bloom),
+            transaction_results: transaction_results.clone(),
         });
     }
 
@@ -345,6 +362,7 @@ pub fn process_block<S: State + Clone>(
         return Err(BlockProcessingError::StateRootMismatch {
             expected: block.state_root,
             computed: state_root,
+            transaction_results: transaction_results.clone(),
         });
     }
 

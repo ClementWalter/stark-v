@@ -1463,11 +1463,21 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
         warm_addresses.push(*addr);
     }
 
+    #[cfg(not(feature = "evm-trace"))]
     let mut evm = Evm::new(code.to_vec(), gas_limit, state, host)
         .with_block_context(block_ctx)
         .with_tx_context(tx_ctx)
         .with_call_context(call_ctx)
         .warm_addresses(&warm_addresses);
+
+    // Enable gas tracing if feature is enabled
+    #[cfg(feature = "evm-trace")]
+    let mut evm = Evm::new(code.to_vec(), gas_limit, state, host)
+        .with_block_context(block_ctx)
+        .with_tx_context(tx_ctx)
+        .with_call_context(call_ctx)
+        .warm_addresses(&warm_addresses)
+        .with_tracing();
 
     // Warm access list storage slots
     for (addr, keys) in access_list {
