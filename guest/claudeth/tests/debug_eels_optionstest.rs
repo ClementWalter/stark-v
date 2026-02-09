@@ -63,6 +63,7 @@ fn test_debug_optionstest_prague() {
         blob_gas_used: None,
         excess_blob_gas: None,
         parent_beacon_block_root: None,
+        requests_hash: None,
     };
 
     let block_header = BlockHeader {
@@ -86,6 +87,7 @@ fn test_debug_optionstest_prague() {
         blob_gas_used: None,
         excess_blob_gas: None,
         parent_beacon_block_root: None,
+        requests_hash: None,
     };
 
     let chain_id = U256::ONE;

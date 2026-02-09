@@ -164,6 +164,14 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 - SSTORE RESET cold: 2900 + 2100 = 5000 ✅
 - SSTORE RESET warm: 2900 + 2100 - 2000 = 3000 ✅
 
+### Task N10: Fix Block Header Hash Encoding + Prague Requests Hash ✅
+**Result**: Parent hash validation now passes for Cancun/Prague EELS fixtures.
+**Changes**:
+- Encode block header nonce as an 8-byte RLP byte string (not minimal u64)
+- Add `requests_hash` (EIP-7685) to `BlockHeader` and RLP encoding/decoding
+- Default missing tx/receipt roots to `EMPTY_TRIE_ROOT` in the EELS harness
+- Removed the EELS parent-hash workaround in the test loop
+
 ---
 
 ## Immediate Next Task (Execute Next)
@@ -174,6 +182,14 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 - Gas overcharges in transient storage tests: **FIXED** ✅
 - Remaining gas issues: tipInsideBlock (+5000), mergeExample (-19900)
 - Many tests now have correct gas but wrong state roots (progress!)
+
+### Task D2.6: Fix EELS Header Defaults + Remove Parent Hash Workaround ✅
+**Result**:
+- Default missing `transactions_root` / `receipts_root` to `EMPTY_TRIE_ROOT` in the EELS harness
+- Encode block header nonce as 8-byte RLP (not minimal u64)
+- Add Prague `requests_hash` to `BlockHeader` and RLP encoding/decoding
+- Remove the parent-hash workaround in the test loop
+- Parent hash validation now passes for both Cancun and Prague fixtures
 
 ### Task D3.0: Re-run EELS and Re-categorize Failures ✅
 **Status**: COMPLETED - Re-ran EELS after EIP-1559 upfront charge fix.
@@ -353,7 +369,9 @@ Gas Trace (initial: 340474, used: 22130)
 - ✅ logs_bloom validation (line 335-340)
 - ✅ Parent hash validation working (no errors in test runs)
 
-**Note**: The parent hash workaround in test code (lines 817-826) is obsolete - no parent hash errors occur.
+**Note**: The parent hash workaround in test code (lines 817-826) has been removed.
+Parent hash validation now passes for Cancun/Prague after fixing nonce RLP encoding
+and adding Prague `requests_hash` support.
 
 **Current Status**: All validations working. Real issue is **execution bugs** causing wrong post-state.
 

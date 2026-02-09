@@ -130,6 +130,7 @@ struct TestBlockHeader {
     parent_beacon_block_root: Option<String>,
     parent_hash: String,
     receipt_trie: Option<String>,
+    requests_hash: Option<String>,
     state_root: String,
     timestamp: String,
     transactions_trie: Option<String>,
@@ -551,6 +552,7 @@ fn convert_test_transaction(test_tx: &TestTransaction) -> Result<claudeth::types
 }
 
 fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::types::BlockHeader, String> {
+    use claudeth::state::EMPTY_TRIE_ROOT;
     use claudeth::types::{BlockHeader, Hash};
 
     let parent_hash = Hash::from_str(&test_header.parent_hash)
@@ -571,14 +573,14 @@ fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::
         .map(|h| Hash::from_str(h))
         .transpose()
         .map_err(|err| format!("invalid transactions_trie: {err}"))?
-        .unwrap_or(Hash::ZERO);
+        .unwrap_or(EMPTY_TRIE_ROOT);
     let receipts_root = test_header
         .receipt_trie
         .as_ref()
         .map(|h| Hash::from_str(h))
         .transpose()
         .map_err(|err| format!("invalid receipt_trie: {err}"))?
-        .unwrap_or(Hash::ZERO);
+        .unwrap_or(EMPTY_TRIE_ROOT);
 
     let logs_bloom = parse_bytes(&test_header.bloom)?;
     if logs_bloom.len() != 256 {
@@ -642,6 +644,13 @@ fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::
         .transpose()
         .map_err(|err| format!("invalid parent_beacon_block_root: {err}"))?;
 
+    let requests_hash = test_header
+        .requests_hash
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid requests_hash: {err}"))?;
+
     Ok(BlockHeader {
         parent_hash,
         ommers_hash,
@@ -663,6 +672,7 @@ fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::
         blob_gas_used,
         excess_blob_gas,
         parent_beacon_block_root,
+        requests_hash,
     })
 }
 
@@ -785,8 +795,8 @@ fn test_execute_all_blockchain_tests() {
             };
 
             // Execute blocks sequentially
-            // Note: Using converted genesis header. Parent hash validation will fail until
-            // we fix RLP encoding to match EELS format exactly.
+            // Note: Parent hash validation should pass now that nonce encoding and
+            // Prague requests_hash are handled in BlockHeader RLP.
             let mut parent_header = match convert_test_block_header(&test_case.genesis_block_header) {
                 Ok(h) => h,
                 Err(e) => {
@@ -807,7 +817,7 @@ fn test_execute_all_blockchain_tests() {
                     continue;
                 }
 
-                let mut block_header = match convert_test_block_header(test_block.block_header.as_ref().unwrap()) {
+                let block_header = match convert_test_block_header(test_block.block_header.as_ref().unwrap()) {
                     Ok(h) => h,
                     Err(e) => {
                         failure_reason = format!("Block {block_idx}: Failed to convert header: {e}");
@@ -815,10 +825,6 @@ fn test_execute_all_blockchain_tests() {
                         break;
                     }
                 };
-
-                // WORKAROUND: Fix parent hash to avoid validation failure
-                // The actual parent hash from RLP encoding doesn't match our computed hash
-                block_header.parent_hash = parent_header.compute_hash();
 
                 // Convert transactions
                 let transactions: Result<Vec<_>, String> = test_block

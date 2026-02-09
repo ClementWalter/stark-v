@@ -239,6 +239,7 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 ///     blob_gas_used: None,
 ///     excess_blob_gas: None,
 ///     parent_beacon_block_root: None,
+///     requests_hash: None,
 /// };
 ///
 /// let mut block = parent.clone();
@@ -411,6 +412,7 @@ mod tests {
             blob_gas_used: None,
             excess_blob_gas: None,
             parent_beacon_block_root: None,
+            requests_hash: None,
         }
     }
 
