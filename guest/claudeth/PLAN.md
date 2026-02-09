@@ -32,7 +32,8 @@ EIP-2935 historical block hashes system calls.
   `parent_beacon_block_root`)
 - Guest input decoding supports optional recent block hashes for BLOCKHASH
 - Guest input decoding accepts withdrawals list when `withdrawals_root` is
-  present
+  present (empty list allowed)
+- Block processing tests cover empty withdrawals list with withdrawals root set
 - `TxContext` carries blob versioned hashes; `RecursiveHost::blobhash` reads
   from `TxContext`
 - Blob transactions populate `TxContext.blob_versioned_hashes`
@@ -46,22 +47,13 @@ EIP-2935 historical block hashes system calls.
 - Witness-based state reconstruction is not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
-- Guest input rejects an empty withdrawals list when `withdrawals_root` is
-  present and does not explicitly gate withdrawals list presence on the header
-  field
 
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-09): pass
-- `prek run` (2026-02-09): pass (no files to check)
+- `prek run` (2026-02-09): pass
 
 ## Plan
-
-### P0: Guest Input Withdrawals Presence (fix)
-
-- Require a withdrawals list if and only if `withdrawals_root` is present.
-- Allow an empty withdrawals list when `withdrawals_root` is present.
-- Add unit coverage for the presence rule.
 
 ### P1: Witness-Based State Reconstruction
 
@@ -74,5 +66,4 @@ EIP-2935 historical block hashes system calls.
 
 ## Immediate Next Task
 
-Fix guest input validation for withdrawals list presence (allow empty list,
-require presence only when `withdrawals_root` is set), then add tests.
+Define the witness format and validation rules for P1.

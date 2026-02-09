@@ -34,16 +34,18 @@ Date: 2026-02-09
 - Input is an RLP list of 5–7 items:
   `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries`,
   optional `block_hashes`, optional `withdrawals`.
-- A withdrawals list must be provided if and only if `withdrawals_root` is
-  present in the header. The list may be empty.
+- A withdrawals list must be provided iff `withdrawals_root` is present in the
+  header; an empty list is valid.
 - If `withdrawals_root` is absent, no withdrawals list should be provided.
-- Recent block hashes must be ordered oldest → newest and capped at 256 entries.
+- Recent block hashes are capped at 256 entries; ordering (oldest → newest) is
+  assumed by callers and is not validated in the guest.
 
 ## Transactions and Context
 
 - Typed transaction decoding accepts type `0x01`, `0x02`, and `0x03`.
-- `Transaction::effective_gas_price` is min(`max_fee_per_gas`,
-  `base_fee + max_priority_fee_per_gas`) for EIP-1559 and blob txs.
+- `Transaction::effective_gas_price` is
+  min(`max_fee_per_gas`, `base_fee + max_priority_fee_per_gas`) for EIP-1559
+  and blob txs.
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
   blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - Blob transactions require a 20-byte `to` address (no contract creation).
@@ -84,7 +86,8 @@ Date: 2026-02-09
 ## Pre-commit Hygiene
 
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable.
-- Always run `cargo test -p claudeth --release` and `prek run` before committing.
+- Always run `cargo test -p claudeth --release` and `prek run` before
+  committing.
 
 ## Do / Don't (Next Iteration)
 
@@ -97,11 +100,12 @@ Date: 2026-02-09
 - Validate `blob_gas_used` and enforce the Cancun max blob gas per block.
 - Sort addresses before computing the state root and use `keccak256(address)`
   as the trie key.
-- Require a withdrawals list when `withdrawals_root` is present, even if empty.
+- Provide withdrawals lists iff `withdrawals_root` is present; empty lists are
+  valid.
 
 **Don't**
 
 - Cap memory expansion gas.
 - Treat EVM `REVERT` as exceptional.
 - Leave unused `src/*.rs` files (pre-commit will fail).
-- Reject an empty withdrawals list when `withdrawals_root` is present.
+- Accept more than 256 recent block hashes.

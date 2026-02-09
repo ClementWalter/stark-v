@@ -955,6 +955,21 @@ mod tests {
     }
 
     #[test]
+    fn test_process_block_empty_withdrawals_root_allows_empty_list() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        let transactions = vec![];
+        let withdrawals = vec![];
+        let mut state = InMemoryState::new();
+
+        block.withdrawals_root = Some(calculate_withdrawals_root(&withdrawals));
+
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_process_block_withdrawals_root_mismatch() {
         let parent = create_test_parent();
         let mut block = create_test_block(&parent);
