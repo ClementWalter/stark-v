@@ -252,6 +252,285 @@ fn apply_pre_state(state: &mut InMemoryState, pre: &HashMap<String, TestAccount>
     Ok(())
 }
 
+fn parse_u64(value: &str) -> Result<u64, String> {
+    let u256_val = parse_u256(value)?;
+    u64::try_from(u256_val).map_err(|_| format!("value {value} too large for u64"))
+}
+
+fn convert_test_transaction(test_tx: &TestTransaction) -> Result<claudeth::types::Transaction, String> {
+    use claudeth::types::transaction::{
+        AccessListEntry as ClaudethAccessListEntry, Eip1559Transaction, Eip2930Transaction,
+        LegacyTransaction,
+    };
+    use claudeth::types::{Hash, Transaction};
+
+    let nonce = parse_u256(&test_tx.nonce)?;
+    let gas_limit = parse_u256(&test_tx.gas_limit)?;
+    let value = parse_u256(&test_tx.value)?;
+    let data = parse_bytes(&test_tx.data)?;
+    let v = parse_u256(&test_tx.v)?;
+    let r = parse_u256(&test_tx.r)?;
+    let s = parse_u256(&test_tx.s)?;
+
+    let to = if test_tx.to.is_empty() || test_tx.to == "0x" {
+        None
+    } else {
+        Some(parse_address(&test_tx.to)?)
+    };
+
+    // Determine transaction type
+    let tx_type = test_tx
+        .tx_type
+        .as_ref()
+        .and_then(|t| u8::from_str_radix(t.trim_start_matches("0x"), 16).ok())
+        .unwrap_or(0);
+
+    let tx = match tx_type {
+        0x00 => {
+            // Legacy transaction
+            let gas_price = test_tx
+                .gas_price
+                .as_ref()
+                .ok_or("Legacy transaction missing gas_price")?;
+            Transaction::Legacy(LegacyTransaction {
+                nonce,
+                gas_price: parse_u256(gas_price)?,
+                gas_limit,
+                to,
+                value,
+                data,
+                v,
+                r,
+                s,
+            })
+        }
+        0x01 => {
+            // EIP-2930 transaction
+            let chain_id = test_tx
+                .chain_id
+                .as_ref()
+                .ok_or("EIP-2930 transaction missing chain_id")?;
+            let gas_price = test_tx
+                .gas_price
+                .as_ref()
+                .ok_or("EIP-2930 transaction missing gas_price")?;
+
+            let access_list = test_tx
+                .access_list
+                .as_ref()
+                .map(|al| {
+                    al.iter()
+                        .map(|entry| {
+                            let address = parse_address(&entry.address)?;
+                            let storage_keys = entry
+                                .storage_keys
+                                .iter()
+                                .map(|key| {
+                                    Hash::from_str(key)
+                                        .map_err(|err| format!("invalid storage key {key}: {err}"))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok(ClaudethAccessListEntry {
+                                address,
+                                storage_keys,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, String>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+
+            Transaction::Eip2930(Eip2930Transaction {
+                chain_id: parse_u256(chain_id)?,
+                nonce,
+                gas_price: parse_u256(gas_price)?,
+                gas_limit,
+                to,
+                value,
+                data,
+                access_list,
+                v,
+                r,
+                s,
+            })
+        }
+        0x02 => {
+            // EIP-1559 transaction
+            let chain_id = test_tx
+                .chain_id
+                .as_ref()
+                .ok_or("EIP-1559 transaction missing chain_id")?;
+            let max_fee_per_gas = test_tx
+                .max_fee_per_gas
+                .as_ref()
+                .ok_or("EIP-1559 transaction missing max_fee_per_gas")?;
+            let max_priority_fee_per_gas = test_tx
+                .max_priority_fee_per_gas
+                .as_ref()
+                .ok_or("EIP-1559 transaction missing max_priority_fee_per_gas")?;
+
+            let access_list = test_tx
+                .access_list
+                .as_ref()
+                .map(|al| {
+                    al.iter()
+                        .map(|entry| {
+                            let address = parse_address(&entry.address)?;
+                            let storage_keys = entry
+                                .storage_keys
+                                .iter()
+                                .map(|key| {
+                                    Hash::from_str(key)
+                                        .map_err(|err| format!("invalid storage key {key}: {err}"))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok(ClaudethAccessListEntry {
+                                address,
+                                storage_keys,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, String>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+
+            Transaction::Eip1559(Eip1559Transaction {
+                chain_id: parse_u256(chain_id)?,
+                nonce,
+                max_priority_fee_per_gas: parse_u256(max_priority_fee_per_gas)?,
+                max_fee_per_gas: parse_u256(max_fee_per_gas)?,
+                gas_limit,
+                to,
+                value,
+                data,
+                access_list,
+                v,
+                r,
+                s,
+            })
+        }
+        _ => return Err(format!("Unsupported transaction type: {tx_type:#x}")),
+    };
+
+    Ok(tx)
+}
+
+fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::types::BlockHeader, String> {
+    use claudeth::types::{BlockHeader, Hash};
+
+    let parent_hash = Hash::from_str(&test_header.parent_hash)
+        .map_err(|err| format!("invalid parent_hash: {err}"))?;
+    let ommers_hash = test_header
+        .uncle_hash
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid uncle_hash: {err}"))?
+        .unwrap_or(Hash::ZERO);
+    let coinbase = parse_address(&test_header.coinbase)?;
+    let state_root =
+        Hash::from_str(&test_header.state_root).map_err(|err| format!("invalid state_root: {err}"))?;
+    let transactions_root = test_header
+        .transactions_trie
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid transactions_trie: {err}"))?
+        .unwrap_or(Hash::ZERO);
+    let receipts_root = test_header
+        .receipt_trie
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid receipt_trie: {err}"))?
+        .unwrap_or(Hash::ZERO);
+
+    let logs_bloom = parse_bytes(&test_header.bloom)?;
+    if logs_bloom.len() != 256 {
+        return Err(format!(
+            "invalid logs_bloom length: expected 256, got {}",
+            logs_bloom.len()
+        ));
+    }
+    let mut logs_bloom_arr = [0u8; 256];
+    logs_bloom_arr.copy_from_slice(&logs_bloom[..]);
+
+    let difficulty = parse_u256(&test_header.difficulty)?;
+    let number = parse_u64(&test_header.number)?;
+    let gas_limit = parse_u64(&test_header.gas_limit)?;
+    let gas_used = parse_u64(&test_header.gas_used)?;
+    let timestamp = parse_u64(&test_header.timestamp)?;
+    let extra_data = parse_bytes(&test_header.extra_data)?;
+    let mix_hash = test_header
+        .mix_hash
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid mix_hash: {err}"))?
+        .unwrap_or(Hash::ZERO);
+    let nonce = test_header
+        .nonce
+        .as_ref()
+        .map(|n| parse_u64(n))
+        .transpose()?
+        .unwrap_or(0);
+
+    let base_fee_per_gas = test_header
+        .base_fee_per_gas
+        .as_ref()
+        .map(|b| parse_u64(b))
+        .transpose()?;
+
+    let withdrawals_root = test_header
+        .withdrawals_root
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid withdrawals_root: {err}"))?;
+
+    let blob_gas_used = test_header
+        .blob_gas_used
+        .as_ref()
+        .map(|b| parse_u64(b))
+        .transpose()?;
+
+    let excess_blob_gas = test_header
+        .excess_blob_gas
+        .as_ref()
+        .map(|e| parse_u64(e))
+        .transpose()?;
+
+    let parent_beacon_block_root = test_header
+        .parent_beacon_block_root
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid parent_beacon_block_root: {err}"))?;
+
+    Ok(BlockHeader {
+        parent_hash,
+        ommers_hash,
+        coinbase,
+        state_root,
+        transactions_root,
+        receipts_root,
+        logs_bloom: logs_bloom_arr,
+        difficulty,
+        number,
+        gas_limit,
+        gas_used,
+        timestamp,
+        extra_data,
+        mix_hash,
+        nonce,
+        base_fee_per_gas,
+        withdrawals_root,
+        blob_gas_used,
+        excess_blob_gas,
+        parent_beacon_block_root,
+    })
+}
+
 #[test]
 fn test_can_parse_blockchain_tests() {
     let tests = discover_blockchain_tests();
@@ -263,6 +542,8 @@ fn test_can_parse_blockchain_tests() {
     let mut parsed = 0;
     let mut failed = 0;
     let mut pre_state_parsed = false;
+    let mut block_header_converted = false;
+    let mut transaction_converted = false;
 
     for test_path in tests.iter().take(10) {
         // Parse first 10 tests
@@ -274,6 +555,28 @@ fn test_can_parse_blockchain_tests() {
                         apply_pre_state(&mut state, &test.pre)
                             .unwrap_or_else(|err| panic!("failed to parse pre-state: {err}"));
                         pre_state_parsed = true;
+                    }
+
+                    // Test block header conversion
+                    if !block_header_converted {
+                        if let Some(ref block) = test.blocks.first() {
+                            if let Some(ref header) = block.block_header {
+                                convert_test_block_header(header)
+                                    .unwrap_or_else(|err| panic!("failed to convert block header: {err}"));
+                                block_header_converted = true;
+                            }
+                        }
+                    }
+
+                    // Test transaction conversion
+                    if !transaction_converted {
+                        if let Some(ref block) = test.blocks.first() {
+                            if !block.transactions.is_empty() {
+                                convert_test_transaction(&block.transactions[0])
+                                    .unwrap_or_else(|err| panic!("failed to convert transaction: {err}"));
+                                transaction_converted = true;
+                            }
+                        }
                     }
                 }
 
@@ -294,6 +597,8 @@ fn test_can_parse_blockchain_tests() {
 
     assert!(parsed > 0, "Should successfully parse at least one test");
     assert!(pre_state_parsed, "Should parse at least one pre-state");
+    assert!(block_header_converted, "Should convert at least one block header");
+    assert!(transaction_converted, "Should convert at least one transaction");
 }
 
 #[test]
