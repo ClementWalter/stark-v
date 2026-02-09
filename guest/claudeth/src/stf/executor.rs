@@ -28,7 +28,8 @@ use alloc::vec::Vec;
 
 use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{
-    execute_bytecode_with_host_and_contexts, BlockContext, CallContext, LogEntry, TxContext,
+    execute_bytecode_with_host_contexts_and_access_list, BlockContext, CallContext, LogEntry,
+    TxContext,
 };
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
@@ -308,7 +309,37 @@ fn execute_call<S: State + Clone>(
     let host = RecursiveHost::new()
         .with_block_context(block_ctx.clone())
         .with_tx_context(tx_ctx.clone());
-    let result = execute_bytecode_with_host_and_contexts(
+
+    // Extract access list (EIP-2930) for warm/cold tracking
+    let access_list: Vec<(Address, Vec<U256>)> = match _tx {
+        Transaction::Eip2930(tx) => tx
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        Transaction::Eip1559(tx) => tx
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    let result = execute_bytecode_with_host_contexts_and_access_list(
         &code,
         gas_available,
         state,
@@ -316,6 +347,7 @@ fn execute_call<S: State + Clone>(
         block_ctx.clone(),
         tx_ctx.clone(),
         call_ctx,
+        &access_list,
     );
 
     match result {
@@ -358,7 +390,37 @@ fn execute_create<S: State + Clone>(
     let host = RecursiveHost::new()
         .with_block_context(block_ctx.clone())
         .with_tx_context(tx_ctx.clone());
-    let result = execute_bytecode_with_host_and_contexts(
+
+    // Extract access list (EIP-2930) for warm/cold tracking
+    let access_list: Vec<(Address, Vec<U256>)> = match tx {
+        Transaction::Eip2930(tx_data) => tx_data
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        Transaction::Eip1559(tx_data) => tx_data
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    let result = execute_bytecode_with_host_contexts_and_access_list(
         &init_code,
         gas_available,
         state,
@@ -366,6 +428,7 @@ fn execute_create<S: State + Clone>(
         block_ctx.clone(),
         tx_ctx.clone(),
         call_ctx,
+        &access_list,
     );
 
     match result {

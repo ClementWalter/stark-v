@@ -25,6 +25,12 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::{vec, vec::Vec};
 
+#[cfg(not(target_arch = "riscv32"))]
+use std::collections::BTreeSet;
+
+#[cfg(target_arch = "riscv32")]
+use alloc::collections::BTreeSet;
+
 use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
 use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
@@ -201,6 +207,9 @@ pub struct Evm<S, H> {
     logs: Vec<LogEntry>,
     state: S,             // State interface for account/storage access
     host: H,              // Host interface for calls/creates
+    // EIP-2929: Warm/cold access tracking
+    accessed_addresses: BTreeSet<Address>,
+    accessed_storage: BTreeSet<(Address, U256)>,
 }
 
 // =============================================================================
@@ -249,6 +258,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             logs: Vec::new(),
             state,
             host,
+            accessed_addresses: BTreeSet::new(),
+            accessed_storage: BTreeSet::new(),
         }
     }
 
@@ -273,6 +284,26 @@ impl<S: State, H: Host<S>> Evm<S, H> {
     /// Consume the EVM and return the final state
     pub fn into_state(self) -> S {
         self.state
+    }
+
+    /// Mark an address as accessed (EIP-2929)
+    /// Returns true if the address was already warm (accessed before)
+    fn access_address(&mut self, address: &Address) -> bool {
+        !self.accessed_addresses.insert(*address)
+    }
+
+    /// Mark a storage slot as accessed (EIP-2929)
+    /// Returns true if the storage slot was already warm (accessed before)
+    fn access_storage(&mut self, address: &Address, key: &U256) -> bool {
+        !self.accessed_storage.insert((*address, *key))
+    }
+
+    /// Pre-warm addresses (for transaction sender, recipient, precompiles)
+    pub fn warm_addresses(mut self, addresses: &[Address]) -> Self {
+        for addr in addresses {
+            self.accessed_addresses.insert(*addr);
+        }
+        self
     }
 
     /// Analyze code to find valid JUMPDEST positions
@@ -430,9 +461,19 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.stack.push(address_u256)?;
             }
             0x31 => {
-                // BALANCE: get balance of account
+                // BALANCE: get balance of account (EIP-2929 warm/cold)
                 let address_u256 = self.stack.pop()?;
                 let address = u256_to_address(&address_u256);
+
+                // Check if warm and refund difference if so
+                // Base gas charged: GAS_BALANCE_COLD (2600)
+                // If warm, should charge: GAS_BALANCE_WARM (100)
+                // Refund: 2600 - 100 = 2500
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund difference
+                }
+
                 let balance = self.state.get_balance(&address);
                 self.stack.push(balance)?;
             }
@@ -526,20 +567,34 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.stack.push(self.tx_ctx.gas_price)?;
             }
             0x3B => {
-                // EXTCODESIZE: get code size of account
+                // EXTCODESIZE: get code size of account (EIP-2929 warm/cold)
                 let address_u256 = self.stack.pop()?;
                 let address = u256_to_address(&address_u256);
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
                 let code = self.state.get_code(&address);
                 self.stack.push(U256::from_u64(code.len() as u64))?;
             }
             0x3C => {
-                // EXTCODECOPY: copy code from external account
+                // EXTCODECOPY: copy code from external account (EIP-2929 warm/cold)
                 let address_u256 = self.stack.pop()?;
                 let dest = self.stack.pop()?.as_usize();
                 let offset = self.stack.pop()?.as_usize();
                 let size = self.stack.pop()?.as_usize();
 
                 let address = u256_to_address(&address_u256);
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
                 // Clone the code to avoid borrow checker issues
                 #[cfg(not(target_arch = "riscv32"))]
                 let code = self.state.get_code(&address).to_vec();
@@ -599,9 +654,16 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 }
             }
             0x3F => {
-                // EXTCODEHASH: get code hash of account
+                // EXTCODEHASH: get code hash of account (EIP-2929 warm/cold)
                 let address_u256 = self.stack.pop()?;
                 let address = u256_to_address(&address_u256);
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
                 let code_hash = self.state.get_code_hash(&address);
                 let hash_u256 = hash_to_u256(&code_hash);
                 self.stack.push(hash_u256)?;
@@ -693,23 +755,40 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.memory.mstore8(offset, value.as_u8())?;
             }
             0x54 => {
-                // SLOAD: load from permanent storage
+                // SLOAD: load from permanent storage (EIP-2929 warm/cold)
                 let key = self.stack.pop()?;
-                let value = self.state.sload(&self.call_ctx.address, &key);
+                let address = self.call_ctx.address;
+
+                // Warm/cold access tracking
+                let is_warm = self.access_storage(&address, &key);
+                if is_warm {
+                    // Base gas charged: GAS_SLOAD_COLD (2100)
+                    // Warm cost: GAS_SLOAD_WARM (100)
+                    // Refund: 2100 - 100 = 2000
+                    self.gas_remaining += 2000;
+                }
+
+                let value = self.state.sload(&address, &key);
                 self.stack.push(value)?;
             }
             0x55 => {
-                // SSTORE: store to permanent storage
+                // SSTORE: store to permanent storage (EIP-2929 warm/cold)
                 let key = self.stack.pop()?;
                 let new_value = self.stack.pop()?;
+                let address = self.call_ctx.address;
 
                 // Get current value to determine refund (EIP-3529)
-                let current_value = self.state.sload(&self.call_ctx.address, &key);
+                let current_value = self.state.sload(&address, &key);
 
+                // Check sentry gas before any operation
                 if self.gas_remaining <= GAS_SSTORE_SENTRY {
                     return Err(EvmError::OutOfGas);
                 }
 
+                // Mark storage as accessed (EIP-2929)
+                self.access_storage(&address, &key);
+
+                // Charge dynamic gas (already accounts for warm/cold via sstore_gas_cost)
                 let sstore_gas = sstore_gas_cost(current_value, new_value);
                 self.consume_gas(sstore_gas)?;
 
@@ -719,7 +798,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.gas_refund += 4800;
                 }
 
-                self.state.sstore(&self.call_ctx.address, &key, new_value);
+                self.state.sstore(&address, &key, new_value);
             }
             0x56 => {
                 // JUMP
@@ -878,7 +957,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 }
             }
 
-            // 0xF1: CALL
+            // 0xF1: CALL (EIP-2929 warm/cold)
             0xF1 => {
                 let gas_requested = self.stack.pop()?.as_u64();
                 let to_u256 = self.stack.pop()?;
@@ -888,6 +967,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let in_size = self.stack.pop()?.as_usize();
                 let out_offset = self.stack.pop()?.as_usize();
                 let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
 
                 let max_offset = in_offset
                     .saturating_add(in_size)
@@ -935,7 +1020,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
             }
 
-            // 0xF2: CALLCODE
+            // 0xF2: CALLCODE (EIP-2929 warm/cold)
             0xF2 => {
                 let gas_requested = self.stack.pop()?.as_u64();
                 let to_u256 = self.stack.pop()?;
@@ -945,6 +1030,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let in_size = self.stack.pop()?.as_usize();
                 let out_offset = self.stack.pop()?.as_usize();
                 let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
 
                 let max_offset = in_offset
                     .saturating_add(in_size)
@@ -1003,7 +1094,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.stopped = true;
             }
 
-            // 0xF4: DELEGATECALL
+            // 0xF4: DELEGATECALL (EIP-2929 warm/cold)
             0xF4 => {
                 let gas_requested = self.stack.pop()?.as_u64();
                 let to_u256 = self.stack.pop()?;
@@ -1012,6 +1103,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let in_size = self.stack.pop()?.as_usize();
                 let out_offset = self.stack.pop()?.as_usize();
                 let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
 
                 let max_offset = in_offset
                     .saturating_add(in_size)
@@ -1086,7 +1183,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 }
             }
 
-            // 0xFA: STATICCALL
+            // 0xFA: STATICCALL (EIP-2929 warm/cold)
             0xFA => {
                 let gas_requested = self.stack.pop()?.as_u64();
                 let to_u256 = self.stack.pop()?;
@@ -1095,6 +1192,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let in_size = self.stack.pop()?.as_usize();
                 let out_offset = self.stack.pop()?.as_usize();
                 let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
 
                 let max_offset = in_offset
                     .saturating_add(in_size)
@@ -1247,6 +1350,9 @@ pub fn execute_bytecode_with_host<S: State, H: Host<S>>(
 }
 
 /// Execute bytecode with a custom host and explicit contexts.
+///
+/// This is a convenience wrapper around `execute_bytecode_with_host_contexts_and_access_list`
+/// with an empty access list.
 pub fn execute_bytecode_with_host_and_contexts<S: State, H: Host<S>>(
     code: &[u8],
     gas_limit: u64,
@@ -1256,10 +1362,64 @@ pub fn execute_bytecode_with_host_and_contexts<S: State, H: Host<S>>(
     tx_ctx: TxContext,
     call_ctx: CallContext,
 ) -> Result<(ExecutionResult, S), EvmError> {
+    execute_bytecode_with_host_contexts_and_access_list(
+        code,
+        gas_limit,
+        state,
+        host,
+        block_ctx,
+        tx_ctx,
+        call_ctx,
+        &[],
+    )
+}
+
+/// Execute bytecode with a custom host, explicit contexts, and access list (EIP-2930).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>(
+    code: &[u8],
+    gas_limit: u64,
+    state: S,
+    host: H,
+    block_ctx: BlockContext,
+    tx_ctx: TxContext,
+    call_ctx: CallContext,
+    access_list: &[(Address, Vec<U256>)],
+) -> Result<(ExecutionResult, S), EvmError> {
+    // EIP-2929: Pre-warm addresses
+    // Warm the sender (origin), recipient (to), and precompiles (0x01-0x0a)
+    #[cfg(not(target_arch = "riscv32"))]
+    let mut warm_addresses = Vec::new();
+    #[cfg(target_arch = "riscv32")]
+    let mut warm_addresses = alloc::vec::Vec::new();
+
+    warm_addresses.push(tx_ctx.origin); // Sender
+    warm_addresses.push(call_ctx.address); // Recipient/contract being called
+    // Precompile addresses (0x01-0x0a for Prague)
+    for i in 1..=10 {
+        let mut addr_bytes = [0u8; 20];
+        addr_bytes[19] = i;
+        warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());
+    }
+
+    // Add access list addresses
+    for (addr, _) in access_list {
+        warm_addresses.push(*addr);
+    }
+
     let mut evm = Evm::new(code.to_vec(), gas_limit, state, host)
         .with_block_context(block_ctx)
         .with_tx_context(tx_ctx)
-        .with_call_context(call_ctx);
+        .with_call_context(call_ctx)
+        .warm_addresses(&warm_addresses);
+
+    // Warm access list storage slots
+    for (addr, keys) in access_list {
+        for key in keys {
+            evm.access_storage(addr, key);
+        }
+    }
+
     let result = evm.run()?;
     Ok((result, evm.state))
 }
