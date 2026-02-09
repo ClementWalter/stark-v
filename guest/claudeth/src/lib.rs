@@ -7,7 +7,7 @@
 //! ## Features
 //!
 //! - `no_std` compatible with `alloc` support (on riscv32 target)
-//! - Minimal dependencies (serde only)
+//! - Minimal dependencies (serde + k256 for secp256k1)
 //! - Full Ethereum state transition function
 //! - Optimized for Circle STARKs proof generation
 //!

@@ -1,5 +1,20 @@
 # Claudeth Development Learnings
 
+## Session 53: Align lib.rs Feature List With Dependencies (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Updated `src/lib.rs` feature list to mention `k256` alongside `serde`.
+2. ✅ Updated PLAN.md to reflect the doc alignment and current next task.
+
+### DO's ✅
+1. **Keep crate-level feature lists in sync with actual dependencies** to avoid misleading docs.
+2. **Update PLAN.md after small doc fixes** so the immediate next task remains accurate.
+
+### DON'Ts ❌
+1. **Don't leave partial doc updates** (top-level text vs feature list) since they drift quickly.
+
 ## Session 52: Docs Alignment + Prek Sandbox Fix (2026-02-09)
 
 **Status**: Completed
