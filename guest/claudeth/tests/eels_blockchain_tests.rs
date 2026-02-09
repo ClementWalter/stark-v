@@ -6,12 +6,13 @@
 // Test fixtures are loaded from tests/eels/BlockchainTests/ (not checked into git).
 // Run scripts/fetch_eels_tests.py to download the test fixtures.
 
+use claudeth::crypto::keccak256;
 use claudeth::evm::format_disassembly;
-use claudeth::state::{InMemoryState, State};
-use claudeth::types::{Address, Bytes, U256};
+use claudeth::state::{InMemoryState, State, Storage, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
+use claudeth::types::{Address, Bytes, Hash, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
@@ -275,6 +276,8 @@ fn apply_pre_state(
     state: &mut InMemoryState,
     pre: &HashMap<String, TestAccount>,
 ) -> Result<(), String> {
+    state.set_touch_tracking(false);
+    state.clear_touched_accounts();
     for (address_str, account) in pre {
         let address = parse_address(address_str)?;
         let balance = parse_u256(&account.balance)?;
@@ -291,6 +294,7 @@ fn apply_pre_state(
             state.sstore(&address, &key_u256, value_u256);
         }
     }
+    state.set_touch_tracking(true);
 
     Ok(())
 }
@@ -394,6 +398,208 @@ fn validate_post_state(
     }
 
     Ok(())
+}
+
+fn compute_expected_storage_root(
+    storage: &HashMap<String, String>,
+) -> Result<Hash, String> {
+    let mut expected_storage = Storage::new();
+    for (key_str, value_str) in storage {
+        let key = parse_u256(key_str)?;
+        let value = parse_u256(value_str)?;
+        expected_storage.set(&key, value);
+    }
+    Ok(expected_storage.compute_root())
+}
+
+fn dump_state_diff(
+    state: &InMemoryState,
+    pre: &HashMap<String, TestAccount>,
+    post: &HashMap<String, TestAccount>,
+) {
+    let mut post_accounts = HashMap::new();
+    for (address_str, account) in post {
+        match parse_address(address_str) {
+            Ok(address) => {
+                post_accounts.insert(address, (address_str, account));
+            }
+            Err(err) => {
+                eprintln!("  [diff] invalid post address {address_str}: {err}");
+            }
+        }
+    }
+
+    let mut pre_accounts = HashMap::new();
+    for (address_str, account) in pre {
+        match parse_address(address_str) {
+            Ok(address) => {
+                pre_accounts.insert(address, (address_str, account));
+            }
+            Err(err) => {
+                eprintln!("  [diff] invalid pre address {address_str}: {err}");
+            }
+        }
+    }
+
+    let mut address_set: HashSet<Address> = HashSet::new();
+    address_set.extend(post_accounts.keys().copied());
+    address_set.extend(pre_accounts.keys().copied());
+    address_set.extend(state.account_addresses());
+
+    let mut addresses: Vec<Address> = address_set.into_iter().collect();
+    addresses.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+
+    eprintln!("  State diff:");
+    for address in addresses {
+        let post_entry = post_accounts.get(&address).copied();
+        let expected_in_post = post_entry.is_some();
+        let pre_account = pre_accounts.get(&address).map(|(_, account)| *account);
+
+        let actual_balance = state.get_balance(&address);
+        let actual_nonce = state.get_nonce(&address);
+        let actual_code = state.get_code(&address);
+        let actual_code_hash = state.get_code_hash(&address);
+        let actual_storage_root = state.storage_root(&address);
+
+        if expected_in_post {
+            let (post_address_str, post_account) = post_entry.expect("checked is_some");
+            let address_label = if post_address_str.is_empty() {
+                format!("{address}")
+            } else {
+                post_address_str.to_string()
+            };
+            let mut mismatch = false;
+
+            let expected_balance = match parse_u256(&post_account.balance) {
+                Ok(value) => value,
+                Err(err) => {
+                    eprintln!("  {address_label}: invalid expected balance: {err}");
+                    continue;
+                }
+            };
+            let expected_nonce = match parse_u256(&post_account.nonce) {
+                Ok(value) => value,
+                Err(err) => {
+                    eprintln!("  {address_label}: invalid expected nonce: {err}");
+                    continue;
+                }
+            };
+            let expected_code = match parse_bytes(&post_account.code) {
+                Ok(value) => value,
+                Err(err) => {
+                    eprintln!("  {address_label}: invalid expected code: {err}");
+                    continue;
+                }
+            };
+            let expected_code_hash = keccak256(expected_code.as_ref());
+            let expected_storage_root = match compute_expected_storage_root(&post_account.storage) {
+                Ok(value) => value,
+                Err(err) => {
+                    eprintln!("  {address_label}: invalid expected storage: {err}");
+                    continue;
+                }
+            };
+
+            if actual_balance != expected_balance {
+                mismatch = true;
+                eprintln!(
+                    "  {address_label}: balance expected {expected_balance}, got {actual_balance}"
+                );
+            }
+
+            if actual_nonce != expected_nonce {
+                mismatch = true;
+                eprintln!(
+                    "  {address_label}: nonce expected {expected_nonce}, got {actual_nonce}"
+                );
+            }
+
+            if actual_code != expected_code.as_ref() {
+                mismatch = true;
+                eprintln!(
+                    "  {address_label}: code length expected {}, got {}",
+                    expected_code.len(),
+                    actual_code.len()
+                );
+                eprintln!(
+                    "  {address_label}: code hash expected {expected_code_hash}, got {actual_code_hash}"
+                );
+            }
+
+            if actual_storage_root != expected_storage_root {
+                mismatch = true;
+                eprintln!(
+                    "  {address_label}: storage root expected {expected_storage_root}, got {actual_storage_root}"
+                );
+            }
+
+            for (key_str, value_str) in post_account.storage.iter() {
+                let key = match parse_u256(key_str) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        eprintln!("  {address_label}: invalid storage key {key_str}: {err}");
+                        continue;
+                    }
+                };
+                let expected_value = match parse_u256(value_str) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        eprintln!(
+                            "  {address_label}: invalid storage value {value_str}: {err}"
+                        );
+                        continue;
+                    }
+                };
+                let actual_value = state.sload(&address, &key);
+                if actual_value != expected_value {
+                    mismatch = true;
+                    eprintln!(
+                        "  {address_label}: storage[{key_str}] expected {expected_value}, got {actual_value}"
+                    );
+                }
+            }
+
+            if !mismatch {
+                continue;
+            }
+        } else {
+            let address_label = if let Some((pre_address_str, _)) = pre_accounts.get(&address) {
+                pre_address_str.to_string()
+            } else {
+                format!("{address}")
+            };
+
+            let mut non_empty = actual_balance != U256::ZERO
+                || actual_nonce != U256::ZERO
+                || !actual_code.is_empty()
+                || actual_storage_root != EMPTY_TRIE_ROOT
+                || actual_code_hash != EMPTY_CODE_HASH;
+
+            if let Some(pre_account) = pre_account {
+                for (key_str, _value_str) in pre_account.storage.iter() {
+                    if let Ok(key) = parse_u256(key_str) {
+                        let actual_value = state.sload(&address, &key);
+                        if actual_value != U256::ZERO {
+                            non_empty = true;
+                            eprintln!(
+                                "  {address_label}: storage[{key_str}] expected 0, got {actual_value}"
+                            );
+                        }
+                    }
+                }
+            }
+
+            if non_empty {
+                eprintln!(
+                    "  {address_label}: expected empty but got balance {actual_balance}, nonce {actual_nonce}, code {} bytes",
+                    actual_code.len()
+                );
+                eprintln!(
+                    "  {address_label}: code hash {actual_code_hash}, storage root {actual_storage_root}"
+                );
+            }
+        }
+    }
 }
 
 fn parse_u64(value: &str) -> Result<u64, String> {
@@ -933,6 +1139,13 @@ fn test_execute_all_blockchain_tests() {
 
                         if matches!(
                             e,
+                            claudeth::stf::BlockProcessingError::StateRootMismatch { .. }
+                        ) {
+                            dump_state_diff(&state, &test_case.pre, &test_case.post_state);
+                        }
+
+                        if matches!(
+                            e,
                             claudeth::stf::BlockProcessingError::TransactionExecutionError(_)
                         ) {
                             dump_transaction_disassembly(test_block);
@@ -954,6 +1167,7 @@ fn test_execute_all_blockchain_tests() {
                     }
                     Err(e) => {
                         eprintln!("✗ {test_name}: Post-state mismatch: {e}");
+                        dump_state_diff(&state, &test_case.pre, &test_case.post_state);
                         #[cfg(feature = "evm-trace")]
                         {
                             for (block_idx, block_result) in block_results.iter().enumerate() {

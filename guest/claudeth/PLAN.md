@@ -195,6 +195,18 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 - Clear created-account tracking after each transaction
 **Impact**: Not yet re-baselined against EELS (run needed)
 
+### Task N15: Avoid Touch-Tracking During Pre-State Load ✅
+**Result**: Pre-state loading no longer marks accounts as touched, preventing
+accidental EIP-161 deletions of fixture/setup accounts.
+**Changes**:
+- Added touch-tracking toggle on `InMemoryState`
+- Disabled touch tracking while applying pre-state in the EELS harness
+- Disabled touch tracking while applying guest input state snapshot
+
+### Task N16: Add State Root Diff Dumping ✅
+**Result**: EELS harness now prints per-account diffs when state roots or
+post-state validation fails, enabling targeted debugging.
+
 ---
 
 ---
@@ -230,6 +242,20 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 ---
 
 ## Immediate Next Task (Execute Next)
+
+### Task N16: Add State Root Diff Dumping ✅
+**Result**: EELS harness now emits deterministic per-account diffs on state
+root mismatches or post-state mismatches.
+**Changes**:
+- Added diff helper to compare expected vs actual account fields and storage
+- Includes expected storage root vs computed storage root for each account
+- Works for both `StateRootMismatch` errors and post-state mismatch validation
+
+### Task N17: Use Diff Output to Pinpoint the First Bad Account (READY)
+**Goal**: Run a single EELS test (e.g., shanghaiExample) and use the diff
+output to locate the first account/field divergence, then fix the root cause.
+
+---
 
 ### Task N14: Implement EIP-161 Empty Account Deletion ✅ (Completed but didn't fix state roots)
 

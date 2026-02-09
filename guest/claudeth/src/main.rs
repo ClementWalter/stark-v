@@ -220,6 +220,7 @@ fn decode_recent_block_hashes(input: &[u8]) -> Result<Vec<(u64, Hash)>, GuestErr
 }
 
 fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
+    state.set_touch_tracking(false);
     for entry in entries {
         state.set_balance(&entry.address, entry.balance);
         state.set_nonce(&entry.address, entry.nonce);
@@ -228,6 +229,7 @@ fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
             state.sstore(&entry.address, key, *value);
         }
     }
+    state.set_touch_tracking(true);
 }
 
 fn encode_success(gas_used: u64, receipts_root: Hash, state_root: Hash) -> Vec<u8> {

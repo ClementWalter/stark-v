@@ -9,6 +9,7 @@ fn test_debug_optionstest_prague() {
     // Recreate optionsTest_Prague scenario
 
     let mut state = InMemoryState::new();
+    state.set_touch_tracking(false);
 
     // Setup pre-state for contract
     let contract_addr = Address::from_hex("0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b").unwrap();
@@ -24,6 +25,7 @@ fn test_debug_optionstest_prague() {
     let sender_addr = Address::from_hex("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b").unwrap();
     state.set_balance(&sender_addr, U256::from_hex("0x016345785d8a0000").unwrap());
     state.set_nonce(&sender_addr, U256::ZERO);
+    state.set_touch_tracking(true);
 
     println!("Pre-state:");
     println!("  Contract balance: {}", state.get_balance(&contract_addr));

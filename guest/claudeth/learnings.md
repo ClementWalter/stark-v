@@ -1,5 +1,23 @@
 # Claudeth Development Learnings
 
+## Session 74: Pre-State Touch Tracking + State Diff Dumping (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Added a touch-tracking toggle on `InMemoryState`
+2. ✅ Disabled touch tracking when applying EELS pre-state and guest input state snapshots
+3. ✅ Added deterministic state diff dumping for EELS state root/post-state mismatches
+
+### DO's ✅
+1. **Disable touch tracking during pre-state loading** to avoid EIP-161 deletions of fixture setup
+2. **Print deterministic per-account diffs** when state roots mismatch to guide fixes
+3. **Compare storage roots as well as explicit keys** to catch hidden storage differences
+
+### DON'Ts ❌
+1. **Don't treat setup mutations as "touched"** for EIP-161 semantics
+2. **Don't rely on single-field mismatch errors** when debugging state roots
+
 ## Session 73: Attempt EIP-161 Empty Account Deletion (2026-02-09)
 
 **Status**: Implemented but doesn't fix state root mismatches

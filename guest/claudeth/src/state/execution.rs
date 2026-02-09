@@ -124,6 +124,8 @@ pub struct InMemoryState {
     created_accounts: Vec<Address>,
     /// Accounts touched (accessed) during the current transaction (EIP-161)
     touched_accounts: HashSet<Address>,
+    /// Controls whether mutating operations mark accounts as touched
+    track_touched_accounts: bool,
 }
 
 impl InMemoryState {
@@ -137,6 +139,7 @@ impl InMemoryState {
             selfdestructs: Vec::new(),
             created_accounts: Vec::new(),
             touched_accounts: HashSet::new(),
+            track_touched_accounts: true,
         }
     }
 
@@ -190,6 +193,26 @@ impl InMemoryState {
     /// Clears self-destruct list (called at transaction end)
     pub fn clear_selfdestructs(&mut self) {
         self.selfdestructs.clear();
+    }
+
+    /// Enables or disables touch tracking for mutating operations
+    pub fn set_touch_tracking(&mut self, enabled: bool) {
+        self.track_touched_accounts = enabled;
+    }
+
+    /// Returns all known account addresses in stable order
+    pub fn account_addresses(&self) -> Vec<Address> {
+        let mut addresses: Vec<Address> = self.accounts.keys().copied().collect();
+        addresses.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+        addresses
+    }
+
+    /// Computes the storage root for an account
+    pub fn storage_root(&self, address: &Address) -> Hash {
+        self.storage
+            .get(address)
+            .map(Storage::compute_root)
+            .unwrap_or(EMPTY_TRIE_ROOT)
     }
 }
 
@@ -398,7 +421,9 @@ impl State for InMemoryState {
     }
 
     fn touch_account(&mut self, address: &Address) {
-        self.touched_accounts.insert(*address);
+        if self.track_touched_accounts {
+            self.touched_accounts.insert(*address);
+        }
     }
 
     fn delete_empty_touched_accounts(&mut self) {
