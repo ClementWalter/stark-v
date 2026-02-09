@@ -43,10 +43,16 @@ The issue is likely related to call context:
 4. State root computation → are all storage-modified accounts included?
 
 ### Next Steps
-1. Add execution tracing to capture SSTORE operations and target addresses
-2. Verify CALL vs DELEGATECALL storage context is correct
+1. **PRIORITY**: Add execution tracing to capture SSTORE operations and their target addresses during test execution
+2. Verify CALL vs DELEGATECALL storage context is correct for proxy patterns
 3. Check if storage writes are being lost between transaction execution and state root computation
 4. Consider: is there a storage cache flush missing?
+
+### Session Summary
+**Goal**: Understand why storage writes aren't persisting in EELS tests
+**Result**: Identified call context as likely issue - storage writes happening to different address than expected
+**Commit**: e5674eab - Added diagnostic tools and documented investigation
+**Status**: Need execution tracing to confirm hypothesis
 
 ### DO's ✅
 1. **Trace actual execution** - don't assume code paths work correctly
