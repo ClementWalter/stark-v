@@ -33,6 +33,8 @@ EIP-2935 historical block hashes system calls.
 - Guest input decoding supports optional recent block hashes for BLOCKHASH
 - Guest input decoding accepts withdrawals list when `withdrawals_root` is
   present (empty list allowed)
+- Guest input validates recent block hashes length ≤ min(block number, 256) and
+  requires the last hash to match the parent hash when provided
 - Block processing tests cover empty withdrawals list with withdrawals root set
 - `TxContext` carries blob versioned hashes; `RecursiveHost::blobhash` reads
   from `TxContext`
@@ -51,14 +53,16 @@ EIP-2935 historical block hashes system calls.
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-09): pass
-- `prek run` (2026-02-09): pass
+- `prek run` (2026-02-09): pass (no files to check)
 
 ## Plan
 
 ### P1: Witness-Based State Reconstruction
 
-- Specify witness format (accounts, storage proofs, code) and validation rules.
+- Specify witness format (account proof, storage proof, code) and validation
+  rules.
 - Implement proof verification and minimal state reconstruction in `State`.
+- Wire witness-driven state into guest input decoding and state initialization.
 
 ### P2: Remove `k256`
 

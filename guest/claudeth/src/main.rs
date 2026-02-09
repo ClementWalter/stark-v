@@ -131,11 +131,8 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
         _ => unreachable!("length checked above"),
     };
 
-    if block_hashes.len() > 256 {
-        return Err(GuestError::InvalidInput);
-    }
-
     validate_withdrawals_presence(&block, has_withdrawals_list)?;
+    validate_block_hashes(&block, &parent, &block_hashes)?;
 
     let mut state = InMemoryState::new();
     apply_state_entries(&mut state, &state_entries);
@@ -268,6 +265,32 @@ fn validate_withdrawals_presence(
     }
 
     if block.withdrawals_root.is_none() && has_withdrawals_list {
+        return Err(GuestError::InvalidInput);
+    }
+
+    Ok(())
+}
+
+fn validate_block_hashes(
+    block: &BlockHeader,
+    parent: &BlockHeader,
+    block_hashes: &[Hash],
+) -> Result<(), GuestError> {
+    if block_hashes.is_empty() {
+        return Ok(());
+    }
+
+    if block.number == 0 {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let max_hashes = core::cmp::min(block.number as usize, 256);
+    if block_hashes.len() > max_hashes {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let parent_hash = parent.compute_hash();
+    if block_hashes.last().copied() != Some(parent_hash) {
         return Err(GuestError::InvalidInput);
     }
 
@@ -434,6 +457,65 @@ mod tests {
 
         let result = validate_withdrawals_presence(&header, true);
         assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
+
+    #[test]
+    fn test_block_hashes_allows_empty_list() {
+        let mut header = BlockHeader::default();
+        header.number = 10;
+        let parent = BlockHeader::default();
+
+        let result = validate_block_hashes(&header, &parent, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_block_hashes_rejects_genesis_with_hashes() {
+        let header = BlockHeader::default();
+        let parent = BlockHeader::default();
+        let hashes = vec![Hash::from([0x11; 32])];
+
+        let result = validate_block_hashes(&header, &parent, &hashes);
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
+
+    #[test]
+    fn test_block_hashes_rejects_too_many_for_height() {
+        let mut header = BlockHeader::default();
+        header.number = 2;
+        let parent = BlockHeader::default();
+        let parent_hash = parent.compute_hash();
+        let hashes = vec![
+            Hash::from([0x22; 32]),
+            Hash::from([0x33; 32]),
+            parent_hash,
+        ];
+
+        let result = validate_block_hashes(&header, &parent, &hashes);
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
+
+    #[test]
+    fn test_block_hashes_requires_parent_hash_last() {
+        let mut header = BlockHeader::default();
+        header.number = 1;
+        let parent = BlockHeader::default();
+        let hashes = vec![Hash::from([0x44; 32])];
+
+        let result = validate_block_hashes(&header, &parent, &hashes);
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
+
+    #[test]
+    fn test_block_hashes_accepts_parent_hash_last() {
+        let mut header = BlockHeader::default();
+        header.number = 3;
+        let parent = BlockHeader::default();
+        let parent_hash = parent.compute_hash();
+        let hashes = vec![parent_hash];
+
+        let result = validate_block_hashes(&header, &parent, &hashes);
+        assert!(result.is_ok());
     }
 }
 

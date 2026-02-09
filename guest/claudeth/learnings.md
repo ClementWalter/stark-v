@@ -36,9 +36,9 @@ Date: 2026-02-09
   optional `block_hashes`, optional `withdrawals`.
 - A withdrawals list must be provided iff `withdrawals_root` is present in the
   header; an empty list is valid.
-- If `withdrawals_root` is absent, no withdrawals list should be provided.
-- Recent block hashes are capped at 256 entries; ordering (oldest → newest) is
-  assumed by callers and is not validated in the guest.
+- Recent block hashes are capped at 256 entries, are ordered oldest → newest,
+  and when provided the last entry must equal `parent.compute_hash()`.
+- For genesis (`block.number == 0`), a recent block hashes list is invalid.
 
 ## Transactions and Context
 
@@ -61,12 +61,6 @@ Date: 2026-02-09
   the sender (burned, not credited to coinbase).
 - Block processing enforces the max blob gas per block and validates
   `header.blob_gas_used` against the computed total.
-
-## Blob Base Fee
-
-- `BLOBBASEFEE` uses the execution-specs Taylor expansion function over
-  `excess_blob_gas`.
-- If `excess_blob_gas` is absent (pre-Cancun), `BLOBBASEFEE` returns zero.
 
 ## State / Trie
 
@@ -100,12 +94,12 @@ Date: 2026-02-09
 - Validate `blob_gas_used` and enforce the Cancun max blob gas per block.
 - Sort addresses before computing the state root and use `keccak256(address)`
   as the trie key.
-- Provide withdrawals lists iff `withdrawals_root` is present; empty lists are
-  valid.
+- Enforce recent block hashes list length ≤ min(block number, 256) and require
+  the last hash to match the parent hash when provided.
 
 **Don't**
 
 - Cap memory expansion gas.
 - Treat EVM `REVERT` as exceptional.
 - Leave unused `src/*.rs` files (pre-commit will fail).
-- Accept more than 256 recent block hashes.
+- Accept recent block hash lists for genesis or lists with a mismatched parent.
