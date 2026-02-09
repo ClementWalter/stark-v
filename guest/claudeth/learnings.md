@@ -18,8 +18,9 @@
   - 1172 unit tests passed
   - 93 doc tests passed
   - Integration tests passed; EELS test runner remains ignored by default
-- `prek run` failed in this environment: unable to open
-  `/Users/clementwalter/.cache/prek/prek.log` (permission denied).
+- Direct `prek run` failed in this environment due to inability to open
+  `/Users/clementwalter/.cache/prek/prek.log`, but git commit hooks executed
+  successfully.
 - EELS blockchain tests require external fixtures in
   `tests/eels/BlockchainTests/` and must be run with `-- --ignored`.
 
