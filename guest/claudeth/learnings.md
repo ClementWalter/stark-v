@@ -2,7 +2,7 @@
 
 ## Session 62: Investigate EIP-2929 Per-Transaction Access Lists (2026-02-09)
 
-**Status**: Analysis in progress - discovered potential EIP-2929 scope issue
+**Status**: Completed - EIP-2929 verified correct, root cause still unknown
 
 ### Investigation Summary
 Investigated tipInsideBlock gas overcharge (+9200 gas across 3 transactions). Initial hypothesis was incorrect warm/cold access cost tracking.
