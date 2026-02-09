@@ -67,6 +67,18 @@
 
 **Alternative hypothesis**: The issue may not be in RecursiveHost but in how top-level transactions interact with the execution model. The fact that ALL tests fail suggests a fundamental issue, not edge cases.
 
+### Session Summary
+
+**Commit**: `12a8c5c` - "fix(evm): implement value transfers in RecursiveHost for nested calls"
+
+**Work completed**:
+- Fixed missing value transfer logic in RecursiveHost for nested CALL/CREATE operations
+- Added balance checks before transfers
+- Ensured value transfers happen in cloned state before EVM execution
+- All unit tests passing, pre-commit hooks passing
+
+**Critical finding**: While value transfer logic is now correct, EELS tests still fail completely (0/20). This indicates a deeper bug in the execution model that prevents state changes from persisting. The next session must focus on systematic debugging to understand why storage writes, balance updates, and nonce increments are not being applied to the final state.
+
 ## Session 33: Wire EVM Context Propagation (2026-02-09)
 
 **Status**: Phase D Task D3 IN PROGRESS (context propagation complete)
