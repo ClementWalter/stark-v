@@ -1,5 +1,47 @@
 # Claudeth Development Learnings
 
+## Session 56: Debug mergeExample Gas Undercharge (2026-02-09)
+
+**Status**: IN PROGRESS - Investigating -19900 gas undercharge in CREATE with access list
+
+### Current Analysis
+**Test**: mergeExample - CREATE transaction with EIP-1559 + access list
+- Expected: 82839 gas
+- Computed: 62939 gas
+- Missing: 19900 gas
+
+**Transaction Details**:
+- Type: 0x02 (EIP-1559)
+- To: "" (CREATE)
+- Data: 25 bytes init code
+- Access list: 1 address (0x095e...) + 2 storage keys
+- Deployed code: 6 bytes
+
+**Gas Breakdown Computed**:
+1. Intrinsic: 21000 (base) + 400 (data) + 6200 (access list) + 32000 (CREATE) + 2 (initcode words) = 59602
+2. Execution: 2229 (from trace)
+3. Code deposit: 1200 (6 bytes * 200)
+4. Total: 59602 + 2229 + 1200 = 63031
+5. Actual computed by system: 62939 (92 gas less than manual calculation?)
+
+**Key Mystery**: Where is the missing ~19900 gas?
+- Access list charges seem correct: 2400 + (2 * 1900) = 6200
+- Init code execution trace shows only 2229 gas used
+- Code deposit should be 1200 gas (6 bytes)
+- Something fundamental is missing from CREATE gas accounting
+
+**Hypothesis**: Possible issues to investigate:
+1. CREATE with access list might need additional gas charges (EIP-2930 + CREATE interaction?)
+2. Access list items might need to be charged differently for CREATE vs CALL?
+3. Missing gas charge for cold account access to the created contract address?
+4. EIP-2929 interaction with CREATE - does the new contract start cold or warm?
+
+### Next Steps
+1. ⏭️ Check if CREATE should charge for cold account creation (beyond the 32000 base cost)
+2. ⏭️ Verify access list costs are applied correctly for CREATE transactions
+3. ⏭️ Compare with Ethereum yellow paper CREATE gas specification
+4. ⏭️ Check if there's an additional gas cost for CREATE with EIP-2929 cold account access
+
 ## Session 55: Revert-Safe Value Transfers (2026-02-09)
 
 **Status**: Completed - Fixes state corruption on failed executions
