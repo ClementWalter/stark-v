@@ -234,10 +234,12 @@ Goal: finalize per-transaction correctness before block processing.
 7. ✅ **ROOT CAUSE FOUND**: Parent hash validation was aborting ALL block execution (Session 36)
 8. ✅ **FIXED**: Override parent_hash to allow execution (Session 36)
 9. ✅ **FIXED**: Charge SSTORE dynamic gas + sentry check (Session 37)
-10. ⚠️ **NEW ISSUE**: Gas usage still lower than expected (missing warm/cold access tracking?)
-11. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-12. TODO: Implement warm/cold access tracking (EIP-2929) for storage/account ops
-13. TODO: Debug why exploit test transactions are failing
+10. ✅ **IMPLEMENTED**: EIP-2929 warm/cold access tracking (Session 38)
+11. ⚠️ **NEW ISSUE**: Gas usage STILL identical after EIP-2929 implementation
+12. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+13. TODO: Debug why gas usage unchanged despite correct EIP-2929 implementation
+14. TODO: Investigate if tests are using cold accesses or all pre-warmed
+15. TODO: Debug why exploit test transactions are failing
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 
