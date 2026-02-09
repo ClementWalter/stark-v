@@ -6,11 +6,14 @@
 // Test fixtures are loaded from tests/eels/BlockchainTests/ (not checked into git).
 // Run scripts/fetch_eels_tests.py to download the test fixtures.
 
+use claudeth::state::{InMemoryState, State};
+use claudeth::types::{Address, Bytes, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::str::FromStr;
 
 /// BlockchainTest fixture format
 ///
@@ -211,6 +214,44 @@ fn discover_blockchain_tests() -> Vec<std::path::PathBuf> {
     tests
 }
 
+fn parse_address(value: &str) -> Result<Address, String> {
+    Address::from_str(value).map_err(|err| format!("invalid address {value}: {err}"))
+}
+
+fn parse_u256(value: &str) -> Result<U256, String> {
+    let trimmed = value.trim();
+    let trimmed = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+    if trimmed.is_empty() {
+        return Ok(U256::ZERO);
+    }
+    U256::from_str(value).map_err(|err| format!("invalid U256 {value}: {err}"))
+}
+
+fn parse_bytes(value: &str) -> Result<Bytes, String> {
+    Bytes::from_str(value).map_err(|err| format!("invalid bytes {value}: {err}"))
+}
+
+fn apply_pre_state(state: &mut InMemoryState, pre: &HashMap<String, TestAccount>) -> Result<(), String> {
+    for (address_str, account) in pre {
+        let address = parse_address(address_str)?;
+        let balance = parse_u256(&account.balance)?;
+        let nonce = parse_u256(&account.nonce)?;
+        let code = parse_bytes(&account.code)?;
+
+        state.set_balance(&address, balance);
+        state.set_nonce(&address, nonce);
+        state.set_code(&address, Vec::from(code));
+
+        for (key, value) in &account.storage {
+            let key_u256 = parse_u256(key)?;
+            let value_u256 = parse_u256(value)?;
+            state.sstore(&address, &key_u256, value_u256);
+        }
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_can_parse_blockchain_tests() {
     let tests = discover_blockchain_tests();
@@ -221,11 +262,21 @@ fn test_can_parse_blockchain_tests() {
 
     let mut parsed = 0;
     let mut failed = 0;
+    let mut pre_state_parsed = false;
 
     for test_path in tests.iter().take(10) {
         // Parse first 10 tests
         match load_blockchain_test(test_path) {
             Ok(test_cases) => {
+                for test in test_cases.values() {
+                    if !pre_state_parsed {
+                        let mut state = InMemoryState::new();
+                        apply_pre_state(&mut state, &test.pre)
+                            .unwrap_or_else(|err| panic!("failed to parse pre-state: {err}"));
+                        pre_state_parsed = true;
+                    }
+                }
+
                 parsed += test_cases.len();
                 let num_cases = test_cases.len();
                 println!("✓ Parsed {num_cases} test cases from {}", test_path.display());
@@ -242,6 +293,7 @@ fn test_can_parse_blockchain_tests() {
     println!("  Failed: {failed} files");
 
     assert!(parsed > 0, "Should successfully parse at least one test");
+    assert!(pre_state_parsed, "Should parse at least one pre-state");
 }
 
 #[test]

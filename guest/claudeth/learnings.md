@@ -1,5 +1,25 @@
 # Claudeth Development Learnings
 
+## Session 29: Phase D Task D2.1 - Pre-State Loader (2026-02-09)
+
+**Status**: Phase D Task D2.1 COMPLETE ✅
+
+### What Was Accomplished
+1. ✅ Added hex parsing helpers for address, U256, and bytes in EELS test harness
+2. ✅ Implemented `apply_pre_state` to load `pre` state into `InMemoryState`
+3. ✅ Extended EELS parsing test to validate pre-state decoding
+4. ✅ Updated PLAN.md to reflect D2.1 completion
+5. ✅ `cargo test -p claudeth --release` passing
+
+### DO's ✅
+1. **Use `GIT_INDEX_FILE` with `prek run --all-files`** in sandboxed environments to avoid index lock permission errors
+2. **Treat `0x` as zero** when parsing EELS hex quantities for balances/nonces/storage
+3. **Use `Bytes::from_str` + `Vec::from`** to decode account code safely
+
+### DON'Ts ❌
+1. **Don't leave parsing helpers unused** - they must be exercised to avoid dead-code warnings
+2. **Don't assume pre-state parsing will always succeed** - surface errors with context
+
 ## Session 28: Phase D Task D1 - EELS Test Parser (2026-02-09)
 
 **Status**: Phase D Task D1 COMPLETE ✅

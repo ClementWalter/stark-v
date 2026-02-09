@@ -178,10 +178,11 @@ Goal: finalize per-transaction correctness before block processing.
 **Goal**: Run parsed test vectors through claudeth STF and identify failures
 
 **Subtasks**:
-1. Map EELS test format to claudeth input types
-2. Execute tests and collect results (pass/fail/error)
-3. Categorize failures by type (validation, execution, state)
-4. Document spec mismatches
+1. ✅ Map `pre` state into `InMemoryState` (hex parsing helpers + loader in test harness)
+2. Map EELS test format to claudeth input types (blocks + transactions)
+3. Execute tests and collect results (pass/fail/error)
+4. Categorize failures by type (validation, execution, state)
+5. Document spec mismatches
 
 **Verification**: Test runner executes all relevant tests and reports results
 
