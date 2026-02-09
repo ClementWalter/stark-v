@@ -22,7 +22,7 @@ use crate::crypto::rlp::encode_u256;
 use crate::evm::interpreter::BlockContext;
 use crate::state::{State, Trie};
 use crate::stf::{
-    calculate_receipts_root, execute_transaction, Bloom, ExecutionError,
+    calculate_receipts_root_with_types, execute_transaction, Bloom, ExecutionError,
     TransactionExecutionResult, TransactionReceipt,
 };
 use crate::types::{BlockHeader, Hash, Transaction, U256};
@@ -315,7 +315,8 @@ pub fn process_block<S: State + Clone>(
     }
 
     // Step 4: Compute roots and bloom
-    let receipts_root = calculate_receipts_root(&receipts);
+    let transactions_refs: Vec<&Transaction> = transactions.iter().collect();
+    let receipts_root = calculate_receipts_root_with_types(&receipts, &transactions_refs);
     let transactions_root = calculate_transactions_root(transactions);
     let logs_bloom = calculate_logs_bloom(&receipts);
     let state_root = calculate_state_root(state);
@@ -537,7 +538,7 @@ mod tests {
         // First compute the correct receipts root for an empty block
         let transactions = vec![];
         let mut state = InMemoryState::new();
-        let correct_root = calculate_receipts_root(&[]);
+        let correct_root = calculate_receipts_root_with_types(&[], &[]);
 
         // Now set a DIFFERENT receipts root that is definitely wrong
         // We'll use a non-zero hash that's different from the correct root

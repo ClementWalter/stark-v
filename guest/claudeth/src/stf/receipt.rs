@@ -571,11 +571,79 @@ impl TransactionReceipt {
 // Receipt Root Calculation
 // =============================================================================
 
-/// Calculates the receipts root hash from a list of transaction receipts.
+/// Calculates the receipts root hash from a list of transaction receipts and transactions.
 ///
 /// Uses a Merkle Patricia Trie where:
 /// - Keys are RLP(transaction_index) for index = 0, 1, 2, ...
-/// - Values are RLP-encoded receipts
+/// - Values are receipt encodings (with type prefix for typed transactions per EIP-2718)
+///
+/// For legacy transactions, the receipt is just RLP-encoded.
+/// For typed transactions (EIP-2930, EIP-1559), the receipt is: TransactionType || RLP(receipt)
+///
+/// # Examples
+///
+/// ```
+/// use claudeth::types::{U256, Hash, Transaction};
+/// use claudeth::stf::receipt::{calculate_receipts_root_with_types, TransactionReceipt};
+///
+/// let receipts = vec![
+///     TransactionReceipt::new(true, U256::from(21000u64), vec![]),
+///     TransactionReceipt::new(true, U256::from(42000u64), vec![]),
+/// ];
+/// let transactions = vec![]; // Would contain actual transactions
+///
+/// let root = calculate_receipts_root_with_types(&receipts, &transactions);
+/// assert_ne!(root, Hash::ZERO);
+/// ```
+pub fn calculate_receipts_root_with_types(
+    receipts: &[TransactionReceipt],
+    transactions: &[&crate::types::Transaction],
+) -> Hash {
+    use crate::state::partial_mpt::Trie;
+    use crate::types::Transaction;
+
+    let mut trie = Trie::new();
+
+    for (index, receipt) in receipts.iter().enumerate() {
+        // Key: RLP(index)
+        let key = encode_u64(index as u64);
+
+        // Value: Receipt encoding (with type prefix for typed transactions)
+        let value = if index < transactions.len() {
+            match transactions[index] {
+                Transaction::Legacy(_) => {
+                    // Legacy: just RLP-encoded receipt
+                    receipt.encode_rlp()
+                }
+                Transaction::Eip2930(_) => {
+                    // EIP-2930: 0x01 || RLP(receipt)
+                    let mut encoded = vec![0x01];
+                    encoded.extend(receipt.encode_rlp());
+                    encoded
+                }
+                Transaction::Eip1559(_) => {
+                    // EIP-1559: 0x02 || RLP(receipt)
+                    let mut encoded = vec![0x02];
+                    encoded.extend(receipt.encode_rlp());
+                    encoded
+                }
+            }
+        } else {
+            // Fallback: shouldn't happen if receipts and transactions match
+            receipt.encode_rlp()
+        };
+
+        trie.insert(&key, value);
+    }
+
+    // Return the root hash (EMPTY_TRIE_ROOT for empty trie)
+    trie.compute_root()
+}
+
+/// Calculates the receipts root hash from a list of transaction receipts.
+///
+/// This is a legacy function that doesn't handle typed transaction receipts correctly.
+/// Use `calculate_receipts_root_with_types` instead for correct EIP-2718 compliance.
 ///
 /// # Examples
 ///
@@ -600,7 +668,7 @@ pub fn calculate_receipts_root(receipts: &[TransactionReceipt]) -> Hash {
         // Key: RLP(index)
         let key = encode_u64(index as u64);
 
-        // Value: RLP-encoded receipt
+        // Value: RLP-encoded receipt (without type prefix)
         let value = receipt.encode_rlp();
 
         trie.insert(&key, value);
