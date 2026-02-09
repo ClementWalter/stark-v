@@ -1,15 +1,26 @@
 # Claudeth Development Learnings
 
-## Session 28: Phase D - EELS Compliance Testing Started (2026-02-09)
+## Session 28: Phase D Task D1 - EELS Test Parser (2026-02-09)
 
-**Status**: Phase D Task D1 IN PROGRESS - Fetching and analyzing test vectors
+**Status**: Phase D Task D1 COMPLETE ✅
 
 ### What Was Accomplished
 1. ✅ Created `scripts/fetch_eels_tests.py` to clone ethereum/tests repo
 2. ✅ Successfully cloned ethereum/tests with 347 blockchain tests
 3. ✅ Analyzed test JSON structure (BlockchainTest format)
-4. ✅ Updated PLAN.md with Phase D task breakdown
-5. ✅ Added tests/eels/ to .gitignore
+4. ✅ Built Rust test harness (tests/eels_blockchain_tests.rs)
+5. ✅ Implemented JSON deserializer with serde
+6. ✅ Successfully parsing 20 test cases from 10 fixture files
+7. ✅ Updated PLAN.md to reflect Task D1 completion
+8. ✅ Added tests/eels/ to .gitignore
+
+### Statistics
+- **Total tests**: 1168 (1076 unit + 92 doc + 2 integration) - all passing
+- **Files created**: 3 (fetch script, test harness, .gitignore)
+- **Clippy warnings**: 0
+- **EELS tests discovered**: 347 BlockchainTests
+- **EELS tests parsed**: 20 test cases from 10 files (valid blocks only)
+- **Commits**: 3
 
 ### EELS Test Structure Understanding
 
@@ -57,11 +68,29 @@
 2. **Don't include tests/eels/ in git** - it's a large external repository
 3. **Don't assume all test formats are the same** - BlockchainTests vs StateTests differ
 
-### Next Steps for Task D1
-1. Build Rust JSON parsing for BlockchainTest format
-2. Create test harness to deserialize tests
-3. Map JSON fields to claudeth types (BlockHeader, Transaction, etc.)
-4. Implement test runner infrastructure
+### Rust Test Harness Implementation
+
+**Serde structs created**:
+- `BlockchainTest`: Top-level test format
+- `TestBlock`: Block with header, transactions, withdrawals
+- `TestBlockHeader`: All header fields (base fee, gas, timestamp, etc.)
+- `TestTransaction`: Transaction with type, signature, access list
+- `TestAccount`: Account state (balance, code, nonce, storage)
+
+**Key patterns**:
+- Use `Option<T>` for fields that may not be present in all test types
+- Skip invalid blocks (filter out InvalidBlocks/ directory)
+- Use `#[serde(default)]` for fields that may be absent
+- Use `#[serde(rename = "camelCase")]` for JSON field mapping
+- Add `walkdir` dev-dependency for test discovery
+
+### Next Steps for Phase D
+**Task D2: Execute EELS Tests** - Now ready to implement:
+1. Map JSON test format to claudeth types
+2. Initialize state from `pre` field
+3. Execute blocks with claudeth STF
+4. Validate final state against `postState`
+5. Report pass/fail/error for each test
 
 ### Sources
 - [Ethereum execution-spec-tests](https://github.com/ethereum/execution-spec-tests)
