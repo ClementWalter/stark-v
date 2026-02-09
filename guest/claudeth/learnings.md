@@ -6,6 +6,7 @@ Date: 2026-02-09
 
 - Exceptional halts (OOG, InvalidJump, InvalidOpcode, etc.) are transaction-level failures: consume all gas and revert only that transaction’s state.
 - `REVERT` is not exceptional: preserve remaining gas and revert only the current call frame.
+- Gas refunds are capped at 1/5 of total gas used (EIP-3529) in `stf::executor`.
 
 ## Block Processing Order
 
@@ -30,16 +31,19 @@ Date: 2026-02-09
 - If `withdrawals_root` is present, a withdrawals list must be provided.
 - If `withdrawals_root` is absent, the withdrawals list must be empty.
 
-## System Calls
-
-- EIP-4788 runs only when `parent_beacon_block_root` is present; use `SYSTEM_ADDRESS` and treat missing code at the beacon roots address as a no-op.
-- EIP-2935 runs every block; call the history storage contract with the **parent block hash** as 32-byte calldata. It stores at `(block.number - 1) % 8191`, so run it before computing the state root.
-
-## BLOCKHASH Data
+## BLOCKHASH / BLOBHASH Data
 
 - `BLOCKHASH` accuracy depends on providing recent hashes in guest input.
 - Without recent hashes, only the parent hash can be returned.
 - Recent hashes must be ordered by increasing block number and capped at 256 entries.
+- `BLOBHASH` is host-provided via `TxContext.blob_versioned_hashes`; `RecursiveHost` reads from
+  that list and returns zero for out-of-range indices.
+
+## Transactions
+
+- Typed transaction decoding only accepts type `0x01` (EIP-2930) and `0x02` (EIP-1559); `0x03` is currently rejected.
+- Transaction `gasprice` in the EVM context is the **effective** gas price (min/max formula for EIP-1559).
+- `TxContext` now carries `blob_versioned_hashes` (empty for non-blob txs).
 
 ## Blob Base Fee
 
@@ -51,18 +55,10 @@ Date: 2026-02-09
 - Memory expansion is quadratic; never cap it or special-case huge inputs.
 - Use `saturating_add` for offset + size to avoid overflow on large inputs.
 
-## Stack Operand Order
-
-- Arithmetic ops follow execution-specs order: pop `x` then `y`, compute `x op y`.
-
 ## State / Trie
 
 - Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
 - Keep state root computation deterministic by inserting accounts in a stable address order.
-
-## Testing Reality Check
-
-- Do not quote EELS test counts unless you ran the ignored tests locally.
 
 ## Error Type Architecture
 
@@ -79,13 +75,18 @@ Date: 2026-02-09
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable from a crate root. Delete unused modules rather than half-wiring them.
 - Run `prek run` before committing; fix linting errors instead of disabling rules.
 
+## Testing Reality Check
+
+- Do not quote EELS test counts unless you ran the ignored tests locally.
+
 ## Do / Don't (Next Iteration)
 
 **Do**
 
-- Run `cargo test -p claudeth --release` and `cargo clippy -p claudeth -- -D warnings`.
+- Run `cargo test -p claudeth --release` and `prek run` before committing.
 - Execute the EIP-2935 system call before computing the block state root.
 - Provide recent block hashes in guest input for correct `BLOCKHASH` results.
+- Set `TxContext.blob_versioned_hashes` when adding blob tx support so `BLOBHASH` returns data.
 - Use `EMPTY_OMMERS_HASH` for post-merge headers (including tests).
 - When header base fee validation is enabled, either compute the expected base fee
   from the parent or set parent `gas_used == gas_limit / 2` in fixtures.

@@ -35,11 +35,15 @@ EIP-2935 historical block hashes system calls.
   `parent_beacon_block_root`)
 - Guest input decoding supports withdrawals when `withdrawals_root` is present
 - Guest input decoding supports optional recent block hashes for BLOCKHASH
+- `TxContext` carries blob versioned hashes; `RecursiveHost::blobhash` reads
+  from `TxContext`
 - `no_std` riscv32 guest entry and bump allocator
 
 ### Known Gaps / Limitations
 
 - EIP-4844 blob transactions (type 0x03) not implemented
+- Blob gas accounting (block `blob_gas_used` and per-tx blob data fee) is not
+  implemented
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
@@ -51,12 +55,22 @@ EIP-2935 historical block hashes system calls.
 
 ## Plan
 
-### Completed This Iteration
+### P1: Add EIP-4844 Blob Transaction Support (Type 0x03)
 
-- Added base fee per gas validation against parent (EIP-1559 formula).
-- Added excess blob gas validation against parent (EIP-4844 formula).
-
-### P1: Add EIP-4844 blob transaction support (type 0x03)
+1. **Plumb blob versioned hashes into execution** (done)
+   - Extend `TxContext` to carry `blob_versioned_hashes`.
+   - Update `RecursiveHost::blobhash` to read from `TxContext`.
+   - Ensure all tx contexts are populated (empty for non-blob txs).
+2. **Introduce BlobTransaction type**
+   - Add type `0x03` decoding/encoding and signing hash (EIP-4844).
+   - Include `max_fee_per_blob_gas` and `blob_versioned_hashes`.
+3. **Validation and fee checks**
+   - Enforce `to` is non-null for blob txs.
+   - Validate blob versioned hash version byte and non-empty list.
+   - Enforce `max_fee_per_blob_gas >= blob_gas_price`.
+4. **Block-level blob gas accounting**
+   - Track `blob_gas_used` per tx and validate against header.
+   - Charge blob data fee and account for balance effects.
 
 ### P3: Witness-Based State Reconstruction
 
@@ -64,4 +78,4 @@ EIP-2935 historical block hashes system calls.
 
 ## Immediate Next Task
 
-Implement EIP-4844 blob transaction support (type 0x03).
+Introduce `BlobTransaction` (type 0x03) decoding/encoding and signing hash.

@@ -203,6 +203,7 @@ pub fn execute_transaction<S: State + Clone>(
     let tx_ctx = TxContext {
         origin: sender,
         gas_price: effective_gas_price,
+        blob_versioned_hashes: Vec::new(),
     };
 
     // Step 2: Pre-execution state changes

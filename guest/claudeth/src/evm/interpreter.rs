@@ -161,6 +161,7 @@ impl Default for BlockContext {
 pub struct TxContext {
     pub origin: Address,
     pub gas_price: U256,
+    pub blob_versioned_hashes: Vec<Hash>,
 }
 
 impl Default for TxContext {
@@ -168,6 +169,7 @@ impl Default for TxContext {
         TxContext {
             origin: Address::ZERO,
             gas_price: U256::ZERO,
+            blob_versioned_hashes: Vec::new(),
         }
     }
 }
@@ -1746,6 +1748,7 @@ mod tests {
         let tx_ctx = TxContext {
             origin,
             gas_price: U256::ONE,
+            blob_versioned_hashes: Vec::new(),
         };
         let call_ctx = CallContext {
             address: call_address,

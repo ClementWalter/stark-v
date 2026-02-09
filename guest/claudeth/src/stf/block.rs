@@ -283,6 +283,7 @@ fn apply_beacon_root_system_call<S: State + Clone>(
     let tx_ctx = TxContext {
         origin: SYSTEM_ADDRESS,
         gas_price: U256::ZERO,
+        blob_versioned_hashes: Vec::new(),
     };
 
     let host = RecursiveHost::new()
@@ -345,6 +346,7 @@ fn apply_history_storage_system_call<S: State + Clone>(
     let tx_ctx = TxContext {
         origin: SYSTEM_ADDRESS,
         gas_price: U256::ZERO,
+        blob_versioned_hashes: Vec::new(),
     };
 
     let host = RecursiveHost::new()
@@ -1150,6 +1152,7 @@ mod tests {
         let tx_ctx = TxContext {
             origin: SYSTEM_ADDRESS,
             gas_price: U256::ZERO,
+            blob_versioned_hashes: Vec::new(),
         };
 
         let host = RecursiveHost::new()

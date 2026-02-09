@@ -453,7 +453,12 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
     }
 
     fn blobhash(&self, _index: &U256) -> Option<Hash> {
-        None
+        let max_index = U256::from_u64(usize::MAX as u64);
+        if *_index > max_index {
+            return None;
+        }
+        let index = _index.as_u64() as usize;
+        self.tx_ctx.blob_versioned_hashes.get(index).copied()
     }
 
     fn blobbasefee(&self) -> U256 {
@@ -501,7 +506,7 @@ pub fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::evm::interpreter::BlockContext;
+    use crate::evm::interpreter::{BlockContext, TxContext};
     use crate::state::InMemoryState;
 
     #[test]
@@ -554,6 +559,32 @@ mod tests {
         );
         assert_eq!(
             Host::<InMemoryState>::blockhash(&host, &U256::from_u64(97)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_recursive_host_blobhash_from_tx_context() {
+        let blob_hash_0 = Hash::from([0x10; 32]);
+        let blob_hash_1 = Hash::from([0x20; 32]);
+        let tx_ctx = TxContext {
+            origin: Address::from([0x01; 20]),
+            gas_price: U256::from_u64(1),
+            blob_versioned_hashes: vec![blob_hash_0, blob_hash_1],
+        };
+
+        let host = RecursiveHost::new().with_tx_context(tx_ctx);
+
+        assert_eq!(
+            Host::<InMemoryState>::blobhash(&host, &U256::from_u64(0)),
+            Some(blob_hash_0)
+        );
+        assert_eq!(
+            Host::<InMemoryState>::blobhash(&host, &U256::from_u64(1)),
+            Some(blob_hash_1)
+        );
+        assert_eq!(
+            Host::<InMemoryState>::blobhash(&host, &U256::from_u64(2)),
             None
         );
     }
