@@ -1,5 +1,27 @@
 # Claudeth Development Learnings
 
+## Session 69: Fix Block Header Hashing for Prague (2026-02-09)
+
+**Status**: Completed - Parent hash validation now passes for Cancun/Prague EELS fixtures
+
+### What Was Accomplished
+1. ✅ Encoded block header nonce as an 8-byte RLP byte string (not minimal u64)
+2. ✅ Added `requests_hash` (EIP-7685) to `BlockHeader` + RLP encode/decode
+3. ✅ Defaulted missing tx/receipt roots to `EMPTY_TRIE_ROOT` in EELS harness
+4. ✅ Removed the parent-hash workaround in the EELS test loop
+5. ✅ Re-ran EELS (ignored) tests: parent-hash errors gone; failures now real state/gas/execution issues
+
+### DO's ✅
+1. **Encode block header nonce as fixed 8 bytes** (RLP byte string), not minimal u64
+2. **Append new fork fields to header RLP in-order** (Prague adds `requests_hash`)
+3. **Use `EMPTY_TRIE_ROOT` for empty tx/receipt tries** in fixtures and code
+4. **Re-run EELS after header changes** to confirm parent-hash errors are resolved
+
+### DON'Ts ❌
+1. **Don't treat header nonce as a canonical integer** in RLP; it's raw 8 bytes
+2. **Don't ignore new fork fields in header hashing**; missing fields break parent hash validation
+3. **Don't keep parent-hash workarounds** once header encoding is correct
+
 ## Session 68: Fix EIP-2929 SSTORE Gas Cost Constants (2026-02-09)
 
 **Status**: Completed - Fixed SSTORE gas overcharges by correcting EIP-2929 constants
