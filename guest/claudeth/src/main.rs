@@ -64,7 +64,7 @@ struct StateEntry {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn __zkvm_start() -> ! {
     let input = unsafe { zkvm_io::read_all_input() };
     let output = process_input(&input);
@@ -313,36 +313,45 @@ mod zkvm_io {
     }
 
     pub unsafe fn read_all_input() -> Vec<u8> {
-        let start = core::ptr::addr_of!(__input_start) as usize;
-        let end = core::ptr::addr_of!(__input_end) as usize;
-        let input_size = end.saturating_sub(start);
-        let mut buf = Vec::with_capacity(input_size);
-        for i in 0..input_size {
-            let addr = start + i;
-            let byte = core::ptr::read_volatile(addr as *const u8);
-            buf.push(byte);
+        // SAFETY: Caller ensures __input_start and __input_end are valid memory regions
+        unsafe {
+            let start = core::ptr::addr_of!(__input_start) as usize;
+            let end = core::ptr::addr_of!(__input_end) as usize;
+            let input_size = end.saturating_sub(start);
+            let mut buf = Vec::with_capacity(input_size);
+            for i in 0..input_size {
+                let addr = start + i;
+                let byte = core::ptr::read_volatile(addr as *const u8);
+                buf.push(byte);
+            }
+            buf
         }
-        buf
     }
 
     pub unsafe fn write_output(data: &[u8]) {
-        let data_start = core::ptr::addr_of!(__output_data) as usize;
-        let data_end = core::ptr::addr_of!(__output_end) as usize;
-        let max_size = data_end.saturating_sub(data_start);
-        let len = data.len().min(max_size);
+        // SAFETY: Caller ensures __output_* symbols are valid memory regions
+        unsafe {
+            let data_start = core::ptr::addr_of!(__output_data) as usize;
+            let data_end = core::ptr::addr_of!(__output_end) as usize;
+            let max_size = data_end.saturating_sub(data_start);
+            let len = data.len().min(max_size);
 
-        let len_addr = core::ptr::addr_of!(__output_len) as *mut u32;
-        core::ptr::write_volatile(len_addr, len as u32);
+            let len_addr = core::ptr::addr_of!(__output_len) as *mut u32;
+            core::ptr::write_volatile(len_addr, len as u32);
 
-        for (i, byte) in data.iter().take(len).enumerate() {
-            let addr = data_start + i;
-            core::ptr::write_volatile(addr as *mut u8, *byte);
+            for (i, byte) in data.iter().take(len).enumerate() {
+                let addr = data_start + i;
+                core::ptr::write_volatile(addr as *mut u8, *byte);
+            }
         }
     }
 
     pub unsafe fn halt() -> ! {
-        let halt_addr = core::ptr::addr_of!(__halt_flag) as *mut u32;
-        core::ptr::write_volatile(halt_addr, 1);
+        // SAFETY: Caller ensures __halt_flag is a valid memory region
+        unsafe {
+            let halt_addr = core::ptr::addr_of!(__halt_flag) as *mut u32;
+            core::ptr::write_volatile(halt_addr, 1);
+        }
         #[allow(clippy::empty_loop)]
         loop {}
     }

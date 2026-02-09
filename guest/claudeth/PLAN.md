@@ -131,6 +131,7 @@ Goal: finalize per-transaction correctness before block processing.
 - Create src/main.rs for riscv32 target
 - Define RLP I/O format (block + state snapshot inputs, result outputs)
 - Wire block processing to guest program
+- Fix Rust 2024 edition unsafe blocks and no_mangle attribute requirements
 
 ### Task C2: Witness-based State Reconstruction (NEXT)
 - Define proof-based input format using Partial MPT proofs
