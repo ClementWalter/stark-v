@@ -119,45 +119,60 @@ Goal: finalize per-transaction correctness before block processing.
 
 ## Immediate Next Task (Execute Now)
 
-**Phase D: EELS Gas/Execution Mismatches** (PARTIALLY UNBLOCKED - GAS TRACING READY)
+**Phase D: EELS Gas/Execution Mismatches** (UNBLOCKED - GAS TRACING FULLY OPERATIONAL)
 
-### Task D3.x: Investigate Gas/Execution Mismatches (GAS TRACING COMPLETE)
-**Status**: Gas tracing infrastructure complete and ready for debugging.
+### Task D3.x: Investigate Gas/Execution Mismatches (GAS TRACING INFRASTRUCTURE COMPLETE ✅)
+**Status**: Gas tracing fully integrated and operational. Ready for systematic debugging.
 
-**Recent Unblocks**:
+**Completed Infrastructure** (Sessions 48-51):
 - ✅ EVM bytecode disassembler utility (Session 48)
 - ✅ Gas tracing infrastructure with per-opcode logging (Session 49)
+- ✅ Wire gas trace snapshots into EELS test runner (Session 50)
+- ✅ Surface gas traces in block processing errors (Session 51)
 
-**Completed in Session 49**:
-- Added `evm::trace` module with GasTracer
-- Feature flag `evm-trace` for conditional compilation
-- Per-opcode tracking: PC, opcode name, gas before/after, cumulative gas
-- Integration with EVM interpreter step() method
-- Unit tests and integration tests for tracing
+**Session 51 Achievements**:
+- Modified BlockProcessingError variants to include transaction_results
+- Updated process_block to preserve transaction_results in validation errors
+- Wired EELS test runner to extract and print gas traces from all error types
+- Enabled automatic gas tracing in execute_bytecode when evm-trace feature is set
+- Gas traces now visible for all EELS failure categories (gas mismatches, state root mismatches, etc.)
 
-**Usage**:
+**Current Tracing Capabilities**:
 ```bash
-cargo test --features evm-trace test_name
+# Run EELS tests with full gas tracing
+cargo test -p claudeth --release --features evm-trace --test eels_blockchain_tests -- --ignored --nocapture
+
+# Output includes per-opcode traces for ALL failures:
+Gas Trace (initial: 340474, used: 22130)
+    PC       Opcode     Before       Cost      After   Cumulative
+----------------------------------------------------------------------
+000000 PUSH1 (0x60)     340474          3     340471            3
+000002 PUSH1 (0x60)     340471          3     340468            6
+000004 SSTORE (0x55)    340468      22100     318368        22106
+...
 ```
 
-**Remaining Work**:
-1. Build state change tracking to debug state root mismatches
-2. Add execution trace hooks for transaction failure analysis (capture traces on EVM errors)
+**Next: Use Traces for Systematic Debugging**:
+1. ⏭️ Analyze basefeeExample (-1200 gas): smallest discrepancy, likely simple fix
+2. ⏭️ Analyze tipInsideBlock (+9200 gas): 3 transactions with different patterns
+3. ⏭️ Analyze mergeExample (-21100 gas): large undercharge, fundamental issue
+4. ⏭️ Analyze transient storage tests (+2100-4200 gas): TLOAD/TSTORE costs
+5. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail
+6. ⏭️ Debug state root mismatches (optionsTest, shanghaiExample): correct gas, wrong state
 
-**Completed (Session 50)**:
-- ✅ Wire gas trace snapshots into EELS test runner (prints traces on post-state mismatch when `evm-trace` is enabled)
-
-**Next Steps**:
-- Use traces to debug gas mismatches (mergeExample, tipInsideBlock, etc.)
-- Debug execution failures (ShanghaiLove, StrangeContractCreation)
-- Then tackle state root mismatches with MPT visualization and state diff tooling
-
-**Current Failures** (Session 47 analysis):
+**Current Failures** (Session 47 analysis - still 0/20 passing):
 - State root mismatches: 4 tests (correct gas, wrong final state)
 - Large gas undercharges: 4 tests (mergeExample -21100, basefeeExample -1200)
 - Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage +2100-4200)
 - Receipt root mismatches: 2 tests (likely symptom of gas overcharges)
 - Execution failures: 4 tests (contracts fail to execute)
+
+**Debugging Strategy**:
+1. Start with smallest gas discrepancies (easier to isolate root cause)
+2. Use traces to identify missing or incorrect gas charges
+3. Cross-reference with EIP specifications for correct gas costs
+4. Fix one category at a time, verify with EELS tests
+5. Build state change tracking if needed for state root mismatches
 
 ### Task C0: no_std riscv32 Compilation (✅ COMPLETE)
 - Fix missing vec! macro imports in interpreter, account, trie, node, receipt

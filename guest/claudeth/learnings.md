@@ -1,5 +1,117 @@
 # Claudeth Development Learnings
 
+## Session 51: Surface Gas Traces in Block Processing Errors (2026-02-09)
+
+**Status**: Gas tracing now fully integrated into EELS test debugging workflow.
+
+### What Was Accomplished
+1. ✅ **MODIFIED**: BlockProcessingError variants to include transaction_results field
+2. ✅ **UPDATED**: process_block to clone transaction_results into validation errors
+3. ✅ **WIRED**: EELS test runner to extract and print gas traces from errors
+4. ✅ **ENABLED**: Gas tracing in execute_bytecode when evm-trace feature is set
+5. ✅ **FIXED**: unused_mut warning with conditional compilation
+6. ✅ **COMMITTED**: All 1083 unit tests passing, gas traces visible in EELS failures
+
+### Key Implementation Details
+
+**BlockProcessingError Changes**:
+```rust
+GasUsedMismatch {
+    expected: u64,
+    computed: u64,
+    transaction_results: Vec<TransactionExecutionResult>,  // NEW
+}
+```
+- Added transaction_results to all validation error variants
+- process_block clones transaction_results before returning errors
+- Enables access to gas traces even when validation fails
+
+**EELS Test Integration**:
+```rust
+#[cfg(feature = "evm-trace")]
+if let Some(results) = extract_tx_results(&error) {
+    for (tx_idx, tx_result) in results.iter().enumerate() {
+        if let Some(trace) = tx_result.gas_trace.as_ref() {
+            eprintln!("Gas trace for {test_name} block {block_idx} tx {tx_idx}:");
+            eprintln!("{}", trace.format());
+        }
+    }
+}
+```
+
+**Automatic Tracing Enablement**:
+```rust
+#[cfg(feature = "evm-trace")]
+let mut evm = Evm::new(...)
+    .with_block_context(block_ctx)
+    .with_tx_context(tx_ctx)
+    .with_call_context(call_ctx)
+    .warm_addresses(&warm_addresses)
+    .with_tracing();  // Automatically enabled
+```
+
+### DO's ✅
+
+1. **Include debug data in errors** - Makes debugging failures much easier
+2. **Use conditional compilation for different build configs** - Avoids unused_mut warnings
+3. **Clone data when needed for errors** - Worth the cost for debugging
+4. **Extract and print traces automatically** - No manual intervention needed
+5. **Test both with and without features** - Ensure both paths compile
+
+### DON'Ts ❌
+
+1. **Don't lose debug data on errors** - Always preserve traces/results for analysis
+2. **Don't create mut bindings unnecessarily** - Use cfg to control mutability
+3. **Don't forget to update all match arms** - Exhaustive pattern matching catches errors
+4. **Don't hardcode trace printing** - Use feature flags for conditional output
+
+### Gas Trace Output Examples
+
+**basefeeExample (-1200 gas undercharge)**:
+```
+Gas Trace (initial: 340474, used: 22130)
+    PC       Opcode     Before       Cost      After   Cumulative
+----------------------------------------------------------------------
+000000 PUSH1 (0x60)     340474          3     340471            3
+000002 PUSH1 (0x60)     340471          3     340468            6
+000004 SSTORE (0x55)    340468      22100     318368        22106
+000005 PUSH1 (0x60)     318368          3     318365        22109
+...
+```
+
+**tipInsideBlock (+9200 gas overcharge)**:
+```
+Gas Trace (initial: 79000, used: 9704)
+000000 COINBASE (0x41)      79000          2      78998            2
+000001 BALANCE (0x31)       78998       2600      76398         2602
+000002 NUMBER (0x43)        76398          2      76396         2604
+000003 SSTORE (0x55)        76396       7100      69296         9704
+```
+
+### Next Steps
+
+**Use traces to debug specific failures**:
+1. basefeeExample: -1200 gas (trace shows init code only, missing something?)
+2. tipInsideBlock: +9200 gas (3 txs with different gas consumption)
+3. mergeExample: -21100 gas (large discrepancy, likely fundamental issue)
+4. Transient storage tests: +2100-4200 gas (TLOAD/TSTORE costs?)
+5. State root mismatches: correct gas but wrong final state (MPT issue?)
+
+**Analysis approach**:
+1. Focus on smallest discrepancies first (basefeeExample -1200)
+2. Check if intrinsic gas calculations are correct
+3. Verify CREATE deployment costs and return value handling
+4. Compare traces with expected gas consumption
+5. Use traces to identify missing gas charges
+
+### Session Outcome
+
+**COMPLETE**: Gas tracing infrastructure is now fully integrated and working. Can debug all EELS failures with detailed per-opcode gas traces.
+
+## Session 50: Wire Gas Trace Snapshots (2026-02-09)
+
+**Status**: COMPLETED - Gas traces now printed on post-state mismatches in EELS tests.
+
 ## Session 49: Add Gas Tracing Infrastructure (2026-02-09)
 
 **Status**: Implemented comprehensive gas tracing infrastructure to debug EELS test failures.
