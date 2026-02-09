@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 85)
+Date: 2026-02-09 (Session 86)
 
 ## Summary
 
@@ -130,10 +130,24 @@ Requirements:
 
 ## Immediate Next Task
 
-**P3: Fix EELS Test Failures**
+**P3: Fix EELS Test Failures (Investigation Required)**
 
 Must fix 20/20 failing EELS tests before moving to witness-based state reconstruction.
-Priority order:
+
+**Status**: Requires investigative debugging work. No implementation tasks can be completed
+100% without first understanding root causes of failures.
+
+**Investigation Approach**:
+1. Start with one StateRootMismatch failure (e.g., optionsTest)
+2. Add instrumentation to compare computed vs expected state roots
+3. Trace account RLP encoding, storage root computation
+4. Identify discrepancies in state trie construction
+5. Fix root cause and verify fix across all tests
+
+Priority order after investigation:
 1. Debug StateRootMismatch failures (14 tests) - likely account encoding or storage root issues
 2. Fix GasUsedMismatch failures (4 tests) - gas accounting bugs
 3. Fix TransactionExecutionError failures (2 tests) - execution crashes
+
+**Note**: Session 86 identified this as the blocker. No straightforward implementation
+tasks available until debugging reveals specific code changes needed.
