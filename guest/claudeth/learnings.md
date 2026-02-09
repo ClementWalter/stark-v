@@ -1,5 +1,45 @@
 # Claudeth Development Learnings
 
+## Session 54: EIP-2718 Typed Transaction Receipt Encoding (2026-02-09)
+
+**Status**: Completed - Critical fix for receipt root validation
+
+### What Was Accomplished
+1. ✅ Identified EIP-2718 non-compliance: typed transaction receipts were missing type prefix
+2. ✅ Implemented `calculate_receipts_root_with_types()` that accepts transactions array
+3. ✅ Added transaction type prefix for EIP-2930 (0x01) and EIP-1559 (0x02) receipts
+4. ✅ Updated `process_block()` to use new function with transaction types
+5. ✅ Fixed basefeeExample and tloadDoesNotPersistAcrossBlocks receipt root validation
+6. ✅ Kept legacy `calculate_receipts_root()` for test compatibility
+
+### DO's ✅
+1. **Follow EIP-2718 strictly**: Typed transaction receipts MUST be prefixed with transaction type byte
+2. **Pass transaction type information to receipt encoding**: Receipt encoding depends on transaction type
+3. **Create new functions rather than breaking existing ones**: Kept legacy function for tests
+4. **Verify progress with focused test runs**: Check specific test failures before/after fix
+5. **Commit immediately after fixing critical spec compliance issues**: Receipt encoding is fundamental
+
+### DON'Ts ❌
+1. **Don't assume receipts are transaction-type agnostic**: Typed transactions require different receipt encoding
+2. **Don't break existing tests unnecessarily**: Provide both legacy and correct implementations
+3. **Don't ignore EIP specifications**: Receipt encoding is explicitly defined in EIP-2718
+
+### Key Insight
+Receipt root mismatches were NOT gas issues - they were encoding issues. The gas was correct (82856 computed = expected), but receipts for typed transactions need the transaction type prefix per EIP-2718:
+- Legacy: `RLP(receipt)`
+- EIP-2930: `0x01 || RLP(receipt)`
+- EIP-1559: `0x02 || RLP(receipt)`
+
+### Impact
+**Tests Fixed**: 4 tests now pass receipt root validation (basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2)
+- Still have state root mismatches, but that's a different issue
+- Receipt root encoding is now spec-compliant
+
+**Current Status** (0/20 passing):
+- State root mismatches: 8 tests (need to investigate state computation)
+- Gas mismatches: 8 tests (separate gas metering issues)
+- Execution failures: 4 tests (contract execution issues)
+
 ## Session 53: Align lib.rs Feature List With Dependencies (2026-02-09)
 
 **Status**: Completed

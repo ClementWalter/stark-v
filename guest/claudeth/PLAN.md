@@ -288,12 +288,13 @@ Gas Trace (initial: 340474, used: 22130)
 
 **Current Status**: Blocks executing, multiple categories of failures (0/20 tests passing)
 
-**Failure Categories** (after Session 52 fix):
-1. State root mismatches: 4 tests (optionsTest x2, shanghaiExample x2)
-2. Gas undercharges: 1 test (mergeExample -19900, reduced from -21100)
-3. Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage tests)
-4. Receipt root mismatch: 3 tests (basefeeExample x2 NEW, tloadDoesNotPersistAcrossBlocks)
-5. Execution failures: 4 tests (ShanghaiLove, StrangeContractCreation)
+**Failure Categories** (after Session 54 EIP-2718 receipt fix):
+1. State root mismatches: 8 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2)
+2. Gas undercharges: 2 tests (mergeExample x2 -19900)
+3. Gas overcharges: 6 tests (tipInsideBlock x2 +9200, transient storage x4)
+4. Execution failures: 4 tests (ShanghaiLove x2, StrangeContractCreation x2)
+
+**Note**: basefeeExample and tloadDoesNotPersistAcrossBlocks changed from ReceiptsRootMismatch to StateRootMismatch after fixing EIP-2718 receipt encoding.
 
 **Subtasks**:
 1. ✅ Identified root cause: NullHost was failing all contract calls (Session 32)
@@ -319,10 +320,11 @@ Gas Trace (initial: 340474, used: 22130)
 21. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
 22. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
 23. ✅ **FIXED**: Default ommers hash now uses EMPTY_OMMERS_HASH (keccak256(rlp([])))
-24. ⚠️ **NEW**: basefeeExample ReceiptsRootMismatch - gas is correct but receipt encoding may be wrong
-25. ⚠️ **INVESTIGATING**: mergeExample -19900 gas undercharge (CREATE with access list, missing ~20k gas)
-26. ⚠️ **INVESTIGATING**: tipInsideBlock +9200 gas overcharge (reason unknown)
-27. ⚠️ **INVESTIGATING**: Transient storage tests overcharge by 2100-4200 gas
+24. ✅ **FIXED**: EIP-2718 receipt encoding - typed transaction receipts now prefixed with type byte (Session 54)
+25. ⚠️ **REMAINING**: State root mismatches in 8 tests (need to investigate state computation)
+26. ⚠️ **INVESTIGATING**: mergeExample -19900 gas undercharge (CREATE with access list, missing ~20k gas)
+27. ⚠️ **INVESTIGATING**: tipInsideBlock +9200 gas overcharge (reason unknown)
+28. ⚠️ **INVESTIGATING**: Transient storage tests overcharge by 2100-4200 gas
 
 **Verification**: All EELS tests passing (currently 0/20, diverse failure modes)
 
