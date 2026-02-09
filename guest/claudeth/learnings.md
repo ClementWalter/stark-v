@@ -52,6 +52,20 @@ The overcharge of exactly 2100 gas suggests ONE of the following:
 2. ⏭️ Check if Berlin/London transition changed how SET cost interacts with EIP-2929
 3. ⏭️ Test hypothesis: try removing 2100 charge from SSTORE SET and rerun tests
 
+**CRITICAL INSIGHT**: Our SSTORE implementation charges:
+```rust
+sstore_gas_cost(current, new) + 2100 (always) - 2000 (if warm)
+```
+
+This gives:
+- SET cold: 20000 + 2100 = 22100
+- SET warm: 20000 + 2100 - 2000 = 20100
+
+But maybe it should be:
+- SET: 20000 (no additional EIP-2929 cost? Or maybe SET includes the access cost?)
+
+The test expects 2100 less in Tx 0, which is EXACTLY the EIP-2929 cold cost we add to SSTORE SET.
+
 ## Session 65: Wire Recent BLOCKHASH Inputs (2026-02-09)
 
 **Status**: Completed - recent hashes accepted in guest input and wired into STF execution
