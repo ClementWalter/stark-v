@@ -12,6 +12,7 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
   (`BLOBHASH`, `BLOBBASEFEE`, `PREVRANDAO`) and transient storage
   (`TLOAD`, `TSTORE`)
 - Transaction validation and execution for Legacy, EIP-2930, and EIP-1559
+- EIP-4844 blob transaction type `0x03` encoding/decoding and signing hash
 - Block processing with header validation and root checks
   (state, receipts, transactions, logs bloom)
 - EIP-4895 withdrawals application and withdrawals root validation
@@ -25,7 +26,8 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 
 **Known Gaps / Limitations**
 
-- EIP-4844 blob transactions (type 0x03) are not implemented
+- EIP-4844 blob gas accounting (blob gas used, block blob gas limits, data fee
+  charging) is not implemented
 - Witness-based state reconstruction is not implemented
 - `k256` is still used for secp256k1
 - EELS blockchain tests require external fixtures and are ignored by default

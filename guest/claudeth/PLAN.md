@@ -40,9 +40,8 @@ EIP-2935 historical block hashes system calls.
 
 ### Known Gaps / Limitations
 
-- EIP-4844 blob transaction validation is incomplete (blob hash version,
-  non-empty blob list, max fee per blob gas)
-- Blob gas accounting (`blob_gas_used`, per-tx blob data fee) is not implemented
+- Blob gas accounting (`blob_gas_used`, per-tx blob data fee, block blob gas
+  limit checks) is not implemented
 - Witness-based state reconstruction is not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
@@ -59,11 +58,11 @@ EIP-2935 historical block hashes system calls.
 1. **Introduce `BlobTransaction` type** (done)
    - Add type `0x03` decoding/encoding and signing hash (EIP-4844).
    - Include `max_fee_per_blob_gas` and `blob_versioned_hashes`.
-2. **Validation and fee checks**
-   - Enforce `to` is non-null for blob txs.
-   - Validate blob versioned hash version byte and non-empty list.
+2. **Validation and fee checks** (done)
+   - Validate blob versioned hash version, non-empty list, and blob count limit.
    - Enforce `max_fee_per_blob_gas >= blob_gas_price`.
-3. **Execution plumbing**
+   - Include blob max fee in sender balance checks.
+3. **Execution plumbing** (done)
    - Populate `TxContext.blob_versioned_hashes` from blob txs.
 4. **Block-level blob gas accounting**
    - Track `blob_gas_used` per tx and validate against header.
@@ -75,4 +74,5 @@ EIP-2935 historical block hashes system calls.
 
 ## Immediate Next Task
 
-Introduce `BlobTransaction` (type `0x03`) decoding/encoding and signing hash.
+Implement block-level blob gas accounting: track `blob_gas_used` per tx,
+validate against header/max blob gas, and charge blob data fees.

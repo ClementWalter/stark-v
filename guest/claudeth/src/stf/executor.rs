@@ -34,8 +34,8 @@ use crate::evm::interpreter::{
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
-    calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas, validate_nonce,
-    validate_signature, ValidationError,
+    calculate_intrinsic_gas, validate_balance, validate_blob_fee, validate_chain_id, validate_gas,
+    validate_nonce, validate_signature, ValidationError,
 };
 use crate::types::{Address, Hash, Transaction, U256};
 
@@ -162,6 +162,7 @@ pub fn execute_transaction<S: State + Clone>(
     validate_chain_id(tx, exec_ctx.chain_id)?;
     validate_nonce(tx, state.get_nonce(&sender))?;
     validate_gas(tx, exec_ctx.block_gas_limit)?;
+    validate_blob_fee(tx, exec_ctx.block_ctx.excess_blob_gas)?;
 
     let intrinsic_gas = calculate_intrinsic_gas(tx).as_u64();
     let gas_limit = tx.gas_limit().as_u64();
@@ -208,10 +209,8 @@ pub fn execute_transaction<S: State + Clone>(
 
     // Compute total cost = gas_limit * effective_gas_price + value
     let gas_cost = U256::from_u64(gas_limit).saturating_mul(effective_gas_price);
-    let value = tx.value();
-    let total_cost = gas_cost.saturating_add(value);
 
-    validate_balance(tx, state.get_balance(&sender), total_cost)?;
+    validate_balance(tx, state.get_balance(&sender), exec_ctx.block_ctx.base_fee)?;
 
     let blob_versioned_hashes = match tx {
         Transaction::Blob(tx) => tx.blob_versioned_hashes.clone(),

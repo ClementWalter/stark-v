@@ -25,8 +25,9 @@ Date: 2026-02-09
   `nonce == 0`, with empty ommers hash.
 - `extra_data` length is capped at 32 bytes and `gas_used <= gas_limit`.
 - Base fee per gas is derived from the parent’s gas used vs target (EIP-1559).
-- Excess blob gas is derived from `parent.excess_blob_gas + parent.blob_gas_used`
-  and floored at 0 if below the Cancun target (393,216).
+- Blob fields must be all-or-nothing: if either `blob_gas_used` or
+  `excess_blob_gas` is present, both are required, and `excess_blob_gas` must
+  match the parent-derived value.
 
 ## Guest Input Decoding
 
@@ -39,10 +40,11 @@ Date: 2026-02-09
 
 ## Transactions and Context
 
-- Typed transaction decoding accepts type `0x01`, `0x02`, and `0x03`; blob tx
-  validation/fee accounting still needs implementation.
+- Typed transaction decoding accepts type `0x01`, `0x02`, and `0x03`.
 - `Transaction::effective_gas_price` is min(`max_fee_per_gas`,
-  `base_fee + max_priority_fee_per_gas`) for EIP-1559.
+  `base_fee + max_priority_fee_per_gas`) for EIP-1559 and blob txs.
+- Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
+  blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - `TxContext` carries `blob_versioned_hashes`; `RecursiveHost::blobhash` reads
   from it and returns zero for out-of-range indices.
 - Blob transaction encoding/decoding uses type prefix `0x03` and requires a
@@ -80,8 +82,8 @@ Date: 2026-02-09
 - Run `cargo test -p claudeth --release` and `prek run` before committing.
 - Provide recent block hashes in guest input for correct `BLOCKHASH` results.
 - Keep EIP-4788 and EIP-2935 system calls before transaction execution.
-- Set `TxContext.blob_versioned_hashes` when adding blob tx support so
-  `BLOBHASH` returns data.
+- Set `TxContext.blob_versioned_hashes` so `BLOBHASH` returns data for blob txs.
+- Enforce blob tx hash list/fee validation before execution.
 - Prefix blob transaction receipts with type `0x03`.
 
 **Don't**

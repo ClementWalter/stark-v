@@ -15,6 +15,7 @@ extern crate alloc;
 use core::fmt;
 
 use crate::crypto::Secp256k1Error;
+use crate::evm::gas::blob_gas_price;
 use crate::types::transaction::AccessListEntry;
 use crate::types::{Address, Transaction, U256};
 
@@ -45,6 +46,16 @@ pub enum ValidationError {
     MaxFeePerGasTooLow,
     /// Max priority fee per gas exceeds max fee per gas
     MaxPriorityFeePerGasTooHigh,
+    /// Blob transaction has no blob versioned hashes
+    EmptyBlobVersionedHashes,
+    /// Blob transaction has too many blob versioned hashes
+    BlobCountLimitExceeded,
+    /// Blob versioned hash has invalid version byte
+    InvalidBlobVersionedHash,
+    /// Max fee per blob gas is below the blob base fee
+    MaxFeePerBlobGasTooLow,
+    /// Blob fee validation requires excess blob gas to be present
+    MissingBlobGasContext,
 }
 
 impl fmt::Display for ValidationError {
@@ -63,6 +74,21 @@ impl fmt::Display for ValidationError {
             ValidationError::MaxFeePerGasTooLow => write!(f, "Max fee per gas is too low"),
             ValidationError::MaxPriorityFeePerGasTooHigh => {
                 write!(f, "Max priority fee per gas exceeds max fee per gas")
+            }
+            ValidationError::EmptyBlobVersionedHashes => {
+                write!(f, "Blob transaction has no blob versioned hashes")
+            }
+            ValidationError::BlobCountLimitExceeded => {
+                write!(f, "Blob transaction has too many blob versioned hashes")
+            }
+            ValidationError::InvalidBlobVersionedHash => {
+                write!(f, "Blob versioned hash has invalid version byte")
+            }
+            ValidationError::MaxFeePerBlobGasTooLow => {
+                write!(f, "Max fee per blob gas is below the blob base fee")
+            }
+            ValidationError::MissingBlobGasContext => {
+                write!(f, "Missing blob gas context for blob transaction")
             }
         }
     }
@@ -224,6 +250,14 @@ impl Transaction {
 }
 
 // =============================================================================
+// Blob Constants (EIP-4844)
+// =============================================================================
+
+const GAS_PER_BLOB: u64 = 131_072;
+const BLOB_COUNT_LIMIT: usize = 6;
+const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
+
+// =============================================================================
 // Validation Functions
 // =============================================================================
 
@@ -327,6 +361,8 @@ pub fn validate_gas(tx: &Transaction, block_gas_limit: U256) -> Result<(), Valid
         _ => {}
     }
 
+    validate_blob_structure(tx)?;
+
     Ok(())
 }
 
@@ -399,6 +435,7 @@ pub fn calculate_intrinsic_gas(tx: &Transaction) -> U256 {
 /// The maximum transaction cost is:
 /// - For Legacy/EIP-2930: `gas_limit * gas_price + value`
 /// - For EIP-1559: `gas_limit * max_fee_per_gas + value`
+/// - For EIP-4844: `gas_limit * max_fee_per_gas + blob_gas * max_fee_per_blob_gas + value`
 ///
 /// # Arguments
 ///
@@ -418,11 +455,61 @@ pub fn validate_balance(
     let value = tx.value();
 
     // Calculate maximum cost (worst case)
-    let max_gas_cost = gas_limit.saturating_mul(tx.max_fee_per_gas());
+    let mut max_gas_cost = gas_limit.saturating_mul(tx.max_fee_per_gas());
+
+    if let Transaction::Blob(tx) = tx {
+        let blob_gas_used = U256::from_u64(GAS_PER_BLOB)
+            .saturating_mul(U256::from_u64(tx.blob_versioned_hashes.len() as u64));
+        let blob_fee_cap = blob_gas_used.saturating_mul(tx.max_fee_per_blob_gas);
+        max_gas_cost = max_gas_cost.saturating_add(blob_fee_cap);
+    }
+
     let max_cost = max_gas_cost.saturating_add(value);
 
     if account_balance < max_cost {
         return Err(ValidationError::InsufficientFunds);
+    }
+
+    Ok(())
+}
+
+/// Validates blob-specific structure (hash list, count limit, version byte).
+pub fn validate_blob_structure(tx: &Transaction) -> Result<(), ValidationError> {
+    let Transaction::Blob(tx) = tx else {
+        return Ok(());
+    };
+
+    let blob_count = tx.blob_versioned_hashes.len();
+    if blob_count == 0 {
+        return Err(ValidationError::EmptyBlobVersionedHashes);
+    }
+    if blob_count > BLOB_COUNT_LIMIT {
+        return Err(ValidationError::BlobCountLimitExceeded);
+    }
+
+    for hash in &tx.blob_versioned_hashes {
+        if hash.as_bytes()[0] != VERSIONED_HASH_VERSION_KZG {
+            return Err(ValidationError::InvalidBlobVersionedHash);
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates blob fee parameters against the current blob base fee.
+pub fn validate_blob_fee(
+    tx: &Transaction,
+    excess_blob_gas: Option<U256>,
+) -> Result<(), ValidationError> {
+    let Transaction::Blob(tx) = tx else {
+        return Ok(());
+    };
+
+    let excess_blob_gas = excess_blob_gas.ok_or(ValidationError::MissingBlobGasContext)?;
+    let blob_base_fee = blob_gas_price(excess_blob_gas);
+
+    if tx.max_fee_per_blob_gas < blob_base_fee {
+        return Err(ValidationError::MaxFeePerBlobGasTooLow);
     }
 
     Ok(())
@@ -543,8 +630,10 @@ pub fn validate_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::transaction::{Eip1559Transaction, Eip2930Transaction, LegacyTransaction};
-    use crate::types::Bytes;
+    use crate::types::transaction::{
+        BlobTransaction, Eip1559Transaction, Eip2930Transaction, LegacyTransaction,
+    };
+    use crate::types::{Bytes, Hash};
     use k256::ecdsa::SigningKey;
 
     // Helper to create a valid signed transaction for testing
@@ -637,6 +726,25 @@ mod tests {
         let address = Address::from(address_bytes);
 
         (tx, address)
+    }
+
+    fn create_blob_tx(blob_hashes: Vec<Hash>, max_fee_per_blob_gas: U256) -> BlobTransaction {
+        BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(1u64),
+            max_fee_per_gas: U256::from(10u64),
+            gas_limit: U256::from(21_000u64),
+            to: Address::from([0x11; 20]),
+            value: U256::ZERO,
+            data: Bytes::new(),
+            access_list: vec![],
+            max_fee_per_blob_gas,
+            blob_versioned_hashes: blob_hashes,
+            v: U256::ZERO,
+            r: U256::ZERO,
+            s: U256::ZERO,
+        }
     }
 
     // =========================================================================
@@ -1033,6 +1141,78 @@ mod tests {
         let balance = U256::from(1_000_000_000_000_000u64);
         let result = validate_balance(&tx, balance, U256::from(10u64));
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_balance_blob_includes_blob_fee_cap() {
+        let blob_hashes = vec![Hash::from([VERSIONED_HASH_VERSION_KZG; 32])];
+        let blob_tx = create_blob_tx(blob_hashes, U256::from(1u64));
+        let tx = Transaction::Blob(blob_tx.clone());
+
+        let gas_cost = blob_tx.gas_limit.saturating_mul(blob_tx.max_fee_per_gas);
+        let blob_gas_used =
+            U256::from_u64(GAS_PER_BLOB).saturating_mul(U256::from_u64(1u64));
+        let blob_fee_cap = blob_gas_used.saturating_mul(blob_tx.max_fee_per_blob_gas);
+        let expected_cost = gas_cost.saturating_add(blob_fee_cap);
+
+        let result = validate_balance(&tx, expected_cost, U256::ZERO);
+        assert!(result.is_ok());
+
+        let result = validate_balance(&tx, expected_cost.saturating_sub(U256::ONE), U256::ZERO);
+        assert_eq!(result, Err(ValidationError::InsufficientFunds));
+    }
+
+    // =========================================================================
+    // Blob Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_blob_structure_empty_hashes() {
+        let blob_tx = create_blob_tx(vec![], U256::from(1u64));
+        let tx = Transaction::Blob(blob_tx);
+
+        let result = validate_blob_structure(&tx);
+        assert_eq!(result, Err(ValidationError::EmptyBlobVersionedHashes));
+    }
+
+    #[test]
+    fn test_validate_blob_structure_count_limit() {
+        let blob_hashes = vec![Hash::from([VERSIONED_HASH_VERSION_KZG; 32]); BLOB_COUNT_LIMIT + 1];
+        let blob_tx = create_blob_tx(blob_hashes, U256::from(1u64));
+        let tx = Transaction::Blob(blob_tx);
+
+        let result = validate_blob_structure(&tx);
+        assert_eq!(result, Err(ValidationError::BlobCountLimitExceeded));
+    }
+
+    #[test]
+    fn test_validate_blob_structure_invalid_version() {
+        let blob_hashes = vec![Hash::from([0x02; 32])];
+        let blob_tx = create_blob_tx(blob_hashes, U256::from(1u64));
+        let tx = Transaction::Blob(blob_tx);
+
+        let result = validate_blob_structure(&tx);
+        assert_eq!(result, Err(ValidationError::InvalidBlobVersionedHash));
+    }
+
+    #[test]
+    fn test_validate_blob_fee_missing_context() {
+        let blob_hashes = vec![Hash::from([VERSIONED_HASH_VERSION_KZG; 32])];
+        let blob_tx = create_blob_tx(blob_hashes, U256::from(1u64));
+        let tx = Transaction::Blob(blob_tx);
+
+        let result = validate_blob_fee(&tx, None);
+        assert_eq!(result, Err(ValidationError::MissingBlobGasContext));
+    }
+
+    #[test]
+    fn test_validate_blob_fee_too_low() {
+        let blob_hashes = vec![Hash::from([VERSIONED_HASH_VERSION_KZG; 32])];
+        let blob_tx = create_blob_tx(blob_hashes, U256::ZERO);
+        let tx = Transaction::Blob(blob_tx);
+
+        let result = validate_blob_fee(&tx, Some(U256::ZERO));
+        assert_eq!(result, Err(ValidationError::MaxFeePerBlobGasTooLow));
     }
 
     // =========================================================================
