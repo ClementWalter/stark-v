@@ -193,15 +193,20 @@ Gas Trace (initial: 340474, used: 22130)
    - Keeps the created address warm for subsequent accesses in the same transaction
    - **RESULT**: No change in test results - still -19900 gas undercharge in mergeExample
    - **ANALYSIS**: The warming was correct but doesn't explain the missing 19900 gas
-2. 🔍 **IN PROGRESS**: Analyze tipInsideBlock (+9200 gas) (Sessions 60, 62)
+2. 🔍 **IN PROGRESS**: Analyze tloadDoesNotPersistCrossTxn (+2100 gas) (Session 64)
+   - 2 transactions with TLOAD/TSTORE/SSTORE operations
+   - Tx 0: SSTORE slot 0 (zero→non-zero) = 22100 gas (20000 SET + 2100 cold) ✅
+   - Tx 1: SSTORE slot 1 (0xffff→new) = 7100 gas (5000 RESET + 2100 cold) ✅
+   - **VERIFIED**: SSTORE charges correct EIP-2929 cold costs (2100 per tx)
+   - **VERIFIED**: Unit tests confirm cold=22100, warm=5100 for SET/RESET
+   - **MYSTERY**: Overcharge is +2100 gas total, but warm/cold math doesn't explain it
+   - **NEXT**: Compare with Geth/Erigon implementation, check for EIP nuances
+3. ⏭️ Analyze tipInsideBlock (+9200 gas) (Sessions 60, 62)
    - 3 transactions calling contracts with COINBASE/BALANCE/NUMBER/SSTORE
    - Total overcharge: +9200 gas (68411 expected, 77611 computed ≈ +3066 per tx)
    - **VERIFIED**: EIP-2929 warm/cold logic is correct, access lists cleared per-transaction
    - **VERIFIED**: Coinbase is correctly COLD on first access in each transaction
    - **VERIFIED**: Intrinsic gas calculation is correct (21000 for simple calls)
-   - **HYPOTHESIS**: SSTORE gas costs may be incorrect for modifying existing storage
-   - **NEXT**: Enable gas tracing to see exact SSTORE costs, verify against EIP-2200/2929/3529
-3. ⏭️ Analyze transient storage tests (+2100 gas): May be related to intrinsic gas or other costs
 4. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail to execute
 5. ⏭️ Debug state root mismatches (8 tests): correct gas but wrong final state
    - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks

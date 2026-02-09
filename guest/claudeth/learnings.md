@@ -27,11 +27,33 @@
 1. **Don't assume accounting fixes will affect EELS tests** - they may test different paths
 2. **Don't skip re-baseline** - even negative results (no change) are valuable data
 
+### Gas Overcharge Investigation Started
+Began investigating **tloadDoesNotPersistCrossTxn** (+2100 gas, smallest overcharge):
+
+**Transaction breakdown:**
+- Tx 0: 43421 gas (21064 intrinsic + 22357 execution with TSTORE/TLOAD/SSTORE)
+- Tx 1: 23546 gas (21064 intrinsic + 7282 execution with TLOAD/SSTORE)
+- Total computed: 66967 gas
+- Total expected: 64867 gas
+- **Overcharge: +2100 gas**
+
+**SSTORE gas analysis:**
+- Tx 0 SSTORE (slot 0, zero→non-zero): 20000 (SET) + 2100 (cold) = 22100 ✅
+- Tx 1 SSTORE (slot 1, 0xffff→new): 5000 (RESET) + 2100 (cold) = 7100 ✅
+
+Our implementation charges correct EIP-2929 cold costs (2100 for first access per transaction).
+Unit tests confirm cold/warm logic works correctly.
+
+**Mystery:** If both SSTOREs were warm (100 instead of 2100), we'd save 4000 gas total, giving us 62967, but expected is 64867 (difference of 1900 gas). The numbers don't align with any EIP-2929 warm/cold cost explanation.
+
+**Hypothesis:** There may be a nuance in EIP-2929 or EIP-3529 that we're missing, or the test fixture expectations are based on a different gas schedule. Need to cross-reference with Geth/Erigon implementation or EIP specs more carefully.
+
 ### Next Steps (from PLAN)
-According to PLAN priorities, next investigation target is:
-1. **tipInsideBlock gas overcharge** (+9200 gas) - Session 60/62 already analyzed, needs gas tracing
-2. Investigate SSTORE gas costs - may be root cause of overcharges
-3. Use gas tracing infrastructure (Sessions 48-51) to debug per-opcode costs
+According to PLAN priorities, investigation targets:
+1. ✅ **STARTED**: tloadDoesNotPersistCrossTxn (+2100 gas) - SSTORE cold/warm costs analyzed, root cause unclear
+2. ⏭️ Compare our SSTORE implementation with reference (Geth/Erigon) for these exact state transitions
+3. ⏭️ tipInsideBlock gas overcharge (+9200 gas) - Session 60/62 already analyzed
+4. ⏭️ Use gas tracing for other failing tests to find patterns
 
 ## Session 63: Fix EIP-1559 Upfront Gas Charge (2026-02-09)
 
