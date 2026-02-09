@@ -17,6 +17,8 @@ EIP-2935 historical block hashes system calls.
 
 - EVM interpreter with full opcode coverage, including `BLOBHASH`,
   `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`
+- `BLOBBASEFEE` now uses the EIP-4844 blob gas price formula when
+  `excess_blob_gas` is present in the block header
 - Transaction types: Legacy / EIP-2930 / EIP-1559
 - Block processing: header validation, tx execution, receipts, gas used,
   validation of receipts root, tx root, logs bloom, state root
@@ -47,9 +49,9 @@ EIP-2935 historical block hashes system calls.
 
 ### Completed This Iteration
 
-- Implemented EIP-2935 historical block hashes system call:
-  - Added system call to history storage contract with parent hash calldata
-  - Added tests to validate ring buffer storage writes
+- Implemented blob base fee calculation for `BLOBBASEFEE`:
+  - Added `excess_blob_gas` to execution block context and plumbed it through
+  - Calculated blob gas price via the execution-specs Taylor expansion formula
 
 ### P1: Add EIP-4844 blob transaction support (type 0x03)
 

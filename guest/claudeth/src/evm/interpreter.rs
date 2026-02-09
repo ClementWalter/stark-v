@@ -138,6 +138,7 @@ pub struct BlockContext {
     pub gas_limit: U256,
     pub chain_id: U256,
     pub base_fee: U256,
+    pub excess_blob_gas: Option<U256>,
 }
 
 impl Default for BlockContext {
@@ -150,6 +151,7 @@ impl Default for BlockContext {
             gas_limit: U256::from_u64(30_000_000),
             chain_id: U256::ONE,
             base_fee: U256::ZERO,
+            excess_blob_gas: None,
         }
     }
 }

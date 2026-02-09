@@ -465,6 +465,7 @@ pub fn process_block<S: State + Clone>(
         gas_limit: U256::from_u64(block.gas_limit),
         chain_id,
         base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        excess_blob_gas: block.excess_blob_gas.map(U256::from_u64),
     };
 
     // Step 3: Apply EIP-4788 beacon root system call (before executing transactions)
@@ -1018,6 +1019,7 @@ mod tests {
             gas_limit: U256::from_u64(block.gas_limit),
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+            excess_blob_gas: None,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1046,6 +1048,7 @@ mod tests {
             gas_limit: U256::from_u64(block.gas_limit),
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+            excess_blob_gas: None,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1128,6 +1131,7 @@ mod tests {
             gas_limit: U256::from_u64(block.gas_limit),
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+            excess_blob_gas: None,
         };
 
         let calldata = beacon_root.as_bytes().to_vec();
@@ -1275,6 +1279,7 @@ mod tests {
             gas_limit: U256::from_u64(block.gas_limit),
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+            excess_blob_gas: None,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1318,6 +1323,7 @@ mod tests {
             gas_limit: U256::from_u64(block.gas_limit),
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+            excess_blob_gas: None,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1355,6 +1361,7 @@ mod tests {
             gas_limit: U256::from_u64(block.gas_limit),
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+            excess_blob_gas: None,
         };
         let parent_hash = parent.compute_hash();
         apply_beacon_root_system_call(

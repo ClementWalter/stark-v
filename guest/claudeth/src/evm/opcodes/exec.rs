@@ -80,6 +80,7 @@ pub struct ExecContext<'a, S: State, H: Host<S>> {
     pub block_gas_limit: U256,
     pub block_chain_id: U256,
     pub block_base_fee: U256,
+    pub block_excess_blob_gas: Option<U256>,
     // Tx
     pub tx_origin: Address,
     pub tx_gas_price: U256,
@@ -138,6 +139,7 @@ fn block_ctx<S: State, H: Host<S>>(ctx: &ExecContext<'_, S, H>) -> environment::
         gas_limit: ctx.block_gas_limit,
         chain_id: ctx.block_chain_id,
         base_fee: ctx.block_base_fee,
+        excess_blob_gas: ctx.block_excess_blob_gas,
     }
 }
 

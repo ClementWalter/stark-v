@@ -9,6 +9,7 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
+use crate::evm::gas::blob_gas_price;
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
 
@@ -456,7 +457,10 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
     }
 
     fn blobbasefee(&self) -> U256 {
-        U256::ZERO
+        match self.block_ctx.excess_blob_gas {
+            Some(excess) => blob_gas_price(excess),
+            None => U256::ZERO,
+        }
     }
 }
 

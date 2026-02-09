@@ -39,6 +39,12 @@ pub const GAS_SLOW_STEP: u64 = 10;
 /// Gas cost for operations like BLOCKHASH
 pub const GAS_EXT_STEP: u64 = 20;
 
+// Blob gas pricing (EIP-4844)
+/// Minimum blob gas price.
+pub const MIN_BLOB_GASPRICE: u64 = 1;
+/// Blob base fee update fraction.
+pub const BLOB_BASE_FEE_UPDATE_FRACTION: u64 = 3_338_477;
+
 // Arithmetic operations
 /// Gas cost for STOP opcode
 pub const GAS_STOP: u64 = 0;
@@ -706,6 +712,37 @@ pub fn memory_expansion_cost(old_size: usize, new_size: usize) -> u64 {
                  + (MEMORY_GAS as usize * old_words);
 
     (new_cost - old_cost) as u64
+}
+
+// =============================================================================
+// Blob Gas Pricing (EIP-4844)
+// =============================================================================
+
+/// Calculates the blob gas price from excess blob gas.
+pub fn blob_gas_price(excess_blob_gas: U256) -> U256 {
+    taylor_exponential(
+        U256::from_u64(MIN_BLOB_GASPRICE),
+        excess_blob_gas,
+        U256::from_u64(BLOB_BASE_FEE_UPDATE_FRACTION),
+    )
+}
+
+fn taylor_exponential(factor: U256, numerator: U256, denominator: U256) -> U256 {
+    let mut i = U256::ONE;
+    let mut output = U256::ZERO;
+    let mut numerator_accumulated = factor.saturating_mul(denominator);
+
+    while !numerator_accumulated.is_zero() {
+        output = output.saturating_add(numerator_accumulated);
+        let denom = denominator.saturating_mul(i);
+        if denom.is_zero() {
+            break;
+        }
+        numerator_accumulated = numerator_accumulated.saturating_mul(numerator) / denom;
+        i = i.saturating_add(U256::ONE);
+    }
+
+    output / denominator
 }
 
 /// Calculates the gas cost for call operations.
@@ -1474,5 +1511,11 @@ mod tests {
         // LOG4 is the maximum (4 topics)
         let cost = log_gas_cost(4, 0);
         assert_eq!(cost, 375 + 375 * 4);
+    }
+
+    #[test]
+    fn test_blob_gas_price_minimum() {
+        let price = blob_gas_price(U256::ZERO);
+        assert_eq!(price, U256::from_u64(MIN_BLOB_GASPRICE));
     }
 }

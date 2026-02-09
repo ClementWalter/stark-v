@@ -46,27 +46,35 @@ pub struct BlockContext {
     pub chain_id: U256,
     /// Base fee per gas (EIP-1559)
     pub base_fee: U256,
+    /// Excess blob gas (EIP-4844)
+    pub excess_blob_gas: Option<U256>,
+}
+
+/// Parameters for constructing a block context.
+#[derive(Debug, Clone)]
+pub struct BlockContextParams {
+    pub coinbase: Address,
+    pub timestamp: U256,
+    pub number: U256,
+    pub difficulty: U256,
+    pub gas_limit: U256,
+    pub chain_id: U256,
+    pub base_fee: U256,
+    pub excess_blob_gas: Option<U256>,
 }
 
 impl BlockContext {
     /// Create a new block context
-    pub fn new(
-        coinbase: Address,
-        timestamp: U256,
-        number: U256,
-        difficulty: U256,
-        gas_limit: U256,
-        chain_id: U256,
-        base_fee: U256,
-    ) -> Self {
+    pub fn new(params: BlockContextParams) -> Self {
         Self {
-            coinbase,
-            timestamp,
-            number,
-            difficulty,
-            gas_limit,
-            chain_id,
-            base_fee,
+            coinbase: params.coinbase,
+            timestamp: params.timestamp,
+            number: params.number,
+            difficulty: params.difficulty,
+            gas_limit: params.gas_limit,
+            chain_id: params.chain_id,
+            base_fee: params.base_fee,
+            excess_blob_gas: params.excess_blob_gas,
         }
     }
 }
@@ -937,15 +945,16 @@ mod tests {
 
     // Helper to create default contexts
     fn create_block_context() -> BlockContext {
-        BlockContext::new(
-            Address::from([0x42; 20]),
-            U256::from_u64(1234567890),
-            U256::from_u64(1000),
-            U256::from_u64(12345),
-            U256::from_u64(30_000_000),
-            U256::from_u64(1),
-            U256::from_u64(100),
-        )
+        BlockContext::new(BlockContextParams {
+            coinbase: Address::from([0x42; 20]),
+            timestamp: U256::from_u64(1234567890),
+            number: U256::from_u64(1000),
+            difficulty: U256::from_u64(12345),
+            gas_limit: U256::from_u64(30_000_000),
+            chain_id: U256::from_u64(1),
+            base_fee: U256::from_u64(100),
+            excess_blob_gas: None,
+        })
     }
 
     fn create_tx_context() -> TxContext {
