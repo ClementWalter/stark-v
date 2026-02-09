@@ -175,16 +175,16 @@ def cli(
             typer.echo(f"Iteration {i} of {iterations}", err=True)
             try:
                 resolved_prompt = (cwd / PROMPT_FILE).read_text(encoding="utf-8")
-                typer.echo(f"Running Claude with prompt: {resolved_prompt}", err=True)
-                completed = subprocess.run(
-                    ["claude", "--dangerously-skip-permissions", "-p", resolved_prompt,  "--output-format", "stream-json", "--verbose"],
-                    cwd=cwd,
-                    check=False,
-                )
-                typer.echo(f"Claude exited with status {completed.returncode}", err=True)
+                # typer.echo(f"Running Claude with prompt: {resolved_prompt}", err=True)
+                # completed = subprocess.run(
+                #     ["claude", "--dangerously-skip-permissions", "-p", resolved_prompt,  "--output-format", "stream-json", "--verbose"],
+                #     cwd=cwd,
+                #     check=False,
+                # )
+                # typer.echo(f"Claude exited with status {completed.returncode}", err=True)
                 typer.echo(f"Running Codex with prompt: {resolved_prompt}", err=True)
                 completed = subprocess.run(
-                    ["codex", "exec", resolved_prompt],
+                    ["codex", "exec", resolved_prompt, "--dangerously-bypass-approvals-and-sandbox"],
                     cwd=cwd,
                     check=False,
                 )

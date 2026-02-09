@@ -79,27 +79,27 @@ pub fn mul(stack: &mut Stack) -> Result<(), EvmError> {
 
 /// SUB (0x03): Subtraction modulo 2^256
 ///
-/// Pops two values from the stack, subtracts the second from the first with wrapping,
-/// and pushes the result.
+/// Pops two values from the stack: a (top), b (second).
+/// Computes a - b with wrapping and pushes the result.
 pub fn sub(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top of stack (subtrahend)
-    let b = stack.pop()?;  // Second (minuend)
-    let (result, _overflow) = b.overflowing_sub(a);  // b - a
+    let a = stack.pop()?;
+    let b = stack.pop()?;
+    let (result, _overflow) = a.overflowing_sub(b);
     stack.push(result)?;
     Ok(())
 }
 
 /// DIV (0x04): Unsigned integer division
 ///
-/// Pops two values from the stack. If the divisor is zero, pushes 0.
-/// Otherwise, performs integer division and pushes the result.
+/// Pops two values from the stack: a (top, dividend), b (second, divisor).
+/// If b is zero, pushes 0. Otherwise, computes a / b and pushes the result.
 pub fn div(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top of stack (divisor)
-    let b = stack.pop()?;  // Second (dividend)
-    let result = if a.is_zero() {
+    let a = stack.pop()?;
+    let b = stack.pop()?;
+    let result = if b.is_zero() {
         U256::ZERO
     } else {
-        b / a  // b / a
+        a / b
     };
     stack.push(result)?;
     Ok(())
@@ -107,14 +107,15 @@ pub fn div(stack: &mut Stack) -> Result<(), EvmError> {
 
 /// SDIV (0x05): Signed integer division
 ///
-/// Pops two values from the stack, interprets them as two's complement signed integers,
-/// performs signed division, and pushes the result. Division by zero returns 0.
-/// Special case: MIN / -1 returns MIN (overflow).
+/// Pops two values from the stack: a (top, dividend), b (second, divisor).
+/// Interprets them as two's complement signed integers,
+/// performs signed division (a / b), and pushes the result.
+/// Division by zero returns 0. Special case: MIN / -1 returns MIN (overflow).
 pub fn sdiv(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top of stack (divisor)
-    let b = stack.pop()?;  // Second (dividend)
+    let a = stack.pop()?;
+    let b = stack.pop()?;
 
-    if a.is_zero() {
+    if b.is_zero() {
         stack.push(U256::ZERO)?;
         return Ok(());
     }
@@ -128,12 +129,12 @@ pub fn sdiv(stack: &mut Stack) -> Result<(), EvmError> {
 
     // Check for MIN / -1 overflow case
     // MIN is 2^255, which when negated stays as 2^255
-    if b_negative && !a_negative && a == U256::ONE && b == sign_bit() {
+    if a_negative && !b_negative && b == U256::ONE && a == sign_bit() {
         stack.push(sign_bit())?;
         return Ok(());
     }
 
-    let result = b_abs / a_abs;  // b / a
+    let result = a_abs / b_abs;
 
     // Apply sign
     let result = if a_negative != b_negative && !result.is_zero() {
@@ -148,15 +149,15 @@ pub fn sdiv(stack: &mut Stack) -> Result<(), EvmError> {
 
 /// MOD (0x06): Unsigned modulo
 ///
-/// Pops two values from the stack. If the divisor is zero, pushes 0.
-/// Otherwise, computes the remainder and pushes the result.
+/// Pops two values from the stack: a (top, dividend), b (second, modulus).
+/// If b is zero, pushes 0. Otherwise, computes a % b and pushes the result.
 pub fn modulo(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top of stack (divisor)
-    let b = stack.pop()?;  // Second (dividend)
-    let result = if a.is_zero() {
+    let a = stack.pop()?;
+    let b = stack.pop()?;
+    let result = if b.is_zero() {
         U256::ZERO
     } else {
-        b % a  // b % a
+        a % b
     };
     stack.push(result)?;
     Ok(())
@@ -164,13 +165,14 @@ pub fn modulo(stack: &mut Stack) -> Result<(), EvmError> {
 
 /// SMOD (0x07): Signed modulo
 ///
-/// Pops two values from the stack, interprets them as two's complement signed integers,
-/// computes signed modulo, and pushes the result. The result takes the sign of the dividend.
+/// Pops two values from the stack: a (top, dividend), b (second, modulus).
+/// Interprets them as two's complement signed integers,
+/// computes a smod b, and pushes the result. The result takes the sign of a.
 pub fn smod(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top of stack (divisor)
-    let b = stack.pop()?;  // Second (dividend)
+    let a = stack.pop()?;
+    let b = stack.pop()?;
 
-    if a.is_zero() {
+    if b.is_zero() {
         stack.push(U256::ZERO)?;
         return Ok(());
     }
@@ -181,10 +183,10 @@ pub fn smod(stack: &mut Stack) -> Result<(), EvmError> {
     let a_abs = if a_negative { twos_complement(a) } else { a };
     let b_abs = if b_negative { twos_complement(b) } else { b };
 
-    let result = b_abs % a_abs;  // b % a
+    let result = a_abs % b_abs;
 
-    // Result takes sign of dividend (b)
-    let result = if b_negative && !result.is_zero() {
+    // Result takes sign of dividend (a)
+    let result = if a_negative && !result.is_zero() {
         twos_complement(result)
     } else {
         result

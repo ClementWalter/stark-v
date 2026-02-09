@@ -19,13 +19,14 @@ use std::vec::Vec;
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use crate::crypto::rlp::encode_u256;
-use crate::evm::interpreter::BlockContext;
+use crate::evm::host::RecursiveHost;
+use crate::evm::interpreter::{BlockContext, CallContext, Evm, TxContext};
 use crate::state::{State, Trie};
 use crate::stf::{
     calculate_receipts_root_with_types, execute_transaction, Bloom, ExecutionError,
     TransactionExecutionResult, TransactionReceipt,
 };
-use crate::types::{BlockHeader, Hash, Transaction, U256, Withdrawal};
+use crate::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
 
 #[cfg(test)]
 use crate::state::EMPTY_TRIE_ROOT;
@@ -223,6 +224,86 @@ fn apply_withdrawals<S: State>(state: &mut S, withdrawals: &[Withdrawal]) {
 }
 
 // =============================================================================
+// EIP-4788: Beacon Block Root System Call
+// =============================================================================
+
+/// The address of the beacon roots contract (EIP-4788).
+/// `0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`
+const BEACON_ROOTS_ADDRESS: Address = Address::new([
+    0x00, 0x0f, 0x3d, 0xf6, 0xd7, 0x32, 0x80, 0x7e, 0xf1, 0x31, 0x9f, 0xb7, 0xb8, 0xbb, 0x85,
+    0x22, 0xd0, 0xbe, 0xac, 0x02,
+]);
+
+/// The system address used as caller for EIP-4788 system calls.
+/// `0xfffffffffffffffffffffffffffffffffffffffe`
+const SYSTEM_ADDRESS: Address = Address::new([
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xfe,
+]);
+
+/// Gas limit for the beacon root system call (30 million).
+const SYSTEM_CALL_GAS_LIMIT: u64 = 30_000_000;
+
+/// Executes the EIP-4788 beacon root system call.
+///
+/// At the start of processing any execution block where `parent_beacon_block_root`
+/// is present, call the beacon roots contract as `SYSTEM_ADDRESS` with the
+/// 32-byte `parent_beacon_block_root` as input. The call does not count against
+/// the block's gas limit. If no code exists at the beacon roots address, the
+/// call fails silently.
+fn apply_beacon_root_system_call<S: State + Clone>(
+    state: &mut S,
+    block: &BlockHeader,
+    block_ctx: &BlockContext,
+    parent_hash: Hash,
+) {
+    let parent_beacon_block_root = match block.parent_beacon_block_root {
+        Some(root) => root,
+        None => return,
+    };
+
+    // If no code exists at the beacon roots address, fail silently
+    let code = state.get_code(&BEACON_ROOTS_ADDRESS).to_vec();
+    if code.is_empty() {
+        return;
+    }
+
+    // Build the 32-byte calldata: the parent beacon block root
+    let calldata = parent_beacon_block_root.as_bytes().to_vec();
+
+    // Set up EVM execution context with SYSTEM_ADDRESS as caller
+    let call_ctx = CallContext {
+        address: BEACON_ROOTS_ADDRESS,
+        caller: SYSTEM_ADDRESS,
+        call_value: U256::ZERO,
+        call_data: calldata,
+    };
+
+    let tx_ctx = TxContext {
+        origin: SYSTEM_ADDRESS,
+        gas_price: U256::ZERO,
+    };
+
+    let host = RecursiveHost::new()
+        .with_block_context(block_ctx.clone())
+        .with_parent_hash(parent_hash)
+        .with_tx_context(tx_ctx.clone());
+
+    let mut evm = Evm::new(code, SYSTEM_CALL_GAS_LIMIT, state.clone(), host)
+        .with_block_context(block_ctx.clone())
+        .with_tx_context(tx_ctx)
+        .with_call_context(call_ctx);
+
+    // Execute the system call and apply state changes on success.
+    // On failure, state changes are discarded (fail silently).
+    if let Ok(result) = evm.run()
+        && result.success
+    {
+        *state = evm.into_state();
+    }
+}
+
+// =============================================================================
 // Block Processor
 // =============================================================================
 
@@ -314,8 +395,11 @@ pub fn process_block<S: State + Clone>(
         base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
     };
 
-    // Step 3: Execute all transactions
+    // Step 3: Apply EIP-4788 beacon root system call (before executing transactions)
     let parent_hash = parent.compute_hash();
+    apply_beacon_root_system_call(state, block, &block_ctx, parent_hash);
+
+    // Step 4: Execute all transactions
     let mut cumulative_gas_used = 0u64;
     let mut receipts = Vec::with_capacity(transactions.len());
     let mut transaction_results = Vec::with_capacity(transactions.len());
@@ -810,5 +894,375 @@ mod tests {
         expected_bloom.combine(&receipt2.logs_bloom);
 
         assert_eq!(combined_bloom_bytes, *expected_bloom.as_bytes());
+    }
+
+    // =========================================================================
+    // EIP-4788 Beacon Root System Call Tests
+    // =========================================================================
+
+    /// The EIP-4788 beacon roots contract runtime bytecode.
+    const BEACON_ROOTS_BYTECODE: [u8; 97] = [
+        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x4d, 0x57, 0x60, 0x20,
+        0x36, 0x14, 0x60, 0x24, 0x57, 0x5f, 0x5f, 0xfd, 0x5b, 0x5f, 0x35, 0x80, 0x15, 0x60,
+        0x49, 0x57, 0x62, 0x00, 0x1f, 0xff, 0x81, 0x06, 0x90, 0x81, 0x54, 0x14, 0x60, 0x3c,
+        0x57, 0x5f, 0x5f, 0xfd, 0x5b, 0x62, 0x00, 0x1f, 0xff, 0x01, 0x54, 0x5f, 0x52, 0x60,
+        0x20, 0x5f, 0xf3, 0x5b, 0x5f, 0x5f, 0xfd, 0x5b, 0x62, 0x00, 0x1f, 0xff, 0x42, 0x06,
+        0x42, 0x81, 0x55, 0x5f, 0x35, 0x90, 0x62, 0x00, 0x1f, 0xff, 0x01, 0x55, 0x00,
+    ];
+
+    #[test]
+    fn test_beacon_root_system_call_no_code_silent() {
+        // When no code is deployed at BEACON_ROOTS_ADDRESS, the system call should
+        // be a no-op (fail silently).
+        let mut state = InMemoryState::new();
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        block.parent_beacon_block_root = Some(Hash::from([0xaa; 32]));
+
+        let block_ctx = BlockContext {
+            number: U256::from_u64(block.number),
+            timestamp: U256::from_u64(block.timestamp),
+            coinbase: block.coinbase,
+            difficulty: block.difficulty,
+            gas_limit: U256::from_u64(block.gas_limit),
+            chain_id: U256::ONE,
+            base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        };
+        let parent_hash = parent.compute_hash();
+
+        // Should not panic or modify state
+        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash);
+
+        // State should remain empty
+        assert_eq!(state.compute_state_root(), EMPTY_TRIE_ROOT);
+    }
+
+    #[test]
+    fn test_beacon_root_system_call_no_beacon_root() {
+        // When parent_beacon_block_root is None, the system call should be a no-op.
+        let mut state = InMemoryState::new();
+        state.set_code(&BEACON_ROOTS_ADDRESS, BEACON_ROOTS_BYTECODE.to_vec());
+
+        let parent = create_test_parent();
+        let block = create_test_block(&parent);
+        // block.parent_beacon_block_root is None
+
+        let block_ctx = BlockContext {
+            number: U256::from_u64(block.number),
+            timestamp: U256::from_u64(block.timestamp),
+            coinbase: block.coinbase,
+            difficulty: block.difficulty,
+            gas_limit: U256::from_u64(block.gas_limit),
+            chain_id: U256::ONE,
+            base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        };
+        let parent_hash = parent.compute_hash();
+
+        let state_root_before = state.compute_state_root();
+        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash);
+
+        // State should be unchanged (only the contract code, no storage writes)
+        assert_eq!(state.compute_state_root(), state_root_before);
+    }
+
+    #[test]
+    fn test_beacon_root_system_call_debug() {
+        // Debug: execute a minimal SSTORE test to verify EVM+state works
+        use crate::evm::interpreter::{Evm, CallContext, TxContext};
+        use crate::evm::host::NullHost;
+
+        let mut state = InMemoryState::new();
+        let test_addr = Address::from([0xaa; 20]);
+
+        // Bytecode: PUSH1 0x42 PUSH1 0x01 SSTORE STOP
+        // This stores value 0x42 at storage slot 1 for the call_ctx.address
+        let code = vec![0x60, 0x42, 0x60, 0x01, 0x55, 0x00];
+
+        let call_ctx = CallContext {
+            address: test_addr,
+            caller: Address::from([0xbb; 20]),
+            call_value: U256::ZERO,
+            call_data: vec![],
+        };
+
+        let mut evm = Evm::new(code, 100_000, state.clone(), NullHost)
+            .with_call_context(call_ctx);
+
+        let result = evm.run();
+        eprintln!("Simple SSTORE test: result={result:?}");
+        assert!(result.is_ok());
+
+        let final_state = evm.into_state();
+        let v = final_state.sload(&test_addr, &U256::from_u64(1));
+        eprintln!("Simple SSTORE test: storage[1] = {v:?}");
+        assert_eq!(v, U256::from_u64(0x42), "Simple SSTORE should work");
+
+        // Test SSTORE with large key (like 1012)
+        // Bytecode: PUSH2 0x03f4 PUSH2 0x03f4 SSTORE STOP
+        // store value 0x03f4 at key 0x03f4
+        let code2 = vec![
+            0x61, 0x03, 0xf4, // PUSH2 1012
+            0x61, 0x03, 0xf4, // PUSH2 1012
+            0x55,             // SSTORE
+            0x00,             // STOP
+        ];
+        let call_ctx_big = CallContext {
+            address: test_addr,
+            caller: Address::from([0xbb; 20]),
+            call_value: U256::ZERO,
+            call_data: vec![],
+        };
+        let mut evm_big = Evm::new(code2, 100_000, InMemoryState::new(), NullHost)
+            .with_call_context(call_ctx_big);
+        let result_big = evm_big.run();
+        eprintln!("Big key SSTORE test: result={:?}", result_big.as_ref().map(|r| (r.success, r.gas_used)));
+        assert!(result_big.is_ok());
+        let big_state = evm_big.into_state();
+        let v_big = big_state.sload(&test_addr, &U256::from_u64(1012));
+        eprintln!("Big key SSTORE test: storage[1012] = {v_big:?}");
+        assert_eq!(v_big, U256::from_u64(1012), "Large key SSTORE should work");
+
+        // Now test the beacon roots bytecode
+        state.set_code(&BEACON_ROOTS_ADDRESS, BEACON_ROOTS_BYTECODE.to_vec());
+
+        let parent = create_test_parent();
+        let block = create_test_block(&parent);
+        let beacon_root = Hash::from([0xbb; 32]);
+
+        let block_ctx = BlockContext {
+            number: U256::from_u64(block.number),
+            timestamp: U256::from_u64(block.timestamp),
+            coinbase: block.coinbase,
+            difficulty: block.difficulty,
+            gas_limit: U256::from_u64(block.gas_limit),
+            chain_id: U256::ONE,
+            base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        };
+
+        let calldata = beacon_root.as_bytes().to_vec();
+        let call_ctx2 = CallContext {
+            address: BEACON_ROOTS_ADDRESS,
+            caller: SYSTEM_ADDRESS,
+            call_value: U256::ZERO,
+            call_data: calldata,
+        };
+
+        let tx_ctx = TxContext {
+            origin: SYSTEM_ADDRESS,
+            gas_price: U256::ZERO,
+        };
+
+        let host = RecursiveHost::new()
+            .with_block_context(block_ctx.clone())
+            .with_parent_hash(parent.compute_hash())
+            .with_tx_context(tx_ctx.clone());
+
+        // Instead of using the full bytecode, let's test the set path directly
+        // The set path starts at offset 0x4d (77) in the contract
+        // It does: PUSH3 0x1fff, TIMESTAMP, MOD, TIMESTAMP, DUP2, SSTORE, PUSH0, CALLDATALOAD, SWAP1, PUSH3 0x1fff, ADD, SSTORE, STOP
+        // Let's test with a simple bytecode that should do the same thing:
+        // PUSH3 0x1fff TIMESTAMP MOD TIMESTAMP DUP2 SSTORE PUSH0 CALLDATALOAD SWAP1 PUSH3 0x1fff ADD SSTORE STOP
+        let set_bytecode = vec![
+            0x62, 0x00, 0x1f, 0xff, // PUSH3 0x1fff
+            0x42,                     // TIMESTAMP
+            0x06,                     // MOD
+            0x42,                     // TIMESTAMP
+            0x81,                     // DUP2
+            0x55,                     // SSTORE
+            0x5f,                     // PUSH0
+            0x35,                     // CALLDATALOAD
+            0x90,                     // SWAP1
+            0x62, 0x00, 0x1f, 0xff,  // PUSH3 0x1fff
+            0x01,                     // ADD
+            0x55,                     // SSTORE
+            0x00,                     // STOP
+        ];
+
+        let call_ctx3 = CallContext {
+            address: BEACON_ROOTS_ADDRESS,
+            caller: SYSTEM_ADDRESS,
+            call_value: U256::ZERO,
+            call_data: beacon_root.as_bytes().to_vec(),
+        };
+
+        let host2 = RecursiveHost::new()
+            .with_block_context(block_ctx.clone())
+            .with_parent_hash(parent.compute_hash())
+            .with_tx_context(tx_ctx.clone());
+
+        let mut evm3 = Evm::new(
+            set_bytecode,
+            SYSTEM_CALL_GAS_LIMIT,
+            state.clone(),
+            host2,
+        )
+        .with_block_context(block_ctx.clone())
+        .with_tx_context(tx_ctx.clone())
+        .with_call_context(call_ctx3);
+
+        let result3 = evm3.run();
+        eprintln!("Direct set path: result={:?}", result3.as_ref().map(|r| (r.success, r.gas_used)));
+        assert!(result3.is_ok());
+
+        let history_buffer_length = 8191u64;
+        let timestamp_idx = block.timestamp % history_buffer_length;
+        let root_idx = timestamp_idx + history_buffer_length;
+
+        let direct_state = evm3.into_state();
+        let stored_ts_direct = direct_state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
+        let stored_root_direct = direct_state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
+        eprintln!("Direct set: stored_ts={stored_ts_direct:?}, stored_root={stored_root_direct:?}");
+
+        // Now test the full bytecode
+        let mut evm2 = Evm::new(
+            BEACON_ROOTS_BYTECODE.to_vec(),
+            SYSTEM_CALL_GAS_LIMIT,
+            state.clone(),
+            host,
+        )
+        .with_block_context(block_ctx)
+        .with_tx_context(tx_ctx)
+        .with_call_context(call_ctx2);
+
+        let result2 = evm2.run();
+        match &result2 {
+            Ok(r) => eprintln!("Beacon root EVM: success={}, gas_used={}", r.success, r.gas_used),
+            Err(e) => eprintln!("Beacon root EVM error: {e:?}"),
+        }
+        assert!(result2.is_ok());
+        let exec_result = result2.unwrap();
+
+        // Check stack/memory for debugging
+        eprintln!("Stack after execution: {:?}", exec_result.stack);
+
+        let final_state2 = evm2.into_state();
+        let history_buffer_length = 8191u64;
+        let timestamp_idx = block.timestamp % history_buffer_length;
+        let root_idx = timestamp_idx + history_buffer_length;
+
+        let stored_ts = final_state2.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
+        let stored_root = final_state2.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
+        eprintln!("timestamp_idx={timestamp_idx} (ts={}), root_idx={root_idx}", block.timestamp);
+        eprintln!("stored_ts={stored_ts:?}");
+        eprintln!("stored_root={stored_root:?}");
+
+        // Also check if SSTORE wrote somewhere unexpected
+        for key in 0..30u64 {
+            let v = final_state2.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(key));
+            if !v.is_zero() {
+                eprintln!("  BEACON storage[{key}] = {v:?}");
+            }
+        }
+        for key in 1000..1020u64 {
+            let v = final_state2.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(key));
+            if !v.is_zero() {
+                eprintln!("  BEACON storage[{key}] = {v:?}");
+            }
+        }
+
+        assert_eq!(stored_ts, U256::from_u64(block.timestamp));
+    }
+
+    #[test]
+    fn test_beacon_root_system_call_stores_root() {
+        // When beacon roots contract is deployed and parent_beacon_block_root is
+        // present, the system call should store the timestamp and root in the
+        // contract's ring buffer storage.
+        let mut state = InMemoryState::new();
+        state.set_code(&BEACON_ROOTS_ADDRESS, BEACON_ROOTS_BYTECODE.to_vec());
+
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        let beacon_root = Hash::from([0xbb; 32]);
+        block.parent_beacon_block_root = Some(beacon_root);
+
+        let block_ctx = BlockContext {
+            number: U256::from_u64(block.number),
+            timestamp: U256::from_u64(block.timestamp),
+            coinbase: block.coinbase,
+            difficulty: block.difficulty,
+            gas_limit: U256::from_u64(block.gas_limit),
+            chain_id: U256::ONE,
+            base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        };
+        let parent_hash = parent.compute_hash();
+
+        apply_beacon_root_system_call(&mut state, &block, &block_ctx, parent_hash);
+
+        // HISTORY_BUFFER_LENGTH = 0x1fff = 8191
+        let history_buffer_length = 8191u64;
+        let timestamp_idx = block.timestamp % history_buffer_length;
+        let root_idx = timestamp_idx + history_buffer_length;
+
+        // Check that timestamp was stored at timestamp_idx
+        let stored_timestamp =
+            state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
+        assert_eq!(
+            stored_timestamp,
+            U256::from_u64(block.timestamp),
+            "timestamp should be stored at timestamp_idx"
+        );
+
+        // Check that beacon root was stored at root_idx
+        let stored_root = state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
+        assert_eq!(
+            stored_root,
+            U256::from_be_bytes(*beacon_root.as_bytes()),
+            "beacon root should be stored at root_idx"
+        );
+    }
+
+    #[test]
+    fn test_process_block_with_beacon_root() {
+        // End-to-end test: process an empty block with parent_beacon_block_root set.
+        // The beacon root system call should modify state before state root computation.
+        let mut state = InMemoryState::new();
+        state.set_code(&BEACON_ROOTS_ADDRESS, BEACON_ROOTS_BYTECODE.to_vec());
+
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        let beacon_root = Hash::from([0xcc; 32]);
+        block.parent_beacon_block_root = Some(beacon_root);
+
+        // Pre-compute the expected state root by simulating what process_block does:
+        let mut expected_state = state.clone();
+        let block_ctx = BlockContext {
+            number: U256::from_u64(block.number),
+            timestamp: U256::from_u64(block.timestamp),
+            coinbase: block.coinbase,
+            difficulty: block.difficulty,
+            gas_limit: U256::from_u64(block.gas_limit),
+            chain_id: U256::ONE,
+            base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        };
+        let parent_hash = parent.compute_hash();
+        apply_beacon_root_system_call(
+            &mut expected_state,
+            &block,
+            &block_ctx,
+            parent_hash,
+        );
+        block.state_root = expected_state.compute_state_root();
+
+        let transactions = vec![];
+        let withdrawals = vec![];
+
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+        if let Err(ref e) = result {
+            eprintln!("Error processing block with beacon root: {e:?}");
+        }
+        assert!(result.is_ok());
+
+        // Verify the beacon root was stored
+        let history_buffer_length = 8191u64;
+        let timestamp_idx = block.timestamp % history_buffer_length;
+        let root_idx = timestamp_idx + history_buffer_length;
+        let stored_root = state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
+        assert_eq!(
+            stored_root,
+            U256::from_be_bytes(*beacon_root.as_bytes()),
+        );
     }
 }
