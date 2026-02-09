@@ -25,6 +25,15 @@ Date: 2026-02-09
 - If `withdrawals_root` is present, a withdrawals list must be provided.
 - If `withdrawals_root` is absent, the withdrawals list must be empty.
 
+## System Calls
+
+- EIP-4788 runs only when `parent_beacon_block_root` is present; call as
+  `SYSTEM_ADDRESS` and treat missing code at the beacon roots address as a no-op.
+- EIP-2935 runs every block; call the history storage contract with the **parent
+  block hash** as 32-byte calldata. The contract stores it at slot
+  `(block.number - 1) % 8191`, so the system call must be executed before
+  computing the state root.
+
 ## BLOCKHASH Data
 
 - `BLOCKHASH` accuracy depends on providing recent hashes in guest input.
@@ -57,6 +66,7 @@ Date: 2026-02-09
 - Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
 - Keep state root computation deterministic (stable address ordering before trie insertion).
 - Provide recent block hashes in guest input for correct `BLOCKHASH` results.
+- Execute the EIP-2935 system call before computing the block state root.
 
 **Don't**
 

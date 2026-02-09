@@ -8,8 +8,8 @@ Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 `riscv32im-unknown-none-elf`. It includes a full EVM interpreter, block
 processing with header validations and root checks, a partial MPT, and
 EIP-4895 withdrawals application. The block header type includes
-Shanghai/Cancun fields. Block processing applies the EIP-4788 beacon root
-system call, but EIP-2935 is still missing.
+Shanghai/Cancun fields. Block processing applies the EIP-4788 beacon root and
+EIP-2935 historical block hashes system calls.
 
 ## Verified Status (from code)
 
@@ -22,17 +22,18 @@ system call, but EIP-2935 is still missing.
   validation of receipts root, tx root, logs bloom, state root
 - EIP-4895 withdrawals application and withdrawals root validation
 - EIP-4788 beacon root system call during block processing
+- EIP-2935 historical block hashes system call during block processing
 - Partial MPT with proof support
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
-  `parent_beacon_block_root`, `requests_hash`)
+  `parent_beacon_block_root`)
 - Guest input decoding supports withdrawals when `withdrawals_root` is present
 - Guest input decoding supports optional recent block hashes for BLOCKHASH
 - `no_std` riscv32 guest entry and bump allocator
 
 ### Known Gaps / Limitations
 
-- EIP-2935 historical block hashes system call not implemented
+- EIP-4844 blob transactions (type 0x03) not implemented
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
@@ -46,18 +47,16 @@ system call, but EIP-2935 is still missing.
 
 ### Completed This Iteration
 
-- Added recent block hashes support for BLOCKHASH:
-  - Extended guest input decoding with optional recent block hashes list
-  - Threaded recent block hashes into the RecursiveHost for BLOCKHASH lookups
+- Implemented EIP-2935 historical block hashes system call:
+  - Added system call to history storage contract with parent hash calldata
+  - Added tests to validate ring buffer storage writes
 
-### P1: Implement EIP-2935 historical block hashes system call
+### P1: Add EIP-4844 blob transaction support (type 0x03)
 
-### P2: Add EIP-4844 blob transaction support (type 0x03)
+### P2: Witness-Based State Reconstruction
 
-### P3: Witness-Based State Reconstruction
-
-### P4: Remove `k256`
+### P3: Remove `k256`
 
 ## Immediate Next Task
 
-Implement EIP-2935 historical block hashes system call.
+Implement EIP-4844 blob transaction support (type 0x03).

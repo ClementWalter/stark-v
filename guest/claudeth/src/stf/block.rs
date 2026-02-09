@@ -306,6 +306,66 @@ fn apply_beacon_root_system_call<S: State + Clone>(
 }
 
 // =============================================================================
+// EIP-2935: Historical Block Hashes System Call
+// =============================================================================
+
+/// The address of the historical block hashes contract (EIP-2935).
+/// `0x0000F90827F1C53a10cb7A02335B175320002935`
+const HISTORY_STORAGE_ADDRESS: Address = Address::new([
+    0x00, 0x00, 0xf9, 0x08, 0x27, 0xf1, 0xc5, 0x3a, 0x10, 0xcb, 0x7a, 0x02, 0x33, 0x5b,
+    0x17, 0x53, 0x20, 0x00, 0x29, 0x35,
+]);
+
+/// Executes the EIP-2935 historical block hashes system call.
+///
+/// At the start of processing any execution block, call the history storage
+/// contract as `SYSTEM_ADDRESS` with the 32-byte parent block hash as input.
+/// The call does not count against the block's gas limit. If no code exists at
+/// the history storage address, the call fails silently.
+fn apply_history_storage_system_call<S: State + Clone>(
+    state: &mut S,
+    block_ctx: &BlockContext,
+    parent_hash: Hash,
+    block_hashes: &[Hash],
+) {
+    let code = state.get_code(&HISTORY_STORAGE_ADDRESS).to_vec();
+    if code.is_empty() {
+        return;
+    }
+
+    let calldata = parent_hash.as_bytes().to_vec();
+
+    let call_ctx = CallContext {
+        address: HISTORY_STORAGE_ADDRESS,
+        caller: SYSTEM_ADDRESS,
+        call_value: U256::ZERO,
+        call_data: calldata,
+    };
+
+    let tx_ctx = TxContext {
+        origin: SYSTEM_ADDRESS,
+        gas_price: U256::ZERO,
+    };
+
+    let host = RecursiveHost::new()
+        .with_block_context(block_ctx.clone())
+        .with_parent_hash(parent_hash)
+        .with_recent_block_hashes(block_hashes)
+        .with_tx_context(tx_ctx.clone());
+
+    let mut evm = Evm::new(code, SYSTEM_CALL_GAS_LIMIT, state.clone(), host)
+        .with_block_context(block_ctx.clone())
+        .with_tx_context(tx_ctx)
+        .with_call_context(call_ctx);
+
+    if let Ok(result) = evm.run()
+        && result.success
+    {
+        *state = evm.into_state();
+    }
+}
+
+// =============================================================================
 // Block Processor
 // =============================================================================
 
@@ -410,6 +470,9 @@ pub fn process_block<S: State + Clone>(
     // Step 3: Apply EIP-4788 beacon root system call (before executing transactions)
     let parent_hash = parent.compute_hash();
     apply_beacon_root_system_call(state, block, &block_ctx, parent_hash, block_hashes);
+
+    // Step 3b: Apply EIP-2935 historical block hashes system call
+    apply_history_storage_system_call(state, &block_ctx, parent_hash, block_hashes);
 
     // Step 4: Execute all transactions
     let mut cumulative_gas_used = 0u64;
@@ -928,6 +991,16 @@ mod tests {
         0x42, 0x81, 0x55, 0x5f, 0x35, 0x90, 0x62, 0x00, 0x1f, 0xff, 0x01, 0x55, 0x00,
     ];
 
+    /// The EIP-2935 historical block hashes contract runtime bytecode.
+    const HISTORY_STORAGE_BYTECODE: [u8; 83] = [
+        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x46, 0x57, 0x60, 0x20,
+        0x36, 0x03, 0x60, 0x42, 0x57, 0x5f, 0x35, 0x60, 0x01, 0x43, 0x03, 0x81, 0x11, 0x60,
+        0x42, 0x57, 0x61, 0x1f, 0xff, 0x81, 0x43, 0x03, 0x11, 0x60, 0x42, 0x57, 0x61, 0x1f,
+        0xff, 0x90, 0x06, 0x54, 0x5f, 0x52, 0x60, 0x20, 0x5f, 0xf3, 0x5b, 0x5f, 0x5f, 0xfd,
+        0x5b, 0x5f, 0x35, 0x61, 0x1f, 0xff, 0x60, 0x01, 0x43, 0x03, 0x06, 0x55, 0x00,
+    ];
+
     #[test]
     fn test_beacon_root_system_call_no_code_silent() {
         // When no code is deployed at BEACON_ROOTS_ADDRESS, the system call should
@@ -1227,6 +1300,36 @@ mod tests {
             stored_root,
             U256::from_be_bytes(*beacon_root.as_bytes()),
             "beacon root should be stored at root_idx"
+        );
+    }
+
+    #[test]
+    fn test_history_storage_system_call_stores_parent_hash() {
+        let mut state = InMemoryState::new();
+        state.set_code(&HISTORY_STORAGE_ADDRESS, HISTORY_STORAGE_BYTECODE.to_vec());
+
+        let parent = create_test_parent();
+        let block = create_test_block(&parent);
+        let block_ctx = BlockContext {
+            number: U256::from_u64(block.number),
+            timestamp: U256::from_u64(block.timestamp),
+            coinbase: block.coinbase,
+            difficulty: block.difficulty,
+            gas_limit: U256::from_u64(block.gas_limit),
+            chain_id: U256::ONE,
+            base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
+        };
+        let parent_hash = parent.compute_hash();
+
+        apply_history_storage_system_call(&mut state, &block_ctx, parent_hash, &[]);
+
+        let history_buffer_length = 8191u64;
+        let slot = (block.number - 1) % history_buffer_length;
+        let stored_hash = state.sload(&HISTORY_STORAGE_ADDRESS, &U256::from_u64(slot));
+        assert_eq!(
+            stored_hash,
+            U256::from_be_bytes(*parent_hash.as_bytes()),
+            "parent hash should be stored at ring buffer slot"
         );
     }
 
