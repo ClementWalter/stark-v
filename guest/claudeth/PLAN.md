@@ -222,25 +222,32 @@ Goal: finalize per-transaction correctness before block processing.
 ### Task D3: Fix Spec Mismatches (IN PROGRESS)
 **Goal**: Achieve 100% pass rate on EELS test suite
 
-**Current Status**: Identified and partially fixed critical bug - RecursiveHost implementation added but execution still incorrect
+**Current Status**: Value transfer logic fixed, but core execution bug remains (0/20 tests passing)
 
 **Subtasks**:
-1. ✅ Identified root cause: NullHost was failing all contract calls
-2. ✅ Implemented RecursiveHost with proper call/create recursion
-3. ✅ Added EVM builder methods for setting contexts
-4. ✅ Wire block/tx/call contexts into EVM execution and RecursiveHost
-5. ⚠️ Bug persists: Storage writes from called contracts not persisting
-6. TODO: Debug why cloned state changes aren't merging back correctly
-7. TODO: Investigate DELEGATECALL, CALLCODE, STATICCALL handling
-8. TODO: Fix value transfers in calls
-9. TODO: Re-run tests after fixes
+1. ✅ Identified root cause: NullHost was failing all contract calls (Session 32)
+2. ✅ Implemented RecursiveHost with proper call/create recursion (Session 32)
+3. ✅ Added EVM builder methods for setting contexts (Session 32)
+4. ✅ Wire block/tx/call contexts into EVM execution and RecursiveHost (Session 33)
+5. ✅ Fixed value transfers in RecursiveHost for CALL/CREATE operations (Session 34)
+6. ⚠️ **CRITICAL BUG REMAINS**: Storage writes not persisting, balances wrong, nonces wrong
+7. TODO: Debug why state changes from execution aren't being applied
+8. TODO: Add targeted logging to trace execution flow
+9. TODO: Test with single simple EELS case to isolate issue
+10. TODO: Investigate if transactions are failing validation silently
+11. TODO: Verify SSTORE operations update state correctly
+12. TODO: Check if State::Clone is creating issues
 
-**Verification**: All EELS tests passing
+**Verification**: All EELS tests passing (currently 0/20)
 
 **Known Issues**:
-- RecursiveHost clones state for child calls but state changes aren't persisting
-- May need to rethink state management during recursive calls
-- Possible issues with state reference vs. value semantics
+- **All 20 EELS tests failing** - suggests fundamental issue, not edge cases
+- Storage values all zero (expected non-zero values)
+- Balance mismatches - many "got" values identical (`0x16345785d8a0000`)
+- Nonce mismatches - created contracts have nonce 0 (expected 1)
+- Possible issue: transactions not executing at all, only initial state loaded
+- Possible issue: state changes computed but not merged back to test state
+- Possible issue: deep cloning creating reference/value semantic problems
 
 ---
 

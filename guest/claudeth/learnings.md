@@ -1,5 +1,72 @@
 # Claudeth Development Learnings
 
+## Session 34: Fix RecursiveHost Value Transfers (2026-02-09)
+
+**Status**: Phase D Task D3 IN PROGRESS (value transfer logic fixed, but tests still failing)
+
+### What Was Accomplished
+1. ✅ Fixed RecursiveHost to handle value transfers for CALL operations with no code
+2. ✅ Fixed RecursiveHost to handle value transfers for CALL operations with code
+3. ✅ Fixed RecursiveHost to handle value transfers for CREATE operations
+4. ✅ All 1076 unit tests passing in release mode
+5. ✅ Pre-commit hooks passing (clippy + tests)
+6. ⚠️ EELS tests still failing (0/20 passing)
+
+### Root Cause Analysis
+**Value transfer bug**: RecursiveHost was not handling value transfers for nested CALL/CREATE operations. The executor handles value transfers for top-level transactions, but RecursiveHost must handle them for nested calls.
+
+**Implementation details**:
+- For CALL with no code (simple value transfer): transfer value, return success
+- For CALL with code: transfer value BEFORE cloning state and executing bytecode
+- For CREATE: transfer value BEFORE cloning state and executing init code
+- Value transfers happen in the cloned state, then EVM runs with that state
+
+**Critical insight**: Value transfers must happen in the cloned state that gets passed to the EVM, NOT in the parent state before cloning. Otherwise the EVM runs with the wrong balances.
+
+### Known Issues - Tests Still Failing
+
+**EELS test failures persist** (0/20 passing):
+- Storage mismatches (SSTORE writes not persisting)
+- Balance mismatches (gas costs not applied correctly?)
+- Nonce mismatches (contract creation failing?)
+
+**Suspicious observations**:
+1. Many "got" balances are exactly `0x16345785d8a0000` (100 finney)
+2. This suggests initial balances are loaded but transaction effects aren't applied
+3. Storage values are all zero (expected non-zero)
+4. Nonces for created contracts are zero (expected 1)
+
+**Possible remaining issues**:
+1. State changes from EVM execution not being merged back correctly
+2. Transactions failing validation silently
+3. Issue with State::Clone implementation
+4. Missing context (is_static flag) not being enforced
+5. Gas accounting bug preventing transaction execution
+6. Deep recursion issue with state cloning/merging
+
+### DO's ✅
+1. **Handle value transfers in RecursiveHost** for nested calls/creates
+2. **Transfer value in cloned state** before passing to EVM
+3. **Check balance before transfer** and return failure if insufficient
+4. **Run clippy with release mode** to catch optimization-dependent issues
+
+### DON'Ts ❌
+1. **Don't transfer value in parent state before cloning** - EVM won't see the transfer
+2. **Don't assume executor handles all value transfers** - only top-level ones
+3. **Don't skip balance checks** - must validate sufficient funds before transfer
+4. **Don't ignore test patterns** - similar "got" values indicate systematic issue
+
+### Next Steps for Task D3
+**Immediate debugging priorities**:
+1. Add targeted logging to understand execution flow
+2. Check if transactions are actually executing or failing validation
+3. Verify SSTORE operations are updating EVM state
+4. Confirm state merge-back logic in RecursiveHost
+5. Test with a single simple EELS test case
+6. Consider if state cloning is creating deep copy issues
+
+**Alternative hypothesis**: The issue may not be in RecursiveHost but in how top-level transactions interact with the execution model. The fact that ALL tests fail suggests a fundamental issue, not edge cases.
+
 ## Session 33: Wire EVM Context Propagation (2026-02-09)
 
 **Status**: Phase D Task D3 IN PROGRESS (context propagation complete)

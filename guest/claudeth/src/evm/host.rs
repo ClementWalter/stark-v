@@ -195,8 +195,28 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         // Get contract code from code_address
         let code = state.get_code(&msg.code_address).to_vec();
 
-        // If no code, return success (simple value transfer)
+        // If no code, handle value transfer and return
         if code.is_empty() {
+            // For CALL and CALLCODE, transfer value from caller to address
+            // For DELEGATECALL and STATICCALL, no value transfer (already U256::ZERO)
+            if !msg.value.is_zero() {
+                // Deduct value from caller
+                let caller_balance = state.get_balance(&msg.caller);
+                if caller_balance < msg.value {
+                    // Insufficient balance
+                    return CallResult {
+                        success: false,
+                        return_data: Vec::new(),
+                        gas_used: 0,
+                    };
+                }
+                state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
+
+                // Add value to recipient
+                let recipient_balance = state.get_balance(&msg.address);
+                state.set_balance(&msg.address, recipient_balance.saturating_add(msg.value));
+            }
+
             return CallResult {
                 success: true,
                 return_data: Vec::new(),
@@ -205,7 +225,28 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         }
 
         // Clone state to avoid borrowing issues
-        let call_state = state.clone();
+        let mut call_state = state.clone();
+
+        // Handle value transfer in the cloned state
+        if !msg.value.is_zero() {
+            // Check sufficient balance
+            let caller_balance = call_state.get_balance(&msg.caller);
+            if caller_balance < msg.value {
+                // Insufficient balance
+                return CallResult {
+                    success: false,
+                    return_data: Vec::new(),
+                    gas_used: 0,
+                };
+            }
+
+            // Deduct from caller
+            call_state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
+
+            // Add to recipient
+            let recipient_balance = call_state.get_balance(&msg.address);
+            call_state.set_balance(&msg.address, recipient_balance.saturating_add(msg.value));
+        }
 
         // Build call context for the called contract
         use crate::evm::interpreter::{CallContext, Evm, EvmError};
@@ -277,7 +318,29 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         };
 
         // Clone state
-        let create_state = state.clone();
+        let mut create_state = state.clone();
+
+        // Handle value transfer in the cloned state
+        if !msg.value.is_zero() {
+            // Check sufficient balance
+            let caller_balance = create_state.get_balance(&msg.caller);
+            if caller_balance < msg.value {
+                // Insufficient balance
+                return CreateResult {
+                    success: false,
+                    address: None,
+                    return_data: Vec::new(),
+                    gas_used: 0,
+                };
+            }
+
+            // Deduct from caller
+            create_state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
+
+            // Add to new contract address
+            let contract_balance = create_state.get_balance(&contract_address);
+            create_state.set_balance(&contract_address, contract_balance.saturating_add(msg.value));
+        }
 
         // Build call context for the constructor
         use crate::evm::interpreter::{CallContext, Evm, EvmError};
