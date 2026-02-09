@@ -27,6 +27,9 @@ use crate::stf::{
 };
 use crate::types::{BlockHeader, Hash, Transaction, U256};
 
+#[cfg(test)]
+use crate::state::EMPTY_TRIE_ROOT;
+
 // =============================================================================
 // Block Processing Result
 // =============================================================================
@@ -123,10 +126,6 @@ impl From<ExecutionError> for BlockProcessingError {
 /// # Returns
 /// The computed transactions root hash
 fn calculate_transactions_root(transactions: &[Transaction]) -> Hash {
-    if transactions.is_empty() {
-        return Hash::ZERO;
-    }
-
     let mut trie = Trie::new();
     for (index, tx) in transactions.iter().enumerate() {
         let key = encode_u256(&U256::from(index as u64));
@@ -203,16 +202,16 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 /// ```
 /// use claudeth::stf::process_block;
 /// use claudeth::types::{BlockHeader, Transaction, U256};
-/// use claudeth::state::InMemoryState;
+/// use claudeth::state::{InMemoryState, EMPTY_TRIE_ROOT};
 /// use claudeth::types::Address;
 ///
 /// let parent = BlockHeader {
 ///     parent_hash: Default::default(),
 ///     ommers_hash: Default::default(),
 ///     coinbase: Address::ZERO,
-///     state_root: Default::default(),
-///     transactions_root: Default::default(),
-///     receipts_root: Default::default(),
+///     state_root: EMPTY_TRIE_ROOT,
+///     transactions_root: EMPTY_TRIE_ROOT,
+///     receipts_root: EMPTY_TRIE_ROOT,
 ///     logs_bloom: [0u8; 256],
 ///     difficulty: U256::ZERO,
 ///     number: 0,
@@ -371,9 +370,9 @@ mod tests {
             parent_hash: Hash::ZERO,
             ommers_hash: Hash::ZERO,
             coinbase: Address::ZERO,
-            state_root: Hash::ZERO,
-            transactions_root: Hash::ZERO,
-            receipts_root: Hash::ZERO,
+            state_root: EMPTY_TRIE_ROOT,
+            transactions_root: EMPTY_TRIE_ROOT,
+            receipts_root: EMPTY_TRIE_ROOT,
             logs_bloom: [0u8; 256],
             difficulty: U256::ZERO,
             number: 100,
@@ -407,6 +406,9 @@ mod tests {
         let mut state = InMemoryState::new();
 
         let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        if let Err(ref e) = result {
+            eprintln!("Error processing empty block: {e:?}");
+        }
         assert!(result.is_ok());
 
         let result = result.unwrap();
@@ -596,7 +598,7 @@ mod tests {
     fn test_calculate_transactions_root_empty() {
         let transactions = vec![];
         let root = calculate_transactions_root(&transactions);
-        assert_eq!(root, Hash::ZERO);
+        assert_eq!(root, EMPTY_TRIE_ROOT);
     }
 
     #[test]

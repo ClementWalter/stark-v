@@ -12,5 +12,5 @@ pub use node::{
     bytes_to_nibbles, nibbles_to_bytes, common_prefix_length,
     encode_compact_path, decode_compact_path,
 };
-pub use trie::Trie;
+pub use trie::{Trie, EMPTY_TRIE_ROOT};
 pub use proof::{Proof, ProofError, verify_proof};

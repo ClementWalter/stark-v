@@ -16,7 +16,7 @@ use alloc::collections::BTreeMap as HashMap;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::state::{Account, Storage, Trie, EMPTY_CODE_HASH};
+use crate::state::{Account, Storage, Trie, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
 use crate::crypto::keccak256;
 use crate::types::{Address, Hash, U256};
 
@@ -323,7 +323,7 @@ impl State for InMemoryState {
 
     fn compute_state_root(&self) -> Hash {
         if self.accounts.is_empty() {
-            return Hash::ZERO;
+            return EMPTY_TRIE_ROOT;
         }
 
         let mut trie = Trie::new();
@@ -331,7 +331,7 @@ impl State for InMemoryState {
             let mut account = account.clone();
             account.storage_root = self.storage.get(address)
                 .map(Storage::compute_root)
-                .unwrap_or(Hash::ZERO);
+                .unwrap_or(EMPTY_TRIE_ROOT);
 
             if account.is_empty() {
                 continue;
@@ -933,7 +933,7 @@ mod tests {
     #[test]
     fn test_compute_state_root_empty() {
         let state = InMemoryState::new();
-        assert_eq!(state.compute_state_root(), Hash::ZERO);
+        assert_eq!(state.compute_state_root(), EMPTY_TRIE_ROOT);
     }
 
     #[test]

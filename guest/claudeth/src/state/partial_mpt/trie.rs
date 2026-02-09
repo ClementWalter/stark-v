@@ -17,6 +17,15 @@ use alloc::{vec, collections::BTreeMap as HashMap, vec::Vec};
 use crate::types::Hash;
 use super::node::{Node, bytes_to_nibbles, common_prefix_length};
 
+/// Ethereum empty trie root hash: keccak256(rlp([]))
+/// This is 0x56e81f171bcc55a6ff8345e692c0f86e5b96e01b996cadc001622fb5e363b421
+pub const EMPTY_TRIE_ROOT: Hash = Hash::new([
+    0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6,
+    0xff, 0x83, 0x45, 0xe6, 0x92, 0xc0, 0xf8, 0x6e,
+    0x5b, 0x96, 0xe0, 0x1b, 0x99, 0x6c, 0xad, 0xc0,
+    0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
+]);
+
 /// A Merkle Patricia Trie for storing key-value pairs
 #[derive(Clone, Debug)]
 pub struct Trie {
@@ -42,7 +51,7 @@ impl Trie {
 
     /// Computes the root hash of the trie
     ///
-    /// For an empty trie, returns Hash::ZERO.
+    /// For an empty trie, returns EMPTY_TRIE_ROOT (keccak256 of RLP empty bytes).
     /// For a non-empty trie, returns the hash of the root node.
     ///
     /// This method verifies the trie structure by computing the hash from the root,
@@ -51,7 +60,7 @@ impl Trie {
         if let Some(root_hash) = self.root {
             root_hash
         } else {
-            Hash::ZERO
+            EMPTY_TRIE_ROOT
         }
     }
 
@@ -1017,7 +1026,7 @@ mod tests {
     #[test]
     fn test_compute_root_empty_trie() {
         let trie = Trie::new();
-        assert_eq!(trie.compute_root(), Hash::ZERO);
+        assert_eq!(trie.compute_root(), EMPTY_TRIE_ROOT);
     }
 
     #[test]
@@ -1072,11 +1081,11 @@ mod tests {
         let mut trie = Trie::new();
 
         let root_empty = trie.compute_root();
-        assert_eq!(root_empty, Hash::ZERO);
+        assert_eq!(root_empty, EMPTY_TRIE_ROOT);
 
         trie.insert(b"key", b"value".to_vec());
         let root_after_insert = trie.compute_root();
-        assert_ne!(root_after_insert, Hash::ZERO);
+        assert_ne!(root_after_insert, EMPTY_TRIE_ROOT);
         assert_ne!(root_after_insert, root_empty);
     }
 
@@ -1102,7 +1111,7 @@ mod tests {
         assert_ne!(trie.compute_root(), Hash::ZERO);
 
         trie.delete(b"key");
-        assert_eq!(trie.compute_root(), Hash::ZERO);
+        assert_eq!(trie.compute_root(), EMPTY_TRIE_ROOT);
     }
 
     #[test]
@@ -1272,7 +1281,7 @@ mod tests {
         let root1 = trie.compute_root();
 
         trie.delete(b"key");
-        assert_eq!(trie.compute_root(), Hash::ZERO);
+        assert_eq!(trie.compute_root(), EMPTY_TRIE_ROOT);
 
         trie.insert(b"key", b"value1".to_vec());
         let root2 = trie.compute_root();
@@ -1316,7 +1325,7 @@ mod tests {
         let mut trie = Trie::new();
 
         // Empty trie
-        assert_eq!(trie.compute_root(), Hash::ZERO);
+        assert_eq!(trie.compute_root(), EMPTY_TRIE_ROOT);
         assert_eq!(trie.root(), None);
 
         // After insert
@@ -1333,7 +1342,7 @@ mod tests {
 
         // After all deletes
         trie.delete(b"key2");
-        assert_eq!(trie.compute_root(), Hash::ZERO);
+        assert_eq!(trie.compute_root(), EMPTY_TRIE_ROOT);
         assert_eq!(trie.root(), None);
     }
 

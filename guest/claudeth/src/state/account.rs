@@ -18,6 +18,7 @@ use alloc::{vec, vec::Vec};
 
 use crate::crypto::rlp::{self, RlpError};
 use crate::types::{Hash, U256};
+use crate::state::partial_mpt::EMPTY_TRIE_ROOT;
 
 /// Ethereum account state
 ///
@@ -50,13 +51,13 @@ impl Account {
     /// Empty accounts have:
     /// - nonce: 0
     /// - balance: 0
-    /// - storage_root: empty trie root (Hash::ZERO)
+    /// - storage_root: EMPTY_TRIE_ROOT (keccak256 of RLP empty bytes)
     /// - code_hash: Keccak256 of empty bytes
     pub fn empty() -> Self {
         Account {
             nonce: U256::ZERO,
             balance: U256::ZERO,
-            storage_root: Hash::ZERO,
+            storage_root: EMPTY_TRIE_ROOT,
             code_hash: EMPTY_CODE_HASH,
         }
     }
@@ -66,7 +67,7 @@ impl Account {
         Account {
             nonce,
             balance,
-            storage_root: Hash::ZERO,
+            storage_root: EMPTY_TRIE_ROOT,
             code_hash: EMPTY_CODE_HASH,
         }
     }
@@ -95,7 +96,7 @@ impl Account {
     pub fn is_empty(&self) -> bool {
         self.nonce == U256::ZERO
             && self.balance == U256::ZERO
-            && self.storage_root == Hash::ZERO
+            && self.storage_root == EMPTY_TRIE_ROOT
             && self.code_hash == EMPTY_CODE_HASH
     }
 
@@ -176,7 +177,7 @@ mod tests {
         let account = Account::empty();
         assert_eq!(account.nonce, U256::ZERO);
         assert_eq!(account.balance, U256::ZERO);
-        assert_eq!(account.storage_root, Hash::ZERO);
+        assert_eq!(account.storage_root, EMPTY_TRIE_ROOT);
         assert_eq!(account.code_hash, EMPTY_CODE_HASH);
         assert!(account.is_empty());
     }
@@ -192,7 +193,7 @@ mod tests {
         let account = Account::new_eoa(U256::from(5u64), U256::from(1000u64));
         assert_eq!(account.nonce, U256::from(5u64));
         assert_eq!(account.balance, U256::from(1000u64));
-        assert_eq!(account.storage_root, Hash::ZERO);
+        assert_eq!(account.storage_root, EMPTY_TRIE_ROOT);
         assert_eq!(account.code_hash, EMPTY_CODE_HASH);
         assert!(account.is_eoa());
         assert!(!account.is_contract());

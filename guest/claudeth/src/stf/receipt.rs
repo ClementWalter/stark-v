@@ -606,8 +606,8 @@ pub fn calculate_receipts_root(receipts: &[TransactionReceipt]) -> Hash {
         trie.insert(&key, value);
     }
 
-    // Return the root hash, or Hash::ZERO if empty
-    trie.root().unwrap_or(Hash::ZERO)
+    // Return the root hash (EMPTY_TRIE_ROOT for empty trie)
+    trie.compute_root()
 }
 
 // Helper function to encode u64 for trie keys
@@ -953,11 +953,13 @@ mod tests {
 
     #[test]
     fn test_receipts_root_empty() {
+        use crate::state::EMPTY_TRIE_ROOT;
+
         let receipts: Vec<TransactionReceipt> = vec![];
         let root = calculate_receipts_root(&receipts);
 
-        // Empty trie returns Hash::ZERO
-        assert_eq!(root, Hash::ZERO);
+        // Empty trie returns EMPTY_TRIE_ROOT
+        assert_eq!(root, EMPTY_TRIE_ROOT);
     }
 
     #[test]

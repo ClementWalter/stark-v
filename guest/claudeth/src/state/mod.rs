@@ -8,7 +8,7 @@ pub mod storage;
 pub use account::{Account, EMPTY_CODE_HASH};
 pub use execution::{InMemoryState, State};
 pub use partial_mpt::{
-    Node, NodeError, Trie,
+    Node, NodeError, Trie, EMPTY_TRIE_ROOT,
     bytes_to_nibbles, nibbles_to_bytes, common_prefix_length,
     encode_compact_path, decode_compact_path,
     proof::{Proof, ProofError, verify_proof},
@@ -46,7 +46,7 @@ mod integration_tests {
 
         // Compute state root
         let state_root = state_trie.compute_root();
-        assert_ne!(state_root, Hash::ZERO);
+        assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Retrieve accounts
         let retrieved1_rlp = state_trie.get(addr1.as_bytes()).unwrap();
@@ -115,7 +115,7 @@ mod integration_tests {
         storage.set(&U256::from(2u64), U256::from(1000u64));
 
         let storage_root = storage.compute_root();
-        assert_ne!(storage_root, Hash::ZERO);
+        assert_ne!(storage_root, EMPTY_TRIE_ROOT);
 
         // Verify values
         assert_eq!(storage.get(&U256::from(0u64)), U256::from(42u64));
@@ -169,7 +169,7 @@ mod integration_tests {
         state_trie.insert(addr.as_bytes(), contract.encode_rlp());
 
         let state_root = state_trie.compute_root();
-        assert_ne!(state_root, Hash::ZERO);
+        assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Verify contract retrieval
         let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
@@ -214,7 +214,7 @@ mod integration_tests {
 
         // Compute final state root
         let state_root = state_trie.compute_root();
-        assert_ne!(state_root, Hash::ZERO);
+        assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Verify all accounts
         let eoa_rlp = state_trie.get(eoa_addr.as_bytes()).unwrap();
@@ -347,13 +347,13 @@ mod integration_tests {
 
         // Clear storage
         storage.clear();
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
 
         // Update account with empty storage root
         let account2 = Account::new_contract(
             U256::from(1u64),
             U256::from(1000u64),
-            Hash::ZERO,
+            EMPTY_TRIE_ROOT,
             Hash::from([0x55; 32]),
         );
         state_trie.insert(addr.as_bytes(), account2.encode_rlp());
@@ -361,7 +361,7 @@ mod integration_tests {
         // Verify
         let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
         let retrieved = Account::decode_rlp(&retrieved_rlp).unwrap();
-        assert_eq!(retrieved.storage_root, Hash::ZERO);
+        assert_eq!(retrieved.storage_root, EMPTY_TRIE_ROOT);
     }
 
     #[test]
@@ -425,7 +425,7 @@ mod integration_tests {
         }
 
         let state_root = state_trie.compute_root();
-        assert_ne!(state_root, Hash::ZERO);
+        assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Verify a few accounts
         for i in [0u8, 10, 25, 49] {

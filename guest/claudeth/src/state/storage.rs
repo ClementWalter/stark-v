@@ -10,6 +10,9 @@ use crate::crypto::{keccak256, rlp};
 use crate::state::partial_mpt::{Trie, proof::Proof};
 use crate::types::{Hash, U256};
 
+#[cfg(test)]
+use crate::state::partial_mpt::EMPTY_TRIE_ROOT;
+
 /// Contract storage trie
 ///
 /// Maps 256-bit storage keys to 256-bit values using a Merkle Patricia Trie.
@@ -125,14 +128,14 @@ mod tests {
         let storage = Storage::new();
         assert!(storage.is_empty());
         assert_eq!(storage.root(), None);
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
     }
 
     #[test]
     fn test_default_storage() {
         let storage = Storage::default();
         assert!(storage.is_empty());
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
     }
 
     // =========================================================================
@@ -212,7 +215,7 @@ mod tests {
     #[test]
     fn test_compute_root_empty() {
         let storage = Storage::new();
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
     }
 
     #[test]
@@ -306,7 +309,7 @@ mod tests {
         storage.set(&U256::from(1u64), U256::ZERO);
         storage.set(&U256::from(2u64), U256::ZERO);
 
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
         assert!(storage.is_empty());
     }
 
@@ -366,7 +369,7 @@ mod tests {
         let mut storage = Storage::new();
         storage.clear();
         assert!(storage.is_empty());
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
     }
 
     #[test]
@@ -378,7 +381,7 @@ mod tests {
 
         storage.clear();
         assert!(storage.is_empty());
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
         assert_eq!(storage.get(&U256::from(1u64)), U256::ZERO);
         assert_eq!(storage.get(&U256::from(2u64)), U256::ZERO);
     }
@@ -477,7 +480,7 @@ mod tests {
     #[test]
     fn test_storage_lifecycle() {
         let mut storage = Storage::new();
-        assert_eq!(storage.compute_root(), Hash::ZERO);
+        assert_eq!(storage.compute_root(), EMPTY_TRIE_ROOT);
 
         // Add values
         storage.set(&U256::from(1u64), U256::from(10u64));

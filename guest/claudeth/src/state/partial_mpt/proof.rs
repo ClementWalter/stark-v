@@ -18,6 +18,7 @@ use alloc::vec::Vec;
 
 use crate::types::Hash;
 use super::node::{Node, bytes_to_nibbles};
+use super::trie::EMPTY_TRIE_ROOT;
 use super::trie::Trie;
 
 // =============================================================================
@@ -210,7 +211,7 @@ pub fn verify_proof(root: Hash, key: &[u8], value: Option<&[u8]>, proof: &Proof)
     let nibbles = bytes_to_nibbles(key);
 
     // Empty trie case
-    if root == Hash::ZERO {
+    if root == EMPTY_TRIE_ROOT {
         // Empty trie should have empty proof and no value
         return proof.is_empty() && value.is_none();
     }
