@@ -327,9 +327,15 @@ impl State for InMemoryState {
         }
 
         let mut trie = Trie::new();
-        for (address, account) in &self.accounts {
+        let mut addresses: Vec<Address> = self.accounts.keys().copied().collect();
+        addresses.sort_unstable();
+        for address in addresses {
+            let account = match self.accounts.get(&address) {
+                Some(account) => account,
+                None => continue,
+            };
             let mut account = account.clone();
-            account.storage_root = self.storage.get(address)
+            account.storage_root = self.storage.get(&address)
                 .map(Storage::compute_root)
                 .unwrap_or(EMPTY_TRIE_ROOT);
 

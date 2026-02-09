@@ -37,6 +37,7 @@ EIP-2935 historical block hashes system calls.
 - Blob transactions populate `TxContext.blob_versioned_hashes`
 - Blob data fee charged from sender and block blob gas used tracked/validated
 - `no_std` riscv32 guest entry and bump allocator
+- Deterministic state root computation by sorting account addresses before trie insertion
 
 ### Known Gaps / Limitations
 
@@ -59,4 +60,6 @@ EIP-2935 historical block hashes system calls.
 
 ## Immediate Next Task
 
-Select a scoped witness-based state reconstruction milestone.
+Define the witness-based state reconstruction milestone:
+- Specify witness format (accounts, storage proofs, code) and validation rules.
+- Implement proof verification and minimal state reconstruction in `State`.

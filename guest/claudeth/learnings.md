@@ -68,7 +68,9 @@ Date: 2026-02-09
 ## State / Trie
 
 - Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
-- Keep state root deterministic by inserting accounts in stable address order.
+- State root must be deterministic: sort account addresses before inserting into
+  the state trie.
+- State trie keys are `keccak256(address)` (not raw 20-byte address).
 
 ## Module Architecture
 
@@ -94,6 +96,8 @@ Date: 2026-02-09
   blob txs.
 - Keep blob data fee charged upfront and burned (not credited to coinbase).
 - Validate `blob_gas_used` and enforce the Cancun max blob gas per block.
+- Sort addresses before computing the state root and use `keccak256(address)`
+  as the trie key.
 
 **Don't**
 
@@ -101,3 +105,4 @@ Date: 2026-02-09
 - Treat EVM `REVERT` as exceptional.
 - Leave unused `src/*.rs` files (pre-commit will fail).
 - Quote EELS test counts without rerunning.
+- Iterate `HashMap` order when computing the state root.
