@@ -199,30 +199,12 @@ pub fn execute_transaction<S: State + Clone>(
     // Increment sender nonce
     state.increment_nonce(&sender);
 
-    // Step 3: Transfer value (if any)
-    let value = tx.value();
-    if value > U256::ZERO {
-        let sender_balance = state.get_balance(&sender);
-        state.set_balance(&sender, sender_balance.saturating_sub(value));
-
-        if let Some(to) = tx.to() {
-            let recipient_balance = state.get_balance(&to);
-            state.set_balance(&to, recipient_balance.saturating_add(value));
-        } else {
-            // For contract creation, transfer value to the new contract address
-            // Contract address uses the sender's pre-increment nonce
-            let nonce = state.get_nonce(&sender).saturating_sub(U256::ONE);
-            let contract_address = compute_create_address(&sender, nonce);
-            let contract_balance = state.get_balance(&contract_address);
-            state.set_balance(&contract_address, contract_balance.saturating_add(value));
-        }
-    }
-
-    // Step 4: Execute transaction
+    // Step 3: Prepare execution state (value transfers must be revertible)
     let gas_available = gas_limit - intrinsic_gas;
 
     // Clone state for execution (we'll get it back with modifications)
-    let exec_state = state.clone();
+    let mut exec_state = state.clone();
+    apply_value_transfer(tx, &sender, &mut exec_state);
 
     let exec_ctx = ExecutionContexts {
         block_ctx,
@@ -296,6 +278,28 @@ struct ExecutionContexts<'a> {
     block_ctx: &'a BlockContext,
     parent_hash: Hash,
     tx_ctx: &'a TxContext,
+}
+
+fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mut S) {
+    let value = tx.value();
+    if value == U256::ZERO {
+        return;
+    }
+
+    let sender_balance = state.get_balance(sender);
+    state.set_balance(sender, sender_balance.saturating_sub(value));
+
+    if let Some(to) = tx.to() {
+        let recipient_balance = state.get_balance(&to);
+        state.set_balance(&to, recipient_balance.saturating_add(value));
+    } else {
+        // For contract creation, transfer value to the new contract address.
+        // Contract address uses the sender's pre-increment nonce.
+        let nonce = state.get_nonce(sender).saturating_sub(U256::ONE);
+        let contract_address = compute_create_address(sender, nonce);
+        let contract_balance = state.get_balance(&contract_address);
+        state.set_balance(&contract_address, contract_balance.saturating_add(value));
+    }
 }
 
 /// Executes a contract call transaction

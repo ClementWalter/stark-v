@@ -37,6 +37,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 3. **EELS compliance**: Test runner exists; last known from learnings was 0/20 passing, needs rerun to confirm current status.
 4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH now returns parent hash only (still missing full 256-block history).
 5. **riscv32 allocator**: now a fixed-size bump heap (no deallocation); heap sizing/tuning may be needed for large blocks.
+6. **BLOCKHASH history**: only parent hash is available; no 256-block history feed (host needs recent hashes).
 
 ---
 
@@ -121,6 +122,10 @@ Goal: finalize per-transaction correctness before block processing.
 
 ### Task N1: Align crate-level docs ✅
 **Result**: `src/lib.rs` feature list now explicitly mentions `serde` + `k256`.
+
+### Task N2: Revert-safe value transfers ✅
+**Result**: value transfers are applied to the execution-state clone (not the base state),
+so they revert correctly on failed execution while gas/nonce changes still persist.
 
 ---
 

@@ -1,5 +1,23 @@
 # Claudeth Development Learnings
 
+## Session 55: Revert-Safe Value Transfers (2026-02-09)
+
+**Status**: Completed - Fixes state corruption on failed executions
+
+### What Was Accomplished
+1. ✅ Moved value transfers into the execution-state clone (revertible)
+2. ✅ Kept gas cost + nonce updates on the base state (non-revertible as per spec)
+3. ✅ Ensured successful executions still commit value transfers via returned state
+
+### DO's ✅
+1. **Apply value transfers inside the execution state** so REVERT/failed execution does not leak balance changes.
+2. **Keep gas cost and nonce updates on the base state** because they must persist even on failure.
+3. **Clone state after gas/nonce changes** so the execution state starts from the correct pre-execution snapshot.
+
+### DON'Ts ❌
+1. **Don't transfer value on the base state before execution**; it makes failed transactions mutate state.
+2. **Don't rely on execution failure to roll back base-state changes**; only the cloned execution state is discardable.
+
 ## Session 54: EIP-2718 Typed Transaction Receipt Encoding (2026-02-09)
 
 **Status**: Completed - Critical fix for receipt root validation
