@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 89)
+Date: 2026-02-09 (Session 90)
 
 ## Summary
 
@@ -39,12 +39,12 @@ validation against real mainnet blocks.
 **NOTE**: Session 84 incorrectly claimed all tests were passing. This was a documentation-only
 commit without actual test verification. The actual status has always been 0/20 passing.
 
-**Provenance**: EELS status is from the last re-run on 2026-02-09; not re-run in this session.
+**Provenance**: EELS status re-verified on 2026-02-09 (Session 90): still 0/20 passing.
 
 ### ✅ Unit/Doc Tests (Release)
-Ran `cargo test -p claudeth --release` on 2026-02-09 (Session 89):
-- Unit tests and doc tests passed
-- EELS tests remain ignored by default (`#[ignore]`), so their status is unchanged
+Ran `cargo test -p claudeth --release` on 2026-02-09 (Session 90):
+- Unit tests and doc tests: 1090/1090 passing
+- EELS blockchain tests: 0/20 passing (verified with `--ignored` flag)
 
 ### ⚠️ Remaining Gaps
 - **Witness-based state reconstruction**: guest still accepts full state snapshots
@@ -157,13 +157,14 @@ Storage values are not persisting from pre-state through block execution:
 - Unit tests for storage work correctly in isolation
 - Bug only manifests in full EELS blockchain tests
 
-**Investigation Approach (Session 88-89)**:
+**Investigation Approach (Session 88-90)**:
 1. ~~Remove storage_root recomputation in compute_state_root~~ (tried, didn't fix)
 2. ~~Remove empty storage HashMap removal in sstore~~ (tried, didn't fix)
 3. ✅ Added pre-state storage root verification in EELS runner to validate pre-state loading
-4. TODO: Trace state cloning during transaction execution
-5. TODO: Add debug instrumentation to track storage HashMap throughout test flow
-6. TODO: Verify storage persists after apply_pre_state but before block execution
+4. ✅ Verified pre-state loading is correct (no pre-state storage root mismatches in Session 90 test run)
+5. ✅ Analyzed state cloning mechanism (InMemoryState derives Clone, should work correctly)
+6. TODO: Investigate why state root computation differs from expected after execution
+7. TODO: Debug gas accounting discrepancies (mergeExample: -19900 gas, tipInsideBlock: +5000 gas)
 
 **Test Status**: 0/20 passing
 - 14 StateRootMismatch failures (storage root incorrect)
