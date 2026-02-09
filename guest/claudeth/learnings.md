@@ -63,10 +63,43 @@ pub extern "C" fn __zkvm_start() -> ! {
 - Removes unverified claims ✅
 
 ### Next Session Should
-Since Task C2 (witness-based reconstruction) requires design work and isn't fully specified, next session should either:
-1. Design and implement witness-based state reconstruction (requires MPT proof format design)
-2. Integrate EELS test vectors (Phase D)
-3. Begin dependency elimination (Phase E - high risk, large scope)
+**Recommendation: Phase D - EELS Compliance Testing**
+
+Task C2 (witness-based reconstruction) is blocked on design decisions. The most concrete next step is Phase D:
+
+1. **Phase D: EELS Testing** (Recommended) - See [ethereum/execution-spec-tests](https://github.com/ethereum/execution-spec-tests)
+   - Download EELS test vectors
+   - Parse JSON test format
+   - Build test harness
+   - Run tests and fix spec mismatches
+
+2. **Phase E: Dependency Elimination** (High Risk)
+   - Implement secp256k1 in-tree
+   - Cryptographic implementation risk
+
+3. **Task C2 Design** (Architectural)
+   - Define witness/proof format
+   - Design access list discovery
+   - Document host/guest interface
+
+### Session 26 Summary
+**Completed Task**: Rust 2024 compliance + README accuracy
+**Files Modified**: 3 (main.rs, README.md, PLAN.md, learnings.md)
+**Tests**: 1168 (100% passing)
+**Clippy Warnings**: 0
+**Phase C Status**: C0 and C1 ✅ COMPLETE, C2 BLOCKED on design
+**riscv32 Compilation**: ✅ SUCCESS
+**Commits**: 3
+- Commit 1: 4e6107c - fix(no_std): update unsafe blocks for Rust 2024 edition
+- Commit 2: 54661af - docs(readme): update to reflect current implementation status
+- Commit 3: 2780c03 - docs(plan): update Task C2 status and document next steps
+
+**Phase Status Summary**:
+- Phase A: ✅ 100% COMPLETE (STF execution correctness)
+- Phase B: ✅ 100% COMPLETE (Block processing)
+- Phase C: C0/C1 ✅ COMPLETE, C2 BLOCKED on design
+- Phase D: Ready to start (EELS testing)
+- Phase E: Available but high risk (dependency elimination)
 
 ## Session 25: Guest Entry Point + State Snapshot I/O (2026-02-09)
 
