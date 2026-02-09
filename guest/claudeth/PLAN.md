@@ -172,6 +172,12 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 - Default missing tx/receipt roots to `EMPTY_TRIE_ROOT` in the EELS harness
 - Removed the EELS parent-hash workaround in the test loop
 
+### Task N11: Harden Recent BLOCKHASH Input Validation ✅
+**Result**: Guest input now rejects malformed recent hash lists.
+**Changes**:
+- Enforce recent block hash list length ≤ 256
+- Reject block numbers that don't fit in u64 (avoid silent truncation)
+
 ---
 
 ## Immediate Next Task (Execute Next)

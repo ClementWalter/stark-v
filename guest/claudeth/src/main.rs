@@ -199,6 +199,9 @@ fn decode_recent_block_hashes(input: &[u8]) -> Result<Vec<(u64, Hash)>, GuestErr
     if !rest.is_empty() {
         return Err(GuestError::InvalidInput);
     }
+    if items.len() > 256 {
+        return Err(GuestError::InvalidInput);
+    }
 
     let mut entries = Vec::with_capacity(items.len());
     for item in items {
@@ -209,7 +212,8 @@ fn decode_recent_block_hashes(input: &[u8]) -> Result<Vec<(u64, Hash)>, GuestErr
 
         let (number, _) = rlp::decode_u256(&fields[0]).map_err(GuestError::Rlp)?;
         let (hash, _) = rlp::decode_hash(&fields[1]).map_err(GuestError::Rlp)?;
-        entries.push((number.as_u64(), hash));
+        let number = u64::try_from(number).map_err(|_| GuestError::InvalidInput)?;
+        entries.push((number, hash));
     }
 
     Ok(entries)

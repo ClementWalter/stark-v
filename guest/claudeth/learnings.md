@@ -1,5 +1,21 @@
 # Claudeth Development Learnings
 
+## Session 71: Validate Recent Block Hash Inputs (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Enforced recent block hash list length ≤ 256 in guest input
+2. ✅ Rejected block numbers that don't fit in u64 (avoid U256 truncation)
+
+### DO's ✅
+1. **Validate guest inputs defensively** - reject malformed lists early
+2. **Use `TryFrom<U256>` when a u64 is required** - avoid silent truncation
+
+### DON'Ts ❌
+1. **Don't call `as_u64()` on untrusted inputs** - it truncates without error
+2. **Don't accept unbounded lists** - cap recent hash history at 256 entries
+
 ## Session 70: Investigate tipInsideBlock Gas Overcharge (2026-02-09)
 
 **Status**: In Progress - root cause not yet identified
