@@ -243,13 +243,30 @@ post-state validation fails, enabling targeted debugging.
 
 ## Immediate Next Task (Execute Next)
 
+### Task N19: Debug Block 0 State Root Mismatch (IN PROGRESS)
+**Goal**: Understand why block 0's computed state root doesn't match the expected state root in EELS tests.
+
+**Status**: Investigation revealed:
+- Storage writes appear to be happening (based on Session 75 simple test)
+- EELS test harness stops after first block validation failure
+- State root mismatch in block 0 prevents blocks 1-3 from executing
+- Storage diff shows zeros, but this could be because only 1 of 4 blocks executed
+
+**Next Steps**:
+1. Create a minimal reproduction: execute optionsTest block 0 manually
+2. Verify SSTORE operations are actually writing to state
+3. Check if state root computation includes the written storage
+4. Compare computed account/storage encoding against Ethereum spec
+
 ### Task N18: Fix DELEGATECALL Value Transfer ✅
 **Result**: `RecursiveHost::call` no longer moves balances for DELEGATECALL,
 and regression tests cover delegatecall vs call value handling.
 
-### Task N17: Use Diff Output to Pinpoint the First Bad Account (READY)
+### Task N17: Use Diff Output to Pinpoint the First Bad Account (BLOCKED)
 **Goal**: Run a single EELS test (e.g., shanghaiExample) and use the diff
 output to locate the first account/field divergence, then fix the root cause.
+
+**Status**: BLOCKED - need to fix Block 0 state root first
 
 ---
 

@@ -1,5 +1,84 @@
 # Claudeth Development Learnings
 
+## Session 77: Storage Persistence Investigation - Multi-Block Issue (2026-02-09)
+
+**Status**: Investigation in progress
+
+### What Was Discovered
+1. ✅ All 20 EELS tests are failing with state root mismatches
+2. ✅ Storage keys show zero values when non-zero values are expected
+3. ✅ Nonce mismatches indicate missing transaction executions
+4. ✅ optionsTest has 4 blocks but we only execute block 0
+5. ✅ Test harness processes blocks sequentially but fails validation on block 0
+6. ✅ DELEGATECALL is properly implemented in interpreter.rs (lines 1155-1208)
+7. ✅ CallMessage construction is correct for DELEGATECALL (address=caller, code_address=callee)
+
+### Key Findings
+
+**Test execution stops after first block failure**:
+- optionsTest has 4 blocks, but error shows "Block 0: Execution failed"
+- Sender nonce expected=4, got=1 (only 1 transaction executed, not 4)
+- State validation fails after block 0, preventing blocks 1-3 from executing
+
+**Storage writes appear to be lost**:
+- All storage slots show 0x00... when they should have non-zero values
+- Multiple addresses affected: 0x000f3..., 0x0000f9..., 0xb94f..., 0xde57...
+- Storage roots mismatch (expected != computed)
+
+**Balance/nonce issues**:
+- Sender balances don't match expected (transaction fees not applied correctly?)
+- Coinbase balances wrong (fee recipient issues?)
+- Nonces way too low (confirms blocks not all executing)
+
+### Hypothesis
+
+The multi-block test structure reveals the real issue:
+1. Block 0 executes ONE transaction
+2. Block 0 state validation fails (state root mismatch)
+3. Test harness stops,  blocks 1-3 never execute
+4. Expected post-state is after ALL 4 blocks execute
+5. We're comparing 1-block state against 4-block state
+
+**This means the state root mismatch in block 0 could be hiding the real problem.**
+
+### Confirmed Analysis
+
+**Test harness behavior (lines 1042-1156 in eels_blockchain_tests.rs)**:
+- Processes blocks sequentially in a loop
+- When `process_block` returns an error, sets `test_failed = true` and **breaks**
+- Remaining blocks never execute
+- Post-state validation only happens if all blocks succeeded
+
+**This is CORRECT behavior** - invalid blocks shouldn't be in the chain.
+
+**The real issue**:
+- Block 0's COMPUTED state root doesn't match the EXPECTED state root in block header
+- This causes validation failure and stops processing
+- We need to fix why Block 0's state root is wrong, not bypass validation
+
+**Root cause to investigate**:
+- Storage writes may not be reflected in state root computation
+- Account encoding may be incorrect
+- Storage trie construction may have bugs
+- Touch tracking or EIP-161 may be deleting accounts incorrectly
+
+### Next Steps
+1. ✅ DONE: Verified test harness stops on first block validation failure (correct behavior)
+2. **NOW**: Debug why Block 0 state root doesn't match expected
+3. Create minimal repro of optionsTest block 0 execution
+4. Verify storage writes are included in state root computation
+5. Check account RLP encoding matches Ethereum spec
+
+### DO's ✅
+1. **Check multi-block test structure** - don't assume single-block tests
+2. **Verify all blocks execute** before comparing final state
+3. **Distinguish between per-block validation and post-state validation**
+
+### DON'Ts ❌
+1. **Don't assume storage is broken** when test structure is the issue
+2. **Don't debug single transactions** when the test involves multiple blocks
+3. **Don't compare intermediate state** against final expected post-state
+
 ## Session 76: Fix DELEGATECALL Value Transfer (2026-02-09)
 
 **Status**: Completed
