@@ -47,6 +47,16 @@
 3. ⏭️ Look at Geth/Erigon source for CREATE gas calculation post-EIP-2929
 4. ⏭️ Compare against yellow paper appendix G for CREATE gas formula
 
+### DO's ✅
+1. **Verify gas calculations manually before assuming bugs** - Our 62939 was internally consistent
+2. **Use Python scripts to double-check byte counting** - Easy to miscount hex strings
+3. **Recognize when implementation is correct but spec knowledge is incomplete** - We're not buggy, we're missing a specification requirement
+
+### DON'Ts ❌
+1. **Don't assume your calculation is wrong without verification** - Check actual vs expected first
+2. **Don't try to fix code when the issue is missing spec knowledge** - Research the spec first
+3. **Don't get distracted by complex theories** - The 19900 gas is likely a simple missing cost
+
 ## Session 55: Revert-Safe Value Transfers (2026-02-09)
 
 **Status**: Completed - Fixes state corruption on failed executions
