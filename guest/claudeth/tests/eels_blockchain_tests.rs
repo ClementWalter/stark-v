@@ -6,6 +6,7 @@
 // Test fixtures are loaded from tests/eels/BlockchainTests/ (not checked into git).
 // Run scripts/fetch_eels_tests.py to download the test fixtures.
 
+use claudeth::evm::format_disassembly;
 use claudeth::state::{InMemoryState, State};
 use claudeth::types::{Address, Bytes, U256};
 use serde::{Deserialize, Serialize};
@@ -229,6 +230,39 @@ fn parse_u256(value: &str) -> Result<U256, String> {
 
 fn parse_bytes(value: &str) -> Result<Bytes, String> {
     Bytes::from_str(value).map_err(|err| format!("invalid bytes {value}: {err}"))
+}
+
+fn dump_transaction_disassembly(test_block: &TestBlock) {
+    if test_block.transactions.is_empty() {
+        return;
+    }
+
+    eprintln!("  Disassembly (transaction data):");
+    for (tx_idx, tx) in test_block.transactions.iter().enumerate() {
+        match parse_bytes(&tx.data) {
+            Ok(bytes) => {
+                if bytes.is_empty() {
+                    eprintln!("    tx {tx_idx}: <empty data>");
+                    continue;
+                }
+                let lines = format_disassembly(bytes.as_ref());
+                eprintln!(
+                    "    tx {tx_idx}: {} bytes, {} instructions",
+                    bytes.len(),
+                    lines.len()
+                );
+                for line in lines.iter().take(200) {
+                    eprintln!("      {line}");
+                }
+                if lines.len() > 200 {
+                    eprintln!("      ... {} more lines", lines.len() - 200);
+                }
+            }
+            Err(err) => {
+                eprintln!("    tx {tx_idx}: failed to parse data: {err}");
+            }
+        }
+    }
 }
 
 fn apply_pre_state(state: &mut InMemoryState, pre: &HashMap<String, TestAccount>) -> Result<(), String> {
@@ -812,6 +846,12 @@ fn test_execute_all_blockchain_tests() {
                     }
                     Err(e) => {
                         failure_reason = format!("Block {block_idx}: Execution failed: {e:?}");
+                        if matches!(
+                            e,
+                            claudeth::stf::BlockProcessingError::TransactionExecutionError(_)
+                        ) {
+                            dump_transaction_disassembly(test_block);
+                        }
                         test_failed = true;
                         break;
                     }

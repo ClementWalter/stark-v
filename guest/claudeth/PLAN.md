@@ -121,19 +121,21 @@ Goal: finalize per-transaction correctness before block processing.
 
 **Phase D: EELS Gas/Execution Mismatches** (BLOCKED - NEEDS DEBUGGING TOOLS)
 
-### Task D3.x: Investigate Gas/Execution Mismatches (BLOCKED)
-**Status**: Requires debugging infrastructure before fixes can be implemented
+### Task D3.x: Investigate Gas/Execution Mismatches (PARTIALLY UNBLOCKED)
+**Status**: Debug tooling partially in place; still need gas/state tracing to proceed.
 
-**Blockers**:
-1. Need gas consumption tracing (per-opcode logging) to debug gas mismatches
-2. Need state change tracking to debug state root mismatches
-3. Need bytecode disassembler to understand test contract operations
-4. Need execution tracing to debug transaction execution failures
+**Remaining Blockers**:
+1. Gas consumption tracing (per-opcode logging) to debug gas mismatches
+2. State change tracking to debug state root mismatches
+3. Execution tracing to debug transaction execution failures
 
-**Tasks when unblocked**:
+**Recent Unblocks**:
+- ✅ EVM bytecode disassembler utility (added to assist EELS debugging)
+
+**Tasks to complete next**:
 - Build gas tracing infrastructure (conditional compilation for debug builds)
 - Build state change visualization (account/storage deltas per transaction)
-- Create EVM bytecode disassembler utility
+- Add execution trace hooks for transaction failure analysis
 - Debug execution failures first (ShanghaiLove, StrangeContractCreation)
 - Then tackle gas mismatches with detailed traces
 - Finally debug state root mismatches with MPT visualization

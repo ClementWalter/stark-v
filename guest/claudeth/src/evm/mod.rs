@@ -13,6 +13,7 @@ pub mod interpreter;
 pub mod memory;
 pub mod opcodes;
 pub mod stack;
+pub mod disassembler;
 
 // Re-export Gas functions and constants
 pub use gas::{
@@ -43,3 +44,4 @@ pub use interpreter::{
     execute_bytecode, execute_bytecode_with_host, BlockContext, EvmError, ExecutionResult,
     LogEntry, TxContext,
 };
+pub use disassembler::{disassemble, format_disassembly, Instruction};

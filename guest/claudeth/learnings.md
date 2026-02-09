@@ -1,5 +1,23 @@
 # Claudeth Development Learnings
 
+## Session 48: Add EVM Disassembler for EELS Debugging (2026-02-09)
+
+**Status**: Added a lightweight EVM bytecode disassembler and wired it into EELS test failures.
+
+### What Was Accomplished
+1. ✅ **ADDED**: `evm::disassembler` module with opcode decoding and PUSH payload support
+2. ✅ **WIRED**: EELS test runner now prints disassembly of transaction data on execution failure
+3. ✅ **CAPPED**: Disassembly output at 200 lines per transaction to avoid log spam
+
+### DO's ✅
+1. **Add lightweight debug tooling first** when failures are diverse and hard to categorize
+2. **Keep disassembly output bounded** so it remains readable in CI and local runs
+3. **Prefer module-level helpers** so tests can reuse the same disassembler utilities
+
+### DON'Ts ❌
+1. **Don't dump unbounded logs** on failure—large fixtures can overwhelm output
+2. **Don't hardcode test-only disassembly logic** into execution paths
+
 ## Session 47: EELS Test Analysis - Multiple Failure Categories (2026-02-09)
 
 **Status**: Analyzed all 20 EELS test failures, identified 5 distinct categories
