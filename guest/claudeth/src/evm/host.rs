@@ -215,11 +215,13 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         // Get contract code from code_address
         let code = state.get_code(&msg.code_address).to_vec();
 
+        let should_transfer_value = matches!(msg.kind, CallKind::Call | CallKind::CallCode);
+
         // If no code, handle value transfer and return
         if code.is_empty() {
             // For CALL and CALLCODE, transfer value from caller to address
-            // For DELEGATECALL and STATICCALL, no value transfer (already U256::ZERO)
-            if !msg.value.is_zero() {
+            // For DELEGATECALL and STATICCALL, pass value without balance movement
+            if should_transfer_value && !msg.value.is_zero() {
                 // Deduct value from caller
                 let caller_balance = state.get_balance(&msg.caller);
                 if caller_balance < msg.value {
@@ -248,7 +250,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         let mut call_state = state.clone();
 
         // Handle value transfer in the cloned state
-        if !msg.value.is_zero() {
+        if should_transfer_value && !msg.value.is_zero() {
             // Check sufficient balance
             let caller_balance = call_state.get_balance(&msg.caller);
             if caller_balance < msg.value {
@@ -502,6 +504,7 @@ mod tests {
     use super::*;
     use crate::evm::interpreter::BlockContext;
     use crate::state::InMemoryState;
+    use crate::types::{Address, U256};
 
     #[test]
     fn test_recursive_host_blockhash_parent_only() {
@@ -551,5 +554,61 @@ mod tests {
             Host::<InMemoryState>::blockhash(&host, &U256::from_u64(99)),
             Some(parent_hash)
         );
+    }
+
+    #[test]
+    fn test_delegatecall_does_not_transfer_value() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x01; 20]);
+        let address = Address::from([0x02; 20]);
+        let code_address = Address::from([0x03; 20]);
+
+        state.set_balance(&caller, U256::from(100u64));
+        state.set_balance(&address, U256::from(0u64));
+        state.set_code(&code_address, vec![0x00]); // STOP
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::DelegateCall,
+            gas: 50_000,
+            address,
+            caller,
+            value: U256::from(10u64),
+            code_address,
+            input: Vec::new(),
+            is_static: false,
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(result.success);
+        assert_eq!(state.get_balance(&caller), U256::from(100u64));
+        assert_eq!(state.get_balance(&address), U256::from(0u64));
+    }
+
+    #[test]
+    fn test_call_transfers_value() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x10; 20]);
+        let address = Address::from([0x20; 20]);
+
+        state.set_balance(&caller, U256::from(100u64));
+        state.set_balance(&address, U256::from(0u64));
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::Call,
+            gas: 50_000,
+            address,
+            caller,
+            value: U256::from(10u64),
+            code_address: address,
+            input: Vec::new(),
+            is_static: false,
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(result.success);
+        assert_eq!(state.get_balance(&caller), U256::from(90u64));
+        assert_eq!(state.get_balance(&address), U256::from(10u64));
     }
 }

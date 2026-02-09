@@ -1,5 +1,22 @@
 # Claudeth Development Learnings
 
+## Session 76: Fix DELEGATECALL Value Transfer (2026-02-09)
+
+**Status**: Completed
+
+### What Was Fixed
+1. ✅ `RecursiveHost::call` now transfers value only for CALL/CALLCODE
+2. ✅ DELEGATECALL passes `msg.value` without moving balances
+3. ✅ Added regression tests for delegatecall vs call value handling
+
+### DO's ✅
+1. **Gate value transfers by CallKind** (CALL/CALLCODE only)
+2. **Add targeted regression tests** when fixing call semantics
+
+### DON'Ts ❌
+1. **Don't assume `msg.value` is zero for DELEGATECALL**
+2. **Don't move balances in DELEGATECALL/STATICCALL paths**
+
 ## Session 75: Root Cause Investigation - Storage Persistence (2026-02-09)
 
 **Status**: Investigation in progress

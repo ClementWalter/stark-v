@@ -243,13 +243,9 @@ post-state validation fails, enabling targeted debugging.
 
 ## Immediate Next Task (Execute Next)
 
-### Task N16: Add State Root Diff Dumping ✅
-**Result**: EELS harness now emits deterministic per-account diffs on state
-root mismatches or post-state mismatches.
-**Changes**:
-- Added diff helper to compare expected vs actual account fields and storage
-- Includes expected storage root vs computed storage root for each account
-- Works for both `StateRootMismatch` errors and post-state mismatch validation
+### Task N18: Fix DELEGATECALL Value Transfer ✅
+**Result**: `RecursiveHost::call` no longer moves balances for DELEGATECALL,
+and regression tests cover delegatecall vs call value handling.
 
 ### Task N17: Use Diff Output to Pinpoint the First Bad Account (READY)
 **Goal**: Run a single EELS test (e.g., shanghaiExample) and use the diff
