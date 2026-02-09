@@ -1,5 +1,24 @@
 # Claudeth Development Learnings
 
+## Session 61: Burn Base Fee, Pay Coinbase Tip Only (2026-02-09)
+
+**Status**: Completed - EIP-1559 coinbase payout fixed
+
+### What Was Accomplished
+1. ✅ Updated coinbase payout to use only `effective_gas_price - base_fee`
+2. ✅ Ensured base fee portion is burned (not credited to coinbase)
+3. ✅ Added a signed EIP-1559 execution test to lock in the behavior
+
+### DO's ✅
+1. **Pay coinbase only the priority fee** (`effective_gas_price - base_fee`) for all tx types in London+ blocks
+2. **Treat the base fee as burned** - it should never be credited to any account
+3. **Use signed txs in executor tests** when validation would otherwise block execution
+
+### DON'Ts ❌
+1. **Don't credit coinbase with the full effective gas price** after EIP-1559
+2. **Don't rely on invalid-signature tests** when you need to exercise post-validation accounting paths
+3. **Don't assume base fee is zero** in post-London fixtures; always use block context
+
 ## Session 60: Investigate tipInsideBlock Gas Overcharge (2026-02-09)
 
 **Status**: Investigation started - ROOT CAUSE NOT YET FOUND

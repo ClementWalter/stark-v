@@ -247,8 +247,9 @@ pub fn execute_transaction<S: State + Clone>(
     let sender_balance = state.get_balance(&sender);
     state.set_balance(&sender, sender_balance.saturating_add(gas_refund));
 
-    // Pay coinbase (block producer) the gas fee
-    let gas_fee = U256::from_u64(final_gas_used).saturating_mul(effective_gas_price);
+    // Pay coinbase (block producer) the priority fee; base fee is burned (EIP-1559)
+    let tip_per_gas = effective_gas_price.saturating_sub(block_ctx.base_fee);
+    let gas_fee = U256::from_u64(final_gas_used).saturating_mul(tip_per_gas);
     let coinbase_balance = state.get_balance(&block_ctx.coinbase);
     state.set_balance(&block_ctx.coinbase, coinbase_balance.saturating_add(gas_fee));
 
@@ -525,6 +526,59 @@ mod tests {
     use crate::state::InMemoryState;
     use crate::types::transaction::{Eip1559Transaction, LegacyTransaction};
     use crate::types::Bytes;
+    use k256::ecdsa::SigningKey;
+
+    fn test_signing_key(seed: u8) -> SigningKey {
+        let mut key_bytes = [0u8; 32];
+        key_bytes[31] = seed;
+        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
+    }
+
+    fn create_signed_eip1559_tx() -> (Eip1559Transaction, Address) {
+        let signing_key = test_signing_key(2);
+        let verifying_key = signing_key.verifying_key();
+
+        let mut tx = Eip1559Transaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(10u64),
+            max_fee_per_gas: U256::from(100u64),
+            gas_limit: U256::from(21_000u64),
+            to: Some(Address::from([0x42; 20])),
+            value: U256::ZERO,
+            data: Bytes::new(),
+            access_list: vec![],
+            v: U256::ZERO,
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+
+        let signing_hash = tx.signing_hash();
+        let (signature, recovery_id) = signing_key
+            .sign_prehash_recoverable(signing_hash.as_bytes())
+            .expect("Failed to sign");
+
+        let sig_bytes = signature.to_bytes();
+        let mut r_bytes = [0u8; 32];
+        r_bytes.copy_from_slice(&sig_bytes[..32]);
+        tx.r = U256::from_be_bytes(r_bytes);
+
+        let mut s_bytes = [0u8; 32];
+        s_bytes.copy_from_slice(&sig_bytes[32..]);
+        tx.s = U256::from_be_bytes(s_bytes);
+
+        tx.v = U256::from(recovery_id.to_byte() as u64);
+
+        use crate::crypto::keccak256;
+        let pk_encoded = verifying_key.to_encoded_point(false);
+        let pk_bytes = pk_encoded.as_bytes();
+        let pk_hash = keccak256(&pk_bytes[1..]);
+        let mut address_bytes = [0u8; 20];
+        address_bytes.copy_from_slice(&pk_hash.as_bytes()[12..]);
+        let address = Address::from(address_bytes);
+
+        (tx, address)
+    }
 
     #[test]
     fn test_compute_create_address() {
@@ -661,6 +715,40 @@ mod tests {
 
         // Will fail on signature, but tests the effective_gas_price logic exists
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_transaction_eip1559_coinbase_tip_only() {
+        let mut state = InMemoryState::new();
+        let coinbase = Address::from([0x99; 20]);
+        let block_ctx = BlockContext {
+            base_fee: U256::from_u64(50),
+            coinbase,
+            ..BlockContext::default()
+        };
+
+        let (tx, sender) = create_signed_eip1559_tx();
+        let tx = Transaction::Eip1559(tx);
+
+        state.set_balance(&sender, U256::from_u64(1_000_000_000));
+
+        let result = execute_transaction(
+            &tx,
+            &mut state,
+            &block_ctx,
+            Hash::ZERO,
+            0,
+            U256::ONE,
+            U256::from_u64(30_000_000),
+        )
+        .expect("transaction should execute");
+
+        assert_eq!(result.gas_used, 21_000);
+
+        // Effective price = base_fee + priority_fee = 50 + 10 = 60
+        // Coinbase should receive only the tip (60 - 50 = 10) per gas.
+        let expected_tip = U256::from_u64(10).saturating_mul(U256::from_u64(21_000));
+        assert_eq!(state.get_balance(&coinbase), expected_tip);
     }
 
     #[test]

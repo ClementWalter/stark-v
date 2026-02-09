@@ -134,14 +134,19 @@ while preserving parent-hash fallback behavior.
 ### Task N4: Warm CREATE/CREATE2 addresses for EIP-2929 ✅
 **Result**: CREATE/CREATE2 now mark the computed contract address as warm during execution.
 
+### Task N5: EIP-1559 base fee burn / coinbase tip only ✅
+**Result**: Coinbase now receives only the priority fee (`effective_gas_price - base_fee`),
+and the base fee portion is burned. This fixes EIP-1559-era balance accounting and
+should reduce state root mismatches in tests that assert coinbase balances.
+
 ---
 
 ## Immediate Next Task (Execute Now)
 
-**Phase D: EELS Gas/Execution Mismatches** (UNBLOCKED - GAS TRACING FULLY OPERATIONAL)
+**Phase D: Re-baseline EELS After Base-Fee Burn Fix** (UNBLOCKED - GAS TRACING FULLY OPERATIONAL)
 
-### Task D3.x: Investigate Gas/Execution Mismatches (GAS TRACING INFRASTRUCTURE COMPLETE ✅)
-**Status**: Gas tracing fully integrated and operational. Ready for systematic debugging.
+### Task D3.0: Re-run EELS and Re-categorize Failures
+**Status**: Base-fee burn / coinbase tip fix landed; re-run EELS to confirm updated failure mix.
 
 **Completed Infrastructure** (Sessions 48-51):
 - ✅ EVM bytecode disassembler utility (Session 48)
@@ -171,7 +176,7 @@ Gas Trace (initial: 340474, used: 22130)
 ...
 ```
 
-**Next: Use Traces for Systematic Debugging**:
+**Next: Use Traces for Systematic Debugging** (after re-baseline):
 1. ✅ **DONE**: Warm created address for EIP-2929 in CREATE/CREATE2 (Session 59)
    - Added `access_address()` on computed CREATE/CREATE2 address in `interpreter.rs`
    - Keeps the created address warm for subsequent accesses in the same transaction
