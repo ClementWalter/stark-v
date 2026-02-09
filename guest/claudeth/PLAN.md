@@ -165,12 +165,17 @@ Gas Trace (initial: 340474, used: 22130)
 ```
 
 **Next: Use Traces for Systematic Debugging**:
-1. ⏭️ Analyze basefeeExample (-1200 gas): smallest discrepancy, likely simple fix
+1. 🔍 **IN PROGRESS**: Analyze mergeExample (-19900 gas) - CREATE with access list undercharge
+   - Verified our gas calculation (62939) matches implementation exactly
+   - Expected gas is 82839, difference is exactly 19900
+   - Likely missing CREATE-specific gas cost post-EIP-2929
+   - Need to research Geth/spec for CREATE + access list + EIP-2929 interaction
 2. ⏭️ Analyze tipInsideBlock (+9200 gas): 3 transactions with different patterns
-3. ⏭️ Analyze mergeExample (-21100 gas): large undercharge, fundamental issue
-4. ⏭️ Analyze transient storage tests (+2100-4200 gas): TLOAD/TSTORE costs
-5. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail
-6. ⏭️ Debug state root mismatches (optionsTest, shanghaiExample): correct gas, wrong state
+3. ⏭️ Analyze transient storage tests (+2100-4200 gas): TLOAD/TSTORE costs likely wrong
+4. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail to execute
+5. ⏭️ Debug state root mismatches (8 tests): correct gas but wrong final state
+   - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks
+   - Likely issue with account/storage state computation or MPT
 
 **Current Failures** (Session 47 analysis - still 0/20 passing):
 - State root mismatches: 4 tests (correct gas, wrong final state)

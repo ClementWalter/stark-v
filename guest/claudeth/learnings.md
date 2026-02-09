@@ -17,30 +17,35 @@
 - Access list: 1 address (0x095e...) + 2 storage keys
 - Deployed code: 6 bytes
 
-**Gas Breakdown Computed**:
-1. Intrinsic: 21000 (base) + 400 (data) + 6200 (access list) + 32000 (CREATE) + 2 (initcode words) = 59602
+**Gas Breakdown Computed (VERIFIED CORRECT)**:
+1. Intrinsic: 21000 (base) + 308 (data: 5 zeros + 18 nonzeros) + 6200 (access list) + 32000 (CREATE) + 2 (initcode words) = 59510
 2. Execution: 2229 (from trace)
 3. Code deposit: 1200 (6 bytes * 200)
-4. Total: 59602 + 2229 + 1200 = 63031
-5. Actual computed by system: 62939 (92 gas less than manual calculation?)
+4. Total: 59510 + 2229 + 1200 = 62939 ✓ (matches our output!)
 
-**Key Mystery**: Where is the missing ~19900 gas?
-- Access list charges seem correct: 2400 + (2 * 1900) = 6200
-- Init code execution trace shows only 2229 gas used
-- Code deposit should be 1200 gas (6 bytes)
-- Something fundamental is missing from CREATE gas accounting
+**Key Finding**: Our computation is CORRECT for what we're implementing. The issue is the expected value is 82839, which is 19900 MORE than we're computing.
 
-**Hypothesis**: Possible issues to investigate:
-1. CREATE with access list might need additional gas charges (EIP-2930 + CREATE interaction?)
-2. Access list items might need to be charged differently for CREATE vs CALL?
-3. Missing gas charge for cold account access to the created contract address?
-4. EIP-2929 interaction with CREATE - does the new contract start cold or warm?
+**Critical Question**: What gas cost totaling ~19900 is specified in Ethereum but not implemented in claudeth?
+
+**Analysis of 19900 gas**:
+- Not a multiple of 2600 (cold account access)
+- Not a multiple of 2100 (cold storage access)
+- Almost exactly 20000 gas (within 100 gas)
+- Could be 10 * 2000 or similar structure
+
+**Key Observation**: The access list in this transaction (address 0x095e... + 2 storage keys) is NEVER accessed during init code execution. The init code only writes to the NEW contract's storage. So the access list is "wasted" but we still charge the 6200 intrinsic cost correctly.
+
+**Hypotheses to investigate**:
+1. **Initcode memory expansion cost?** EIP-3860 mentions initcode but maybe there's memory expansion gas?
+2. **Cold account access to created contract?** CREATE creates a new account - does EIP-2929 charge 2600 for this?
+3. **Access list double-charging?** Maybe we need to charge more than just intrinsic for access list items?
+4. **Missing CREATE-specific EIP costs?** Check if post-Berlin/London/Shanghai added CREATE costs
 
 ### Next Steps
-1. ⏭️ Check if CREATE should charge for cold account creation (beyond the 32000 base cost)
-2. ⏭️ Verify access list costs are applied correctly for CREATE transactions
-3. ⏭️ Compare with Ethereum yellow paper CREATE gas specification
-4. ⏭️ Check if there's an additional gas cost for CREATE with EIP-2929 cold account access
+1. ⏭️ Research EIP-2929 interaction with CREATE (cold account creation)
+2. ⏭️ Check if memory expansion for initcode needs to be charged
+3. ⏭️ Look at Geth/Erigon source for CREATE gas calculation post-EIP-2929
+4. ⏭️ Compare against yellow paper appendix G for CREATE gas formula
 
 ## Session 55: Revert-Safe Value Transfers (2026-02-09)
 
