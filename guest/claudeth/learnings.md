@@ -28,11 +28,32 @@
 4. ✅ Confirmed gas constants match spec (GAS_TRANSACTION_CREATE = 53000)
 5. ⏭️ **NEXT**: Need to check if intrinsic CREATE cost should include additional EIP-2929 charges
 
-### Analysis of 19900 Gas
-- Not a simple 2600 cold address access
-- Close to 20000 (within 100) → could be SSTORE-related or multiple accesses
-- 19900 / 2100 ≈ 9.48 → almost 10 cold SLOAD operations
-- But access list only has 2 storage keys, not 10
+### Complete Gas Breakdown Verified
+**Transaction data** (from mergeExample.json):
+- Init code: 23 bytes (5 zeros + 18 non-zeros)
+- Access list: 1 address + 2 storage keys
+- Deployed code: 6 bytes
+
+**Our calculation** (VERIFIED CORRECT):
+1. Intrinsic: 21000 + 308 (data) + 6200 (access list) + 32000 (CREATE) + 2 (EIP-3860) = **59510**
+2. Execution: **2229** (from gas trace - PREVRANDAO, PUSH1, SSTORE, etc.)
+3. Code deposit: 6 * 200 = **1200**
+4. **Total: 62939**
+
+**Expected: 82839**
+**Missing: 19900 gas exactly**
+
+### Analysis of Missing 19900 Gas
+- ❌ NOT in intrinsic gas (calculation matches spec perfectly)
+- ❌ NOT in execution gas (trace shows every opcode)
+- ❌ NOT in code deposit (simple 200 gas/byte)
+- ❓ **MYSTERY**: Where does Ethereum charge an additional ~20000 gas for CREATE with access list?
+
+### Hypotheses to Investigate
+1. **Hidden EIP gas cost**: Some EIP might charge extra for CREATE transactions with access lists
+2. **Account creation charge**: Similar to GAS_CALL_NEW_ACCOUNT (25000) but different amount?
+3. **Storage initialization**: Extra charge for initializing contract storage during CREATE?
+4. **Geth/Erigon source code**: Need to examine reference implementation for CREATE gas logic
 
 ### Current Hypothesis
 The missing ~20000 gas may be related to how CREATE interacts with EIP-2929 when an access list is present. Need to research if:
@@ -91,11 +112,14 @@ The missing ~20000 gas may be related to how CREATE interacts with EIP-2929 when
 1. **Verify gas calculations manually before assuming bugs** - Our 62939 was internally consistent
 2. **Use Python scripts to double-check byte counting** - Easy to miscount hex strings
 3. **Recognize when implementation is correct but spec knowledge is incomplete** - We're not buggy, we're missing a specification requirement
+4. **Use gas traces to verify execution costs** - The 2229 execution gas matches opcode-by-opcode
+5. **Analyze actual test data from JSON** - Don't rely on summary descriptions
 
 ### DON'Ts ❌
 1. **Don't assume your calculation is wrong without verification** - Check actual vs expected first
 2. **Don't try to fix code when the issue is missing spec knowledge** - Research the spec first
 3. **Don't get distracted by complex theories** - The 19900 gas is likely a simple missing cost
+4. **Don't trust byte counts in documentation** - Always verify against actual hex data
 
 ## Session 55: Revert-Safe Value Transfers (2026-02-09)
 
