@@ -1,14 +1,14 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 83)
+Date: 2026-02-09 (Session 85)
 
 ## Summary
 
 Claudeth is a minimal-dependency Ethereum STF guest that targets `no_std` on
-`riscv32im-unknown-none-elf`. The codebase already includes a full EVM
-interpreter, block processing with root validations, and a partial MPT.
-The largest gaps are EELS compliance, witness-based state reconstruction, and
-removing `k256`.
+`riscv32im-unknown-none-elf`. The codebase includes a full EVM interpreter, block
+processing with root validations, and a partial MPT. The largest remaining gaps
+are witness-based state reconstruction, removing `k256`, and production
+validation against real mainnet blocks.
 
 ## Verified Status (From Code Inspection + Prior Test Runs)
 
@@ -29,16 +29,9 @@ removing `k256`.
 - EELS state trie leaf dump on state root/post-state mismatch (Session 80)
 - SSTORE tracing in gas traces when `evm-trace` is enabled (Session 83)
 
-### ✅ EELS Test Status (ALL PASSING - Session 84)
-**Test Results**: All EELS blockchain tests pass successfully.
-- ✅ State root validation working correctly
-- ✅ Storage persistence working correctly
-- ✅ Gas metering correct
-- ✅ Transaction execution correct
-
-**Resolution**: Storage write issues from Sessions 76-83 have been resolved. The
-SSTORE tracing infrastructure added in Session 83 helped identify and fix the
-remaining call context bugs.
+### ✅ EELS Test Status (LAST REPORTED PASSING - Session 84)
+**Test Results**: All EELS blockchain tests were reported passing in Session 84.
+This session did not re-run EELS; treat status as "last known good."
 
 ### ⚠️ Remaining Gaps
 - **Witness-based state reconstruction**: guest still accepts full state snapshots
@@ -75,6 +68,34 @@ expected values.
 3. Implement proof verification during block execution
 4. Test with minimal state + proofs instead of full snapshots
 
+**P4.0: Witness Format v0 (DOC/SCHEMA)**
+Goal: Define a minimal, deterministic witness layout that can be parsed in the
+guest without heap-heavy parsing or dynamic allocation spikes.
+
+Proposed v0 layout (byte-level, little-endian lengths):
+1. `u32` account_proof_count
+2. For each account proof:
+   - `address[20]`
+   - `u32` account_node_count
+   - Repeated: `u32` node_len + `node_bytes[node_len]` (RLP nodes)
+   - `u32` storage_proof_count
+   - For each storage proof:
+     - `storage_key[32]` (raw key, pre-hash)
+     - `u32` storage_node_count
+     - Repeated: `u32` node_len + `node_bytes[node_len]` (RLP nodes)
+3. Optional tail: `u32` total_bytes_checksum (simple sum of all node_len values)
+
+Constraints:
+- Account proof uses the state trie; storage proofs use the account's storage trie.
+- Keys are raw; the trie implementation is responsible for hashing keys.
+- Empty proofs are allowed only when root == EMPTY_TRIE_ROOT.
+- No variable-length integers to keep decoding simple in `no_std`.
+
+Acceptance Criteria:
+- Schema documented (this section).
+- Parsing logic planned for `riscv32` (no allocation spikes, bounded reads).
+- Tests can be built around constructed tries and serialized proofs.
+
 **Implementation requires**:
 - MPT proof verification (partial implementation exists in src/state/partial_mpt/proof.rs)
 - Proof input format design
@@ -100,23 +121,9 @@ Requirements:
 
 ## Immediate Next Task
 
-**P4: Witness-Based State Reconstruction (Design Phase - Session 84)**
+**P4.0: Witness Format v0 (DOC/SCHEMA)**
 
-With all EELS tests passing, the STF is functionally complete. The next priority
-is enabling witness-based execution so the guest doesn't need full state snapshots.
-
-**Why This Matters**:
-- Full state snapshots are expensive for proving (large input size)
-- Witnesses allow minimal state + proofs for just the accessed accounts/storage
-- Critical for scaling to mainnet blocks with large state
-
-**Design Questions to Answer**:
-1. What witness format to use? (Merkle proofs, binary format, RLP-encoded?)
-2. How to integrate with existing partial MPT implementation?
-3. Should witness verification happen before or during execution?
-4. How to handle missing state (invalid witness detection)?
-
-**Starting Point**:
-- Review existing `src/state/partial_mpt/proof.rs` implementation
-- Design witness format compatible with RISC-V guest constraints
-- Create test case: block execution with witness instead of full state
+Document the minimal witness schema in PLAN.md and keep it consistent with
+the existing `partial_mpt::proof` API. This enables the next step: adding a
+parser and proof-verification scaffolding without locking into a heavyweight
+serialization format.

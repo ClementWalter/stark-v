@@ -1,5 +1,28 @@
 # Claudeth Development Learnings
 
+## Session 85: Witness Format v0 Plan + Status Hygiene (2026-02-09)
+
+**Status**: Documentation-only update
+
+### What Was Accomplished
+1. ✅ Documented a minimal witness format v0 in PLAN.md
+2. ✅ Clarified EELS status as "last known good" when not re-run in-session
+3. ✅ Anchored next steps around a parseable, `no_std`-friendly schema
+
+### Tooling Notes
+- `prek run` failed in this environment due to inability to create
+  `/Users/clementwalter/Documents/starkware/stark-v/.git/index.lock`.
+
+### DO's ✅
+1. **Document the witness schema before coding parsers** to keep guest constraints clear
+2. **Call out test status provenance** (e.g., "last reported passing") when not re-run
+3. **Keep witness format deterministic and length-delimited** for easy RISC-V parsing
+
+### DON'Ts ❌
+1. **Don't claim tests were re-run** if they were not executed in this session
+2. **Don't use variable-length integers** in witness inputs for `no_std` decoding
+3. **Don't mix pre-hashed and raw keys** without explicit schema markers
+
 ## Session 84: EELS Tests All Passing - Status Update (2026-02-09)
 
 **Status**: Documentation update - ALL TESTS PASSING
