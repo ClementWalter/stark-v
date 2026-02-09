@@ -372,11 +372,18 @@ pub fn process_block<S: State + Clone>(
         .map_err(|e| BlockProcessingError::InvalidHeader(format!("{e}")))?;
 
     // Step 2: Create block context for EVM execution
+    // Post-merge (PoS): difficulty == 0, opcode 0x44 returns prev_randao (= mix_hash).
+    // Pre-merge (PoW): opcode 0x44 returns difficulty.
+    let prev_randao_or_difficulty = if block.difficulty.is_zero() {
+        U256::from_be_bytes(*block.mix_hash.as_bytes())
+    } else {
+        block.difficulty
+    };
     let block_ctx = BlockContext {
         number: U256::from_u64(block.number),
         timestamp: U256::from_u64(block.timestamp),
         coinbase: block.coinbase,
-        difficulty: block.difficulty,
+        difficulty: prev_randao_or_difficulty,
         gas_limit: U256::from_u64(block.gas_limit),
         chain_id,
         base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),

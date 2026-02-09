@@ -9,21 +9,22 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 **Implemented**
 
 - EVM interpreter with full opcode coverage, including Cancun opcodes
-  (`BLOBHASH`, `BLOBBASEFEE`) and transient storage (`TLOAD`, `TSTORE`)
+  (`BLOBHASH`, `BLOBBASEFEE`, `PREVRANDAO`) and transient storage
+  (`TLOAD`, `TSTORE`)
 - Transaction validation and execution for Legacy, EIP-2930, and EIP-1559
 - Block processing with header validation and root checks
   (state, receipts, transactions, logs bloom)
 - Partial Merkle Patricia Trie for account/storage roots and proofs
 - EIP-4788 Beacon Block Root system call
 - EIP-4895 withdrawals
+- EIP-2935 Historical Block Hashes system call (Prague)
 - Block header support for Cancun fields (`blob_gas_used`, `excess_blob_gas`)
 
 **Known Gaps / Limitations**
 
-- Prague EIP-2935 Historical Block Hashes system call is not implemented
-  (header `requests_hash` is parsed but not acted on)
 - Witness-based state reconstruction is not implemented
 - `k256` is still used for secp256k1
+- EELS blockchain tests: 14/20 passing; 6 failures in CALL/CREATE execution
 - EELS blockchain tests require external fixtures and are ignored by default
 
 ## Testing

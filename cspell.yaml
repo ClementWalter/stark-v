@@ -148,6 +148,7 @@ words:
   - prevrandao
   - println
   - pycache
+  - randao
   - readelf
   - recid
   - regs

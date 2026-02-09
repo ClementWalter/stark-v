@@ -7,56 +7,69 @@ Date: 2026-02-09
 Claudeth is a minimal-dependency Ethereum STF guest that targets `no_std` on
 `riscv32im-unknown-none-elf`. The codebase includes a full EVM interpreter,
 block processing with root validations, and a partial MPT. Cancun-era block
-header fields are supported and EIP-4788/EIP-4895 logic is implemented, but
-Prague-specific system calls (EIP-2935) are not yet implemented.
+header fields are supported and EIP-4788/EIP-4895/EIP-2935 logic is
+implemented.
 
 ## Verified Status (from code)
 
 ### Implemented
 - EVM interpreter with full opcode coverage, including `BLOBHASH`,
-  `BLOBBASEFEE`, `TLOAD`, `TSTORE`
+  `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`
 - Transaction types: Legacy / EIP-2930 / EIP-1559
 - Block processing: header validation, tx execution, receipts, gas used,
   validation of receipts root, tx root, logs bloom, state root
+- PREVRANDAO (opcode 0x44) returns `mix_hash` post-merge, `difficulty` pre-merge
 - Partial MPT with proof support
 - EIP-4788 beacon root system call
 - EIP-4895 withdrawals
+- EIP-2935 historical block hashes system call (Prague)
 - Block header fields for Cancun (`blob_gas_used`, `excess_blob_gas`)
 - `no_std` riscv32 guest entry and bump allocator
 
 ### Known Gaps / Limitations
-- Prague EIP-2935 Historical Block Hashes system call not implemented
-- Header `requests_hash` (EIP-7685) is parsed but unused
+- Header `requests_hash` (EIP-7685) is parsed but unused beyond Prague fork detection
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and tests are ignored by default
+- 6 EELS tests still failing (3 distinct issues, see below)
 
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-09): 1172 unit tests, 93 doc tests
   passed; EELS test runner remains ignored by default.
-- EELS blockchain tests: fixtures required in `tests/eels/BlockchainTests/`,
-  run with `cargo test -p claudeth --release -- --ignored`.
+- EELS blockchain tests: 14/20 passing (fixtures in `tests/eels/BlockchainTests/`,
+  run with `cargo test -p claudeth --release -- --ignored`).
+- Failing EELS tests (all `TransactionExecutionError(ExecutionFailed)`):
+  - `transStorageBlockchain` (Block 2): multi-block transient storage test with
+    CREATE calls — likely an issue with nested CALL/CREATE execution
+  - `ShanghaiLove` (Block 0): empty-data transaction to a contract — likely
+    CALL execution issue
+  - `StrangeContractCreation` (Block 0): large CREATE transaction with
+    constructor bytecode — likely CREATE/code-deploy issue
 
 ## Plan
 
-### P0: Documentation & Status Hygiene
-- Keep README/PLAN/learnings aligned with current code and test provenance
+### P0: EELS Compliance — Fix TransactionExecutionError failures
+- Investigate the 3 remaining failure patterns (transStorageBlockchain,
+  ShanghaiLove, StrangeContractCreation)
+- Root cause is likely in CALL/CREATE execution paths in executor.rs
+- The `ExecutionFailed` error is too generic — add context to help diagnose
+- Fix one at a time, starting with the simplest (ShanghaiLove or
+  transStorageBlockchain)
 
-### P1: Prague Support (EIP-2935)
-- Implement Historical Block Hashes system call and wire to block processing
-- Validate against Prague EELS fixtures once available
+### P1: Expand EELS Test Coverage
+- Remove the `take(10)` limit in test_execute_all_blockchain_tests to run all
+  available test files
+- Fix newly discovered failures
 
-### P2: EELS Compliance Debugging
-- Run ignored EELS fixtures and fix remaining failures
-- Use `evm-trace` for targeted gas/execution diagnostics
-
-### P3: Witness-Based State Reconstruction
+### P2: Witness-Based State Reconstruction
 - Define witness schema and build parser for `no_std` guest
 
-### P4: Remove `k256`
+### P3: Remove `k256`
 - Replace secp256k1 dependency with in-tree implementation
 
 ## Immediate Next Task
 
-Documentation alignment (README/learnings) and test provenance updates.
+Investigate and fix `TransactionExecutionError(ExecutionFailed)` in remaining
+EELS tests. Start with `ShanghaiLove` or `transStorageBlockchain` as they
+appear to involve CALL/CREATE execution bugs.
