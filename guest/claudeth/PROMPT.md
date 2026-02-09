@@ -19,9 +19,9 @@ project. Always run tests with --release mode.
 6. Based on your analysis, update the PLAN.md file to reflect the current status
    and the plan for the implementation.
 7. If there is nothing to be done, exit.
-8. Based on the PLAN.md file, derive what can be implemented in parallel NOW.
-   Pick only ONE task at a time and do it. Don't work on several tasks, just one
-   that can be implemented 100% NOW.
+8. Based on the PLAN.md file, derive what can be implemented NOW. Pick only ONE
+   task at a time and do it. Don't work on several tasks, just one that can be
+   implemented 100% NOW.
 9. Commit the changes to the repository.
 10. Dump learnings in learnings.md and exit.
 

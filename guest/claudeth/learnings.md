@@ -1,5 +1,27 @@
 # Claudeth Development Learnings
 
+## Session 91: Status Unchanged - No Actionable Tasks (2026-02-09)
+
+**Status**: No implementation work - project remains blocked on investigation
+
+### What Was Verified
+1. ✅ Re-ran EELS tests: still 0/20 passing (14 StateRoot, 4 Gas, 2 ExecutionError)
+2. ✅ Confirmed unit tests: 1172 passing
+3. ✅ Verified all documentation (README, PLAN, learnings) is accurate
+
+### Current Status
+Project is in the same state as Session 90. No code changes made.
+
+### DO's ✅
+1. **Verify test status** each session to confirm nothing has changed
+2. **Keep documentation accurate** when no implementation work is possible
+3. **Exit cleanly** when there are no actionable tasks
+
+### DON'Ts ❌
+1. **Don't create fake work** when there's nothing to implement
+2. **Don't start investigations** without clear hypotheses to test
+3. **Don't duplicate learnings** - if nothing changed, note that briefly
+
 ## Session 90: Status Verification - No Actionable Tasks (2026-02-09)
 
 **Status**: No implementation work - project blocked on investigation
