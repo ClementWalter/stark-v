@@ -19,8 +19,7 @@ EIP-2935 historical block hashes system calls.
   `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion formula when
   `excess_blob_gas` is present
-- Transaction types: Legacy / EIP-2930 / EIP-1559
-- EIP-4844 blob transaction type `0x03` decoding/encoding and signing hash
+- Transaction types: Legacy / EIP-2930 / EIP-1559 / EIP-4844 blob (type 0x03)
 - Block processing: parent header validation, tx execution, receipts, gas used,
   validation of receipts root, tx root, logs bloom, state root
 - Header validation includes base fee per gas and excess blob gas against parent
@@ -36,12 +35,11 @@ EIP-2935 historical block hashes system calls.
 - `TxContext` carries blob versioned hashes; `RecursiveHost::blobhash` reads
   from `TxContext`
 - Blob transactions populate `TxContext.blob_versioned_hashes`
+- Blob data fee charged from sender and block blob gas used tracked/validated
 - `no_std` riscv32 guest entry and bump allocator
 
 ### Known Gaps / Limitations
 
-- Blob gas accounting (`blob_gas_used`, per-tx blob data fee, block blob gas
-  limit checks) is not implemented
 - Witness-based state reconstruction is not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
@@ -53,20 +51,7 @@ EIP-2935 historical block hashes system calls.
 
 ## Plan
 
-### P1: Add EIP-4844 Blob Transaction Support (Type `0x03`)
-
-1. **Introduce `BlobTransaction` type** (done)
-   - Add type `0x03` decoding/encoding and signing hash (EIP-4844).
-   - Include `max_fee_per_blob_gas` and `blob_versioned_hashes`.
-2. **Validation and fee checks** (done)
-   - Validate blob versioned hash version, non-empty list, and blob count limit.
-   - Enforce `max_fee_per_blob_gas >= blob_gas_price`.
-   - Include blob max fee in sender balance checks.
-3. **Execution plumbing** (done)
-   - Populate `TxContext.blob_versioned_hashes` from blob txs.
-4. **Block-level blob gas accounting**
-   - Track `blob_gas_used` per tx and validate against header.
-   - Charge blob data fee and account for balance effects.
+### P1: EIP-4844 Blob Gas Accounting (done)
 
 ### P2: Witness-Based State Reconstruction
 
@@ -74,5 +59,4 @@ EIP-2935 historical block hashes system calls.
 
 ## Immediate Next Task
 
-Implement block-level blob gas accounting: track `blob_gas_used` per tx,
-validate against header/max blob gas, and charge blob data fees.
+Select a scoped witness-based state reconstruction milestone.

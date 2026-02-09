@@ -28,6 +28,8 @@ const ERROR_TRANSACTIONS_ROOT_MISMATCH: u64 = 7;
 const ERROR_LOGS_BLOOM_MISMATCH: u64 = 8;
 const ERROR_UNEXPECTED_WITHDRAWALS: u64 = 9;
 const ERROR_WITHDRAWALS_ROOT_MISMATCH: u64 = 10;
+const ERROR_BLOB_GAS_LIMIT_EXCEEDED: u64 = 11;
+const ERROR_BLOB_GAS_USED_MISMATCH: u64 = 12;
 const ERROR_RLP_DECODE: u64 = 100;
 const ERROR_INVALID_INPUT: u64 = 101;
 
@@ -310,6 +312,18 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
         ),
         BlockProcessingError::GasUsedMismatch { expected, computed, .. } => (
             ERROR_GAS_USED_MISMATCH,
+            rlp::encode_list(&[encode_u64(expected), encode_u64(computed)]),
+        ),
+        BlockProcessingError::BlobGasLimitExceeded {
+            blob_gas_limit,
+            blob_gas_used,
+            ..
+        } => (
+            ERROR_BLOB_GAS_LIMIT_EXCEEDED,
+            rlp::encode_list(&[encode_u64(blob_gas_limit), encode_u64(blob_gas_used)]),
+        ),
+        BlockProcessingError::BlobGasUsedMismatch { expected, computed, .. } => (
+            ERROR_BLOB_GAS_USED_MISMATCH,
             rlp::encode_list(&[encode_u64(expected), encode_u64(computed)]),
         ),
         BlockProcessingError::TransactionsRootMismatch { expected, computed, .. } => (

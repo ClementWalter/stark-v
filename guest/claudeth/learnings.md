@@ -4,8 +4,8 @@ Date: 2026-02-09
 
 ## Consensus-Critical Behavior
 
-- Exceptional halts (OOG, InvalidJump, InvalidOpcode) fail the current
-  transaction: consume all gas and revert only that transaction’s state.
+- Exceptional halts (OOG, InvalidJump, InvalidOpcode) fail only the current
+  transaction: consume all gas and revert that transaction’s state changes.
 - `REVERT` is non-exceptional: preserve remaining gas and revert only the
   current call frame.
 - Gas refunds are capped at 1/5 of total gas used (EIP-3529) in
@@ -25,7 +25,7 @@ Date: 2026-02-09
   `nonce == 0`, with empty ommers hash.
 - `extra_data` length is capped at 32 bytes and `gas_used <= gas_limit`.
 - Base fee per gas is derived from the parent’s gas used vs target (EIP-1559).
-- Blob fields must be all-or-nothing: if either `blob_gas_used` or
+- Blob fields are all-or-nothing: if either `blob_gas_used` or
   `excess_blob_gas` is present, both are required, and `excess_blob_gas` must
   match the parent-derived value.
 
@@ -45,11 +45,19 @@ Date: 2026-02-09
   `base_fee + max_priority_fee_per_gas`) for EIP-1559 and blob txs.
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
   blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
+- Blob transactions require a 20-byte `to` address (no contract creation).
 - `TxContext` carries `blob_versioned_hashes`; `RecursiveHost::blobhash` reads
   from it and returns zero for out-of-range indices.
-- Blob transaction encoding/decoding uses type prefix `0x03` and requires a
-  20-byte `to` address (no contract creation).
 - Receipt encoding for blob txs uses prefix `0x03`.
+
+## Blob Gas Accounting (EIP-4844)
+
+- Blob gas used per tx is `GAS_PER_BLOB * blob_count`.
+- Cancun max blob gas per block is `786_432` (6 blobs * 131_072).
+- Blob data fee is `blob_gas_used * blob_base_fee` and is charged upfront from
+  the sender (burned, not credited to coinbase).
+- Block processing enforces the max blob gas per block and validates
+  `header.blob_gas_used` against the computed total.
 
 ## Blob Base Fee
 
@@ -82,10 +90,10 @@ Date: 2026-02-09
 - Run `cargo test -p claudeth --release` and `prek run` before committing.
 - Provide recent block hashes in guest input for correct `BLOCKHASH` results.
 - Keep EIP-4788 and EIP-2935 system calls before transaction execution.
-- Set `TxContext.blob_versioned_hashes` so `BLOBHASH` returns data for blob txs.
-- Enforce blob tx hash list/fee validation before execution.
-- When adding blob gas accounting, track `blob_gas_used` and enforce block limits.
-- Prefix blob transaction receipts with type `0x03`.
+- Ensure `TxContext.blob_versioned_hashes` is set so `BLOBHASH` returns data for
+  blob txs.
+- Keep blob data fee charged upfront and burned (not credited to coinbase).
+- Validate `blob_gas_used` and enforce the Cancun max blob gas per block.
 
 **Don't**
 

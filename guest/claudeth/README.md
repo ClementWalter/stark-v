@@ -23,11 +23,10 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
   `parent_beacon_block_root`)
+- Blob gas accounting and data-fee charging (EIP-4844)
 
 **Known Gaps / Limitations**
 
-- EIP-4844 blob gas accounting (blob gas used, block blob gas limits, data fee
-  charging) is not implemented
 - Witness-based state reconstruction is not implemented
 - `k256` is still used for secp256k1
 - EELS blockchain tests require external fixtures and are ignored by default

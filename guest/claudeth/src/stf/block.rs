@@ -26,6 +26,7 @@ use crate::stf::{
     calculate_receipts_root_with_types, execute_transaction, Bloom, ExecutionError,
     TransactionExecutionResult, TransactionReceipt,
 };
+use crate::stf::transaction::{blob_gas_used, MAX_BLOB_GAS_PER_BLOCK};
 use crate::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
 
 #[cfg(test)]
@@ -93,6 +94,24 @@ pub enum BlockProcessingError {
         /// Expected gas used from header
         expected: u64,
         /// Computed gas used
+        computed: u64,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
+    },
+    /// Blob gas used exceeds the block blob gas limit
+    BlobGasLimitExceeded {
+        /// Block blob gas limit
+        blob_gas_limit: u64,
+        /// Cumulative blob gas used
+        blob_gas_used: u64,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
+    },
+    /// Blob gas used doesn't match header
+    BlobGasUsedMismatch {
+        /// Expected blob gas used from header
+        expected: u64,
+        /// Computed blob gas used
         computed: u64,
         /// Partial transaction results (for debugging)
         transaction_results: Vec<TransactionExecutionResult>,
@@ -483,6 +502,7 @@ pub fn process_block<S: State + Clone>(
 
     // Step 4: Execute all transactions
     let mut cumulative_gas_used = 0u64;
+    let mut cumulative_blob_gas_used = 0u64;
     let mut receipts = Vec::with_capacity(transactions.len());
     let mut transaction_results = Vec::with_capacity(transactions.len());
 
@@ -495,6 +515,18 @@ pub fn process_block<S: State + Clone>(
     };
 
     for tx in transactions {
+        let tx_blob_gas_used = blob_gas_used(tx);
+        if block.blob_gas_used.is_some() {
+            let updated_blob_gas_used = cumulative_blob_gas_used.saturating_add(tx_blob_gas_used);
+            if updated_blob_gas_used > MAX_BLOB_GAS_PER_BLOCK {
+                return Err(BlockProcessingError::BlobGasLimitExceeded {
+                    blob_gas_limit: MAX_BLOB_GAS_PER_BLOCK,
+                    blob_gas_used: updated_blob_gas_used,
+                    transaction_results: transaction_results.clone(),
+                });
+            }
+        }
+
         // Execute transaction
         let mut exec_result = execute_transaction(
             tx,
@@ -505,6 +537,7 @@ pub fn process_block<S: State + Clone>(
 
         // Update cumulative gas
         cumulative_gas_used += exec_result.gas_used;
+        cumulative_blob_gas_used += tx_blob_gas_used;
 
         // Check gas limit
         if cumulative_gas_used > block.gas_limit {
@@ -546,6 +579,16 @@ pub fn process_block<S: State + Clone>(
         return Err(BlockProcessingError::GasUsedMismatch {
             expected: block.gas_used,
             computed: cumulative_gas_used,
+            transaction_results: transaction_results.clone(),
+        });
+    }
+
+    if let Some(expected_blob_gas_used) = block.blob_gas_used
+        && cumulative_blob_gas_used != expected_blob_gas_used
+    {
+        return Err(BlockProcessingError::BlobGasUsedMismatch {
+            expected: expected_blob_gas_used,
+            computed: cumulative_blob_gas_used,
             transaction_results: transaction_results.clone(),
         });
     }
@@ -773,6 +816,24 @@ mod tests {
         assert!(matches!(
             result,
             Err(BlockProcessingError::GasUsedMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_process_block_blob_gas_used_mismatch() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        block.blob_gas_used = Some(1);
+        block.excess_blob_gas = Some(0);
+        let transactions = vec![];
+        let withdrawals = vec![];
+        let mut state = InMemoryState::new();
+
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        assert!(matches!(
+            result,
+            Err(BlockProcessingError::BlobGasUsedMismatch { .. })
         ));
     }
 

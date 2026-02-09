@@ -256,6 +256,8 @@ impl Transaction {
 const GAS_PER_BLOB: u64 = 131_072;
 const BLOB_COUNT_LIMIT: usize = 6;
 const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
+/// Maximum blob gas per block (Cancun).
+pub const MAX_BLOB_GAS_PER_BLOCK: u64 = 786_432;
 
 // =============================================================================
 // Validation Functions
@@ -513,6 +515,30 @@ pub fn validate_blob_fee(
     }
 
     Ok(())
+}
+
+/// Returns the blob gas used by a transaction (EIP-4844).
+pub fn blob_gas_used(tx: &Transaction) -> u64 {
+    match tx {
+        Transaction::Blob(tx) => GAS_PER_BLOB.saturating_mul(tx.blob_versioned_hashes.len() as u64),
+        _ => 0,
+    }
+}
+
+/// Calculates the blob data fee for a transaction (EIP-4844).
+pub fn blob_data_fee(
+    tx: &Transaction,
+    excess_blob_gas: Option<U256>,
+) -> Result<U256, ValidationError> {
+    let Transaction::Blob(_) = tx else {
+        return Ok(U256::ZERO);
+    };
+
+    let excess_blob_gas = excess_blob_gas.ok_or(ValidationError::MissingBlobGasContext)?;
+    let blob_base_fee = blob_gas_price(excess_blob_gas);
+    let blob_gas_used = U256::from_u64(blob_gas_used(tx));
+
+    Ok(blob_gas_used.saturating_mul(blob_base_fee))
 }
 
 /// Validates that the transaction chain ID matches the expected chain ID.
@@ -1213,6 +1239,24 @@ mod tests {
 
         let result = validate_blob_fee(&tx, Some(U256::ZERO));
         assert_eq!(result, Err(ValidationError::MaxFeePerBlobGasTooLow));
+    }
+
+    #[test]
+    fn test_blob_gas_used_non_blob() {
+        let (tx, _) = create_signed_legacy_tx();
+        let tx = Transaction::Legacy(tx);
+
+        assert_eq!(blob_gas_used(&tx), 0);
+    }
+
+    #[test]
+    fn test_blob_data_fee_minimum() {
+        let blob_hashes = vec![Hash::from([VERSIONED_HASH_VERSION_KZG; 32])];
+        let blob_tx = create_blob_tx(blob_hashes, U256::from(1u64));
+        let tx = Transaction::Blob(blob_tx);
+
+        let fee = blob_data_fee(&tx, Some(U256::ZERO)).expect("blob data fee");
+        assert_eq!(fee, U256::from_u64(GAS_PER_BLOB));
     }
 
     // =========================================================================

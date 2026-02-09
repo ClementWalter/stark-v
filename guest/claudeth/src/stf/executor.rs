@@ -34,8 +34,8 @@ use crate::evm::interpreter::{
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
-    calculate_intrinsic_gas, validate_balance, validate_blob_fee, validate_chain_id, validate_gas,
-    validate_nonce, validate_signature, ValidationError,
+    blob_data_fee, calculate_intrinsic_gas, validate_balance, validate_blob_fee,
+    validate_chain_id, validate_gas, validate_nonce, validate_signature, ValidationError,
 };
 use crate::types::{Address, Hash, Transaction, U256};
 
@@ -211,6 +211,7 @@ pub fn execute_transaction<S: State + Clone>(
     let gas_cost = U256::from_u64(gas_limit).saturating_mul(effective_gas_price);
 
     validate_balance(tx, state.get_balance(&sender), exec_ctx.block_ctx.base_fee)?;
+    let blob_fee = blob_data_fee(tx, exec_ctx.block_ctx.excess_blob_gas)?;
 
     let blob_versioned_hashes = match tx {
         Transaction::Blob(tx) => tx.blob_versioned_hashes.clone(),
@@ -226,7 +227,8 @@ pub fn execute_transaction<S: State + Clone>(
     // Step 2: Pre-execution state changes
     // Charge upfront gas cost from sender balance
     let sender_balance = state.get_balance(&sender);
-    state.set_balance(&sender, sender_balance.saturating_sub(gas_cost));
+    let upfront_cost = gas_cost.saturating_add(blob_fee);
+    state.set_balance(&sender, sender_balance.saturating_sub(upfront_cost));
 
     // Increment sender nonce
     state.increment_nonce(&sender);
@@ -587,8 +589,9 @@ fn convert_logs(logs: Vec<LogEntry>) -> Vec<Log> {
 mod tests {
     use super::*;
     use crate::state::InMemoryState;
-    use crate::types::transaction::{Eip1559Transaction, LegacyTransaction};
-    use crate::types::Bytes;
+    use crate::types::transaction::{BlobTransaction, Eip1559Transaction, LegacyTransaction};
+    use crate::types::{Bytes, Hash};
+    use k256::ecdsa::SigningKey;
 
     #[test]
     fn test_compute_create_address() {
@@ -722,6 +725,95 @@ mod tests {
 
         // Will fail on signature, but tests the effective_gas_price logic exists
         assert!(result.is_err());
+    }
+
+    fn test_signing_key(seed: u8) -> SigningKey {
+        let mut key_bytes = [0u8; 32];
+        key_bytes[31] = seed;
+        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
+    }
+
+    fn create_signed_blob_tx() -> (Transaction, Address) {
+        let signing_key = test_signing_key(1);
+
+        let mut tx = BlobTransaction {
+            chain_id: U256::ONE,
+            nonce: U256::ZERO,
+            max_priority_fee_per_gas: U256::ZERO,
+            max_fee_per_gas: U256::from_u64(1),
+            gas_limit: U256::from_u64(21000),
+            to: Address::from([0x22; 20]),
+            value: U256::from_u64(1000),
+            data: Bytes::new(),
+            access_list: Vec::new(),
+            max_fee_per_blob_gas: U256::from_u64(1),
+            blob_versioned_hashes: vec![Hash::from([0x01; 32])],
+            v: U256::ZERO,
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+
+        let signing_hash = tx.signing_hash();
+        let (signature, recovery_id) = signing_key
+            .sign_prehash_recoverable(signing_hash.as_bytes())
+            .expect("failed to sign");
+        let sig_bytes = signature.to_bytes();
+
+        let mut r_bytes = [0u8; 32];
+        r_bytes.copy_from_slice(&sig_bytes[..32]);
+        tx.r = U256::from_be_bytes(r_bytes);
+
+        let mut s_bytes = [0u8; 32];
+        s_bytes.copy_from_slice(&sig_bytes[32..]);
+        tx.s = U256::from_be_bytes(s_bytes);
+
+        tx.v = U256::from(recovery_id.to_byte() as u64);
+
+        let sender = tx.recover_sender().expect("recover sender");
+        (Transaction::Blob(tx), sender)
+    }
+
+    #[test]
+    fn test_execute_transaction_charges_blob_data_fee() {
+        let (tx, sender) = create_signed_blob_tx();
+        let recipient = tx.to().expect("recipient");
+
+        let coinbase = Address::from([0x11; 20]);
+        let block_ctx = BlockContext {
+            base_fee: U256::from_u64(1),
+            coinbase,
+            excess_blob_gas: Some(U256::ZERO),
+            ..BlockContext::default()
+        };
+
+        let mut state = InMemoryState::new();
+        let initial_balance = U256::from_u64(1_000_000_000);
+        state.set_balance(&sender, initial_balance);
+
+        let exec_ctx = TransactionExecutionContext {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            chain_id: U256::ONE,
+            block_gas_limit: U256::from_u64(30_000_000),
+        };
+
+        let result = execute_transaction(&tx, &mut state, &exec_ctx, 0)
+            .expect("execute transaction");
+        assert!(result.success);
+
+        let gas_fee = U256::from_u64(21000);
+        let blob_fee = U256::from_u64(131_072);
+        let value = tx.value();
+
+        let expected_sender_balance = initial_balance
+            .saturating_sub(gas_fee)
+            .saturating_sub(blob_fee)
+            .saturating_sub(value);
+
+        assert_eq!(state.get_balance(&sender), expected_sender_balance);
+        assert_eq!(state.get_balance(&recipient), value);
+        assert_eq!(state.get_balance(&coinbase), gas_fee);
     }
 
     #[test]
