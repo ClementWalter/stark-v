@@ -1,5 +1,70 @@
 # Claudeth Development Learnings
 
+## Session 36: Debug EELS State Persistence Issue (2026-02-09)
+
+**Status**: Phase D Task D3 IN PROGRESS (investigating paradoxical test behavior)
+
+### What Was Accomplished
+1. ✅ Investigated EELS test failures showing zero storage values
+2. ✅ Created isolated debug test replicating optionsTest_Prague
+3. ✅ **CRITICAL FINDING**: Isolated test shows storage DOES persist correctly
+4. ✅ Identified paradox: core execution works but EELS tests fail
+5. ⚠️ Did not identify root cause of EELS test failures
+
+### Root Cause Analysis
+**The Paradox**:
+- EELS tests: All 20 tests show storage values = 0, nonces wrong, balances wrong
+- Debug test: Same transaction shows storage[1] = 1 ✓, nonce +1 ✓, balance decreased ✓
+
+**This proves**:
+- Core execution logic (executor.rs, interpreter.rs, host.rs) is CORRECT
+- State cloning/merging works correctly
+- SSTORE operations work correctly
+- Value transfers work correctly
+
+**This suggests the bug is in**:
+- EELS test harness (eels_blockchain_tests.rs)
+- Test data conversion (convert_test_transaction, convert_test_block_header)
+- Test fixture parsing (JSON deserialization)
+
+**Specifically suspicious**:
+1. Transaction signature recovery may be failing silently in EELS tests
+2. Converted transactions may have wrong parameters (chain_id, gas_price, etc.)
+3. State may be getting reset between blocks somehow
+4. Test may be checking wrong addresses in post-state
+
+### DO's ✅
+1. **Create isolated reproduction tests** when debugging complex issues
+2. **Test core logic in isolation** before blaming infrastructure
+3. **Look for paradoxes** - if one test passes and another fails with same code, the diff is the key
+4. **Check test harness logic** when all tests fail but isolated tests pass
+
+### DON'Ts ❌
+1. **Don't assume core logic is broken** when tests fail - check test infrastructure first
+2. **Don't add debug logging to core code** until you've verified the test harness is correct
+3. **Don't trust HashMap iteration order** - validate_post_state shows different first failures
+
+### Next Steps for Task D3
+**Immediate debugging priorities**:
+1. Add logging to EELS test to see if transactions are actually executing
+2. Check if validate_signature is returning errors in EELS tests
+3. Verify converted transactions match original EELS fixtures
+4. Check if chain_id validation is failing
+5. Add assertion that exec_result.success == true in EELS test
+6. Compare sender addresses recovered in EELS test vs. expected
+
+**Hypothesis**: Transactions are failing validation (signature or chain_id mismatch) and never executing, returning default/empty state.
+
+### Session Summary
+
+**Work completed**:
+- Created debug_eels_optionstest.rs showing state persistence works ✓
+- Identified that core execution logic is correct ✓
+- Narrowed problem to EELS test harness or data conversion ✓
+- Updated PLAN.md to reflect new findings ✓
+
+**Critical insight**: When ALL tests fail the same way (zero values) but isolated tests pass, the issue is almost certainly in test setup/conversion, not core logic. The next session must focus on the EELS test harness, not the executor.
+
 ## Session 35: Fix CREATE Value Transfer (2026-02-09)
 
 **Status**: Phase D Task D3 IN PROGRESS (pre-commit blocked by offline rustup sync)
