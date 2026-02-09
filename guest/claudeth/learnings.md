@@ -25,14 +25,24 @@ Date: 2026-02-09
 
 - Do not quote EELS test counts unless you have run the ignored tests in the current workspace.
 
+## Error Type Architecture
+
+- There are three separate `EvmError` enums: `evm::error::EvmError`, `evm::interpreter::EvmError`, and `evm::opcodes::arithmetic::EvmError`. The `exec.rs` dispatcher uses `evm::error::EvmError` and needs `From` conversions from all error types it encounters.
+- When adding new error variant types in opcode modules, always ensure a `From` impl exists in `evm::error::EvmError` for the module's local error type.
+- The `evm/mod.rs` re-exports from `interpreter`, NOT from `error`. `exec.rs` imports from `evm::error` directly.
+
+## Module Visibility
+
+- `compute_create_address` and `compute_create2_address` in `evm/host.rs` must be `pub` (not private or `pub(crate)`) because `evm/opcodes/exec.rs` imports them.
+
 ## Do / Don't (Next Iteration)
 
 **Do**
 
+- **Always** verify the code compiles (`cargo build -p claudeth`) before attempting anything else. The codebase may have been left in a broken state.
 - Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
 - Keep state root computation deterministic (stable address ordering before trie insertion).
 - Run `cargo test -p claudeth --release` and `cargo clippy -p claudeth -- -D warnings`.
-- Run `uv run scripts/check_no_orphan_rust_files.py` when the pre-commit hook cannot run directly.
 
 **Don't**
 
@@ -40,3 +50,4 @@ Date: 2026-02-09
 - Treat EVM reverts as exceptional halts.
 - Leave unused `.rs` files under `src/` (pre-commit will fail).
 - Quote EELS test counts without rerunning.
+- Re-export types from modules that don't define them (e.g. `StorageWrite` was re-exported from `trace` but didn't exist there).

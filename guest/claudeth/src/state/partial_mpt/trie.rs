@@ -12,16 +12,18 @@ use std::collections::HashMap;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::{collections::BTreeMap as HashMap, vec, vec::Vec};
+use alloc::{vec, collections::BTreeMap as HashMap, vec::Vec};
 
-use super::node::{Node, bytes_to_nibbles, common_prefix_length};
 use crate::types::Hash;
+use super::node::{Node, bytes_to_nibbles, common_prefix_length};
 
-/// Ethereum empty trie root hash: keccak256(rlp("")) = keccak256(0x80)
-/// This is 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
+/// Ethereum empty trie root hash: keccak256(rlp([]))
+/// This is 0x56e81f171bcc55a6ff8345e692c0f86e5b96e01b996cadc001622fb5e363b421
 pub const EMPTY_TRIE_ROOT: Hash = Hash::new([
-    0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6, 0xff, 0x83, 0x45, 0xe6, 0x92, 0xc0, 0xf8, 0x6e,
-    0x5b, 0x48, 0xe0, 0x1b, 0x99, 0x6c, 0xad, 0xc0, 0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
+    0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6,
+    0xff, 0x83, 0x45, 0xe6, 0x92, 0xc0, 0xf8, 0x6e,
+    0x5b, 0x96, 0xe0, 0x1b, 0x99, 0x6c, 0xad, 0xc0,
+    0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
 ]);
 
 /// A Merkle Patricia Trie for storing key-value pairs
@@ -88,8 +90,7 @@ impl Trie {
     /// Gets a value from the trie by key
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         let nibbles = bytes_to_nibbles(key);
-        self.root
-            .and_then(|root_hash| self.get_at(root_hash, &nibbles))
+        self.root.and_then(|root_hash| self.get_at(root_hash, &nibbles))
     }
 
     /// Deletes a key from the trie
@@ -109,23 +110,12 @@ impl Trie {
     /// Recursive insert helper
     ///
     /// Returns (new_node_hash, old_value)
-    fn insert_at(
-        &mut self,
-        node_hash: Hash,
-        path: &[u8],
-        value: Vec<u8>,
-    ) -> (Hash, Option<Vec<u8>>) {
-        let node = self
-            .nodes
-            .get(&node_hash)
-            .cloned()
+    fn insert_at(&mut self, node_hash: Hash, path: &[u8], value: Vec<u8>) -> (Hash, Option<Vec<u8>>) {
+        let node = self.nodes.get(&node_hash).cloned()
             .expect("Node not found in storage");
 
         match node {
-            Node::Leaf {
-                key_suffix,
-                value: old_value,
-            } => {
+            Node::Leaf { key_suffix, value: old_value } => {
                 if key_suffix == path {
                     // Exact match - update value
                     let new_node = Node::new_leaf(key_suffix, value);
@@ -143,15 +133,11 @@ impl Trie {
                         let next_nibble = key_suffix[common_len];
 
                         // Create leaf for remainder
-                        let remainder_leaf =
-                            Node::new_leaf(key_suffix[common_len + 1..].to_vec(), old_value);
+                        let remainder_leaf = Node::new_leaf(key_suffix[common_len + 1..].to_vec(), old_value);
                         let remainder_hash = remainder_leaf.compute_hash();
                         self.nodes.insert(remainder_hash, remainder_leaf);
 
-                        if let Node::Branch {
-                            ref mut children, ..
-                        } = branch
-                        {
+                        if let Node::Branch { ref mut children, .. } = branch {
                             children[next_nibble as usize] = Some(remainder_hash);
                         }
 
@@ -178,10 +164,7 @@ impl Trie {
                         let remainder_hash = remainder_leaf.compute_hash();
                         self.nodes.insert(remainder_hash, remainder_leaf);
 
-                        if let Node::Branch {
-                            ref mut children, ..
-                        } = branch
-                        {
+                        if let Node::Branch { ref mut children, .. } = branch {
                             children[next_nibble as usize] = Some(remainder_hash);
                         }
 
@@ -205,8 +188,7 @@ impl Trie {
                         let new_nibble = path[common_len];
 
                         // Create leaves for both paths
-                        let old_leaf =
-                            Node::new_leaf(key_suffix[common_len + 1..].to_vec(), old_value);
+                        let old_leaf = Node::new_leaf(key_suffix[common_len + 1..].to_vec(), old_value);
                         let old_hash = old_leaf.compute_hash();
                         self.nodes.insert(old_hash, old_leaf);
 
@@ -214,10 +196,7 @@ impl Trie {
                         let new_hash = new_leaf.compute_hash();
                         self.nodes.insert(new_hash, new_leaf);
 
-                        if let Node::Branch {
-                            ref mut children, ..
-                        } = branch
-                        {
+                        if let Node::Branch { ref mut children, .. } = branch {
                             children[old_nibble as usize] = Some(old_hash);
                             children[new_nibble as usize] = Some(new_hash);
                         }
@@ -242,8 +221,7 @@ impl Trie {
 
                 if common_len == prefix.len() {
                     // Path matches entire prefix - recurse to child
-                    let (new_child_hash, old_value) =
-                        self.insert_at(child_hash, &path[common_len..], value);
+                    let (new_child_hash, old_value) = self.insert_at(child_hash, &path[common_len..], value);
 
                     let new_ext = Node::new_extension(prefix, new_child_hash);
                     let new_hash = new_ext.compute_hash();
@@ -261,8 +239,7 @@ impl Trie {
                     let child_to_insert = if remainder_path.is_empty() {
                         child_hash
                     } else {
-                        let remainder_ext =
-                            Node::new_extension(remainder_path.to_vec(), child_hash);
+                        let remainder_ext = Node::new_extension(remainder_path.to_vec(), child_hash);
                         let remainder_hash = remainder_ext.compute_hash();
                         self.nodes.insert(remainder_hash, remainder_ext);
                         remainder_hash
@@ -273,10 +250,7 @@ impl Trie {
                     let new_leaf_hash = new_leaf.compute_hash();
                     self.nodes.insert(new_leaf_hash, new_leaf);
 
-                    if let Node::Branch {
-                        ref mut children, ..
-                    } = branch
-                    {
+                    if let Node::Branch { ref mut children, .. } = branch {
                         children[ext_nibble as usize] = Some(child_to_insert);
                         children[path_nibble as usize] = Some(new_leaf_hash);
                     }
@@ -295,10 +269,7 @@ impl Trie {
                     }
                 }
             }
-            Node::Branch {
-                mut children,
-                value: branch_value,
-            } => {
+            Node::Branch { mut children, value: branch_value } => {
                 if path.is_empty() {
                     // Update branch value
                     let old_value = branch_value;
@@ -382,8 +353,7 @@ impl Trie {
             }
             Node::Extension { prefix, child_hash } => {
                 if path.len() >= prefix.len() && &path[..prefix.len()] == prefix.as_slice() {
-                    let (new_child, deleted_value) =
-                        self.delete_at(child_hash, &path[prefix.len()..])?;
+                    let (new_child, deleted_value) = self.delete_at(child_hash, &path[prefix.len()..])?;
 
                     if let Some(child) = new_child {
                         // Child still exists - recreate extension
@@ -391,10 +361,7 @@ impl Trie {
 
                         // Collapse extension + extension or extension + leaf
                         match child_node {
-                            Node::Extension {
-                                prefix: child_prefix,
-                                child_hash: grandchild,
-                            } => {
+                            Node::Extension { prefix: child_prefix, child_hash: grandchild } => {
                                 // Merge extensions
                                 let mut merged_prefix = prefix.clone();
                                 merged_prefix.extend_from_slice(&child_prefix);
@@ -403,10 +370,7 @@ impl Trie {
                                 self.nodes.insert(merged_hash, merged_ext);
                                 Some((Some(merged_hash), deleted_value))
                             }
-                            Node::Leaf {
-                                key_suffix,
-                                value: leaf_value,
-                            } => {
+                            Node::Leaf { key_suffix, value: leaf_value } => {
                                 // Merge extension + leaf
                                 let mut merged_key = prefix.clone();
                                 merged_key.extend_from_slice(&key_suffix);
@@ -431,10 +395,7 @@ impl Trie {
                     None
                 }
             }
-            Node::Branch {
-                mut children,
-                value: branch_value,
-            } => {
+            Node::Branch { mut children, value: branch_value } => {
                 if path.is_empty() {
                     // Delete branch value
                     if let Some(val) = branch_value {
@@ -446,17 +407,13 @@ impl Trie {
                             Some((None, val))
                         } else if child_count == 1 {
                             // One child - collapse to extension or leaf
-                            let (nibble, child_hash) = children
-                                .iter()
+                            let (nibble, child_hash) = children.iter()
                                 .enumerate()
                                 .find_map(|(i, c)| c.map(|h| (i, h)))?;
 
                             let child_node = self.nodes.get(&child_hash).cloned()?;
                             match child_node {
-                                Node::Leaf {
-                                    key_suffix,
-                                    value: leaf_value,
-                                } => {
+                                Node::Leaf { key_suffix, value: leaf_value } => {
                                     let mut new_key = vec![nibble as u8];
                                     new_key.extend_from_slice(&key_suffix);
                                     let new_leaf = Node::new_leaf(new_key, leaf_value);
@@ -464,10 +421,7 @@ impl Trie {
                                     self.nodes.insert(new_hash, new_leaf);
                                     Some((Some(new_hash), val))
                                 }
-                                Node::Extension {
-                                    prefix,
-                                    child_hash: grandchild,
-                                } => {
+                                Node::Extension { prefix, child_hash: grandchild } => {
                                     let mut new_prefix = vec![nibble as u8];
                                     new_prefix.extend_from_slice(&prefix);
                                     let new_ext = Node::new_extension(new_prefix, grandchild);
@@ -477,8 +431,7 @@ impl Trie {
                                 }
                                 Node::Branch { .. } => {
                                     // Create extension to branch
-                                    let new_ext =
-                                        Node::new_extension(vec![nibble as u8], child_hash);
+                                    let new_ext = Node::new_extension(vec![nibble as u8], child_hash);
                                     let new_hash = new_ext.compute_hash();
                                     self.nodes.insert(new_hash, new_ext);
                                     Some((Some(new_hash), val))
@@ -512,17 +465,13 @@ impl Trie {
                             Some((None, deleted_value))
                         } else if child_count == 1 && branch_value.is_none() {
                             // One child and no value - collapse
-                            let (child_nibble, child_hash) = children
-                                .iter()
+                            let (child_nibble, child_hash) = children.iter()
                                 .enumerate()
                                 .find_map(|(i, c)| c.map(|h| (i, h)))?;
 
                             let child_node = self.nodes.get(&child_hash).cloned()?;
                             match child_node {
-                                Node::Leaf {
-                                    key_suffix,
-                                    value: leaf_value,
-                                } => {
+                                Node::Leaf { key_suffix, value: leaf_value } => {
                                     let mut new_key = vec![child_nibble as u8];
                                     new_key.extend_from_slice(&key_suffix);
                                     let new_leaf = Node::new_leaf(new_key, leaf_value);
@@ -530,10 +479,7 @@ impl Trie {
                                     self.nodes.insert(new_hash, new_leaf);
                                     Some((Some(new_hash), deleted_value))
                                 }
-                                Node::Extension {
-                                    prefix,
-                                    child_hash: grandchild,
-                                } => {
+                                Node::Extension { prefix, child_hash: grandchild } => {
                                     let mut new_prefix = vec![child_nibble as u8];
                                     new_prefix.extend_from_slice(&prefix);
                                     let new_ext = Node::new_extension(new_prefix, grandchild);
@@ -543,8 +489,7 @@ impl Trie {
                                 }
                                 Node::Branch { .. } => {
                                     // Create extension
-                                    let new_ext =
-                                        Node::new_extension(vec![child_nibble as u8], child_hash);
+                                    let new_ext = Node::new_extension(vec![child_nibble as u8], child_hash);
                                     let new_hash = new_ext.compute_hash();
                                     self.nodes.insert(new_hash, new_ext);
                                     Some((Some(new_hash), deleted_value))

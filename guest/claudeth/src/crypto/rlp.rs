@@ -602,10 +602,7 @@ mod tests {
 
     #[test]
     fn test_encode_short_bytes() {
-        assert_eq!(
-            encode_bytes(&[0x01, 0x02, 0x03]),
-            vec![0x83, 0x01, 0x02, 0x03]
-        );
+        assert_eq!(encode_bytes(&[0x01, 0x02, 0x03]), vec![0x83, 0x01, 0x02, 0x03]);
     }
 
     #[test]
@@ -850,7 +847,11 @@ mod tests {
 
     #[test]
     fn test_hash_roundtrip() {
-        let test_cases = vec![Hash::ZERO, Hash::from([0x42; 32]), Hash::from([0xff; 32])];
+        let test_cases = vec![
+            Hash::ZERO,
+            Hash::from([0x42; 32]),
+            Hash::from([0xff; 32]),
+        ];
 
         for hash in test_cases {
             let encoded = encode_hash(&hash);
@@ -995,10 +996,7 @@ mod tests {
         let cat = encode_bytes(&[0x63, 0x61, 0x74]);
         let dog = encode_bytes(&[0x64, 0x6f, 0x67]);
         let encoded = encode_list(&[cat, dog]);
-        assert_eq!(
-            encoded,
-            vec![0xc8, 0x83, 0x63, 0x61, 0x74, 0x83, 0x64, 0x6f, 0x67]
-        );
+        assert_eq!(encoded, vec![0xc8, 0x83, 0x63, 0x61, 0x74, 0x83, 0x64, 0x6f, 0x67]);
     }
 
     #[test]
@@ -1034,7 +1032,10 @@ mod tests {
         let inner1 = encode_list(&[empty.clone()]);
         let inner2 = encode_list(&[empty.clone(), inner1.clone()]);
         let outer = encode_list(&[empty.clone(), inner1, inner2]);
-        assert_eq!(outer, vec![0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0]);
+        assert_eq!(
+            outer,
+            vec![0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0]
+        );
     }
 
     // =========================================================================
@@ -1123,10 +1124,17 @@ mod tests {
 
     #[test]
     fn test_nested_list_with_bytes() {
-        let inner_items = vec![encode_bytes(&[0x01, 0x02]), encode_u64(42)];
+        let inner_items = vec![
+            encode_bytes(&[0x01, 0x02]),
+            encode_u64(42),
+        ];
         let inner_list = encode_list(&inner_items);
 
-        let outer_items = vec![encode_bytes(&[0xff]), inner_list, encode_u64(0)];
+        let outer_items = vec![
+            encode_bytes(&[0xff]),
+            inner_list,
+            encode_u64(0),
+        ];
         let outer_list = encode_list(&outer_items);
 
         let (decoded, rest) = decode_list(&outer_list).unwrap();

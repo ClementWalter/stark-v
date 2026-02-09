@@ -21,7 +21,7 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{RlpError, Secp256k1Error, keccak256, recover_address, rlp};
+use crate::crypto::{keccak256, recover_address, rlp, RlpError, Secp256k1Error};
 use crate::types::{Address, Bytes, Hash, U256};
 
 // =============================================================================
@@ -44,7 +44,11 @@ impl AccessListEntry {
     /// Encodes the access list entry as RLP.
     pub fn encode_rlp(&self) -> Vec<u8> {
         let address_encoded = rlp::encode_address(&self.address);
-        let keys_encoded: Vec<Vec<u8>> = self.storage_keys.iter().map(rlp::encode_hash).collect();
+        let keys_encoded: Vec<Vec<u8>> = self
+            .storage_keys
+            .iter()
+            .map(rlp::encode_hash)
+            .collect();
         let keys_list = rlp::encode_list(&keys_encoded);
 
         rlp::encode_list(&[address_encoded, keys_list])

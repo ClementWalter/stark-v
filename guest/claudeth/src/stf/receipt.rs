@@ -26,7 +26,7 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::{vec, vec::Vec};
 
-use crate::crypto::{RlpError, encode_address, encode_bytes, encode_list, encode_u256, keccak256};
+use crate::crypto::{encode_address, encode_bytes, encode_list, encode_u256, keccak256, RlpError};
 use crate::types::{Address, Bytes, Hash, U256};
 
 // =============================================================================
@@ -110,7 +110,9 @@ impl Log {
     pub fn encode_rlp(&self) -> Vec<u8> {
         let address_rlp = encode_address(&self.address);
 
-        let topics_rlp: Vec<Vec<u8>> = self.topics.iter().map(crate::crypto::encode_hash).collect();
+        let topics_rlp: Vec<Vec<u8>> = self.topics.iter()
+            .map(crate::crypto::encode_hash)
+            .collect();
         let topics_list = encode_list(&topics_rlp);
 
         let data_rlp = encode_bytes(self.data.as_ref());
@@ -504,7 +506,9 @@ impl TransactionReceipt {
         let gas_rlp = encode_u256(&self.cumulative_gas_used);
         let bloom_rlp = self.logs_bloom.encode_rlp();
 
-        let logs_rlp: Vec<Vec<u8>> = self.logs.iter().map(|log| log.encode_rlp()).collect();
+        let logs_rlp: Vec<Vec<u8>> = self.logs.iter()
+            .map(|log| log.encode_rlp())
+            .collect();
         let logs_list = encode_list(&logs_rlp);
 
         encode_list(&[status_rlp, gas_rlp, bloom_rlp, logs_list])
@@ -878,14 +882,18 @@ mod tests {
         let mut bloom = Bloom::new();
 
         // Start with empty bloom
-        let initial_ones = bloom.as_bytes().iter().map(|b| b.count_ones()).sum::<u32>();
+        let initial_ones = bloom.as_bytes().iter()
+            .map(|b| b.count_ones())
+            .sum::<u32>();
         assert_eq!(initial_ones, 0);
 
         // Add one item
         bloom.add(b"test");
 
         // Should have at most 3 bits set (might be fewer if bits overlap)
-        let final_ones = bloom.as_bytes().iter().map(|b| b.count_ones()).sum::<u32>();
+        let final_ones = bloom.as_bytes().iter()
+            .map(|b| b.count_ones())
+            .sum::<u32>();
         assert!(final_ones > 0 && final_ones <= 3);
     }
 
@@ -923,7 +931,9 @@ mod tests {
     fn test_receipt_bloom_auto_generated() {
         let address = Address::from([0x42; 20]);
         let topic = Hash::from([0x01; 32]);
-        let logs = vec![Log::new(address, vec![topic], Bytes::new())];
+        let logs = vec![
+            Log::new(address, vec![topic], Bytes::new())
+        ];
 
         let receipt = TransactionReceipt::new(true, U256::from(21000u64), logs);
 
@@ -957,11 +967,13 @@ mod tests {
 
     #[test]
     fn test_receipt_rlp_with_logs() {
-        let logs = vec![Log::new(
-            Address::from([0x42; 20]),
-            vec![Hash::from([0x01; 32])],
-            Bytes::from(vec![0xaa, 0xbb]),
-        )];
+        let logs = vec![
+            Log::new(
+                Address::from([0x42; 20]),
+                vec![Hash::from([0x01; 32])],
+                Bytes::from(vec![0xaa, 0xbb])
+            )
+        ];
 
         let receipt = TransactionReceipt::new(true, U256::from(50000u64), logs);
         let encoded = receipt.encode_rlp();
@@ -987,7 +999,9 @@ mod tests {
 
     #[test]
     fn test_receipts_root_single() {
-        let receipts = vec![TransactionReceipt::new(true, U256::from(21000u64), vec![])];
+        let receipts = vec![
+            TransactionReceipt::new(true, U256::from(21000u64), vec![])
+        ];
 
         let root = calculate_receipts_root(&receipts);
         assert_ne!(root, Hash::ZERO);
@@ -1051,17 +1065,17 @@ mod tests {
             Log::new(
                 Address::from([0x42; 20]),
                 vec![Hash::from([0x01; 32]), Hash::from([0x02; 32])],
-                Bytes::from(vec![0xaa, 0xbb]),
+                Bytes::from(vec![0xaa, 0xbb])
             ),
             Log::new(
                 Address::from([0x43; 20]),
                 vec![Hash::from([0x03; 32])],
-                Bytes::from(vec![0xcc]),
+                Bytes::from(vec![0xcc])
             ),
             Log::new(
                 Address::from([0x44; 20]),
                 vec![],
-                Bytes::from(vec![0xdd, 0xee, 0xff]),
+                Bytes::from(vec![0xdd, 0xee, 0xff])
             ),
         ];
 
@@ -1086,17 +1100,21 @@ mod tests {
 
     #[test]
     fn test_receipt_root_with_complex_receipts() {
-        let logs1 = vec![Log::new(
-            Address::from([0x42; 20]),
-            vec![Hash::from([0x01; 32])],
-            Bytes::new(),
-        )];
+        let logs1 = vec![
+            Log::new(
+                Address::from([0x42; 20]),
+                vec![Hash::from([0x01; 32])],
+                Bytes::new()
+            )
+        ];
 
-        let logs2 = vec![Log::new(
-            Address::from([0x43; 20]),
-            vec![Hash::from([0x02; 32]), Hash::from([0x03; 32])],
-            Bytes::from(vec![0xaa]),
-        )];
+        let logs2 = vec![
+            Log::new(
+                Address::from([0x43; 20]),
+                vec![Hash::from([0x02; 32]), Hash::from([0x03; 32])],
+                Bytes::from(vec![0xaa])
+            )
+        ];
 
         let receipts = vec![
             TransactionReceipt::new(true, U256::from(21000u64), logs1),

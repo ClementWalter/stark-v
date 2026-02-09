@@ -429,7 +429,8 @@ impl FromStr for Bytes {
         let mut bytes = Vec::with_capacity(s.len() / 2);
         for i in (0..s.len()).step_by(2) {
             let byte_str = &s[i..i + 2];
-            let byte = u8::from_str_radix(byte_str, 16).map_err(|_| BytesParseError::InvalidHex)?;
+            let byte = u8::from_str_radix(byte_str, 16)
+                .map_err(|_| BytesParseError::InvalidHex)?;
             bytes.push(byte);
         }
 

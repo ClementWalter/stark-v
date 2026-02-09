@@ -30,9 +30,9 @@ extern crate alloc;
 #[cfg(target_arch = "riscv32")]
 use core::alloc::{GlobalAlloc, Layout};
 #[cfg(target_arch = "riscv32")]
-use core::panic::PanicInfo;
-#[cfg(target_arch = "riscv32")]
 use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(target_arch = "riscv32")]
+use core::panic::PanicInfo;
 
 /// Simple bump allocator for riscv32 target
 #[cfg(target_arch = "riscv32")]
@@ -71,7 +71,12 @@ unsafe impl GlobalAlloc for BumpAllocator {
                 return core::ptr::null_mut();
             }
 
-            match HEAP_OFFSET.compare_exchange(current, next, Ordering::SeqCst, Ordering::Relaxed) {
+            match HEAP_OFFSET.compare_exchange(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => {
                     // SAFETY: aligned is within HEAP bounds as checked above.
                     return unsafe { HEAP.0.as_mut_ptr().add(aligned) };

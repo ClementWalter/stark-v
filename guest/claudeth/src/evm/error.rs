@@ -45,3 +45,12 @@ impl From<MemoryError> for EvmError {
         EvmError::MemoryError(err)
     }
 }
+
+impl From<crate::evm::opcodes::arithmetic::EvmError> for EvmError {
+    fn from(err: crate::evm::opcodes::arithmetic::EvmError) -> Self {
+        match err {
+            crate::evm::opcodes::arithmetic::EvmError::Stack(e) => EvmError::StackError(e),
+            crate::evm::opcodes::arithmetic::EvmError::Memory(e) => EvmError::MemoryError(e),
+        }
+    }
+}

@@ -7,17 +7,17 @@
 extern crate alloc;
 
 #[cfg(not(target_arch = "riscv32"))]
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 #[cfg(not(target_arch = "riscv32"))]
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::collections::{BTreeMap as HashMap, BTreeSet as HashSet};
+use alloc::collections::BTreeMap as HashMap;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
+use crate::state::{Account, Storage, Trie, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
 use crate::crypto::keccak256;
-use crate::state::{Account, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT, Storage, Trie};
 use crate::types::{Address, Hash, U256};
 
 /// EVM execution state interface
@@ -33,9 +33,6 @@ pub trait State {
 
     /// Gets the nonce of an account
     fn get_nonce(&self, address: &Address) -> U256;
-
-    /// Sets the nonce of an account
-    fn set_nonce(&mut self, address: &Address, nonce: U256);
 
     /// Increments the nonce of an account by 1
     fn increment_nonce(&mut self, address: &Address);
@@ -79,27 +76,6 @@ pub trait State {
     /// Clears self-destruct list (called at transaction end)
     fn clear_selfdestructs(&mut self);
 
-    /// Marks an account as created during the current transaction
-    fn mark_created(&mut self, address: &Address);
-
-    /// Returns true if the account was created during the current transaction
-    fn was_created(&self, address: &Address) -> bool;
-
-    /// Clears the list of accounts created during the current transaction
-    fn clear_created_accounts(&mut self);
-
-    /// Clears an account from the state (code, storage, and account data)
-    fn clear_account(&mut self, address: &Address);
-
-    /// Marks an account as touched (accessed) during execution
-    fn touch_account(&mut self, address: &Address);
-
-    /// Deletes empty touched accounts (EIP-161)
-    fn delete_empty_touched_accounts(&mut self);
-
-    /// Clears the list of touched accounts
-    fn clear_touched_accounts(&mut self);
-
     /// Computes the current state root
     fn compute_state_root(&self) -> Hash;
 }
@@ -120,12 +96,6 @@ pub struct InMemoryState {
     transient_storage: HashMap<(Address, U256), U256>,
     /// Self-destructed accounts and their beneficiaries
     selfdestructs: Vec<(Address, Address)>,
-    /// Accounts created during the current transaction (EIP-6780 tracking)
-    created_accounts: Vec<Address>,
-    /// Accounts touched (accessed) during the current transaction (EIP-161)
-    touched_accounts: HashSet<Address>,
-    /// Controls whether mutating operations mark accounts as touched
-    track_touched_accounts: bool,
 }
 
 impl InMemoryState {
@@ -137,9 +107,6 @@ impl InMemoryState {
             storage: HashMap::new(),
             transient_storage: HashMap::new(),
             selfdestructs: Vec::new(),
-            created_accounts: Vec::new(),
-            touched_accounts: HashSet::new(),
-            track_touched_accounts: true,
         }
     }
 
@@ -157,18 +124,10 @@ impl InMemoryState {
     /// Gets a reference to an account, or returns a default empty account
     fn get_account(&self, address: &Address) -> Account {
         #[cfg(not(target_arch = "riscv32"))]
-        return self
-            .accounts
-            .get(address)
-            .cloned()
-            .unwrap_or_else(Account::empty);
+        return self.accounts.get(address).cloned().unwrap_or_else(Account::empty);
 
         #[cfg(target_arch = "riscv32")]
-        return self
-            .accounts
-            .get(address)
-            .cloned()
-            .unwrap_or_else(Account::empty);
+        return self.accounts.get(address).cloned().unwrap_or_else(Account::empty);
     }
 
     /// Gets the storage trie for an account, creating an empty one if needed
@@ -195,24 +154,20 @@ impl InMemoryState {
         self.selfdestructs.clear();
     }
 
-    /// Enables or disables touch tracking for mutating operations
-    pub fn set_touch_tracking(&mut self, enabled: bool) {
-        self.track_touched_accounts = enabled;
-    }
+    /// Sets the nonce of an account directly.
+    ///
+    /// This is intended for initializing state snapshots in guest entry points.
+    pub fn set_nonce(&mut self, address: &Address, nonce: U256) {
+        self.ensure_account(address);
+        #[cfg(not(target_arch = "riscv32"))]
+        if let Some(account) = self.accounts.get_mut(address) {
+            account.nonce = nonce;
+        }
 
-    /// Returns all known account addresses in stable order
-    pub fn account_addresses(&self) -> Vec<Address> {
-        let mut addresses: Vec<Address> = self.accounts.keys().copied().collect();
-        addresses.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
-        addresses
-    }
-
-    /// Computes the storage root for an account
-    pub fn storage_root(&self, address: &Address) -> Hash {
-        self.storage
-            .get(address)
-            .map(Storage::compute_root)
-            .unwrap_or(EMPTY_TRIE_ROOT)
+        #[cfg(target_arch = "riscv32")]
+        if let Some(account) = self.accounts.get_mut(address) {
+            account.nonce = nonce;
+        }
     }
 }
 
@@ -229,7 +184,6 @@ impl State for InMemoryState {
 
     fn set_balance(&mut self, address: &Address, balance: U256) {
         self.ensure_account(address);
-        self.touch_account(address);
         #[cfg(not(target_arch = "riscv32"))]
         if let Some(account) = self.accounts.get_mut(address) {
             account.balance = balance;
@@ -245,23 +199,8 @@ impl State for InMemoryState {
         self.get_account(address).nonce
     }
 
-    fn set_nonce(&mut self, address: &Address, nonce: U256) {
-        self.ensure_account(address);
-        self.touch_account(address);
-        #[cfg(not(target_arch = "riscv32"))]
-        if let Some(account) = self.accounts.get_mut(address) {
-            account.nonce = nonce;
-        }
-
-        #[cfg(target_arch = "riscv32")]
-        if let Some(account) = self.accounts.get_mut(address) {
-            account.nonce = nonce;
-        }
-    }
-
     fn increment_nonce(&mut self, address: &Address) {
         self.ensure_account(address);
-        self.touch_account(address);
         #[cfg(not(target_arch = "riscv32"))]
         if let Some(account) = self.accounts.get_mut(address) {
             account.nonce += U256::from(1u64);
@@ -283,7 +222,6 @@ impl State for InMemoryState {
 
     fn set_code(&mut self, address: &Address, code: Vec<u8>) {
         self.ensure_account(address);
-        self.touch_account(address);
 
         // Compute code hash
         let code_hash = if code.is_empty() {
@@ -317,52 +255,36 @@ impl State for InMemoryState {
 
     fn sload(&self, address: &Address, key: &U256) -> U256 {
         #[cfg(not(target_arch = "riscv32"))]
-        return self
-            .storage
-            .get(address)
-            .map(|s| s.get(key))
-            .unwrap_or(U256::ZERO);
+        return self.storage.get(address).map(|s| s.get(key)).unwrap_or(U256::ZERO);
 
         #[cfg(target_arch = "riscv32")]
-        return self
-            .storage
-            .get(address)
-            .map(|s| s.get(key))
-            .unwrap_or(U256::ZERO);
+        return self.storage.get(address).map(|s| s.get(key)).unwrap_or(U256::ZERO);
     }
 
     fn sstore(&mut self, address: &Address, key: &U256, value: U256) {
         self.ensure_account(address);
-        self.touch_account(address);
 
-        let storage_root = {
+        let (storage_root, storage_empty) = {
             let storage = self.get_storage_mut(address);
             storage.set(key, value);
-            storage.compute_root()
+            (storage.compute_root(), storage.is_empty())
         };
 
         if let Some(account) = self.accounts.get_mut(address) {
             account.storage_root = storage_root;
         }
 
-        // Note: We do NOT remove empty storage from the HashMap because:
-        // 1. The storage trie still needs to be accessible for sload operations
-        // 2. The account.storage_root is the source of truth for the root hash
-        // 3. Removing it would cause sload to return 0 for all keys
+        if storage_empty {
+            self.storage.remove(address);
+        }
     }
 
     fn tload(&self, address: &Address, key: &U256) -> U256 {
         #[cfg(not(target_arch = "riscv32"))]
-        return *self
-            .transient_storage
-            .get(&(*address, *key))
-            .unwrap_or(&U256::ZERO);
+        return *self.transient_storage.get(&(*address, *key)).unwrap_or(&U256::ZERO);
 
         #[cfg(target_arch = "riscv32")]
-        return *self
-            .transient_storage
-            .get(&(*address, *key))
-            .unwrap_or(&U256::ZERO);
+        return *self.transient_storage.get(&(*address, *key)).unwrap_or(&U256::ZERO);
     }
 
     fn tstore(&mut self, address: &Address, key: &U256, value: U256) {
@@ -384,8 +306,6 @@ impl State for InMemoryState {
     }
 
     fn selfdestruct(&mut self, address: &Address, beneficiary: &Address) {
-        self.touch_account(address);
-        self.touch_account(beneficiary);
         self.selfdestructs.push((*address, *beneficiary));
     }
 
@@ -401,67 +321,17 @@ impl State for InMemoryState {
         self.selfdestructs.clear();
     }
 
-    fn mark_created(&mut self, address: &Address) {
-        if !self.created_accounts.contains(address) {
-            self.created_accounts.push(*address);
-        }
-    }
-
-    fn was_created(&self, address: &Address) -> bool {
-        self.created_accounts.contains(address)
-    }
-
-    fn clear_created_accounts(&mut self) {
-        self.created_accounts.clear();
-    }
-
-    fn clear_account(&mut self, address: &Address) {
-        self.accounts.remove(address);
-        self.code.remove(address);
-        self.storage.remove(address);
-    }
-
-    fn touch_account(&mut self, address: &Address) {
-        if self.track_touched_accounts {
-            self.touched_accounts.insert(*address);
-        }
-    }
-
-    fn delete_empty_touched_accounts(&mut self) {
-        // EIP-161: Delete accounts that were touched and are now empty
-        let addresses_to_delete: Vec<Address> = self
-            .touched_accounts
-            .iter()
-            .filter(|addr| self.is_empty(addr))
-            .copied()
-            .collect();
-
-        for address in addresses_to_delete {
-            self.clear_account(&address);
-        }
-    }
-
-    fn clear_touched_accounts(&mut self) {
-        self.touched_accounts.clear();
-    }
-
     fn compute_state_root(&self) -> Hash {
         if self.accounts.is_empty() {
             return EMPTY_TRIE_ROOT;
         }
 
         let mut trie = Trie::new();
-        let mut addresses: Vec<Address> = self.accounts.keys().copied().collect();
-        addresses.sort();
-
-        for address in addresses {
-            let account = self
-                .accounts
-                .get(&address)
-                .cloned()
-                .unwrap_or_else(Account::empty);
-            // Note: account.storage_root is already maintained by sstore()
-            // We do NOT recompute it here to preserve the root even when storage HashMap entry is removed
+        for (address, account) in &self.accounts {
+            let mut account = account.clone();
+            account.storage_root = self.storage.get(address)
+                .map(Storage::compute_root)
+                .unwrap_or(EMPTY_TRIE_ROOT);
 
             if account.is_empty() {
                 continue;
@@ -1097,12 +967,7 @@ mod tests {
 
         let mut storage = Storage::new();
         storage.set(&U256::from(1u64), U256::from(2u64));
-        let account = Account::new(
-            U256::ZERO,
-            U256::ZERO,
-            storage.compute_root(),
-            EMPTY_CODE_HASH,
-        );
+        let account = Account::new(U256::ZERO, U256::ZERO, storage.compute_root(), EMPTY_CODE_HASH);
 
         let mut trie = Trie::new();
         // State trie uses keccak256(address) as key

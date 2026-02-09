@@ -28,14 +28,14 @@ use alloc::vec::Vec;
 
 use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{
-    BlockContext, CallContext, EvmError, LogEntry, TxContext,
-    execute_bytecode_with_host_contexts_and_access_list,
+    execute_bytecode_with_host_contexts_and_access_list, BlockContext, CallContext, LogEntry,
+    TxContext,
 };
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
-    ValidationError, calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas,
-    validate_nonce, validate_signature,
+    calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas, validate_nonce,
+    validate_signature, ValidationError,
 };
 use crate::types::{Address, Hash, Transaction, U256};
 
@@ -78,28 +78,6 @@ impl TransactionExecutionResult {
 }
 
 // =============================================================================
-// Block Hash Context
-// =============================================================================
-
-/// Block hash context for BLOCKHASH lookups
-#[derive(Debug, Clone)]
-pub struct BlockHashContext {
-    /// Parent block hash
-    pub parent_hash: Hash,
-    /// Recent block hashes (up to 256)
-    pub recent_block_hashes: Vec<(u64, Hash)>,
-}
-
-impl BlockHashContext {
-    pub fn new(parent_hash: Hash, recent_block_hashes: Vec<(u64, Hash)>) -> Self {
-        Self {
-            parent_hash,
-            recent_block_hashes,
-        }
-    }
-}
-
-// =============================================================================
 // Executor Error
 // =============================================================================
 
@@ -109,18 +87,12 @@ pub enum ExecutionError {
     /// Transaction validation failed
     ValidationError(ValidationError),
     /// Execution failed (reverted or out of gas)
-    ExecutionFailed(EvmError),
+    ExecutionFailed,
 }
 
 impl From<ValidationError> for ExecutionError {
     fn from(err: ValidationError) -> Self {
         ExecutionError::ValidationError(err)
-    }
-}
-
-impl From<EvmError> for ExecutionError {
-    fn from(err: EvmError) -> Self {
-        ExecutionError::ExecutionFailed(err)
     }
 }
 
@@ -160,14 +132,13 @@ impl From<EvmError> for ExecutionError {
 ///
 /// // Create a simple transaction (would need proper signature in practice)
 /// // let tx = Transaction::Legacy(...);
-/// // let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
-/// // let result = execute_transaction(&tx, &mut state, &block_ctx, &block_hash_ctx, 0, U256::ONE, U256::from_u64(30_000_000));
+/// // let result = execute_transaction(&tx, &mut state, &block_ctx, Hash::ZERO, 0, U256::ONE, U256::from_u64(30_000_000));
 /// ```
 pub fn execute_transaction<S: State + Clone>(
     tx: &Transaction,
     state: &mut S,
     block_ctx: &BlockContext,
-    block_hash_ctx: &BlockHashContext,
+    parent_hash: Hash,
     cumulative_gas_used: u64,
     expected_chain_id: U256,
     block_gas_limit: U256,
@@ -208,14 +179,12 @@ pub fn execute_transaction<S: State + Clone>(
         }
     };
 
-    let max_fee_per_gas = tx.max_fee_per_gas();
+    // Compute total cost = gas_limit * effective_gas_price + value
+    let gas_cost = U256::from_u64(gas_limit).saturating_mul(effective_gas_price);
+    let value = tx.value();
+    let total_cost = gas_cost.saturating_add(value);
 
-    // Compute total cost = gas_limit * max_fee_per_gas + value
-    // For EIP-1559, sender prepays max fee and receives a refund for unused gas
-    // and for any difference between max fee and effective fee.
-    let gas_cost = U256::from_u64(gas_limit).saturating_mul(max_fee_per_gas);
-
-    validate_balance(tx, state.get_balance(&sender), block_ctx.base_fee)?;
+    validate_balance(tx, state.get_balance(&sender), total_cost)?;
 
     let tx_ctx = TxContext {
         origin: sender,
@@ -233,15 +202,13 @@ pub fn execute_transaction<S: State + Clone>(
     // Step 3: Prepare execution state (value transfers must be revertible)
     let gas_available = gas_limit - intrinsic_gas;
 
-    // Clone state for execution (we'll get it back with modifications).
-    // Keep a copy before value transfer for rollback on execution failure.
-    let pre_exec_state = state.clone();
+    // Clone state for execution (we'll get it back with modifications)
     let mut exec_state = state.clone();
     apply_value_transfer(tx, &sender, &mut exec_state);
 
     let exec_ctx = ExecutionContexts {
         block_ctx,
-        block_hash_ctx,
+        parent_hash,
         tx_ctx: &tx_ctx,
     };
 
@@ -254,41 +221,17 @@ pub fn execute_transaction<S: State + Clone>(
         execute_call(tx, exec_state, &sender, &to, exec_ctx, gas_available)
     };
 
-    let (
-        success,
-        gas_used_execution,
-        gas_refund_raw,
-        return_data,
-        logs,
-        contract_address,
-        gas_trace,
-        returned_state,
-    ) = match exec_result {
+    let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, gas_trace, returned_state) = match exec_result {
         Ok(result) => result,
         Err(err) => {
             state.clear_transient_storage();
             state.clear_selfdestructs();
-            state.clear_created_accounts();
-            state.clear_touched_accounts();
             return Err(err);
         }
     };
 
-    // Update state with execution results.
-    // On failure, roll back to pre-execution state (before value transfer);
-    // on success, use the returned state from the EVM.
-    if success {
-        *state = returned_state;
-    } else {
-        *state = pre_exec_state;
-    }
-
-    if success {
-        apply_selfdestructs(state);
-    } else {
-        state.clear_selfdestructs();
-        state.clear_created_accounts();
-    }
+    // Update state with execution results (includes deployed contract code, state changes, etc.)
+    *state = returned_state;
 
     // Step 4: Post-execution gas refund and finalization
     let total_gas_used = intrinsic_gas + gas_used_execution;
@@ -299,30 +242,20 @@ pub fn execute_transaction<S: State + Clone>(
 
     let final_gas_used = total_gas_used - refund;
 
-    // Refund unused gas plus any overpayment vs effective gas price
-    let gas_refund =
-        gas_cost.saturating_sub(U256::from_u64(final_gas_used).saturating_mul(effective_gas_price));
+    // Refund unused gas to sender
+    let gas_refund = U256::from_u64(gas_limit - final_gas_used).saturating_mul(effective_gas_price);
     let sender_balance = state.get_balance(&sender);
     state.set_balance(&sender, sender_balance.saturating_add(gas_refund));
 
-    // Pay coinbase (block producer) the priority fee; base fee is burned (EIP-1559)
-    let tip_per_gas = effective_gas_price.saturating_sub(block_ctx.base_fee);
-    let gas_fee = U256::from_u64(final_gas_used).saturating_mul(tip_per_gas);
+    // Pay coinbase (block producer) the gas fee
+    let gas_fee = U256::from_u64(final_gas_used).saturating_mul(effective_gas_price);
     let coinbase_balance = state.get_balance(&block_ctx.coinbase);
-    state.set_balance(
-        &block_ctx.coinbase,
-        coinbase_balance.saturating_add(gas_fee),
-    );
+    state.set_balance(&block_ctx.coinbase, coinbase_balance.saturating_add(gas_fee));
 
-    // Step 5: Clean up per-transaction state
-
-    // EIP-161: Delete accounts that were touched and are now empty
-    state.delete_empty_touched_accounts();
+    // Step 5: Build result
 
     state.clear_transient_storage();
     state.clear_selfdestructs();
-    state.clear_created_accounts();
-    state.clear_touched_accounts();
 
     Ok(TransactionExecutionResult {
         sender,
@@ -338,58 +271,25 @@ pub fn execute_transaction<S: State + Clone>(
 }
 
 // Type alias for execution result to avoid clippy::type_complexity warning
-type ExecutionResultWithState<S> = (
-    bool,
-    u64,
-    u64,
-    Vec<u8>,
-    Vec<Log>,
-    Option<Address>,
-    Option<crate::evm::GasTrace>,
-    S,
-);
+type ExecutionResultWithState<S> =
+    (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, Option<crate::evm::GasTrace>, S);
 
 struct ExecutionContexts<'a> {
     block_ctx: &'a BlockContext,
-    block_hash_ctx: &'a BlockHashContext,
+    parent_hash: Hash,
     tx_ctx: &'a TxContext,
-}
-
-fn apply_selfdestructs<S: State>(state: &mut S) {
-    let mut processed = Vec::new();
-    let selfdestructs = state.get_selfdestructs().to_vec();
-    for (address, beneficiary) in selfdestructs {
-        if processed.contains(&address) {
-            continue;
-        }
-        processed.push(address);
-
-        let balance = state.get_balance(&address);
-        if balance != U256::ZERO {
-            state.set_balance(&address, U256::ZERO);
-            let beneficiary_balance = state.get_balance(&beneficiary);
-            state.set_balance(&beneficiary, beneficiary_balance.saturating_add(balance));
-        }
-
-        if state.was_created(&address) {
-            state.clear_account(&address);
-        }
-    }
-
-    state.clear_selfdestructs();
-    state.clear_created_accounts();
 }
 
 fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mut S) {
     let value = tx.value();
+    if value == U256::ZERO {
+        return;
+    }
+
+    let sender_balance = state.get_balance(sender);
+    state.set_balance(sender, sender_balance.saturating_sub(value));
+
     if let Some(to) = tx.to() {
-        if value == U256::ZERO {
-            return;
-        }
-
-        let sender_balance = state.get_balance(sender);
-        state.set_balance(sender, sender_balance.saturating_sub(value));
-
         let recipient_balance = state.get_balance(&to);
         state.set_balance(&to, recipient_balance.saturating_add(value));
     } else {
@@ -397,38 +297,9 @@ fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mu
         // Contract address uses the sender's pre-increment nonce.
         let nonce = state.get_nonce(sender).saturating_sub(U256::ONE);
         let contract_address = compute_create_address(sender, nonce);
-
-        if value != U256::ZERO {
-            let sender_balance = state.get_balance(sender);
-            state.set_balance(sender, sender_balance.saturating_sub(value));
-            let contract_balance = state.get_balance(&contract_address);
-            state.set_balance(&contract_address, contract_balance.saturating_add(value));
-        }
-
-        // EIP-161: Set nonce to 1 for newly created contracts
-        state.set_nonce(&contract_address, U256::ONE);
-        state.mark_created(&contract_address);
+        let contract_balance = state.get_balance(&contract_address);
+        state.set_balance(&contract_address, contract_balance.saturating_add(value));
     }
-}
-
-/// Extract access list from transaction (EIP-2930/EIP-1559)
-fn extract_access_list(tx: &Transaction) -> Vec<(Address, Vec<U256>)> {
-    let entries = match tx {
-        Transaction::Eip2930(tx) => &tx.access_list,
-        Transaction::Eip1559(tx) => &tx.access_list,
-        _ => return Vec::new(),
-    };
-    entries
-        .iter()
-        .map(|entry| {
-            let keys = entry
-                .storage_keys
-                .iter()
-                .map(|h| U256::from_be_bytes(*h.as_bytes()))
-                .collect();
-            (entry.address, keys)
-        })
-        .collect()
 }
 
 /// Executes a contract call transaction
@@ -448,9 +319,6 @@ fn execute_call<S: State + Clone>(
         return Ok((true, 0, 0, Vec::new(), Vec::new(), None, None, state));
     }
 
-    // Keep pre-execution state for rollback on failure
-    let pre_exec_state = state.clone();
-
     // Execute bytecode with recursive host for contract calls
     let call_ctx = CallContext {
         address: *_to,
@@ -460,11 +328,37 @@ fn execute_call<S: State + Clone>(
     };
     let host = RecursiveHost::new()
         .with_block_context(contexts.block_ctx.clone())
-        .with_parent_hash(contexts.block_hash_ctx.parent_hash)
-        .with_recent_block_hashes(contexts.block_hash_ctx.recent_block_hashes.clone())
+        .with_parent_hash(contexts.parent_hash)
         .with_tx_context(contexts.tx_ctx.clone());
 
-    let access_list = extract_access_list(_tx);
+    // Extract access list (EIP-2930) for warm/cold tracking
+    let access_list: Vec<(Address, Vec<U256>)> = match _tx {
+        Transaction::Eip2930(tx) => tx
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        Transaction::Eip1559(tx) => tx
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
 
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &code,
@@ -488,21 +382,7 @@ fn execute_call<S: State + Clone>(
             exec_result.gas_trace,
             returned_state,
         )),
-        Err(_) => {
-            // EVM execution failed (OOG, InvalidJump, etc.)
-            // Per the Ethereum spec, exceptional halts consume all gas
-            // and roll back state, but the transaction is still included.
-            Ok((
-                false,
-                gas_available,
-                0,
-                Vec::new(),
-                Vec::new(),
-                None,
-                None,
-                pre_exec_state,
-            ))
-        }
+        Err(_) => Err(ExecutionError::ExecutionFailed),
     }
 }
 
@@ -518,9 +398,6 @@ fn execute_create<S: State + Clone>(
     let nonce = state.get_nonce(sender);
     let contract_address = compute_create_address(sender, nonce.saturating_sub(U256::ONE));
 
-    // Keep pre-execution state for rollback on failure
-    let pre_exec_state = state.clone();
-
     // Execute init code
     let init_code = tx.data().to_vec();
 
@@ -533,11 +410,37 @@ fn execute_create<S: State + Clone>(
     };
     let host = RecursiveHost::new()
         .with_block_context(contexts.block_ctx.clone())
-        .with_parent_hash(contexts.block_hash_ctx.parent_hash)
-        .with_recent_block_hashes(contexts.block_hash_ctx.recent_block_hashes.clone())
+        .with_parent_hash(contexts.parent_hash)
         .with_tx_context(contexts.tx_ctx.clone());
 
-    let access_list = extract_access_list(tx);
+    // Extract access list (EIP-2930) for warm/cold tracking
+    let access_list: Vec<(Address, Vec<U256>)> = match tx {
+        Transaction::Eip2930(tx_data) => tx_data
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        Transaction::Eip1559(tx_data) => tx_data
+            .access_list
+            .iter()
+            .map(|entry| {
+                let keys = entry
+                    .storage_keys
+                    .iter()
+                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                    .collect();
+                (entry.address, keys)
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
 
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &init_code,
@@ -584,21 +487,7 @@ fn execute_create<S: State + Clone>(
                 returned_state,
             ))
         }
-        Err(_) => {
-            // EVM execution failed (OOG, InvalidJump, etc.)
-            // Per the Ethereum spec, exceptional halts consume all gas
-            // and roll back state, but the transaction is still included.
-            Ok((
-                false,
-                gas_available,
-                0,
-                Vec::new(),
-                Vec::new(),
-                Some(contract_address),
-                None,
-                pre_exec_state,
-            ))
-        }
+        Err(_) => Err(ExecutionError::ExecutionFailed),
     }
 }
 
@@ -634,61 +523,8 @@ fn convert_logs(logs: Vec<LogEntry>) -> Vec<Log> {
 mod tests {
     use super::*;
     use crate::state::InMemoryState;
-    use crate::types::Bytes;
     use crate::types::transaction::{Eip1559Transaction, LegacyTransaction};
-    use k256::ecdsa::SigningKey;
-
-    fn test_signing_key(seed: u8) -> SigningKey {
-        let mut key_bytes = [0u8; 32];
-        key_bytes[31] = seed;
-        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
-    }
-
-    fn create_signed_eip1559_tx() -> (Eip1559Transaction, Address) {
-        let signing_key = test_signing_key(2);
-        let verifying_key = signing_key.verifying_key();
-
-        let mut tx = Eip1559Transaction {
-            chain_id: U256::from(1u64),
-            nonce: U256::from(0u64),
-            max_priority_fee_per_gas: U256::from(10u64),
-            max_fee_per_gas: U256::from(100u64),
-            gas_limit: U256::from(21_000u64),
-            to: Some(Address::from([0x42; 20])),
-            value: U256::ZERO,
-            data: Bytes::new(),
-            access_list: vec![],
-            v: U256::ZERO,
-            r: U256::ZERO,
-            s: U256::ZERO,
-        };
-
-        let signing_hash = tx.signing_hash();
-        let (signature, recovery_id) = signing_key
-            .sign_prehash_recoverable(signing_hash.as_bytes())
-            .expect("Failed to sign");
-
-        let sig_bytes = signature.to_bytes();
-        let mut r_bytes = [0u8; 32];
-        r_bytes.copy_from_slice(&sig_bytes[..32]);
-        tx.r = U256::from_be_bytes(r_bytes);
-
-        let mut s_bytes = [0u8; 32];
-        s_bytes.copy_from_slice(&sig_bytes[32..]);
-        tx.s = U256::from_be_bytes(s_bytes);
-
-        tx.v = U256::from(recovery_id.to_byte() as u64);
-
-        use crate::crypto::keccak256;
-        let pk_encoded = verifying_key.to_encoded_point(false);
-        let pk_bytes = pk_encoded.as_bytes();
-        let pk_hash = keccak256(&pk_bytes[1..]);
-        let mut address_bytes = [0u8; 20];
-        address_bytes.copy_from_slice(&pk_hash.as_bytes()[12..]);
-        let address = Address::from(address_bytes);
-
-        (tx, address)
-    }
+    use crate::types::Bytes;
 
     #[test]
     fn test_compute_create_address() {
@@ -713,52 +549,9 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_selfdestruct_non_created_preserves_code_and_storage() {
-        let mut state = InMemoryState::new();
-        let address = Address::from([0x11; 20]);
-        let beneficiary = Address::from([0x22; 20]);
-
-        state.set_balance(&address, U256::from(10u64));
-        state.set_code(&address, vec![0x01, 0x02]);
-        state.sstore(&address, &U256::from(1u64), U256::from(2u64));
-        state.selfdestruct(&address, &beneficiary);
-
-        apply_selfdestructs(&mut state);
-
-        assert_eq!(state.get_balance(&address), U256::ZERO);
-        assert_eq!(state.get_balance(&beneficiary), U256::from(10u64));
-        assert!(!state.get_code(&address).is_empty());
-        assert_eq!(state.sload(&address, &U256::from(1u64)), U256::from(2u64));
-        assert!(state.account_exists(&address));
-    }
-
-    #[test]
-    fn test_apply_selfdestruct_created_clears_account() {
-        let mut state = InMemoryState::new();
-        let address = Address::from([0x33; 20]);
-        let beneficiary = Address::from([0x44; 20]);
-
-        state.set_balance(&address, U256::from(7u64));
-        state.set_code(&address, vec![0x99]);
-        state.sstore(&address, &U256::from(9u64), U256::from(10u64));
-        state.mark_created(&address);
-        state.selfdestruct(&address, &beneficiary);
-
-        apply_selfdestructs(&mut state);
-
-        assert_eq!(state.get_balance(&address), U256::ZERO);
-        assert_eq!(state.get_balance(&beneficiary), U256::from(7u64));
-        assert!(state.get_code(&address).is_empty());
-        assert_eq!(state.sload(&address, &U256::from(9u64)), U256::ZERO);
-        assert!(!state.account_exists(&address));
-        assert!(!state.was_created(&address));
-    }
-
-    #[test]
     fn test_execute_transaction_value_transfer() {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         // Setup: sender with 1 ETH
         let sender = Address::from([0x01; 20]);
@@ -783,7 +576,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            &block_hash_ctx,
+            Hash::ZERO,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -797,7 +590,6 @@ mod tests {
     fn test_execute_transaction_insufficient_gas_limit() {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000_000));
@@ -819,7 +611,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            &block_hash_ctx,
+            Hash::ZERO,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -836,7 +628,6 @@ mod tests {
             base_fee: U256::from_u64(50),
             ..BlockContext::default()
         };
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000_000_000_000_000));
@@ -862,7 +653,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
-            &block_hash_ctx,
+            Hash::ZERO,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -870,47 +661,6 @@ mod tests {
 
         // Will fail on signature, but tests the effective_gas_price logic exists
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_execute_transaction_eip1559_coinbase_tip_only() {
-        let mut state = InMemoryState::new();
-        let coinbase = Address::from([0x99; 20]);
-        let block_ctx = BlockContext {
-            base_fee: U256::from_u64(50),
-            coinbase,
-            ..BlockContext::default()
-        };
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
-
-        let (tx, sender) = create_signed_eip1559_tx();
-        let tx = Transaction::Eip1559(tx);
-
-        state.set_balance(&sender, U256::from_u64(1_000_000_000));
-
-        let result = execute_transaction(
-            &tx,
-            &mut state,
-            &block_ctx,
-            &block_hash_ctx,
-            0,
-            U256::ONE,
-            U256::from_u64(30_000_000),
-        )
-        .expect("transaction should execute");
-
-        assert_eq!(result.gas_used, 21_000);
-
-        // Effective price = base_fee + priority_fee = 50 + 10 = 60
-        // Coinbase should receive only the tip (60 - 50 = 10) per gas.
-        let expected_tip = U256::from_u64(10).saturating_mul(U256::from_u64(21_000));
-        assert_eq!(state.get_balance(&coinbase), expected_tip);
-
-        // Sender prepays max_fee_per_gas and receives a refund for the difference
-        // between max fee and effective fee.
-        let expected_cost = U256::from_u64(21_000).saturating_mul(U256::from_u64(60));
-        let expected_sender_balance = U256::from_u64(1_000_000_000).saturating_sub(expected_cost);
-        assert_eq!(state.get_balance(&sender), expected_sender_balance);
     }
 
     #[test]
@@ -931,10 +681,9 @@ mod tests {
         let state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
@@ -954,19 +703,12 @@ mod tests {
         });
 
         // Execute call directly (bypassing signature validation)
-        let result = execute_call(&tx, state, &sender, &recipient, contexts, 21000);
+        let result =
+            execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
-        let (
-            success,
-            gas_used,
-            _gas_refund,
-            return_data,
-            logs,
-            contract_address,
-            _gas_trace,
-            _state,
-        ) = result.unwrap();
+        let (success, gas_used, _gas_refund, return_data, logs, contract_address, _gas_trace, _state) =
+            result.unwrap();
 
         assert!(success);
         assert_eq!(gas_used, 0); // No code execution
@@ -980,10 +722,9 @@ mod tests {
         let state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
@@ -1002,7 +743,8 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_call(&tx, state, &sender, &recipient, contexts, 21000);
+        let result =
+            execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
     }
@@ -1012,10 +754,9 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
@@ -1040,7 +781,8 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_call(&tx, state, &sender, &contract, contexts, 100000);
+        let result =
+            execute_call(&tx, state, &sender, &contract, contexts, 100000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, return_data, logs, _, _gas_trace, _state) =
@@ -1057,10 +799,9 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
@@ -1087,16 +828,8 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (
-            success,
-            gas_used,
-            _gas_refund,
-            _return_data,
-            logs,
-            contract_address,
-            _gas_trace,
-            _state,
-        ) = result.unwrap();
+        let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _gas_trace, _state) =
+            result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0);
@@ -1113,10 +846,9 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
@@ -1141,8 +873,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, _state) =
-            result.unwrap();
+        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, _state) = result.unwrap();
 
         assert!(success);
         assert!(logs.is_empty());
@@ -1216,11 +947,11 @@ mod tests {
         let code = vec![
             0x60, 0x42, // PUSH1 0x42 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55, // SSTORE (set storage[1] = 0x42)
+            0x55,       // SSTORE (set storage[1] = 0x42)
             0x60, 0x00, // PUSH1 0x00 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55, // SSTORE (set storage[1] = 0, should refund 4800 gas)
-            0x00, // STOP
+            0x55,       // SSTORE (set storage[1] = 0, should refund 4800 gas)
+            0x00,       // STOP
         ];
 
         let mut state = InMemoryState::new();
@@ -1228,41 +959,32 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
-        let (
-            success,
-            _gas_used,
-            gas_refund,
-            _return_data,
-            _logs,
-            _contract_address,
-            _gas_trace,
-            _state,
-        ) = execute_call(
-            &Transaction::Legacy(LegacyTransaction {
-                nonce: U256::ZERO,
-                gas_price: U256::from_u64(1),
-                gas_limit: U256::from_u64(100000),
-                to: Some(to_addr),
-                value: U256::ZERO,
-                data: Bytes::new(),
-                v: U256::ZERO,
-                r: U256::ZERO,
-                s: U256::ZERO,
-            }),
-            state,
-            &Address::from([0x11; 20]),
-            &to_addr,
-            contexts,
-            100000,
-        )
-        .unwrap();
+        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
+            execute_call(
+                &Transaction::Legacy(LegacyTransaction {
+                    nonce: U256::ZERO,
+                    gas_price: U256::from_u64(1),
+                    gas_limit: U256::from_u64(100000),
+                    to: Some(to_addr),
+                    value: U256::ZERO,
+                    data: Bytes::new(),
+                    v: U256::ZERO,
+                    r: U256::ZERO,
+                    s: U256::ZERO,
+                }),
+                state,
+                &Address::from([0x11; 20]),
+                &to_addr,
+                contexts,
+                100000,
+            )
+            .unwrap();
 
         assert!(success);
         assert_eq!(gas_refund, 4800); // EIP-3529 refund for clearing storage
@@ -1275,8 +997,8 @@ mod tests {
         let code = vec![
             0x60, 0x42, // PUSH1 0x42 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55, // SSTORE (set storage[1] = 0x42)
-            0x00, // STOP
+            0x55,       // SSTORE (set storage[1] = 0x42)
+            0x00,       // STOP
         ];
 
         let mut state = InMemoryState::new();
@@ -1284,41 +1006,32 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
-        let (
-            success,
-            _gas_used,
-            gas_refund,
-            _return_data,
-            _logs,
-            _contract_address,
-            _gas_trace,
-            _state,
-        ) = execute_call(
-            &Transaction::Legacy(LegacyTransaction {
-                nonce: U256::ZERO,
-                gas_price: U256::from_u64(1),
-                gas_limit: U256::from_u64(100000),
-                to: Some(to_addr),
-                value: U256::ZERO,
-                data: Bytes::new(),
-                v: U256::ZERO,
-                r: U256::ZERO,
-                s: U256::ZERO,
-            }),
-            state,
-            &Address::from([0x11; 20]),
-            &to_addr,
-            contexts,
-            100000,
-        )
-        .unwrap();
+        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
+            execute_call(
+                &Transaction::Legacy(LegacyTransaction {
+                    nonce: U256::ZERO,
+                    gas_price: U256::from_u64(1),
+                    gas_limit: U256::from_u64(100000),
+                    to: Some(to_addr),
+                    value: U256::ZERO,
+                    data: Bytes::new(),
+                    v: U256::ZERO,
+                    r: U256::ZERO,
+                    s: U256::ZERO,
+                }),
+                state,
+                &Address::from([0x11; 20]),
+                &to_addr,
+                contexts,
+                100000,
+            )
+            .unwrap();
 
         assert!(success);
         assert_eq!(gas_refund, 0); // No refund for setting storage
@@ -1333,7 +1046,7 @@ mod tests {
             0x60, 0x00, 0x60, 0x01, 0x55, // Clear slot 1 (+4800 refund)
             0x60, 0x42, 0x60, 0x02, 0x55, // Set slot 2 = 0x42
             0x60, 0x00, 0x60, 0x02, 0x55, // Clear slot 2 (+4800 refund)
-            0x00, // STOP
+            0x00,                         // STOP
         ];
 
         let mut state = InMemoryState::new();
@@ -1341,41 +1054,32 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
-        let block_hash_ctx = BlockHashContext::new(Hash::ZERO, Vec::new());
         let contexts = ExecutionContexts {
             block_ctx: &block_ctx,
-            block_hash_ctx: &block_hash_ctx,
+            parent_hash: Hash::ZERO,
             tx_ctx: &tx_ctx,
         };
 
-        let (
-            success,
-            gas_used,
-            gas_refund,
-            _return_data,
-            _logs,
-            _contract_address,
-            _gas_trace,
-            _state,
-        ) = execute_call(
-            &Transaction::Legacy(LegacyTransaction {
-                nonce: U256::ZERO,
-                gas_price: U256::from_u64(1),
-                gas_limit: U256::from_u64(100000),
-                to: Some(to_addr),
-                value: U256::ZERO,
-                data: Bytes::new(),
-                v: U256::ZERO,
-                r: U256::ZERO,
-                s: U256::ZERO,
-            }),
-            state,
-            &Address::from([0x11; 20]),
-            &to_addr,
-            contexts,
-            100000,
-        )
-        .unwrap();
+        let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
+            execute_call(
+                &Transaction::Legacy(LegacyTransaction {
+                    nonce: U256::ZERO,
+                    gas_price: U256::from_u64(1),
+                    gas_limit: U256::from_u64(100000),
+                    to: Some(to_addr),
+                    value: U256::ZERO,
+                    data: Bytes::new(),
+                    v: U256::ZERO,
+                    r: U256::ZERO,
+                    s: U256::ZERO,
+                }),
+                state,
+                &Address::from([0x11; 20]),
+                &to_addr,
+                contexts,
+                100000,
+            )
+            .unwrap();
 
         assert!(success);
         assert_eq!(gas_refund, 9600); // Raw refund = 2 * 4800

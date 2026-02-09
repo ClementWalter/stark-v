@@ -47,13 +47,19 @@ pub enum Node {
     ///
     /// The key_suffix is the remaining nibbles from the path that led to this leaf.
     /// The value is the RLP-encoded data stored at this key.
-    Leaf { key_suffix: Vec<u8>, value: Vec<u8> },
+    Leaf {
+        key_suffix: Vec<u8>,
+        value: Vec<u8>,
+    },
 
     /// Extension node: compresses a common path prefix
     ///
     /// The prefix is the shared nibbles between multiple keys.
     /// The child_hash is the hash of the next node in the path.
-    Extension { prefix: Vec<u8>, child_hash: Hash },
+    Extension {
+        prefix: Vec<u8>,
+        child_hash: Hash,
+    },
 
     /// Branch node: represents a branching point with up to 16 children
     ///
@@ -117,7 +123,10 @@ impl Node {
         match self {
             Node::Leaf { key_suffix, value } => {
                 let compact_path = encode_compact_path(key_suffix, true);
-                let items = vec![rlp::encode_bytes(&compact_path), rlp::encode_bytes(value)];
+                let items = vec![
+                    rlp::encode_bytes(&compact_path),
+                    rlp::encode_bytes(value),
+                ];
                 rlp::encode_list(&items)
             }
             Node::Extension { prefix, child_hash } => {
@@ -154,14 +163,15 @@ impl Node {
 
     /// Decodes a node from RLP
     pub fn decode_rlp(data: &[u8]) -> Result<Self, NodeError> {
-        let (items, _rest) = rlp::decode_list(data).map_err(|_| NodeError::InvalidRlp)?;
+        let (items, _rest) = rlp::decode_list(data)
+            .map_err(|_| NodeError::InvalidRlp)?;
 
         if items.len() == 2 {
             // Either Leaf or Extension
-            let (compact_path, _) =
-                rlp::decode_bytes(&items[0]).map_err(|_| NodeError::InvalidRlp)?;
-            let (second_item, _) =
-                rlp::decode_bytes(&items[1]).map_err(|_| NodeError::InvalidRlp)?;
+            let (compact_path, _) = rlp::decode_bytes(&items[0])
+                .map_err(|_| NodeError::InvalidRlp)?;
+            let (second_item, _) = rlp::decode_bytes(&items[1])
+                .map_err(|_| NodeError::InvalidRlp)?;
 
             let (nibbles, is_leaf) = decode_compact_path(&compact_path)?;
 
@@ -187,7 +197,8 @@ impl Node {
             let mut children = Box::new([None; 16]);
 
             for (i, item) in items.iter().take(16).enumerate() {
-                let (bytes, _) = rlp::decode_bytes(item).map_err(|_| NodeError::InvalidRlp)?;
+                let (bytes, _) = rlp::decode_bytes(item)
+                    .map_err(|_| NodeError::InvalidRlp)?;
 
                 if !bytes.is_empty() {
                     if bytes.len() != 32 {
@@ -200,8 +211,8 @@ impl Node {
             }
 
             // Decode value (17th element)
-            let (value_bytes, _) =
-                rlp::decode_bytes(&items[16]).map_err(|_| NodeError::InvalidRlp)?;
+            let (value_bytes, _) = rlp::decode_bytes(&items[16])
+                .map_err(|_| NodeError::InvalidRlp)?;
 
             let value = if value_bytes.is_empty() {
                 None
@@ -478,10 +489,7 @@ mod tests {
 
     #[test]
     fn test_bytes_to_nibbles_multiple() {
-        assert_eq!(
-            bytes_to_nibbles(&[0x12, 0x34, 0x56]),
-            vec![1, 2, 3, 4, 5, 6]
-        );
+        assert_eq!(bytes_to_nibbles(&[0x12, 0x34, 0x56]), vec![1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
@@ -762,10 +770,7 @@ mod tests {
     #[test]
     fn test_rlp_roundtrip_branch() {
         let mut branch = Node::new_branch();
-        if let Node::Branch {
-            ref mut children, ..
-        } = branch
-        {
+        if let Node::Branch { ref mut children, .. } = branch {
             children[0] = Some(Hash::from([0x42; 32]));
             children[15] = Some(Hash::from([0xFF; 32]));
         }
@@ -877,10 +882,7 @@ mod tests {
     #[test]
     fn test_branch_all_children() {
         let mut branch = Node::new_branch();
-        if let Node::Branch {
-            ref mut children, ..
-        } = branch
-        {
+        if let Node::Branch { ref mut children, .. } = branch {
             for (i, child) in children.iter_mut().enumerate() {
                 let mut hash_bytes = [0u8; 32];
                 hash_bytes[0] = i as u8;
@@ -896,10 +898,7 @@ mod tests {
     #[test]
     fn test_branch_with_value_and_children() {
         let mut branch = Node::new_branch_with_value(vec![0x42]);
-        if let Node::Branch {
-            ref mut children, ..
-        } = branch
-        {
+        if let Node::Branch { ref mut children, .. } = branch {
             children[0] = Some(Hash::from([0x01; 32]));
             children[5] = Some(Hash::from([0x05; 32]));
             children[15] = Some(Hash::from([0x0F; 32]));

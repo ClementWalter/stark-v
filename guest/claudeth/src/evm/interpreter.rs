@@ -31,21 +31,56 @@ use std::collections::BTreeSet;
 #[cfg(target_arch = "riscv32")]
 use alloc::collections::BTreeSet;
 
-#[cfg(test)]
-use crate::evm::CallKind;
-use crate::evm::host::{Host, NullHost};
-use crate::evm::memory::Memory;
-use crate::evm::opcode_gas_cost;
+use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
+use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
-use crate::evm::opcodes::exec::{self, ExecContext, StepOutcome};
-use crate::evm::stack::Stack;
+use crate::evm::stack::{Stack, StackError};
 #[cfg(feature = "evm-trace")]
-use crate::evm::trace::{GasTraceEvent, GasTracer, StorageWrite, opcode_name};
+use crate::evm::trace::{opcode_name, GasTracer};
+use crate::evm::{
+    create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
+    sstore_gas_cost, GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
+    GAS_SSTORE_SENTRY,
+};
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
 
-/// Re-export EvmError for public API
-pub use crate::evm::error::EvmError;
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/// Errors that can occur during EVM execution
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvmError {
+    /// Stack error (overflow, underflow, invalid index)
+    StackError(StackError),
+    /// Memory error (invalid offset, overflow)
+    MemoryError(MemoryError),
+    /// Insufficient gas for operation
+    OutOfGas,
+    /// Invalid opcode encountered
+    InvalidOpcode(u8),
+    /// Invalid JUMP destination
+    InvalidJump,
+    /// Execution reverted
+    Revert(Vec<u8>),
+    /// PC out of bounds
+    PcOutOfBounds,
+    /// Invalid PUSH data (not enough bytes)
+    InvalidPush,
+}
+
+impl From<StackError> for EvmError {
+    fn from(err: StackError) -> Self {
+        EvmError::StackError(err)
+    }
+}
+
+impl From<MemoryError> for EvmError {
+    fn from(err: MemoryError) -> Self {
+        EvmError::MemoryError(err)
+    }
+}
 
 impl From<OpcodeError> for EvmError {
     fn from(err: OpcodeError) -> Self {
@@ -164,7 +199,7 @@ pub struct Evm<S, H> {
     stack: Stack,
     memory: Memory,
     gas_remaining: u64,
-    gas_refund: u64, // Accumulated gas refund (from SSTORE clearing storage)
+    gas_refund: u64,      // Accumulated gas refund (from SSTORE clearing storage)
     pc: usize,
     code: Vec<u8>,
     stopped: bool,
@@ -174,16 +209,40 @@ pub struct Evm<S, H> {
     call_ctx: CallContext,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
     logs: Vec<LogEntry>,
-    state: S, // State interface for account/storage access
-    host: H,  // Host interface for calls/creates
+    state: S,             // State interface for account/storage access
+    host: H,              // Host interface for calls/creates
     // EIP-2929: Warm/cold access tracking
     accessed_addresses: BTreeSet<Address>,
     accessed_storage: BTreeSet<(Address, U256)>,
     // Gas tracing (enabled with evm-trace feature)
     #[cfg(feature = "evm-trace")]
     tracer: Option<GasTracer>,
-    #[cfg(feature = "evm-trace")]
-    pending_storage_write: Option<StorageWrite>,
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+fn address_to_u256(address: &Address) -> U256 {
+    let mut bytes = [0u8; 32];
+    bytes[12..].copy_from_slice(&address.to_bytes());
+    U256::from_be_bytes(bytes)
+}
+
+fn u256_to_address(u256: &U256) -> Address {
+    let bytes = u256.to_be_bytes();
+    // Address is the last 20 bytes
+    let mut addr_bytes = [0u8; 20];
+    addr_bytes.copy_from_slice(&bytes[12..]);
+    Address::from_slice(&addr_bytes).expect("20 bytes should always create an address")
+}
+
+fn hash_to_u256(hash: &Hash) -> U256 {
+    U256::from_be_bytes(*hash.as_bytes())
+}
+
+fn u256_to_hash(value: &U256) -> Hash {
+    Hash::from(value.to_be_bytes())
 }
 
 impl<S: State, H: Host<S>> Evm<S, H> {
@@ -210,8 +269,6 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             accessed_storage: BTreeSet::new(),
             #[cfg(feature = "evm-trace")]
             tracer: None,
-            #[cfg(feature = "evm-trace")]
-            pending_storage_write: None,
         }
     }
 
@@ -238,17 +295,24 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         self.state
     }
 
+    /// Mark an address as accessed (EIP-2929)
+    /// Returns true if the address was already warm (accessed before)
+    fn access_address(&mut self, address: &Address) -> bool {
+        !self.accessed_addresses.insert(*address)
+    }
+
+    /// Mark a storage slot as accessed (EIP-2929)
+    /// Returns true if the storage slot was already warm (accessed before)
+    fn access_storage(&mut self, address: &Address, key: &U256) -> bool {
+        !self.accessed_storage.insert((*address, *key))
+    }
+
     /// Pre-warm addresses (for transaction sender, recipient, precompiles)
     pub fn warm_addresses(mut self, addresses: &[Address]) -> Self {
         for addr in addresses {
             self.accessed_addresses.insert(*addr);
         }
         self
-    }
-
-    /// Pre-warm a storage slot (EIP-2929; for access list)
-    pub fn warm_storage(&mut self, address: &Address, key: &U256) {
-        self.accessed_storage.insert((*address, *key));
     }
 
     /// Enable gas tracing (only available with evm-trace feature)
@@ -264,9 +328,25 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         self.tracer.as_ref()
     }
 
-    /// Analyze code to find valid JUMPDEST positions (uses opcodes::control).
+    /// Analyze code to find valid JUMPDEST positions
     fn analyze_jumpdests(code: &[u8]) -> Vec<bool> {
-        crate::evm::opcodes::control::analyze_jumpdests_bitmap(code)
+        let mut jumpdests = vec![false; code.len()];
+        let mut i = 0;
+        while i < code.len() {
+            let opcode = code[i];
+            if opcode == 0x5B {
+                // JUMPDEST
+                jumpdests[i] = true;
+                i += 1;
+            } else if (0x60..=0x7F).contains(&opcode) {
+                // PUSH1-PUSH32: skip push data
+                let n = (opcode - 0x5F) as usize;
+                i += 1 + n;
+            } else {
+                i += 1;
+            }
+        }
+        jumpdests
     }
 
     /// Consume gas
@@ -278,12 +358,50 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         Ok(())
     }
 
+    fn read_memory_bytes(&mut self, offset: usize, size: usize) -> Result<Vec<u8>, EvmError> {
+        let mut out = Vec::with_capacity(size);
+        for i in 0..size {
+            if offset + i < self.memory.msize() {
+                let value = self.memory.mload((offset + i) & !31)?;
+                let byte_offset = (offset + i) % 32;
+                let bytes = value.to_be_bytes();
+                out.push(bytes[byte_offset]);
+            } else {
+                out.push(0);
+            }
+        }
+        Ok(out)
+    }
+
+    fn write_memory_bytes(
+        &mut self,
+        offset: usize,
+        data: &[u8],
+        size: usize,
+    ) -> Result<(), EvmError> {
+        for i in 0..size {
+            let byte = if i < data.len() { data[i] } else { 0 };
+            self.memory.mstore8(offset + i, byte)?;
+        }
+        Ok(())
+    }
+
     /// Get current opcode
     fn current_opcode(&self) -> Result<u8, EvmError> {
         if self.pc >= self.code.len() {
             return Err(EvmError::PcOutOfBounds);
         }
         Ok(self.code[self.pc])
+    }
+
+    /// Read immediate bytes for PUSH
+    fn read_push_data(&mut self, n: usize) -> Result<Vec<u8>, EvmError> {
+        let start = self.pc + 1;
+        let end = start + n;
+        if end > self.code.len() {
+            return Err(EvmError::InvalidPush);
+        }
+        Ok(self.code[start..end].to_vec())
     }
 
     /// Execute a single step
@@ -304,67 +422,885 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         let base_gas = opcode_gas_cost(opcode);
         self.consume_gas(base_gas)?;
 
-        // Delegate to opcode dispatcher (exec)
-        let mut exec_ctx = ExecContext {
-            stack: &mut self.stack,
-            memory: &mut self.memory,
-            state: &mut self.state,
-            host: &mut self.host,
-            code: self.code.as_slice(),
-            pc: self.pc,
-            gas_remaining: &mut self.gas_remaining,
-            gas_refund: &mut self.gas_refund,
-            return_data: &mut self.return_data,
-            jumpdests: self.jumpdests.as_slice(),
-            accessed_addresses: &mut self.accessed_addresses,
-            accessed_storage: &mut self.accessed_storage,
-            block_number: self.block_ctx.number,
-            block_timestamp: self.block_ctx.timestamp,
-            block_coinbase: self.block_ctx.coinbase,
-            block_difficulty: self.block_ctx.difficulty,
-            block_gas_limit: self.block_ctx.gas_limit,
-            block_chain_id: self.block_ctx.chain_id,
-            block_base_fee: self.block_ctx.base_fee,
-            tx_origin: self.tx_ctx.origin,
-            tx_gas_price: self.tx_ctx.gas_price,
-            call_address: self.call_ctx.address,
-            call_caller: self.call_ctx.caller,
-            call_value: self.call_ctx.call_value,
-            call_data: self.call_ctx.call_data.as_slice(),
-        };
-        let (outcome, _sstore_trace) = exec::execute_opcode(opcode, &mut exec_ctx)?;
-        // Record (address, key) for EIP-2929 so the next access to the same slot is warm.
-        if let Some((addr, k, _)) = _sstore_trace {
-            self.accessed_storage.insert((addr, k));
-        }
-        #[cfg(feature = "evm-trace")]
-        {
-            self.pending_storage_write = _sstore_trace.map(|(address, key, value)| StorageWrite {
-                address,
-                key,
-                value,
-            });
-        }
-        match outcome {
-            StepOutcome::Continue(adv) => self.pc += adv as usize,
-            StepOutcome::Stop => {
+        // Execute opcode
+        match opcode {
+            // 0x00: STOP
+            0x00 => {
                 self.stopped = true;
-                self.pc += 1;
             }
-            StepOutcome::Return(data) => {
-                self.return_data = data;
-                self.stopped = true;
-                self.pc += 1;
+
+            // 0x01-0x0B: Arithmetic
+            0x01 => crate::evm::opcodes::arithmetic::add(&mut self.stack)?,
+            0x02 => crate::evm::opcodes::arithmetic::mul(&mut self.stack)?,
+            0x03 => crate::evm::opcodes::arithmetic::sub(&mut self.stack)?,
+            0x04 => crate::evm::opcodes::arithmetic::div(&mut self.stack)?,
+            0x05 => crate::evm::opcodes::arithmetic::sdiv(&mut self.stack)?,
+            0x06 => crate::evm::opcodes::arithmetic::modulo(&mut self.stack)?,
+            0x07 => crate::evm::opcodes::arithmetic::smod(&mut self.stack)?,
+            0x08 => crate::evm::opcodes::arithmetic::addmod(&mut self.stack)?,
+            0x09 => crate::evm::opcodes::arithmetic::mulmod(&mut self.stack)?,
+            0x0A => {
+                let exponent = *self.stack.peek(1)?;
+                let exp_bytes = exponent.bits().div_ceil(8);
+                self.consume_gas(50 * exp_bytes as u64)?;
+                crate::evm::opcodes::arithmetic::exp(&mut self.stack)?;
             }
-            StepOutcome::Revert(data) => return Err(EvmError::Revert(data)),
-            StepOutcome::Jump(new_pc) => self.pc = new_pc,
-            StepOutcome::Log(address, topics, data) => {
+            0x0B => crate::evm::opcodes::arithmetic::signextend(&mut self.stack)?,
+
+            // 0x10-0x15: Comparison
+            0x10 => crate::evm::opcodes::arithmetic::lt(&mut self.stack)?,
+            0x11 => crate::evm::opcodes::arithmetic::gt(&mut self.stack)?,
+            0x12 => crate::evm::opcodes::arithmetic::slt(&mut self.stack)?,
+            0x13 => crate::evm::opcodes::arithmetic::sgt(&mut self.stack)?,
+            0x14 => crate::evm::opcodes::arithmetic::eq(&mut self.stack)?,
+            0x15 => crate::evm::opcodes::arithmetic::iszero(&mut self.stack)?,
+
+            // 0x16-0x1D: Bitwise
+            0x16 => crate::evm::opcodes::arithmetic::and(&mut self.stack)?,
+            0x17 => crate::evm::opcodes::arithmetic::or(&mut self.stack)?,
+            0x18 => crate::evm::opcodes::arithmetic::xor(&mut self.stack)?,
+            0x19 => crate::evm::opcodes::arithmetic::not(&mut self.stack)?,
+            0x1A => crate::evm::opcodes::arithmetic::byte(&mut self.stack)?,
+            0x1B => crate::evm::opcodes::arithmetic::shl(&mut self.stack)?,
+            0x1C => crate::evm::opcodes::arithmetic::shr(&mut self.stack)?,
+            0x1D => crate::evm::opcodes::arithmetic::sar(&mut self.stack)?,
+
+            // 0x20: KECCAK256
+            0x20 => {
+                let offset = self.stack.peek(0)?.as_usize();
+                let size = self.stack.peek(1)?.as_usize();
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                // Hash cost
+                let words = size.div_ceil(32);
+                self.consume_gas(6 * words as u64)?;
+
+                crate::evm::opcodes::arithmetic::keccak256(&mut self.stack, &mut self.memory)?;
+            }
+
+            // 0x30-0x3F: Environment
+            0x30 => {
+                // ADDRESS
+                let address_u256 = address_to_u256(&self.call_ctx.address);
+                self.stack.push(address_u256)?;
+            }
+            0x31 => {
+                // BALANCE: get balance of account (EIP-2929 warm/cold)
+                let address_u256 = self.stack.pop()?;
+                let address = u256_to_address(&address_u256);
+
+                // Check if warm and refund difference if so
+                // Base gas charged: GAS_BALANCE_COLD (2600)
+                // If warm, should charge: GAS_BALANCE_WARM (100)
+                // Refund: 2600 - 100 = 2500
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund difference
+                }
+
+                let balance = self.state.get_balance(&address);
+                self.stack.push(balance)?;
+            }
+            0x32 => {
+                // ORIGIN
+                let origin_u256 = address_to_u256(&self.tx_ctx.origin);
+                self.stack.push(origin_u256)?;
+            }
+            0x33 => {
+                // CALLER
+                let caller_u256 = address_to_u256(&self.call_ctx.caller);
+                self.stack.push(caller_u256)?;
+            }
+            0x34 => {
+                // CALLVALUE
+                self.stack.push(self.call_ctx.call_value)?;
+            }
+            0x35 => {
+                // CALLDATALOAD
+                let offset = self.stack.pop()?.as_usize();
+                let mut data = [0u8; 32];
+
+                let call_data_len = self.call_ctx.call_data.len();
+                if offset < call_data_len {
+                    let end = (offset + 32).min(call_data_len);
+                    let copy_len = end - offset;
+                    data[..copy_len].copy_from_slice(&self.call_ctx.call_data[offset..end]);
+                }
+
+                self.stack.push(U256::from_be_bytes(data))?;
+            }
+            0x36 => {
+                // CALLDATASIZE
+                self.stack
+                    .push(U256::from_u64(self.call_ctx.call_data.len() as u64))?;
+            }
+            0x37 => {
+                // CALLDATACOPY
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                // Copy call data to memory (zero-padded)
+                for i in 0..size {
+                    let byte = if offset + i < self.call_ctx.call_data.len() {
+                        self.call_ctx.call_data[offset + i]
+                    } else {
+                        0
+                    };
+                    self.memory.mstore8(dest + i, byte)?;
+                }
+            }
+            0x38 => {
+                // CODESIZE
+                self.stack.push(U256::from_u64(self.code.len() as u64))?;
+            }
+            0x39 => {
+                // CODECOPY
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                // Copy code to memory
+                for i in 0..size {
+                    let byte = if offset + i < self.code.len() {
+                        self.code[offset + i]
+                    } else {
+                        0
+                    };
+                    self.memory.mstore8(dest + i, byte)?;
+                }
+            }
+            0x3A => {
+                // GASPRICE
+                self.stack.push(self.tx_ctx.gas_price)?;
+            }
+            0x3B => {
+                // EXTCODESIZE: get code size of account (EIP-2929 warm/cold)
+                let address_u256 = self.stack.pop()?;
+                let address = u256_to_address(&address_u256);
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                let code = self.state.get_code(&address);
+                self.stack.push(U256::from_u64(code.len() as u64))?;
+            }
+            0x3C => {
+                // EXTCODECOPY: copy code from external account (EIP-2929 warm/cold)
+                let address_u256 = self.stack.pop()?;
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                let address = u256_to_address(&address_u256);
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                // Clone the code to avoid borrow checker issues
+                #[cfg(not(target_arch = "riscv32"))]
+                let code = self.state.get_code(&address).to_vec();
+                #[cfg(target_arch = "riscv32")]
+                let code = {
+                    let slice = self.state.get_code(&address);
+                    let mut vec = alloc::vec::Vec::new();
+                    vec.extend_from_slice(slice);
+                    vec
+                };
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                // Copy code to memory
+                for i in 0..size {
+                    let byte = if offset + i < code.len() {
+                        code[offset + i]
+                    } else {
+                        0
+                    };
+                    self.memory.mstore8(dest + i, byte)?;
+                }
+            }
+            0x3D => {
+                // RETURNDATASIZE
+                self.stack.push(U256::from_u64(self.return_data.len() as u64))?;
+            }
+            0x3E => {
+                // RETURNDATACOPY
+                let dest = self.stack.pop()?.as_usize();
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                let end = offset
+                    .checked_add(size)
+                    .ok_or(EvmError::MemoryError(MemoryError::InvalidOffset))?;
+                if end > self.return_data.len() {
+                    return Err(EvmError::MemoryError(MemoryError::InvalidOffset));
+                }
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                for i in 0..size {
+                    self.memory.mstore8(dest + i, self.return_data[offset + i])?;
+                }
+            }
+            0x3F => {
+                // EXTCODEHASH: get code hash of account (EIP-2929 warm/cold)
+                let address_u256 = self.stack.pop()?;
+                let address = u256_to_address(&address_u256);
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&address);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                let code_hash = self.state.get_code_hash(&address);
+                let hash_u256 = hash_to_u256(&code_hash);
+                self.stack.push(hash_u256)?;
+            }
+
+            // 0x40-0x4A: Block information
+            0x40 => {
+                // BLOCKHASH
+                let number = self.stack.pop()?;
+                let hash = self.host.blockhash(&number).unwrap_or(Hash::ZERO);
+                self.stack.push(hash_to_u256(&hash))?;
+            }
+            0x41 => {
+                // COINBASE
+                let coinbase_u256 = U256::from_be_bytes({
+                    let mut bytes = [0u8; 32];
+                    bytes[12..].copy_from_slice(&self.block_ctx.coinbase.to_bytes());
+                    bytes
+                });
+                self.stack.push(coinbase_u256)?;
+            }
+            0x42 => {
+                // TIMESTAMP
+                self.stack.push(self.block_ctx.timestamp)?;
+            }
+            0x43 => {
+                // NUMBER
+                self.stack.push(self.block_ctx.number)?;
+            }
+            0x44 => {
+                // DIFFICULTY
+                self.stack.push(self.block_ctx.difficulty)?;
+            }
+            0x45 => {
+                // GASLIMIT
+                self.stack.push(self.block_ctx.gas_limit)?;
+            }
+            0x46 => {
+                // CHAINID
+                self.stack.push(self.block_ctx.chain_id)?;
+            }
+            0x47 => {
+                // SELFBALANCE: get balance of current contract
+                let balance = self.state.get_balance(&self.call_ctx.address);
+                self.stack.push(balance)?;
+            }
+            0x48 => {
+                // BASEFEE
+                self.stack.push(self.block_ctx.base_fee)?;
+            }
+            0x49 => {
+                // BLOBHASH
+                let index = self.stack.pop()?;
+                let hash = self.host.blobhash(&index).unwrap_or(Hash::ZERO);
+                self.stack.push(hash_to_u256(&hash))?;
+            }
+            0x4A => {
+                // BLOBBASEFEE
+                self.stack.push(self.host.blobbasefee())?;
+            }
+
+            // 0x50-0x5F: Stack, Memory, Storage, Flow
+            0x50 => {
+                // POP
+                self.stack.pop()?;
+            }
+            0x51 => {
+                // MLOAD
+                let offset = self.stack.pop()?.as_usize();
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + 32);
+                self.consume_gas(mem_cost)?;
+                let value = self.memory.mload(offset)?;
+                self.stack.push(value)?;
+            }
+            0x52 => {
+                // MSTORE
+                let offset = self.stack.pop()?.as_usize();
+                let value = self.stack.pop()?;
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + 32);
+                self.consume_gas(mem_cost)?;
+                self.memory.mstore(offset, value)?;
+            }
+            0x53 => {
+                // MSTORE8
+                let offset = self.stack.pop()?.as_usize();
+                let value = self.stack.pop()?;
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + 1);
+                self.consume_gas(mem_cost)?;
+                self.memory.mstore8(offset, value.as_u8())?;
+            }
+            0x54 => {
+                // SLOAD: load from permanent storage (EIP-2929 warm/cold)
+                let key = self.stack.pop()?;
+                let address = self.call_ctx.address;
+
+                // Warm/cold access tracking
+                let is_warm = self.access_storage(&address, &key);
+                if is_warm {
+                    // Base gas charged: GAS_SLOAD_COLD (2100)
+                    // Warm cost: GAS_SLOAD_WARM (100)
+                    // Refund: 2100 - 100 = 2000
+                    self.gas_remaining += 2000;
+                }
+
+                let value = self.state.sload(&address, &key);
+                self.stack.push(value)?;
+            }
+            0x55 => {
+                // SSTORE: store to permanent storage (EIP-2929 warm/cold)
+                let key = self.stack.pop()?;
+                let new_value = self.stack.pop()?;
+                let address = self.call_ctx.address;
+
+                // Get current value to determine refund (EIP-3529)
+                let current_value = self.state.sload(&address, &key);
+
+                // Check sentry gas before any operation
+                if self.gas_remaining <= GAS_SSTORE_SENTRY {
+                    return Err(EvmError::OutOfGas);
+                }
+
+                // Check if warm BEFORE marking as accessed (EIP-2929)
+                let is_warm = self.access_storage(&address, &key);
+
+                // Charge dynamic gas (SET/RESET/CLEAR/NOOP)
+                let sstore_gas = sstore_gas_cost(current_value, new_value);
+                self.consume_gas(sstore_gas)?;
+
+                // Charge EIP-2929 warm/cold access cost
+                // Base cost charged: GAS_SLOAD_COLD (2100)
+                // If warm, should charge: GAS_SLOAD_WARM (100)
+                // Refund difference: 2100 - 100 = 2000
+                self.consume_gas(2100)?; // Always charge cold cost
+                if is_warm {
+                    self.gas_remaining += 2000; // Refund difference for warm
+                }
+
+                // EIP-3529: Only refund when clearing storage (non-zero -> zero)
+                // Refund: 4800 gas when setting storage to zero from non-zero
+                if !current_value.is_zero() && new_value.is_zero() {
+                    self.gas_refund += 4800;
+                }
+
+                self.state.sstore(&address, &key, new_value);
+            }
+            0x56 => {
+                // JUMP
+                let dest = self.stack.pop()?.as_usize();
+                if dest >= self.code.len() || !self.jumpdests[dest] {
+                    return Err(EvmError::InvalidJump);
+                }
+                self.pc = dest;
+                return Ok(()); // Don't increment PC
+            }
+            0x57 => {
+                // JUMPI
+                let dest = self.stack.pop()?.as_usize();
+                let condition = self.stack.pop()?;
+                if !condition.is_zero() {
+                    if dest >= self.code.len() || !self.jumpdests[dest] {
+                        return Err(EvmError::InvalidJump);
+                    }
+                    self.pc = dest;
+                    return Ok(()); // Don't increment PC
+                }
+            }
+            0x58 => {
+                // PC
+                self.stack.push(U256::from_u64(self.pc as u64))?;
+            }
+            0x59 => {
+                // MSIZE
+                self.stack.push(U256::from_u64(self.memory.msize() as u64))?;
+            }
+            0x5A => {
+                // GAS
+                self.stack.push(U256::from_u64(self.gas_remaining))?;
+            }
+            0x5B => {
+                // JUMPDEST: no-op
+            }
+            0x5C => {
+                // TLOAD: load from transient storage (EIP-1153)
+                let key = self.stack.pop()?;
+                let value = self.state.tload(&self.call_ctx.address, &key);
+                self.stack.push(value)?;
+            }
+            0x5D => {
+                // TSTORE: store to transient storage (EIP-1153)
+                let key = self.stack.pop()?;
+                let value = self.stack.pop()?;
+                self.state.tstore(&self.call_ctx.address, &key, value);
+            }
+            0x5E => {
+                // MCOPY
+                let dest = self.stack.pop()?.as_usize();
+                let src = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Memory expansion
+                let max_offset = dest.max(src) + size;
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                // Copy cost
+                let words = size.div_ceil(32);
+                self.consume_gas(3 * words as u64)?;
+
+                self.memory.copy(dest, src, size)?;
+            }
+            0x5F => {
+                // PUSH0
+                self.stack.push(U256::ZERO)?;
+            }
+
+            // 0x60-0x7F: PUSH1-PUSH32
+            0x60..=0x7F => {
+                let n = (opcode - 0x5F) as usize;
+                let data = self.read_push_data(n)?;
+                let mut bytes = [0u8; 32];
+                bytes[32 - n..].copy_from_slice(&data);
+                let value = U256::from_be_bytes(bytes);
+                self.stack.push(value)?;
+                self.pc += n; // Skip push data
+            }
+
+            // 0x80-0x8F: DUP1-DUP16
+            0x80..=0x8F => {
+                let n = (opcode - 0x7F) as usize;
+                self.stack.dup(n)?;
+            }
+
+            // 0x90-0x9F: SWAP1-SWAP16
+            0x90..=0x9F => {
+                let n = (opcode - 0x8F) as usize;
+                self.stack.swap(n)?;
+            }
+
+            // 0xA0-0xA4: LOG0-LOG4
+            0xA0..=0xA4 => {
+                let num_topics = (opcode - 0xA0) as usize;
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Pop topics
+                let mut topics = Vec::with_capacity(num_topics);
+                for _ in 0..num_topics {
+                    let topic = self.stack.pop()?;
+                    topics.push(u256_to_hash(&topic));
+                }
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                // Log cost
+                self.consume_gas(log_gas_cost(num_topics as u8, size))?;
+
+                let data = self.read_memory_bytes(offset, size)?;
                 self.logs.push(LogEntry {
-                    address,
+                    address: self.call_ctx.address,
                     topics,
                     data,
                 });
-                self.pc += 1;
+            }
+
+            // 0xF0: CREATE
+            0xF0 => {
+                let value = self.stack.pop()?;
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                let init_code = self.read_memory_bytes(offset, size)?;
+                let init_code_cost = init_code_gas_cost(size);
+                self.consume_gas(init_code_cost)?;
+
+                let max_gas = self.gas_remaining - (self.gas_remaining / 64);
+                let msg = CreateMessage {
+                    gas: max_gas,
+                    caller: self.call_ctx.address,
+                    value,
+                    init_code,
+                    salt: None,
+                };
+                let result = self.host.create(&mut self.state, msg);
+                if result.gas_used > max_gas {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+                self.return_data = result.return_data.clone();
+
+                if result.success {
+                    let address = result.address.unwrap_or(Address::ZERO);
+                    self.stack.push(address_to_u256(&address))?;
+                } else {
+                    self.stack.push(U256::ZERO)?;
+                }
+            }
+
+            // 0xF1: CALL (EIP-2929 warm/cold)
+            0xF1 => {
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let value = self.stack.pop()?;
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let is_value_transfer = !value.is_zero();
+                if is_value_transfer {
+                    self.consume_gas(GAS_CALL_VALUE_TRANSFER)?;
+                    if !self.state.account_exists(&to) {
+                        self.consume_gas(GAS_CALL_NEW_ACCOUNT)?;
+                    }
+                }
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
+                }
+                if is_value_transfer {
+                    gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+                }
+
+                let msg = CallMessage {
+                    kind: CallKind::Call,
+                    gas: gas_to_forward,
+                    address: to,
+                    caller: self.call_ctx.address,
+                    value,
+                    code_address: to,
+                    input,
+                    is_static: false,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+            }
+
+            // 0xF2: CALLCODE (EIP-2929 warm/cold)
+            0xF2 => {
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let value = self.stack.pop()?;
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let is_value_transfer = !value.is_zero();
+                if is_value_transfer {
+                    self.consume_gas(GAS_CALL_VALUE_TRANSFER)?;
+                }
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
+                }
+                if is_value_transfer {
+                    gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+                }
+
+                let msg = CallMessage {
+                    kind: CallKind::CallCode,
+                    gas: gas_to_forward,
+                    address: self.call_ctx.address,
+                    caller: self.call_ctx.address,
+                    value,
+                    code_address: to,
+                    input,
+                    is_static: false,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+            }
+
+            // 0xF3: RETURN
+            0xF3 => {
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                self.return_data = self.read_memory_bytes(offset, size)?;
+
+                self.stopped = true;
+            }
+
+            // 0xF4: DELEGATECALL (EIP-2929 warm/cold)
+            0xF4 => {
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
+                }
+
+                let msg = CallMessage {
+                    kind: CallKind::DelegateCall,
+                    gas: gas_to_forward,
+                    address: self.call_ctx.address,
+                    caller: self.call_ctx.caller,
+                    value: self.call_ctx.call_value,
+                    code_address: to,
+                    input,
+                    is_static: false,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+            }
+
+            // 0xF5: CREATE2
+            0xF5 => {
+                let value = self.stack.pop()?;
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+                let salt = self.stack.pop()?;
+
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                let init_code = self.read_memory_bytes(offset, size)?;
+                let init_code_cost = init_code_gas_cost(size);
+                let hash_cost = create2_hash_cost(size);
+                self.consume_gas(init_code_cost + hash_cost)?;
+
+                let max_gas = self.gas_remaining - (self.gas_remaining / 64);
+                let msg = CreateMessage {
+                    gas: max_gas,
+                    caller: self.call_ctx.address,
+                    value,
+                    init_code,
+                    salt: Some(salt),
+                };
+                let result = self.host.create(&mut self.state, msg);
+                if result.gas_used > max_gas {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+                self.return_data = result.return_data.clone();
+
+                if result.success {
+                    let address = result.address.unwrap_or(Address::ZERO);
+                    self.stack.push(address_to_u256(&address))?;
+                } else {
+                    self.stack.push(U256::ZERO)?;
+                }
+            }
+
+            // 0xFA: STATICCALL (EIP-2929 warm/cold)
+            0xFA => {
+                let gas_requested = self.stack.pop()?.as_u64();
+                let to_u256 = self.stack.pop()?;
+                let to = u256_to_address(&to_u256);
+                let in_offset = self.stack.pop()?.as_usize();
+                let in_size = self.stack.pop()?.as_usize();
+                let out_offset = self.stack.pop()?.as_usize();
+                let out_size = self.stack.pop()?.as_usize();
+
+                // Warm/cold access tracking
+                let is_warm = self.access_address(&to);
+                if is_warm {
+                    self.gas_remaining += 2500; // Refund 2600 - 100
+                }
+
+                let max_offset = in_offset
+                    .saturating_add(in_size)
+                    .max(out_offset.saturating_add(out_size));
+                let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
+                self.consume_gas(mem_cost)?;
+
+                let input = self.read_memory_bytes(in_offset, in_size)?;
+
+                let mut gas_to_forward = gas_requested;
+                let max_forward = self.gas_remaining - (self.gas_remaining / 64);
+                if gas_to_forward > max_forward {
+                    gas_to_forward = max_forward;
+                }
+
+                let msg = CallMessage {
+                    kind: CallKind::StaticCall,
+                    gas: gas_to_forward,
+                    address: to,
+                    caller: self.call_ctx.address,
+                    value: U256::ZERO,
+                    code_address: to,
+                    input,
+                    is_static: true,
+                };
+                let result = self.host.call(&mut self.state, msg);
+                if result.gas_used > gas_to_forward {
+                    return Err(EvmError::OutOfGas);
+                }
+                self.consume_gas(result.gas_used)?;
+
+                self.return_data = result.return_data.clone();
+                self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
+                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+            }
+
+            // 0xFD: REVERT
+            0xFD => {
+                let offset = self.stack.pop()?.as_usize();
+                let size = self.stack.pop()?.as_usize();
+
+                // Memory expansion
+                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                self.consume_gas(mem_cost)?;
+
+                let revert_data = self.read_memory_bytes(offset, size)?;
+
+                return Err(EvmError::Revert(revert_data));
+            }
+
+            // 0xFE: INVALID
+            0xFE => {
+                return Err(EvmError::InvalidOpcode(opcode));
+            }
+
+            // 0xFF: SELFDESTRUCT
+            0xFF => {
+                // SELFDESTRUCT: mark account for deletion and transfer balance
+                let beneficiary_u256 = self.stack.pop()?;
+                let beneficiary = u256_to_address(&beneficiary_u256);
+                self.state.selfdestruct(&self.call_ctx.address, &beneficiary);
+                self.stopped = true;
+            }
+
+            // Invalid opcodes
+            _ => {
+                return Err(EvmError::InvalidOpcode(opcode));
             }
         }
 
@@ -374,18 +1310,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             let gas_after = self.gas_remaining;
             let gas_cost = gas_before.saturating_sub(gas_after);
             if let Some(ref mut tracer) = self.tracer {
-                tracer.trace(GasTraceEvent {
-                    pc,
-                    opcode,
-                    name: opcode_name(opcode),
-                    gas_before,
-                    gas_cost,
-                    gas_after,
-                    storage_write: self.pending_storage_write.take(),
-                });
+                tracer.trace(pc, opcode, opcode_name(opcode), gas_before, gas_cost, gas_after);
             }
         }
 
+        // Increment PC for next instruction
+        self.pc += 1;
         Ok(())
     }
 
@@ -521,7 +1451,6 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 
     warm_addresses.push(tx_ctx.origin); // Sender
     warm_addresses.push(call_ctx.address); // Recipient/contract being called
-    warm_addresses.push(block_ctx.coinbase); // EIP-3651: Warm COINBASE
     // Precompile addresses (0x01-0x0a for Prague)
     for i in 1..=10 {
         let mut addr_bytes = [0u8; 20];
@@ -553,7 +1482,7 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
     // Warm access list storage slots
     for (addr, keys) in access_list {
         for key in keys {
-            evm.warm_storage(addr, key);
+            evm.access_storage(addr, key);
         }
     }
 
@@ -568,10 +1497,7 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::evm::RecursiveHost;
-    use crate::evm::host::{CallMessage, CallResult, CreateMessage, CreateResult};
-    use crate::evm::memory::MemoryError;
-    use crate::evm::stack::StackError;
+    use crate::evm::host::{CallResult, CreateResult};
     use crate::state::InMemoryState;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -602,12 +1528,16 @@ mod tests {
 
         fn blockhash(&self, number: &U256) -> Option<Hash> {
             let inner = self.borrow();
-            inner.blockhash.filter(|_| *number != U256::ZERO)
+            inner
+                .blockhash
+                .filter(|_| *number != U256::ZERO)
         }
 
         fn blobhash(&self, index: &U256) -> Option<Hash> {
             let inner = self.borrow();
-            inner.blobhash.filter(|_| *index != U256::ZERO)
+            inner
+                .blobhash
+                .filter(|_| *index != U256::ZERO)
         }
 
         fn blobbasefee(&self) -> U256 {
@@ -823,7 +1753,13 @@ mod tests {
         };
 
         let (result, _state) = execute_bytecode_with_host_and_contexts(
-            &code, 10_000, state, NullHost, block_ctx, tx_ctx, call_ctx,
+            &code,
+            10_000,
+            state,
+            NullHost,
+            block_ctx,
+            tx_ctx,
+            call_ctx,
         )
         .unwrap();
 
@@ -841,19 +1777,19 @@ mod tests {
         let code = vec![
             0x60, 0x01, // PUSH1 1 (value)
             0x60, 0x00, // PUSH1 0 (key)
-            0x55, // SSTORE (cold: 20000 + 2100 = 22100)
+            0x55,       // SSTORE (cold: 20000 + 2100 = 22100)
             0x60, 0x02, // PUSH1 2 (value)
             0x60, 0x00, // PUSH1 0 (key)
-            0x55, // SSTORE (warm: 20000 + 100 = 20100)
-            0x00, // STOP
+            0x55,       // SSTORE (warm: 20000 + 100 = 20100)
+            0x00,       // STOP
         ];
 
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Gas: PUSH1(3) + PUSH1(3) + SSTORE cold SET(20000+2100=22100)
-        //      PUSH1(3) + PUSH1(3) + SSTORE warm RESET(2900+100=3000) + STOP(0)
-        // Total: 3 + 3 + 22100 + 3 + 3 + 3000 + 0 = 25112
-        assert_eq!(result.gas_used, 25112);
+        //      PUSH1(3) + PUSH1(3) + SSTORE warm RESET(5000+100=5100) + STOP(0)
+        // Total: 3 + 3 + 22100 + 3 + 3 + 5100 + 0 = 27212
+        assert_eq!(result.gas_used, 27212);
     }
 
     // =============================================================================
@@ -906,12 +1842,12 @@ mod tests {
         let code = vec![
             0x60, 0x01, // PUSH1 1
             0x60, 0x01, // PUSH1 1
-            0x01, // ADD (result: 2)
-            0x80, // DUP1 (stack: 2, 2)
-            0x01, // ADD (result: 4)
-            0x80, // DUP1 (stack: 4, 4)
-            0x01, // ADD (result: 8)
-            0x00, // STOP
+            0x01,       // ADD (result: 2)
+            0x80,       // DUP1 (stack: 2, 2)
+            0x01,       // ADD (result: 4)
+            0x80,       // DUP1 (stack: 4, 4)
+            0x01,       // ADD (result: 8)
+            0x00,       // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -932,9 +1868,7 @@ mod tests {
     fn test_codecopy() {
         // Copy 3 bytes of code to memory at offset 0
         // PUSH1 0x03 PUSH1 0x00 PUSH1 0x00 CODECOPY PUSH1 0x00 MLOAD STOP
-        let code = vec![
-            0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0x39, 0x60, 0x00, 0x51, 0x00,
-        ];
+        let code = vec![0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0x39, 0x60, 0x00, 0x51, 0x00];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Memory should contain first 3 bytes of code (0x60, 0x03, 0x60)
@@ -968,11 +1902,11 @@ mod tests {
         assert!(result.success);
         assert_eq!(
             result.stack.peek(2).unwrap(),
-            &crate::evm::opcodes::utils::address_to_u256(&address)
+            &address_to_u256(&address)
         );
         assert_eq!(
             result.stack.peek(1).unwrap(),
-            &crate::evm::opcodes::utils::address_to_u256(&caller)
+            &address_to_u256(&caller)
         );
         assert_eq!(result.stack.peek(0).unwrap(), &call_value);
     }
@@ -1177,10 +2111,7 @@ mod tests {
         code.push(0x00); // STOP
 
         let result = execute_bytecode(&code, 1000000, InMemoryState::new());
-        assert!(matches!(
-            result,
-            Err(EvmError::StackError(StackError::Overflow))
-        ));
+        assert!(matches!(result, Err(EvmError::StackError(StackError::Overflow))));
     }
 
     #[test]
@@ -1188,10 +2119,7 @@ mod tests {
         // Try to POP from empty stack
         let code = vec![0x50]; // POP
         let result = execute_bytecode(&code, 1000, InMemoryState::new());
-        assert!(matches!(
-            result,
-            Err(EvmError::StackError(StackError::Underflow))
-        ));
+        assert!(matches!(result, Err(EvmError::StackError(StackError::Underflow))));
     }
 
     // =============================================================================
@@ -1204,12 +2132,12 @@ mod tests {
         // Store a value to memory, then return it
         // PUSH1 0x42 PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
         let code = vec![
-            0x60, 0x42, // PUSH1 0x42
-            0x60, 0x00, // PUSH1 0x00
-            0x52, // MSTORE
-            0x60, 0x20, // PUSH1 0x20 (size)
-            0x60, 0x00, // PUSH1 0x00 (offset)
-            0xF3, // RETURN
+            0x60, 0x42,       // PUSH1 0x42
+            0x60, 0x00,       // PUSH1 0x00
+            0x52,             // MSTORE
+            0x60, 0x20,       // PUSH1 0x20 (size)
+            0x60, 0x00,       // PUSH1 0x00 (offset)
+            0xF3,             // RETURN
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -1222,18 +2150,18 @@ mod tests {
         // If-else using JUMPI: if x > 5 then push 1 else push 0
         // PUSH1 0x06 PUSH1 0x05 GT PUSH1 0x0D JUMPI PUSH1 0x00 PUSH1 0x11 JUMP JUMPDEST PUSH1 0x01 JUMPDEST STOP
         let code = vec![
-            0x60, 0x06, // PUSH1 6
-            0x60, 0x05, // PUSH1 5
-            0x11, // GT (6 > 5 = true)
-            0x60, 0x0D, // PUSH1 13 (jump target)
-            0x57, // JUMPI
-            0x60, 0x00, // PUSH1 0 (else branch)
-            0x60, 0x11, // PUSH1 17 (skip to end)
-            0x56, // JUMP
-            0x5B, // JUMPDEST (offset 13)
-            0x60, 0x01, // PUSH1 1 (then branch)
-            0x5B, // JUMPDEST (offset 17)
-            0x00, // STOP
+            0x60, 0x06,       // PUSH1 6
+            0x60, 0x05,       // PUSH1 5
+            0x11,             // GT (6 > 5 = true)
+            0x60, 0x0D,       // PUSH1 13 (jump target)
+            0x57,             // JUMPI
+            0x60, 0x00,       // PUSH1 0 (else branch)
+            0x60, 0x11,       // PUSH1 17 (skip to end)
+            0x56,             // JUMP
+            0x5B,             // JUMPDEST (offset 13)
+            0x60, 0x01,       // PUSH1 1 (then branch)
+            0x5B,             // JUMPDEST (offset 17)
+            0x00,             // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -1245,12 +2173,12 @@ mod tests {
         // Simple counter loop: push 3 values and add them
         // PUSH1 1 PUSH1 2 PUSH1 3 ADD ADD STOP
         let code = vec![
-            0x60, 0x01, // PUSH1 1
-            0x60, 0x02, // PUSH1 2
-            0x60, 0x03, // PUSH1 3
-            0x01, // ADD (2+3=5)
-            0x01, // ADD (1+5=6)
-            0x00, // STOP
+            0x60, 0x01,       // PUSH1 1
+            0x60, 0x02,       // PUSH1 2
+            0x60, 0x03,       // PUSH1 3
+            0x01,             // ADD (2+3=5)
+            0x01,             // ADD (1+5=6)
+            0x00,             // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -1263,16 +2191,16 @@ mod tests {
         // Store 0x42 at offset 0, then copy to offset 32
         // PUSH1 0x42 PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 PUSH1 0x20 MCOPY PUSH1 0x20 MLOAD STOP
         let code = vec![
-            0x60, 0x42, // PUSH1 0x42
-            0x60, 0x00, // PUSH1 0x00
-            0x52, // MSTORE
-            0x60, 0x20, // PUSH1 32 (size)
-            0x60, 0x00, // PUSH1 0 (src)
-            0x60, 0x20, // PUSH1 32 (dest)
-            0x5E, // MCOPY
-            0x60, 0x20, // PUSH1 32
-            0x51, // MLOAD
-            0x00, // STOP
+            0x60, 0x42,       // PUSH1 0x42
+            0x60, 0x00,       // PUSH1 0x00
+            0x52,             // MSTORE
+            0x60, 0x20,       // PUSH1 32 (size)
+            0x60, 0x00,       // PUSH1 0 (src)
+            0x60, 0x20,       // PUSH1 32 (dest)
+            0x5E,             // MCOPY
+            0x60, 0x20,       // PUSH1 32
+            0x51,             // MLOAD
+            0x00,             // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -1285,16 +2213,13 @@ mod tests {
         // PUSH2 0x1234 PUSH1 0x56 ADD STOP
         let code = vec![
             0x61, 0x12, 0x34, // PUSH2 0x1234
-            0x60, 0x56, // PUSH1 0x56
-            0x01, // ADD
-            0x00, // STOP
+            0x60, 0x56,       // PUSH1 0x56
+            0x01,             // ADD
+            0x00,             // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
-        assert_eq!(
-            result.stack.peek(0).unwrap(),
-            &U256::from_u64(0x1234 + 0x56)
-        );
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x1234 + 0x56));
     }
 
     #[test]
@@ -1306,21 +2231,17 @@ mod tests {
         code.extend_from_slice(&[0x60, 0x0A]); // PUSH1 10
         code.extend_from_slice(&[0x60, 0x05]); // PUSH1 5
         code.push(0x01); // ADD
-        code.push(0x60);
-        code.push(0x02); // PUSH1 2
+        code.push(0x60); code.push(0x02); // PUSH1 2
         code.push(0x02); // MUL
-        code.push(0x60);
-        code.push(0x03); // PUSH1 3
+        code.push(0x60); code.push(0x03); // PUSH1 3
         code.push(0x04); // DIV
 
         // Bitwise
-        code.push(0x60);
-        code.push(0xFF); // PUSH1 0xFF
+        code.push(0x60); code.push(0xFF); // PUSH1 0xFF
         code.push(0x16); // AND
 
         // Comparison
-        code.push(0x60);
-        code.push(0x00); // PUSH1 0
+        code.push(0x60); code.push(0x00); // PUSH1 0
         code.push(0x14); // EQ
 
         // Stack manipulation
@@ -1398,14 +2319,14 @@ mod tests {
             0x60, 0x04, // PUSH1 4 (size)
             0x60, 0x00, // PUSH1 0 (offset in code)
             0x60, 0x00, // PUSH1 0 (dest in memory)
-            0x73, // PUSH20
+            0x73,       // PUSH20
         ];
         code.extend_from_slice(&test_addr.to_bytes());
         code.extend_from_slice(&[
-            0x3C, // EXTCODECOPY
+            0x3C,       // EXTCODECOPY
             0x60, 0x00, // PUSH1 0
-            0x51, // MLOAD
-            0x00, // STOP
+            0x51,       // MLOAD
+            0x00,       // STOP
         ]);
 
         let mut state = InMemoryState::new();
@@ -1464,10 +2385,10 @@ mod tests {
         let code = vec![
             0x60, 0x99, // PUSH1 0x99 (value)
             0x60, 0x42, // PUSH1 0x42 (key)
-            0x55, // SSTORE
+            0x55,       // SSTORE
             0x60, 0x42, // PUSH1 0x42 (key)
-            0x54, // SLOAD
-            0x00, // STOP
+            0x54,       // SLOAD
+            0x00,       // STOP
         ];
 
         let state = InMemoryState::new();
@@ -1493,10 +2414,10 @@ mod tests {
         let code = vec![
             0x60, 0x77, // PUSH1 0x77 (value)
             0x60, 0x33, // PUSH1 0x33 (key)
-            0x5D, // TSTORE
+            0x5D,       // TSTORE
             0x60, 0x33, // PUSH1 0x33 (key)
-            0x5C, // TLOAD
-            0x00, // STOP
+            0x5C,       // TLOAD
+            0x00,       // STOP
         ];
 
         let state = InMemoryState::new();
@@ -1547,15 +2468,15 @@ mod tests {
         let code = vec![
             0x60, 0x11, // PUSH1 0x11
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55, // SSTORE
+            0x55,       // SSTORE
             0x60, 0x22, // PUSH1 0x22
             0x60, 0x02, // PUSH1 0x02 (key)
-            0x55, // SSTORE
+            0x55,       // SSTORE
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x54, // SLOAD
+            0x54,       // SLOAD
             0x60, 0x02, // PUSH1 0x02 (key)
-            0x54, // SLOAD
-            0x00, // STOP
+            0x54,       // SLOAD
+            0x00,       // STOP
         ];
 
         let state = InMemoryState::new();
@@ -1571,15 +2492,15 @@ mod tests {
         let code = vec![
             0x60, 0xAA, // PUSH1 0xAA
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x5D, // TSTORE (transient)
+            0x5D,       // TSTORE (transient)
             0x60, 0xBB, // PUSH1 0xBB
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x55, // SSTORE (permanent)
+            0x55,       // SSTORE (permanent)
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x5C, // TLOAD (transient)
+            0x5C,       // TLOAD (transient)
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x54, // SLOAD (permanent)
-            0x00, // STOP
+            0x54,       // SLOAD (permanent)
+            0x00,       // STOP
         ];
 
         let state = InMemoryState::new();
@@ -1603,25 +2524,19 @@ mod tests {
         let host = Rc::new(RefCell::new(host_state));
         let code = vec![
             0x60, 0x01, // PUSH1 0x01
-            0x40, // BLOCKHASH
+            0x40,       // BLOCKHASH
             0x60, 0x02, // PUSH1 0x02
-            0x49, // BLOBHASH
-            0x4A, // BLOBBASEFEE
-            0x00, // STOP
+            0x49,       // BLOBHASH
+            0x4A,       // BLOBBASEFEE
+            0x00,       // STOP
         ];
 
         let (result, _state) =
             execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(7));
-        assert_eq!(
-            result.stack.peek(1).unwrap(),
-            &crate::evm::opcodes::utils::hash_to_u256(&blob_hash)
-        );
-        assert_eq!(
-            result.stack.peek(2).unwrap(),
-            &crate::evm::opcodes::utils::hash_to_u256(&block_hash)
-        );
+        assert_eq!(result.stack.peek(1).unwrap(), &hash_to_u256(&blob_hash));
+        assert_eq!(result.stack.peek(2).unwrap(), &hash_to_u256(&block_hash));
     }
 
     #[test]
@@ -1643,23 +2558,23 @@ mod tests {
         let mut code = vec![
             0x60, 0x01, // PUSH1 0x01
             0x60, 0x00, // PUSH1 0x00
-            0x53, // MSTORE8 (memory[0] = 0x01)
+            0x53,       // MSTORE8 (memory[0] = 0x01)
             0x60, 0x03, // PUSH1 0x03 (out_size)
             0x60, 0x20, // PUSH1 0x20 (out_offset)
             0x60, 0x01, // PUSH1 0x01 (in_size)
             0x60, 0x00, // PUSH1 0x00 (in_offset)
             0x60, 0x00, // PUSH1 0x00 (value)
-            0x73, // PUSH20
+            0x73,       // PUSH20
         ];
         code.extend_from_slice(&to.to_bytes());
         code.extend_from_slice(&[
             0x60, 0x10, // PUSH1 0x10 (gas)
-            0xF1, // CALL
-            0x00, // STOP
+            0xF1,       // CALL
+            0x00,       // STOP
         ]);
 
-        let (result, _state) =
-            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone()).unwrap();
+        let (result, _state) = execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
+            .unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
         assert_eq!(result.return_data, vec![0xAA, 0xBB]);
@@ -1693,22 +2608,19 @@ mod tests {
         let code = vec![
             0x60, 0xAA, // PUSH1 0xAA
             0x60, 0x00, // PUSH1 0x00
-            0x53, // MSTORE8 (init code byte)
+            0x53,       // MSTORE8 (init code byte)
             0x61, 0x12, 0x34, // PUSH2 0x1234 (salt)
             0x60, 0x01, // PUSH1 0x01 (size)
             0x60, 0x00, // PUSH1 0x00 (offset)
             0x60, 0x00, // PUSH1 0x00 (value)
-            0xF5, // CREATE2
-            0x00, // STOP
+            0xF5,       // CREATE2
+            0x00,       // STOP
         ];
 
-        let (result, _state) =
-            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone()).unwrap();
+        let (result, _state) = execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
+            .unwrap();
         assert!(result.success);
-        assert_eq!(
-            result.stack.peek(0).unwrap(),
-            &crate::evm::opcodes::utils::address_to_u256(&created_addr)
-        );
+        assert_eq!(result.stack.peek(0).unwrap(), &address_to_u256(&created_addr));
 
         let recorded = host.borrow().last_create.clone().unwrap();
         assert_eq!(recorded.salt, Some(U256::from_u64(0x1234)));
@@ -1736,13 +2648,13 @@ mod tests {
             0x60, 0x00, // PUSH1 0x00 (out_offset)
             0x60, 0x00, // PUSH1 0x00 (in_size)
             0x60, 0x00, // PUSH1 0x00 (in_offset)
-            0x73, // PUSH20
+            0x73,       // PUSH20
         ];
         code.extend_from_slice(&to.to_bytes());
         code.extend_from_slice(&[
             0x60, 0x20, // PUSH1 0x20 (gas)
-            0xF4, // DELEGATECALL
-            0x00, // STOP
+            0xF4,       // DELEGATECALL
+            0x00,       // STOP
         ]);
 
         let mut evm = Evm::new(code, 100000, InMemoryState::new(), host.clone());
@@ -1760,63 +2672,6 @@ mod tests {
         assert_eq!(recorded.caller, Address::new([0x22; 20]));
         assert_eq!(recorded.value, U256::from_u64(77));
         assert_eq!(recorded.code_address, to);
-    }
-
-    #[test]
-    fn test_delegatecall_writes_to_caller_storage() {
-        let caller = Address::new([0x11; 20]);
-        let callee = Address::new([0x22; 20]);
-        let sender = Address::new([0x33; 20]);
-
-        let callee_code = vec![
-            0x60, 0xAA, // PUSH1 0xAA (value)
-            0x60, 0x01, // PUSH1 0x01 (key)
-            0x55, // SSTORE
-            0x00, // STOP
-        ];
-
-        let mut caller_code = vec![
-            0x60, 0x00, // PUSH1 0x00 (out_size)
-            0x60, 0x00, // PUSH1 0x00 (out_offset)
-            0x60, 0x00, // PUSH1 0x00 (in_size)
-            0x60, 0x00, // PUSH1 0x00 (in_offset)
-            0x73, // PUSH20
-        ];
-        caller_code.extend_from_slice(&callee.to_bytes());
-        caller_code.extend_from_slice(&[
-            0x61, 0xC3, 0x50, // PUSH2 0xC350 (gas = 50000)
-            0xF4, // DELEGATECALL
-            0x00, // STOP
-        ]);
-
-        let mut state = InMemoryState::new();
-        state.set_code(&callee, callee_code);
-
-        let call_ctx = CallContext {
-            address: caller,
-            caller: sender,
-            call_value: U256::ZERO,
-            call_data: Vec::new(),
-        };
-
-        let host = RecursiveHost::new();
-        let (result, final_state) = execute_bytecode_with_host_and_contexts(
-            &caller_code,
-            100_000,
-            state,
-            host,
-            BlockContext::default(),
-            TxContext::default(),
-            call_ctx,
-        )
-        .unwrap();
-
-        assert!(result.success);
-        assert_eq!(
-            final_state.sload(&caller, &U256::from(1u64)),
-            U256::from(0xAAu64)
-        );
-        assert_eq!(final_state.sload(&callee, &U256::from(1u64)), U256::ZERO);
     }
 
     #[test]

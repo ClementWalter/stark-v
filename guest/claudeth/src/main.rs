@@ -15,7 +15,7 @@ use alloc::{vec, vec::Vec};
 use claudeth::crypto::rlp;
 use claudeth::crypto::rlp::RlpError;
 use claudeth::state::{InMemoryState, State};
-use claudeth::stf::{BlockProcessingError, ExecutionError, process_block};
+use claudeth::stf::{process_block, BlockProcessingError, ExecutionError};
 use claudeth::types::{Address, BlockHeader, Hash, Transaction, U256};
 
 const ERROR_INVALID_HEADER: u64 = 1;
@@ -35,12 +35,8 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //   parent_header_rlp,
 //   chain_id_u256,
 //   transactions_rlp_list,
-//   state_entries_rlp_list,
-//   recent_block_hashes_rlp_list?   // optional (6th item)
+//   state_entries_rlp_list
 // ])
-//
-// recent_block_hashes_rlp_list format (RLP list):
-// [ [block_number_u256, block_hash], ... ]  // up to 256 entries
 //
 // State entry format (RLP list):
 // [address, nonce, balance, code_bytes, storage_entries]
@@ -99,7 +95,7 @@ fn process_input(input: &[u8]) -> Vec<u8> {
 
 fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResult, GuestError> {
     let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
-    if !rest.is_empty() || !(items.len() == 5 || items.len() == 6) {
+    if !rest.is_empty() || items.len() != 5 {
         return Err(GuestError::InvalidInput);
     }
 
@@ -110,25 +106,11 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
     let transactions = decode_transactions(&items[3])?;
     let state_entries = decode_state_entries(&items[4])?;
 
-    let recent_block_hashes = if items.len() == 6 {
-        decode_recent_block_hashes(&items[5])?
-    } else {
-        Vec::new()
-    };
-
     let mut state = InMemoryState::new();
     apply_state_entries(&mut state, &state_entries);
 
-    process_block(
-        &block,
-        &parent,
-        &transactions,
-        &[], // TODO: decode withdrawals from input
-        &mut state,
-        chain_id,
-        &recent_block_hashes,
-    )
-    .map_err(GuestError::Block)
+    process_block(&block, &parent, &transactions, &mut state, chain_id)
+        .map_err(GuestError::Block)
 }
 
 fn decode_transactions(input: &[u8]) -> Result<Vec<Transaction>, GuestError> {
@@ -195,33 +177,7 @@ fn decode_storage_entries(input: &[u8]) -> Result<Vec<(U256, U256)>, GuestError>
     Ok(entries)
 }
 
-fn decode_recent_block_hashes(input: &[u8]) -> Result<Vec<(u64, Hash)>, GuestError> {
-    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
-    if !rest.is_empty() {
-        return Err(GuestError::InvalidInput);
-    }
-    if items.len() > 256 {
-        return Err(GuestError::InvalidInput);
-    }
-
-    let mut entries = Vec::with_capacity(items.len());
-    for item in items {
-        let (fields, rest) = rlp::decode_list(&item).map_err(GuestError::Rlp)?;
-        if !rest.is_empty() || fields.len() != 2 {
-            return Err(GuestError::InvalidInput);
-        }
-
-        let (number, _) = rlp::decode_u256(&fields[0]).map_err(GuestError::Rlp)?;
-        let (hash, _) = rlp::decode_hash(&fields[1]).map_err(GuestError::Rlp)?;
-        let number = u64::try_from(number).map_err(|_| GuestError::InvalidInput)?;
-        entries.push((number, hash));
-    }
-
-    Ok(entries)
-}
-
 fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
-    state.set_touch_tracking(false);
     for entry in entries {
         state.set_balance(&entry.address, entry.balance);
         state.set_nonce(&entry.address, entry.nonce);
@@ -230,7 +186,6 @@ fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
             state.sstore(&entry.address, key, *value);
         }
     }
-    state.set_touch_tracking(true);
 }
 
 fn encode_success(gas_used: u64, receipts_root: Hash, state_root: Hash) -> Vec<u8> {
@@ -263,45 +218,34 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
         BlockProcessingError::TransactionExecutionError(exec_err) => {
             let detail = match exec_err {
                 ExecutionError::ValidationError(_) => 1u64,
-                ExecutionError::ExecutionFailed(_) => 2u64,
+                ExecutionError::ExecutionFailed => 2u64,
             };
-            (ERROR_TX_EXECUTION, rlp::encode_list(&[encode_u64(detail)]))
+            (
+                ERROR_TX_EXECUTION,
+                rlp::encode_list(&[encode_u64(detail)]),
+            )
         }
-        BlockProcessingError::GasLimitExceeded {
-            gas_limit,
-            gas_used,
-            ..
-        } => (
+        BlockProcessingError::GasLimitExceeded { gas_limit, gas_used, .. } => (
             ERROR_GAS_LIMIT_EXCEEDED,
             rlp::encode_list(&[encode_u64(gas_limit), encode_u64(gas_used)]),
         ),
-        BlockProcessingError::ReceiptsRootMismatch {
-            expected, computed, ..
-        } => (
+        BlockProcessingError::ReceiptsRootMismatch { expected, computed, .. } => (
             ERROR_RECEIPTS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::StateRootMismatch {
-            expected, computed, ..
-        } => (
+        BlockProcessingError::StateRootMismatch { expected, computed, .. } => (
             ERROR_STATE_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::GasUsedMismatch {
-            expected, computed, ..
-        } => (
+        BlockProcessingError::GasUsedMismatch { expected, computed, .. } => (
             ERROR_GAS_USED_MISMATCH,
             rlp::encode_list(&[encode_u64(expected), encode_u64(computed)]),
         ),
-        BlockProcessingError::TransactionsRootMismatch {
-            expected, computed, ..
-        } => (
+        BlockProcessingError::TransactionsRootMismatch { expected, computed, .. } => (
             ERROR_TRANSACTIONS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::LogsBloomMismatch {
-            expected, computed, ..
-        } => (
+        BlockProcessingError::LogsBloomMismatch { expected, computed, .. } => (
             ERROR_LOGS_BLOOM_MISMATCH,
             rlp::encode_list(&[
                 rlp::encode_bytes(expected.as_ref()),

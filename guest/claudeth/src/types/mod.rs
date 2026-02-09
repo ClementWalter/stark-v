@@ -15,9 +15,9 @@ pub mod transaction;
 pub mod uint;
 
 pub use address::Address;
-pub use block::{BlockHeader, EMPTY_OMMERS_HASH, ValidationError, Withdrawal};
+pub use block::{BlockHeader, EMPTY_OMMERS_HASH, ValidationError};
 pub use bytes::Bytes;
-pub use hash::{H256, Hash};
+pub use hash::{Hash, H256};
 pub use transaction::{
     AccessListEntry, Eip1559Transaction, Eip2930Transaction, LegacyTransaction, Transaction,
 };

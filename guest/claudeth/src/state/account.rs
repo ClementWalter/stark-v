@@ -17,8 +17,8 @@ use std::vec::Vec;
 use alloc::{vec, vec::Vec};
 
 use crate::crypto::rlp::{self, RlpError};
-use crate::state::partial_mpt::EMPTY_TRIE_ROOT;
 use crate::types::{Hash, U256};
+use crate::state::partial_mpt::EMPTY_TRIE_ROOT;
 
 /// Ethereum account state
 ///
@@ -144,8 +144,10 @@ impl Default for Account {
 /// Keccak256 hash of empty bytes: keccak256([])
 /// This is c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
 pub const EMPTY_CODE_HASH: Hash = Hash::new([
-    0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c, 0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7, 0x03, 0xc0,
-    0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b, 0x7b, 0xfa, 0xd8, 0x04, 0x5d, 0x85, 0xa4, 0x70,
+    0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c,
+    0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7, 0x03, 0xc0,
+    0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b,
+    0x7b, 0xfa, 0xd8, 0x04, 0x5d, 0x85, 0xa4, 0x70,
 ]);
 
 #[cfg(test)]
@@ -224,8 +226,12 @@ mod tests {
         let eoa = Account::new_eoa(U256::ZERO, U256::ZERO);
         assert!(eoa.is_eoa());
 
-        let contract =
-            Account::new_contract(U256::ZERO, U256::ZERO, Hash::ZERO, Hash::from([0x42; 32]));
+        let contract = Account::new_contract(
+            U256::ZERO,
+            U256::ZERO,
+            Hash::ZERO,
+            Hash::from([0x42; 32]),
+        );
         assert!(!contract.is_eoa());
     }
 
@@ -234,8 +240,12 @@ mod tests {
         let eoa = Account::new_eoa(U256::ZERO, U256::ZERO);
         assert!(!eoa.is_contract());
 
-        let contract =
-            Account::new_contract(U256::ZERO, U256::ZERO, Hash::ZERO, Hash::from([0x42; 32]));
+        let contract = Account::new_contract(
+            U256::ZERO,
+            U256::ZERO,
+            Hash::ZERO,
+            Hash::from([0x42; 32]),
+        );
         assert!(contract.is_contract());
     }
 
@@ -429,9 +439,10 @@ mod tests {
         // Verify the EMPTY_CODE_HASH constant is correct
         // This is keccak256([]) = c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
         let expected = [
-            0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c, 0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7,
-            0x03, 0xc0, 0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b, 0x7b, 0xfa, 0xd8, 0x04,
-            0x5d, 0x85, 0xa4, 0x70,
+            0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c,
+            0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7, 0x03, 0xc0,
+            0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b,
+            0x7b, 0xfa, 0xd8, 0x04, 0x5d, 0x85, 0xa4, 0x70,
         ];
         assert_eq!(EMPTY_CODE_HASH, Hash::from(expected));
     }

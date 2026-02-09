@@ -1,23 +1,19 @@
 //! Debug test to understand optionsTest_Prague state persistence issue
 
-use claudeth::state::{InMemoryState, State};
 use claudeth::stf::process_block;
-use claudeth::types::{Address, BlockHeader, Bytes, LegacyTransaction, Transaction, U256};
+use claudeth::state::{InMemoryState, State};
+use claudeth::types::{Address, BlockHeader, Transaction, LegacyTransaction, U256, Bytes};
 
 #[test]
 fn test_debug_optionstest_prague() {
     // Recreate optionsTest_Prague scenario
 
     let mut state = InMemoryState::new();
-    state.set_touch_tracking(false);
 
     // Setup pre-state for contract
     let contract_addr = Address::from_hex("0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b").unwrap();
     let contract_code = hex::decode("60016000355500").unwrap();
-    state.set_balance(
-        &contract_addr,
-        U256::from_hex("0x016345785d8a0000").unwrap(),
-    );
+    state.set_balance(&contract_addr, U256::from_hex("0x016345785d8a0000").unwrap());
     state.set_code(&contract_addr, contract_code);
     state.set_nonce(&contract_addr, U256::ZERO);
 
@@ -25,14 +21,10 @@ fn test_debug_optionstest_prague() {
     let sender_addr = Address::from_hex("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b").unwrap();
     state.set_balance(&sender_addr, U256::from_hex("0x016345785d8a0000").unwrap());
     state.set_nonce(&sender_addr, U256::ZERO);
-    state.set_touch_tracking(true);
 
     println!("Pre-state:");
     println!("  Contract balance: {}", state.get_balance(&contract_addr));
-    println!(
-        "  Contract code: {} bytes",
-        state.get_code(&contract_addr).len()
-    );
+    println!("  Contract code: {} bytes", state.get_code(&contract_addr).len());
     println!("  Sender balance: {}", state.get_balance(&sender_addr));
     println!("  Sender nonce: {}", state.get_nonce(&sender_addr));
 
@@ -43,13 +35,10 @@ fn test_debug_optionstest_prague() {
         gas_limit: U256::from_hex("0x061a80").unwrap(),
         to: Some(contract_addr),
         value: U256::ZERO,
-        data: Bytes::from_hex("0x0000000000000000000000000000000000000000000000000000000000000001")
-            .unwrap(),
+        data: Bytes::from_hex("0x0000000000000000000000000000000000000000000000000000000000000001").unwrap(),
         v: U256::from_hex("0x1b").unwrap(),
-        r: U256::from_hex("0x31baec82258594305b86198c118a42a4e854a0bc058cb1193382af1f24cae0f5")
-            .unwrap(),
-        s: U256::from_hex("0x235e43030727941d615c0d62b8bef511795b1f3390d0d4596f74933f4ca6cb3e")
-            .unwrap(),
+        r: U256::from_hex("0x31baec82258594305b86198c118a42a4e854a0bc058cb1193382af1f24cae0f5").unwrap(),
+        s: U256::from_hex("0x235e43030727941d615c0d62b8bef511795b1f3390d0d4596f74933f4ca6cb3e").unwrap(),
     });
 
     // Create dummy block headers (we'll skip parent validation)
@@ -74,7 +63,6 @@ fn test_debug_optionstest_prague() {
         blob_gas_used: None,
         excess_blob_gas: None,
         parent_beacon_block_root: None,
-        requests_hash: None,
     };
 
     let block_header = BlockHeader {
@@ -98,22 +86,13 @@ fn test_debug_optionstest_prague() {
         blob_gas_used: None,
         excess_blob_gas: None,
         parent_beacon_block_root: None,
-        requests_hash: None,
     };
 
     let chain_id = U256::ONE;
 
     // Execute block
     println!("\nExecuting block with 1 transaction...");
-    let result = process_block(
-        &block_header,
-        &parent_header,
-        &[tx],
-        &[],
-        &mut state,
-        chain_id,
-        &[],
-    );
+    let result = process_block(&block_header, &parent_header, &[tx], &mut state, chain_id);
 
     match result {
         Ok(res) => {
@@ -121,12 +100,9 @@ fn test_debug_optionstest_prague() {
             println!("  Gas used: {}", res.gas_used);
             println!("  Transactions: {}", res.transaction_results.len());
             for (i, tx_result) in res.transaction_results.iter().enumerate() {
-                println!(
-                    "  TX {}: success={}, gas={}",
-                    i, tx_result.success, tx_result.gas_used
-                );
+                println!("  TX {}: success={}, gas={}", i, tx_result.success, tx_result.gas_used);
             }
-        }
+        },
         Err(e) => {
             println!("Block execution FAILED: {e:?}");
         }
@@ -139,21 +115,11 @@ fn test_debug_optionstest_prague() {
     println!("  Sender nonce: {}", state.get_nonce(&sender_addr));
 
     // Check storage
-    println!(
-        "\nStorage at key 0x01: {}",
-        state.sload(&contract_addr, &U256::ONE)
-    );
-    println!(
-        "Storage at key 0x02: {}",
-        state.sload(&contract_addr, &U256::from_u64(2))
-    );
+    println!("\nStorage at key 0x01: {}", state.sload(&contract_addr, &U256::ONE));
+    println!("Storage at key 0x02: {}", state.sload(&contract_addr, &U256::from_u64(2)));
 
     // The storage at key 0x01 should be 1
-    assert_eq!(
-        state.sload(&contract_addr, &U256::ONE),
-        U256::ONE,
-        "Storage[1] should be 1"
-    );
+    assert_eq!(state.sload(&contract_addr, &U256::ONE), U256::ONE, "Storage[1] should be 1");
 }
 
 // Helper trait for from_hex

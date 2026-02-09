@@ -13,9 +13,8 @@ fn test_gas_tracing_simple_execution() {
 
     // Create EVM with tracing enabled
     let state = InMemoryState::new();
-    let mut evm =
-        claudeth::evm::interpreter::Evm::new(code, 100000, state, claudeth::evm::NullHost)
-            .with_tracing();
+    let mut evm = claudeth::evm::interpreter::Evm::new(code, 100000, state, claudeth::evm::NullHost)
+        .with_tracing();
 
     // Execute
     let result = evm.run().expect("execution should succeed");
@@ -58,8 +57,8 @@ fn test_gas_tracing_simple_execution() {
 #[cfg(feature = "evm-trace")]
 #[test]
 fn test_gas_tracing_memory_operations() {
-    use claudeth::evm::NullHost;
     use claudeth::evm::interpreter::Evm;
+    use claudeth::evm::NullHost;
     use claudeth::state::InMemoryState;
 
     // PUSH1 0x42 PUSH1 0x00 MSTORE STOP
@@ -82,10 +81,7 @@ fn test_gas_tracing_memory_operations() {
     assert_eq!(mstore_entry.opcode, 0x52);
     assert_eq!(mstore_entry.name, "MSTORE");
     // Base cost 3 + memory expansion cost
-    assert!(
-        mstore_entry.gas_cost > 3,
-        "MSTORE should include memory expansion gas"
-    );
+    assert!(mstore_entry.gas_cost > 3, "MSTORE should include memory expansion gas");
 }
 
 #[cfg(not(feature = "evm-trace"))]
@@ -93,8 +89,8 @@ fn test_gas_tracing_memory_operations() {
 fn test_tracing_not_available_without_feature() {
     // When feature is not enabled, tracing methods should not be available
     // This test just ensures the code compiles without the feature
-    use claudeth::evm::NullHost;
     use claudeth::evm::interpreter::Evm;
+    use claudeth::evm::NullHost;
     use claudeth::state::InMemoryState;
 
     let code = vec![0x60, 0x42, 0x00];

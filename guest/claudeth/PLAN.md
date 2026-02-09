@@ -37,15 +37,17 @@ not yet apply those fork-specific system calls.
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-09): pass
+- `cargo test -p claudeth --release` (2026-02-09): 93 passed, 0 failed
 - `cargo clippy -p claudeth -- -D warnings` (2026-02-09): pass
 
 ## Plan
 
 ### Completed This Iteration
 
-- Aligned README/PLAN/learnings with the current implementation.
-- Updated storage persistence test to match the `InMemoryState` API.
+- Fixed 55 compilation errors blocking the build:
+  - Removed nonexistent `StorageWrite` re-export from `evm/mod.rs`
+  - Made `compute_create_address` and `compute_create2_address` `pub` in `evm/host.rs`
+  - Added `From<arithmetic::EvmError>` impl for `evm::error::EvmError`
 
 ### P0: Implement EIP-4895 withdrawals
 

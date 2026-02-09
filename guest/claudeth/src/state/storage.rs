@@ -93,10 +93,7 @@ impl Storage {
     /// Generates a Merkle proof for a storage key
     ///
     /// The proof can be used to verify the value at this key.
-    pub fn generate_proof(
-        &self,
-        key: &U256,
-    ) -> Result<Proof, crate::state::partial_mpt::proof::ProofError> {
+    pub fn generate_proof(&self, key: &U256) -> Result<Proof, crate::state::partial_mpt::proof::ProofError> {
         let key_hash = keccak256(&key.to_be_bytes());
         self.trie.generate_proof(key_hash.as_bytes())
     }

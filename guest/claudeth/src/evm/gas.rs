@@ -159,11 +159,11 @@ pub const GAS_SLOAD_WARM: u64 = 100;
 /// Gas cost for SSTORE when setting a new non-zero value (from zero)
 pub const GAS_SSTORE_SET: u64 = 20000;
 
-/// Gas cost for SSTORE when modifying an existing value (EIP-2929: reduced from 5000 to account for separate access cost)
-pub const GAS_SSTORE_RESET: u64 = 2900;
+/// Gas cost for SSTORE when modifying an existing value
+pub const GAS_SSTORE_RESET: u64 = 5000;
 
-/// Gas cost for SSTORE when clearing a value (to zero) (EIP-2929: same as RESET)
-pub const GAS_SSTORE_CLEAR: u64 = 2900;
+/// Gas cost for SSTORE when clearing a value (to zero)
+pub const GAS_SSTORE_CLEAR: u64 = 5000;
 
 /// Sentry gas reserved for SSTORE (EIP-2200)
 pub const GAS_SSTORE_SENTRY: u64 = 2300;
@@ -542,114 +542,114 @@ pub const CALL_DEPTH_LIMIT: usize = 1024;
 pub fn opcode_gas_cost(opcode: u8) -> u64 {
     match opcode {
         // 0x00-0x0F: Arithmetic operations
-        0x00 => GAS_STOP,       // STOP
-        0x01 => GAS_ADD,        // ADD
-        0x02 => GAS_MUL,        // MUL
-        0x03 => GAS_SUB,        // SUB
-        0x04 => GAS_DIV,        // DIV
-        0x05 => GAS_SDIV,       // SDIV
-        0x06 => GAS_MOD,        // MOD
-        0x07 => GAS_SMOD,       // SMOD
-        0x08 => GAS_ADDMOD,     // ADDMOD
-        0x09 => GAS_MULMOD,     // MULMOD
-        0x0A => GAS_EXP,        // EXP (base, dynamic cost per byte)
-        0x0B => GAS_SIGNEXTEND, // SIGNEXTEND
+        0x00 => GAS_STOP,           // STOP
+        0x01 => GAS_ADD,            // ADD
+        0x02 => GAS_MUL,            // MUL
+        0x03 => GAS_SUB,            // SUB
+        0x04 => GAS_DIV,            // DIV
+        0x05 => GAS_SDIV,           // SDIV
+        0x06 => GAS_MOD,            // MOD
+        0x07 => GAS_SMOD,           // SMOD
+        0x08 => GAS_ADDMOD,         // ADDMOD
+        0x09 => GAS_MULMOD,         // MULMOD
+        0x0A => GAS_EXP,            // EXP (base, dynamic cost per byte)
+        0x0B => GAS_SIGNEXTEND,     // SIGNEXTEND
 
         // 0x10-0x1F: Comparison & bitwise operations
-        0x10 => GAS_LT,     // LT
-        0x11 => GAS_GT,     // GT
-        0x12 => GAS_SLT,    // SLT
-        0x13 => GAS_SGT,    // SGT
-        0x14 => GAS_EQ,     // EQ
-        0x15 => GAS_ISZERO, // ISZERO
-        0x16 => GAS_AND,    // AND
-        0x17 => GAS_OR,     // OR
-        0x18 => GAS_XOR,    // XOR
-        0x19 => GAS_NOT,    // NOT
-        0x1A => GAS_BYTE,   // BYTE
-        0x1B => GAS_SHL,    // SHL
-        0x1C => GAS_SHR,    // SHR
-        0x1D => GAS_SAR,    // SAR
+        0x10 => GAS_LT,             // LT
+        0x11 => GAS_GT,             // GT
+        0x12 => GAS_SLT,            // SLT
+        0x13 => GAS_SGT,            // SGT
+        0x14 => GAS_EQ,             // EQ
+        0x15 => GAS_ISZERO,         // ISZERO
+        0x16 => GAS_AND,            // AND
+        0x17 => GAS_OR,             // OR
+        0x18 => GAS_XOR,            // XOR
+        0x19 => GAS_NOT,            // NOT
+        0x1A => GAS_BYTE,           // BYTE
+        0x1B => GAS_SHL,            // SHL
+        0x1C => GAS_SHR,            // SHR
+        0x1D => GAS_SAR,            // SAR
 
         // 0x20: Hashing
-        0x20 => GAS_KECCAK256, // KECCAK256 (base, dynamic per word)
+        0x20 => GAS_KECCAK256,      // KECCAK256 (base, dynamic per word)
 
         // 0x30-0x3F: Environment information
-        0x30 => GAS_ADDRESS,          // ADDRESS
-        0x31 => GAS_BALANCE_COLD,     // BALANCE (cold, can be warm)
-        0x32 => GAS_ORIGIN,           // ORIGIN
-        0x33 => GAS_CALLER,           // CALLER
-        0x34 => GAS_CALLVALUE,        // CALLVALUE
-        0x35 => GAS_CALLDATALOAD,     // CALLDATALOAD
-        0x36 => GAS_CALLDATASIZE,     // CALLDATASIZE
-        0x37 => GAS_CALLDATACOPY,     // CALLDATACOPY (base, dynamic)
-        0x38 => GAS_CODESIZE,         // CODESIZE
-        0x39 => GAS_CODECOPY,         // CODECOPY (base, dynamic)
-        0x3A => GAS_GASPRICE,         // GASPRICE
+        0x30 => GAS_ADDRESS,        // ADDRESS
+        0x31 => GAS_BALANCE_COLD,   // BALANCE (cold, can be warm)
+        0x32 => GAS_ORIGIN,         // ORIGIN
+        0x33 => GAS_CALLER,         // CALLER
+        0x34 => GAS_CALLVALUE,      // CALLVALUE
+        0x35 => GAS_CALLDATALOAD,   // CALLDATALOAD
+        0x36 => GAS_CALLDATASIZE,   // CALLDATASIZE
+        0x37 => GAS_CALLDATACOPY,   // CALLDATACOPY (base, dynamic)
+        0x38 => GAS_CODESIZE,       // CODESIZE
+        0x39 => GAS_CODECOPY,       // CODECOPY (base, dynamic)
+        0x3A => GAS_GASPRICE,       // GASPRICE
         0x3B => GAS_EXTCODESIZE_COLD, // EXTCODESIZE (cold)
         0x3C => GAS_EXTCODECOPY_COLD, // EXTCODECOPY (cold, base)
-        0x3D => GAS_RETURNDATASIZE,   // RETURNDATASIZE
-        0x3E => GAS_RETURNDATACOPY,   // RETURNDATACOPY (base, dynamic)
+        0x3D => GAS_RETURNDATASIZE, // RETURNDATASIZE
+        0x3E => GAS_RETURNDATACOPY, // RETURNDATACOPY (base, dynamic)
         0x3F => GAS_EXTCODEHASH_COLD, // EXTCODEHASH (cold)
 
         // 0x40-0x4F: Block information
-        0x40 => GAS_BLOCKHASH,   // BLOCKHASH
-        0x41 => GAS_COINBASE,    // COINBASE
-        0x42 => GAS_TIMESTAMP,   // TIMESTAMP
-        0x43 => GAS_NUMBER,      // NUMBER
-        0x44 => GAS_DIFFICULTY,  // DIFFICULTY/PREVRANDAO
-        0x45 => GAS_GASLIMIT,    // GASLIMIT
-        0x46 => GAS_CHAINID,     // CHAINID
-        0x47 => GAS_SELFBALANCE, // SELFBALANCE
-        0x48 => GAS_BASEFEE,     // BASEFEE
-        0x49 => GAS_BLOBHASH,    // BLOBHASH
-        0x4A => GAS_BLOBBASEFEE, // BLOBBASEFEE
+        0x40 => GAS_BLOCKHASH,      // BLOCKHASH
+        0x41 => GAS_COINBASE,       // COINBASE
+        0x42 => GAS_TIMESTAMP,      // TIMESTAMP
+        0x43 => GAS_NUMBER,         // NUMBER
+        0x44 => GAS_DIFFICULTY,     // DIFFICULTY/PREVRANDAO
+        0x45 => GAS_GASLIMIT,       // GASLIMIT
+        0x46 => GAS_CHAINID,        // CHAINID
+        0x47 => GAS_SELFBALANCE,    // SELFBALANCE
+        0x48 => GAS_BASEFEE,        // BASEFEE
+        0x49 => GAS_BLOBHASH,       // BLOBHASH
+        0x4A => GAS_BLOBBASEFEE,    // BLOBBASEFEE
 
         // 0x50-0x5F: Stack, Memory, Storage, and Flow operations
-        0x50 => GAS_POP,        // POP
-        0x51 => GAS_MLOAD,      // MLOAD (plus memory expansion)
-        0x52 => GAS_MSTORE,     // MSTORE (plus memory expansion)
-        0x53 => GAS_MSTORE8,    // MSTORE8 (plus memory expansion)
-        0x54 => GAS_SLOAD_COLD, // SLOAD (cold, can be warm)
-        0x55 => 0,              // SSTORE (dynamic only)
-        0x56 => GAS_JUMP,       // JUMP
-        0x57 => GAS_JUMPI,      // JUMPI
-        0x58 => GAS_PC,         // PC
-        0x59 => GAS_MSIZE,      // MSIZE
-        0x5A => GAS_GAS,        // GAS
-        0x5B => GAS_JUMPDEST,   // JUMPDEST
-        0x5C => GAS_TLOAD,      // TLOAD (EIP-1153)
-        0x5D => GAS_TSTORE,     // TSTORE (EIP-1153)
-        0x5E => GAS_MCOPY,      // MCOPY (EIP-5656)
-        0x5F => GAS_PUSH0,      // PUSH0 (EIP-3855)
+        0x50 => GAS_POP,            // POP
+        0x51 => GAS_MLOAD,          // MLOAD (plus memory expansion)
+        0x52 => GAS_MSTORE,         // MSTORE (plus memory expansion)
+        0x53 => GAS_MSTORE8,        // MSTORE8 (plus memory expansion)
+        0x54 => GAS_SLOAD_COLD,     // SLOAD (cold, can be warm)
+        0x55 => 0,                  // SSTORE (dynamic only)
+        0x56 => GAS_JUMP,           // JUMP
+        0x57 => GAS_JUMPI,          // JUMPI
+        0x58 => GAS_PC,             // PC
+        0x59 => GAS_MSIZE,          // MSIZE
+        0x5A => GAS_GAS,            // GAS
+        0x5B => GAS_JUMPDEST,       // JUMPDEST
+        0x5C => GAS_TLOAD,          // TLOAD (EIP-1153)
+        0x5D => GAS_TSTORE,         // TSTORE (EIP-1153)
+        0x5E => GAS_MCOPY,          // MCOPY (EIP-5656)
+        0x5F => GAS_PUSH0,          // PUSH0 (EIP-3855)
 
         // 0x60-0x7F: PUSH operations
-        0x60..=0x7F => GAS_PUSH, // PUSH1-PUSH32
+        0x60..=0x7F => GAS_PUSH,    // PUSH1-PUSH32
 
         // 0x80-0x8F: DUP operations
-        0x80..=0x8F => GAS_DUP, // DUP1-DUP16
+        0x80..=0x8F => GAS_DUP,     // DUP1-DUP16
 
         // 0x90-0x9F: SWAP operations
-        0x90..=0x9F => GAS_SWAP, // SWAP1-SWAP16
+        0x90..=0x9F => GAS_SWAP,    // SWAP1-SWAP16
 
         // 0xA0-0xA4: LOG operations
-        0xA0 => GAS_LOG, // LOG0 (base, dynamic)
-        0xA1 => GAS_LOG, // LOG1 (base, dynamic)
-        0xA2 => GAS_LOG, // LOG2 (base, dynamic)
-        0xA3 => GAS_LOG, // LOG3 (base, dynamic)
-        0xA4 => GAS_LOG, // LOG4 (base, dynamic)
+        0xA0 => GAS_LOG,            // LOG0 (base, dynamic)
+        0xA1 => GAS_LOG,            // LOG1 (base, dynamic)
+        0xA2 => GAS_LOG,            // LOG2 (base, dynamic)
+        0xA3 => GAS_LOG,            // LOG3 (base, dynamic)
+        0xA4 => GAS_LOG,            // LOG4 (base, dynamic)
 
         // 0xF0-0xFF: System operations
-        0xF0 => GAS_CREATE,            // CREATE
-        0xF1 => GAS_CALL_COLD,         // CALL (cold, can be warm)
-        0xF2 => GAS_CALLCODE_COLD,     // CALLCODE (cold)
-        0xF3 => GAS_RETURN,            // RETURN (base, dynamic)
+        0xF0 => GAS_CREATE,         // CREATE
+        0xF1 => GAS_CALL_COLD,      // CALL (cold, can be warm)
+        0xF2 => GAS_CALLCODE_COLD,  // CALLCODE (cold)
+        0xF3 => GAS_RETURN,         // RETURN (base, dynamic)
         0xF4 => GAS_DELEGATECALL_COLD, // DELEGATECALL (cold)
-        0xF5 => GAS_CREATE2,           // CREATE2 (base, dynamic)
-        0xFA => GAS_STATICCALL_COLD,   // STATICCALL (cold)
-        0xFD => GAS_REVERT,            // REVERT (base, dynamic)
-        0xFE => 0,                     // INVALID (consumes all gas)
-        0xFF => GAS_SELFDESTRUCT,      // SELFDESTRUCT (base, dynamic)
+        0xF5 => GAS_CREATE2,        // CREATE2 (base, dynamic)
+        0xFA => GAS_STATICCALL_COLD, // STATICCALL (cold)
+        0xFD => GAS_REVERT,         // REVERT (base, dynamic)
+        0xFE => 0,                  // INVALID (consumes all gas)
+        0xFF => GAS_SELFDESTRUCT,   // SELFDESTRUCT (base, dynamic)
 
         // Unknown opcodes
         _ => 0,
@@ -695,22 +695,17 @@ pub fn memory_expansion_cost(old_size: usize, new_size: usize) -> u64 {
         return 0;
     }
 
-    fn word_cost(words: u64) -> u64 {
-        // cost = words^2 / 512 + 3 * words
-        // If words > 2^32, words^2 overflows u64 → return u64::MAX to guarantee OOG.
-        match words.checked_mul(words) {
-            Some(sq) => (sq / QUAD_COEFF_DIV).saturating_add(MEMORY_GAS.saturating_mul(words)),
-            None => u64::MAX,
-        }
-    }
+    // Calculate cost for new size
+    let new_words = new_size.div_ceil(32); // Round up to nearest word
+    let new_cost = (new_words * new_words) / QUAD_COEFF_DIV as usize
+                 + (MEMORY_GAS as usize * new_words);
 
-    let new_words = new_size.div_ceil(32) as u64;
-    let old_words = old_size.div_ceil(32) as u64;
+    // Calculate cost for old size
+    let old_words = old_size.div_ceil(32);
+    let old_cost = (old_words * old_words) / QUAD_COEFF_DIV as usize
+                 + (MEMORY_GAS as usize * old_words);
 
-    let new_cost = word_cost(new_words);
-    let old_cost = word_cost(old_words);
-
-    new_cost.saturating_sub(old_cost)
+    (new_cost - old_cost) as u64
 }
 
 /// Calculates the gas cost for call operations.
@@ -987,80 +982,80 @@ mod tests {
 
     #[test]
     fn test_arithmetic_opcodes() {
-        assert_eq!(opcode_gas_cost(0x00), 0); // STOP
-        assert_eq!(opcode_gas_cost(0x01), 3); // ADD
-        assert_eq!(opcode_gas_cost(0x02), 5); // MUL
-        assert_eq!(opcode_gas_cost(0x03), 3); // SUB
-        assert_eq!(opcode_gas_cost(0x04), 5); // DIV
-        assert_eq!(opcode_gas_cost(0x05), 5); // SDIV
-        assert_eq!(opcode_gas_cost(0x06), 5); // MOD
-        assert_eq!(opcode_gas_cost(0x07), 5); // SMOD
-        assert_eq!(opcode_gas_cost(0x08), 8); // ADDMOD
-        assert_eq!(opcode_gas_cost(0x09), 8); // MULMOD
-        assert_eq!(opcode_gas_cost(0x0A), 10); // EXP (base)
-        assert_eq!(opcode_gas_cost(0x0B), 5); // SIGNEXTEND
+        assert_eq!(opcode_gas_cost(0x00), 0);   // STOP
+        assert_eq!(opcode_gas_cost(0x01), 3);   // ADD
+        assert_eq!(opcode_gas_cost(0x02), 5);   // MUL
+        assert_eq!(opcode_gas_cost(0x03), 3);   // SUB
+        assert_eq!(opcode_gas_cost(0x04), 5);   // DIV
+        assert_eq!(opcode_gas_cost(0x05), 5);   // SDIV
+        assert_eq!(opcode_gas_cost(0x06), 5);   // MOD
+        assert_eq!(opcode_gas_cost(0x07), 5);   // SMOD
+        assert_eq!(opcode_gas_cost(0x08), 8);   // ADDMOD
+        assert_eq!(opcode_gas_cost(0x09), 8);   // MULMOD
+        assert_eq!(opcode_gas_cost(0x0A), 10);  // EXP (base)
+        assert_eq!(opcode_gas_cost(0x0B), 5);   // SIGNEXTEND
     }
 
     #[test]
     fn test_comparison_opcodes() {
-        assert_eq!(opcode_gas_cost(0x10), 3); // LT
-        assert_eq!(opcode_gas_cost(0x11), 3); // GT
-        assert_eq!(opcode_gas_cost(0x12), 3); // SLT
-        assert_eq!(opcode_gas_cost(0x13), 3); // SGT
-        assert_eq!(opcode_gas_cost(0x14), 3); // EQ
-        assert_eq!(opcode_gas_cost(0x15), 3); // ISZERO
+        assert_eq!(opcode_gas_cost(0x10), 3);   // LT
+        assert_eq!(opcode_gas_cost(0x11), 3);   // GT
+        assert_eq!(opcode_gas_cost(0x12), 3);   // SLT
+        assert_eq!(opcode_gas_cost(0x13), 3);   // SGT
+        assert_eq!(opcode_gas_cost(0x14), 3);   // EQ
+        assert_eq!(opcode_gas_cost(0x15), 3);   // ISZERO
     }
 
     #[test]
     fn test_bitwise_opcodes() {
-        assert_eq!(opcode_gas_cost(0x16), 3); // AND
-        assert_eq!(opcode_gas_cost(0x17), 3); // OR
-        assert_eq!(opcode_gas_cost(0x18), 3); // XOR
-        assert_eq!(opcode_gas_cost(0x19), 3); // NOT
-        assert_eq!(opcode_gas_cost(0x1A), 3); // BYTE
-        assert_eq!(opcode_gas_cost(0x1B), 3); // SHL
-        assert_eq!(opcode_gas_cost(0x1C), 3); // SHR
-        assert_eq!(opcode_gas_cost(0x1D), 3); // SAR
+        assert_eq!(opcode_gas_cost(0x16), 3);   // AND
+        assert_eq!(opcode_gas_cost(0x17), 3);   // OR
+        assert_eq!(opcode_gas_cost(0x18), 3);   // XOR
+        assert_eq!(opcode_gas_cost(0x19), 3);   // NOT
+        assert_eq!(opcode_gas_cost(0x1A), 3);   // BYTE
+        assert_eq!(opcode_gas_cost(0x1B), 3);   // SHL
+        assert_eq!(opcode_gas_cost(0x1C), 3);   // SHR
+        assert_eq!(opcode_gas_cost(0x1D), 3);   // SAR
     }
 
     #[test]
     fn test_hash_opcode() {
-        assert_eq!(opcode_gas_cost(0x20), 30); // KECCAK256 (base)
+        assert_eq!(opcode_gas_cost(0x20), 30);  // KECCAK256 (base)
     }
 
     #[test]
     fn test_environment_opcodes() {
-        assert_eq!(opcode_gas_cost(0x30), 2); // ADDRESS
-        assert_eq!(opcode_gas_cost(0x31), 2600); // BALANCE (cold)
-        assert_eq!(opcode_gas_cost(0x32), 2); // ORIGIN
-        assert_eq!(opcode_gas_cost(0x33), 2); // CALLER
-        assert_eq!(opcode_gas_cost(0x34), 2); // CALLVALUE
-        assert_eq!(opcode_gas_cost(0x35), 3); // CALLDATALOAD
-        assert_eq!(opcode_gas_cost(0x36), 2); // CALLDATASIZE
-        assert_eq!(opcode_gas_cost(0x37), 3); // CALLDATACOPY (base)
-        assert_eq!(opcode_gas_cost(0x38), 2); // CODESIZE
-        assert_eq!(opcode_gas_cost(0x39), 3); // CODECOPY (base)
-        assert_eq!(opcode_gas_cost(0x3A), 2); // GASPRICE
-        assert_eq!(opcode_gas_cost(0x3B), 2600); // EXTCODESIZE (cold)
-        assert_eq!(opcode_gas_cost(0x3C), 2600); // EXTCODECOPY (cold)
-        assert_eq!(opcode_gas_cost(0x3D), 2); // RETURNDATASIZE
-        assert_eq!(opcode_gas_cost(0x3E), 3); // RETURNDATACOPY (base)
-        assert_eq!(opcode_gas_cost(0x3F), 2600); // EXTCODEHASH (cold)
+        assert_eq!(opcode_gas_cost(0x30), 2);     // ADDRESS
+        assert_eq!(opcode_gas_cost(0x31), 2600);  // BALANCE (cold)
+        assert_eq!(opcode_gas_cost(0x32), 2);     // ORIGIN
+        assert_eq!(opcode_gas_cost(0x33), 2);     // CALLER
+        assert_eq!(opcode_gas_cost(0x34), 2);     // CALLVALUE
+        assert_eq!(opcode_gas_cost(0x35), 3);     // CALLDATALOAD
+        assert_eq!(opcode_gas_cost(0x36), 2);     // CALLDATASIZE
+        assert_eq!(opcode_gas_cost(0x37), 3);     // CALLDATACOPY (base)
+        assert_eq!(opcode_gas_cost(0x38), 2);     // CODESIZE
+        assert_eq!(opcode_gas_cost(0x39), 3);     // CODECOPY (base)
+        assert_eq!(opcode_gas_cost(0x3A), 2);     // GASPRICE
+        assert_eq!(opcode_gas_cost(0x3B), 2600);  // EXTCODESIZE (cold)
+        assert_eq!(opcode_gas_cost(0x3C), 2600);  // EXTCODECOPY (cold)
+        assert_eq!(opcode_gas_cost(0x3D), 2);     // RETURNDATASIZE
+        assert_eq!(opcode_gas_cost(0x3E), 3);     // RETURNDATACOPY (base)
+        assert_eq!(opcode_gas_cost(0x3F), 2600);  // EXTCODEHASH (cold)
     }
 
     #[test]
     fn test_block_opcodes() {
-        assert_eq!(opcode_gas_cost(0x40), 20); // BLOCKHASH
-        assert_eq!(opcode_gas_cost(0x41), 2); // COINBASE
-        assert_eq!(opcode_gas_cost(0x42), 2); // TIMESTAMP
-        assert_eq!(opcode_gas_cost(0x43), 2); // NUMBER
-        assert_eq!(opcode_gas_cost(0x44), 2); // DIFFICULTY
-        assert_eq!(opcode_gas_cost(0x45), 2); // GASLIMIT
-        assert_eq!(opcode_gas_cost(0x46), 2); // CHAINID
-        assert_eq!(opcode_gas_cost(0x47), 5); // SELFBALANCE
-        assert_eq!(opcode_gas_cost(0x48), 2); // BASEFEE
-        assert_eq!(opcode_gas_cost(0x49), 3); // BLOBHASH
-        assert_eq!(opcode_gas_cost(0x4A), 2); // BLOBBASEFEE
+        assert_eq!(opcode_gas_cost(0x40), 20);  // BLOCKHASH
+        assert_eq!(opcode_gas_cost(0x41), 2);   // COINBASE
+        assert_eq!(opcode_gas_cost(0x42), 2);   // TIMESTAMP
+        assert_eq!(opcode_gas_cost(0x43), 2);   // NUMBER
+        assert_eq!(opcode_gas_cost(0x44), 2);   // DIFFICULTY
+        assert_eq!(opcode_gas_cost(0x45), 2);   // GASLIMIT
+        assert_eq!(opcode_gas_cost(0x46), 2);   // CHAINID
+        assert_eq!(opcode_gas_cost(0x47), 5);   // SELFBALANCE
+        assert_eq!(opcode_gas_cost(0x48), 2);   // BASEFEE
+        assert_eq!(opcode_gas_cost(0x49), 3);   // BLOBHASH
+        assert_eq!(opcode_gas_cost(0x4A), 2);   // BLOBBASEFEE
     }
 
     #[test]
@@ -1076,22 +1071,22 @@ mod tests {
 
     #[test]
     fn test_stack_memory_storage_opcodes() {
-        assert_eq!(opcode_gas_cost(0x50), 2); // POP
-        assert_eq!(opcode_gas_cost(0x51), 3); // MLOAD (base)
-        assert_eq!(opcode_gas_cost(0x52), 3); // MSTORE (base)
-        assert_eq!(opcode_gas_cost(0x53), 3); // MSTORE8 (base)
-        assert_eq!(opcode_gas_cost(0x54), 2100); // SLOAD (cold)
-        assert_eq!(opcode_gas_cost(0x55), 0); // SSTORE (dynamic only)
-        assert_eq!(opcode_gas_cost(0x56), 8); // JUMP
-        assert_eq!(opcode_gas_cost(0x57), 10); // JUMPI
-        assert_eq!(opcode_gas_cost(0x58), 2); // PC
-        assert_eq!(opcode_gas_cost(0x59), 2); // MSIZE
-        assert_eq!(opcode_gas_cost(0x5A), 2); // GAS
-        assert_eq!(opcode_gas_cost(0x5B), 1); // JUMPDEST
-        assert_eq!(opcode_gas_cost(0x5C), 100); // TLOAD
-        assert_eq!(opcode_gas_cost(0x5D), 100); // TSTORE
-        assert_eq!(opcode_gas_cost(0x5E), 3); // MCOPY
-        assert_eq!(opcode_gas_cost(0x5F), 2); // PUSH0
+        assert_eq!(opcode_gas_cost(0x50), 2);     // POP
+        assert_eq!(opcode_gas_cost(0x51), 3);     // MLOAD (base)
+        assert_eq!(opcode_gas_cost(0x52), 3);     // MSTORE (base)
+        assert_eq!(opcode_gas_cost(0x53), 3);     // MSTORE8 (base)
+        assert_eq!(opcode_gas_cost(0x54), 2100);  // SLOAD (cold)
+        assert_eq!(opcode_gas_cost(0x55), 0);     // SSTORE (dynamic only)
+        assert_eq!(opcode_gas_cost(0x56), 8);     // JUMP
+        assert_eq!(opcode_gas_cost(0x57), 10);    // JUMPI
+        assert_eq!(opcode_gas_cost(0x58), 2);     // PC
+        assert_eq!(opcode_gas_cost(0x59), 2);     // MSIZE
+        assert_eq!(opcode_gas_cost(0x5A), 2);     // GAS
+        assert_eq!(opcode_gas_cost(0x5B), 1);     // JUMPDEST
+        assert_eq!(opcode_gas_cost(0x5C), 100);   // TLOAD
+        assert_eq!(opcode_gas_cost(0x5D), 100);   // TSTORE
+        assert_eq!(opcode_gas_cost(0x5E), 3);     // MCOPY
+        assert_eq!(opcode_gas_cost(0x5F), 2);     // PUSH0
     }
 
     #[test]
@@ -1129,15 +1124,15 @@ mod tests {
     #[test]
     fn test_system_opcodes() {
         assert_eq!(opcode_gas_cost(0xF0), 32000); // CREATE
-        assert_eq!(opcode_gas_cost(0xF1), 2600); // CALL (cold)
-        assert_eq!(opcode_gas_cost(0xF2), 2600); // CALLCODE (cold)
-        assert_eq!(opcode_gas_cost(0xF3), 0); // RETURN (base)
-        assert_eq!(opcode_gas_cost(0xF4), 2600); // DELEGATECALL (cold)
+        assert_eq!(opcode_gas_cost(0xF1), 2600);  // CALL (cold)
+        assert_eq!(opcode_gas_cost(0xF2), 2600);  // CALLCODE (cold)
+        assert_eq!(opcode_gas_cost(0xF3), 0);     // RETURN (base)
+        assert_eq!(opcode_gas_cost(0xF4), 2600);  // DELEGATECALL (cold)
         assert_eq!(opcode_gas_cost(0xF5), 32000); // CREATE2 (base)
-        assert_eq!(opcode_gas_cost(0xFA), 2600); // STATICCALL (cold)
-        assert_eq!(opcode_gas_cost(0xFD), 0); // REVERT (base)
-        assert_eq!(opcode_gas_cost(0xFE), 0); // INVALID
-        assert_eq!(opcode_gas_cost(0xFF), 5000); // SELFDESTRUCT (base)
+        assert_eq!(opcode_gas_cost(0xFA), 2600);  // STATICCALL (cold)
+        assert_eq!(opcode_gas_cost(0xFD), 0);     // REVERT (base)
+        assert_eq!(opcode_gas_cost(0xFE), 0);     // INVALID
+        assert_eq!(opcode_gas_cost(0xFF), 5000);  // SELFDESTRUCT (base)
     }
 
     #[test]
