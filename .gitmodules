@@ -1,3 +1,6 @@
 [submodule "external/stwo"]
 	path = external/stwo
 	url = https://github.com/starkware-libs/stwo
+[submodule "guest/claudeth/execution-specs"]
+	path = guest/claudeth/execution-specs
+	url = https://github.com/ethereum/execution-specs/

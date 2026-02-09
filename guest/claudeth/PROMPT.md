@@ -21,8 +21,10 @@ project.
 6. If there is nothing to be done, exit.
 7. Based on the PLAN.md file, derive what can be implemented NOW. Pick only ONE
    task at a time and do it. Don't work on several tasks, just one that can be
-   implemented 100% NOW. Read the references implementations related to the
-   task.
+   implemented 100% NOW. Read the [references implementations](execution-specs)
+   related to the task before starting to work on it. **Make a clear plan based
+   on the learnings from the references implementations**. EVM clients are full
+   of small details that are easy to miss.
 8. Commit the changes to the repository.
 9. Dump do's and don'ts for the next iteration in [learnings.md](learnings.md);
    update [PROMPT.md](PROMPT.md) if you want to update the current procedure.

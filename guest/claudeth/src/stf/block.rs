@@ -36,6 +36,15 @@ const BEACON_ROOT_CONTRACT: [u8; 20] = [
 /// History buffer length for the beacon root ring buffer
 const HISTORY_BUFFER_LENGTH: u64 = 8191;
 
+// EIP-2935: Serve Historical Block Hashes from State (Prague)
+/// The history storage contract address
+const HISTORY_STORAGE_CONTRACT: [u8; 20] = [
+    0x00, 0x00, 0xf9, 0x08, 0x27, 0xf1, 0xc5, 0x3a, 0x10, 0xcb, 0x7a, 0x02, 0x33, 0x5b, 0x17,
+    0x53, 0x20, 0x00, 0x29, 0x35,
+];
+/// History serve window for the block hash ring buffer
+const HISTORY_SERVE_WINDOW: u64 = 8191;
+
 #[cfg(test)]
 use crate::state::EMPTY_TRIE_ROOT;
 
@@ -232,6 +241,35 @@ fn apply_beacon_root_system_call<S: State>(
 }
 
 // =============================================================================
+// EIP-2935: Historical Block Hashes (Prague)
+// =============================================================================
+
+/// Applies the EIP-2935 historical block hash system call at the start of each block.
+///
+/// This stores the parent block hash in the history storage contract as a ring buffer
+/// keyed by `(block.number - 1) % HISTORY_SERVE_WINDOW`. The system call:
+/// - Does NOT count toward block gas
+/// - Does NOT generate a receipt
+/// - Always succeeds (state changes are committed directly)
+/// - Only activates when `requests_hash` is present (Prague fork indicator)
+///
+/// Storage layout:
+/// - `storage[(block.number - 1) % 8191] = parent_hash`
+fn apply_blockhash_system_call<S: State>(
+    state: &mut S,
+    block_number: u64,
+    parent_hash: &Hash,
+) {
+    let contract_address = Address::from(HISTORY_STORAGE_CONTRACT);
+    let slot = U256::from_u64((block_number - 1) % HISTORY_SERVE_WINDOW);
+    state.sstore(
+        &contract_address,
+        &slot,
+        U256::from_be_bytes(*parent_hash.as_bytes()),
+    );
+}
+
+// =============================================================================
 // EIP-4895: Withdrawals (Shanghai fork)
 // =============================================================================
 
@@ -349,8 +387,14 @@ pub fn process_block<S: State + Clone>(
         apply_beacon_root_system_call(state, block.timestamp, parent_beacon_block_root);
     }
 
-    // Step 3: Execute all transactions
+    // Step 2c: EIP-2935 - Apply historical block hash system call (Prague+)
+    // Activated when requests_hash is present (Prague fork indicator)
     let parent_hash = parent.compute_hash();
+    if block.requests_hash.is_some() && block.number > 0 {
+        apply_blockhash_system_call(state, block.number, &parent_hash);
+    }
+
+    // Step 3: Execute all transactions
     let block_hash_ctx = BlockHashContext::new(parent_hash, recent_block_hashes.to_vec());
     let mut cumulative_gas_used = 0u64;
     let mut receipts = Vec::with_capacity(transactions.len());
