@@ -15,8 +15,8 @@ in `no_std` mode for the `riscv32im-unknown-none-elf` target.
 - ✅ Gas metering and refunds (EIP-3529 compliant)
 - ✅ Compiles to `riscv32im-unknown-none-elf` with `no_std`
 
-**Verified:**
-- ✅ EELS compliance testing (all blockchain test fixtures pass)
+**Testing Status:**
+- ⚠️ EELS compliance testing (0/20 blockchain test fixtures passing - debugging in progress)
 
 **In Progress:**
 - ⚠️ Witness-based state reconstruction (currently accepts full state snapshots)

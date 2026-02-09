@@ -29,9 +29,14 @@ validation against real mainnet blocks.
 - EELS state trie leaf dump on state root/post-state mismatch (Session 80)
 - SSTORE tracing in gas traces when `evm-trace` is enabled (Session 83)
 
-### ✅ EELS Test Status (LAST REPORTED PASSING - Session 84)
-**Test Results**: All EELS blockchain tests were reported passing in Session 84.
-This session did not re-run EELS; treat status as "last known good."
+### ⚠️ EELS Test Status (FAILING - Session 86 Re-verification)
+**Test Results**: 0/20 passing
+- 14 StateRootMismatch failures
+- 4 GasUsedMismatch failures (mergeExample: -19900 gas, tipInsideBlock: +5000 gas)
+- 2 TransactionExecutionError failures (ShanghaiLove, StrangeContractCreation)
+
+**NOTE**: Session 84 incorrectly claimed all tests were passing. This was a documentation-only
+commit without actual test verification. The actual status has always been 0/20 passing.
 
 ### ⚠️ Remaining Gaps
 - **Witness-based state reconstruction**: guest still accepts full state snapshots
@@ -49,15 +54,19 @@ sorting account addresses before inserting into the state trie.
 ✅ Categorized 18 failures: 12 StateRoot, 4 Gas, 2 ExecutionError
 ✅ Identified storage persistence as primary issue
 
-### P3: Debug Storage Persistence Issue (✅ DONE - Session 84)
-✅ All EELS tests now passing
-✅ Storage write issues resolved
-✅ Call context bugs fixed (DELEGATECALL, CALLCODE)
-✅ State root computation working correctly
+### P3: Debug Storage Persistence Issue (⚠️ IN PROGRESS)
+**Status**: Tests still failing (0/20 passing)
 
-**Resolution**: Storage tracing infrastructure added in Session 83 helped identify
-the remaining bugs. All storage writes now persist correctly and state roots match
-expected values.
+**Issues Remaining**:
+1. **StateRootMismatch** (14 failures): State root computation produces incorrect results
+   - Affects: optionsTest, shanghaiExample, basefeeExample, transient storage tests
+2. **GasUsedMismatch** (4 failures): Gas accounting errors
+   - mergeExample: computed 62939, expected 82839 (-19900 gas)
+   - tipInsideBlock: computed 73411, expected 68411 (+5000 gas)
+3. **TransactionExecutionError** (2 failures): Execution crashes
+   - ShanghaiLove, StrangeContractCreation
+
+**Next Steps**: Re-investigate root causes. Session 84 documentation was premature.
 
 ### P4: Witness-Based State Reconstruction (NEXT PRIORITY)
 **Goal**: Move from full state snapshots to witness-based state reconstruction.
@@ -121,9 +130,10 @@ Requirements:
 
 ## Immediate Next Task
 
-**P4.0: Witness Format v0 (DOC/SCHEMA)**
+**P3: Fix EELS Test Failures**
 
-Document the minimal witness schema in PLAN.md and keep it consistent with
-the existing `partial_mpt::proof` API. This enables the next step: adding a
-parser and proof-verification scaffolding without locking into a heavyweight
-serialization format.
+Must fix 20/20 failing EELS tests before moving to witness-based state reconstruction.
+Priority order:
+1. Debug StateRootMismatch failures (14 tests) - likely account encoding or storage root issues
+2. Fix GasUsedMismatch failures (4 tests) - gas accounting bugs
+3. Fix TransactionExecutionError failures (2 tests) - execution crashes
