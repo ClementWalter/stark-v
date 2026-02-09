@@ -337,7 +337,9 @@ impl State for InMemoryState {
                 continue;
             }
 
-            trie.insert(address.as_bytes(), account.encode_rlp());
+            // Ethereum state trie uses keccak256(address) as key, not raw address bytes
+            let key = keccak256(address.as_bytes());
+            trie.insert(key.as_bytes(), account.encode_rlp());
         }
 
         trie.compute_root()
@@ -948,7 +950,9 @@ mod tests {
 
         let mut trie = Trie::new();
         let account = Account::new_eoa(U256::from(1u64), U256::from(100u64));
-        trie.insert(addr.as_bytes(), account.encode_rlp());
+        // State trie uses keccak256(address) as key
+        let key = keccak256(addr.as_bytes());
+        trie.insert(key.as_bytes(), account.encode_rlp());
 
         assert_eq!(computed, trie.compute_root());
     }
@@ -966,7 +970,9 @@ mod tests {
         let account = Account::new(U256::ZERO, U256::ZERO, storage.compute_root(), EMPTY_CODE_HASH);
 
         let mut trie = Trie::new();
-        trie.insert(addr.as_bytes(), account.encode_rlp());
+        // State trie uses keccak256(address) as key
+        let key = keccak256(addr.as_bytes());
+        trie.insert(key.as_bytes(), account.encode_rlp());
 
         assert_eq!(computed, trie.compute_root());
     }
