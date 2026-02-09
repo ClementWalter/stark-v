@@ -84,6 +84,7 @@ Date: 2026-02-09
 - Keep EIP-4788 and EIP-2935 system calls before transaction execution.
 - Set `TxContext.blob_versioned_hashes` so `BLOBHASH` returns data for blob txs.
 - Enforce blob tx hash list/fee validation before execution.
+- When adding blob gas accounting, track `blob_gas_used` and enforce block limits.
 - Prefix blob transaction receipts with type `0x03`.
 
 **Don't**
