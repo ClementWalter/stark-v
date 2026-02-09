@@ -151,22 +151,29 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 ### Task N8: Align README dependency list ✅
 **Result**: README no longer mentions `rand` (not present in Cargo.toml); only `k256` remains as the external crypto dependency.
 
+### Task N9: Fix EIP-2929 SSTORE Gas Constants ✅
+**Result**: Corrected GAS_SSTORE_RESET and GAS_SSTORE_CLEAR from 5000 to 2900 per EIP-2929.
+**Impact**:
+- tloadDoesNotPersistCrossTxn: Gas now correct (64867), changed to StateRootMismatch ✅
+- transStorageBlockchain: Gas now correct (85256), changed to StateRootMismatch ✅
+- Multiple tests moved from gas mismatches to state root mismatches (progress!)
+
+**Gas Model (EIP-2929 compliant)**:
+- SSTORE SET cold: 20000 + 2100 = 22100 ✅
+- SSTORE SET warm: 20000 + 2100 - 2000 = 20100 ✅
+- SSTORE RESET cold: 2900 + 2100 = 5000 ✅
+- SSTORE RESET warm: 2900 + 2100 - 2000 = 3000 ✅
+
 ---
 
 ## Immediate Next Task (Execute Next)
 
-**Phase D: Resolve Smallest Gas Overcharge (tloadDoesNotPersistCrossTxn +2100)** (UNBLOCKED)
+**Phase D: Debug Remaining Gas Mismatches**
 
-**Goal**: Eliminate the +2100 gas overcharge in the smallest failing EELS case to validate gas accounting correctness.
-
-**Scope (candidate checks)**:
-1. Compare TLOAD/TSTORE gas scheduling with EIP-1153 reference costs.
-2. Validate that transient storage does not trigger EIP-2929 cold access charges.
-3. Verify SSTORE original value tracking across transactions for that test.
-
-**Completion Criteria**:
-- EELS test `tloadDoesNotPersistCrossTxn` passes with correct gas.
-- No regressions in unit tests or other EELS cases.
+**Current Status** (Session 68):
+- Gas overcharges in transient storage tests: **FIXED** ✅
+- Remaining gas issues: tipInsideBlock (+5000), mergeExample (-19900)
+- Many tests now have correct gas but wrong state roots (progress!)
 
 ### Task D3.0: Re-run EELS and Re-categorize Failures ✅
 **Status**: COMPLETED - Re-ran EELS after EIP-1559 upfront charge fix.
@@ -230,11 +237,16 @@ Gas Trace (initial: 340474, used: 22130)
    - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks
    - Likely issue with account/storage state computation or MPT
 
-**Current Failures** (Session 64 re-baseline - still 0/20 passing):
-- State root mismatches: 8 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2)
+**Current Failures** (Session 68 after EIP-2929 fix - still 0/20 passing):
+- State root mismatches: 12 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2, tloadDoesNotPersistCrossTxn x2, transStorageBlockchain x2)
 - Gas undercharges: 2 tests (mergeExample x2: -19900 gas)
-- Gas overcharges: 6 tests (tipInsideBlock x2: +9200 gas, tloadDoesNotPersistCrossTxn x2: +2100 gas, transStorageBlockchain x2: +4200 gas)
+- Gas overcharges: 2 tests (tipInsideBlock x2: +5000 gas, reduced from +9200)
 - Execution failures: 4 tests (ShanghaiLove x2, StrangeContractCreation x2)
+
+**Major Progress**:
+- ✅ Fixed transient storage gas overcharges (+2100/+4200) → now have correct gas but wrong state
+- ✅ Reduced tipInsideBlock overcharge from +9200 to +5000 (improvement from EIP-2929 fix)
+- ✅ 6 more tests now have **correct gas** but need state root fixes
 
 **Debugging Strategy**:
 1. Start with smallest gas discrepancies (easier to isolate root cause)
