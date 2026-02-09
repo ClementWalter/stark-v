@@ -15,7 +15,7 @@ pub mod transaction;
 pub mod uint;
 
 pub use address::Address;
-pub use block::{BlockHeader, EMPTY_OMMERS_HASH, ValidationError};
+pub use block::{BlockHeader, EMPTY_OMMERS_HASH, ValidationError, Withdrawal};
 pub use bytes::Bytes;
 pub use hash::{H256, Hash};
 pub use transaction::{

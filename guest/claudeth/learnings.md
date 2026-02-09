@@ -1,5 +1,51 @@
 # Claudeth Development Learnings
 
+## Session 92: EMPTY_TRIE_ROOT Bug Fix + EIP-4895 Withdrawals (2026-02-09)
+
+**Status**: Major breakthrough — 0/20 → 6/20 EELS tests passing
+
+### Root Cause Found
+The `EMPTY_TRIE_ROOT` constant in `src/state/partial_mpt/trie.rs` had a **single byte typo**:
+- Byte 17: was `0x96`, should be `0x48`
+- Correct value: `56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421`
+- Wrong value:   `56e81f171bcc55a6ff8345e692c0f86e5b96e01b996cadc001622fb5e363b421`
+
+This poisoned EVERY state root computation because all EOAs and accounts with empty
+storage use `EMPTY_TRIE_ROOT` in their RLP encoding (as the `storage_root` field).
+
+### Debugging Approach That Worked
+1. Identified simplest failing test (`tloadDoesNotPersistCrossTxn_Cancun` — 1 block, 2 txs)
+2. Wrote a **focused unit test** that manually constructs the expected post-state and computes the state root
+3. When our manual construction didn't match the expected root, confirmed the issue was in trie/RLP, NOT execution
+4. Used a **Python reference implementation** (eth-hash + trie + rlp) to compute the correct state root
+5. Compared the account RLP byte-by-byte between Python and Rust outputs
+6. Found the `EMPTY_TRIE_ROOT` mismatch at byte 17
+
+### EIP-4895 Withdrawals Implemented
+- Added `Withdrawal` type to `types/block.rs`
+- Added `apply_withdrawals` function to `stf/block.rs`
+- Updated `process_block` to accept `&[Withdrawal]` parameter
+- Added `TestWithdrawal` parsing in EELS test runner
+- Amount is in Gwei (multiply by 10^9 for Wei)
+
+### Current Test Status
+- 6/20 EELS tests pass (all Cancun variants except mergeExample, ShanghaiLove, StrangeContractCreation, transStorageBlockchain)
+- All 8 Prague variants fail (missing EIP-2935 Historical Block Hashes)
+- mergeExample: gas accounting off by -19900 (both Cancun and Prague)
+- ShanghaiLove, StrangeContractCreation: execution errors
+
+### DO's ✅
+1. **Compare outputs byte-by-byte** when debugging hash mismatches
+2. **Use Python reference implementations** (eth-hash, trie, rlp) for ground truth
+3. **Write focused unit tests** that isolate the component under test (manual state construction)
+4. **Check constants carefully** — a single wrong byte in a hash constant can poison everything
+5. **Start with the simplest failing test** when debugging multi-test failures
+
+### DON'Ts ❌
+1. **Don't assume constants are correct** — always verify against known values
+2. **Don't debug execution logic** when the trie/encoding itself might be wrong (verify encoding first)
+3. **Don't add debug prints everywhere** — instead, write a focused test that isolates the specific question
+
 ## Session 91: Status Unchanged - No Actionable Tasks (2026-02-09)
 
 **Status**: No implementation work - project remains blocked on investigation

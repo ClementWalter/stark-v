@@ -22,6 +22,22 @@ use crate::crypto::keccak256;
 use crate::crypto::rlp::{self, RlpError};
 use crate::types::{Address, Bytes, Hash, U256};
 
+/// EIP-4895 Withdrawal (Shanghai fork)
+///
+/// Represents a validator withdrawal from the beacon chain.
+/// The `amount` is denominated in **Gwei** (1 Gwei = 10^9 wei).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Withdrawal {
+    /// Monotonically increasing withdrawal index
+    pub index: u64,
+    /// Validator index on the beacon chain
+    pub validator_index: u64,
+    /// Recipient address
+    pub address: Address,
+    /// Withdrawal amount in Gwei
+    pub amount: u64,
+}
+
 /// Ethereum empty ommers hash: keccak256(rlp([]))
 ///
 /// This is 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347.

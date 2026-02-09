@@ -123,6 +123,7 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
         &block,
         &parent,
         &transactions,
+        &[], // TODO: decode withdrawals from input
         &mut state,
         chain_id,
         &recent_block_hashes,

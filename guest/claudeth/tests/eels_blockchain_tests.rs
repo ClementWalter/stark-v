@@ -9,7 +9,7 @@
 use claudeth::crypto::keccak256;
 use claudeth::evm::format_disassembly;
 use claudeth::state::{Account, InMemoryState, State, Storage, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
-use claudeth::types::{Address, Bytes, Hash, U256};
+use claudeth::types::{Address, Bytes, Hash, U256, Withdrawal};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -96,7 +96,7 @@ struct TestBlock {
     uncle_headers: Vec<Value>,
     /// Withdrawals (post-Shanghai)
     #[serde(default)]
-    withdrawals: Vec<Value>,
+    withdrawals: Vec<TestWithdrawal>,
     /// RLP-encoded block
     rlp: String,
     /// Block number
@@ -181,6 +181,15 @@ struct TestAccount {
     storage: HashMap<String, String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TestWithdrawal {
+    address: String,
+    amount: String,
+    index: String,
+    validator_index: String,
+}
+
 /// Load a single blockchain test from a JSON file
 fn load_blockchain_test(
     path: &Path,
@@ -237,6 +246,20 @@ fn parse_u256(value: &str) -> Result<U256, String> {
 
 fn parse_bytes(value: &str) -> Result<Bytes, String> {
     Bytes::from_str(value).map_err(|err| format!("invalid bytes {value}: {err}"))
+}
+
+fn convert_test_withdrawals(test_withdrawals: &[TestWithdrawal]) -> Result<Vec<Withdrawal>, String> {
+    test_withdrawals
+        .iter()
+        .map(|tw| {
+            Ok(Withdrawal {
+                index: parse_u64(&tw.index)?,
+                validator_index: parse_u64(&tw.validator_index)?,
+                address: parse_address(&tw.address)?,
+                amount: parse_u64(&tw.amount)?,
+            })
+        })
+        .collect()
 }
 
 fn dump_transaction_disassembly(test_block: &TestBlock) {
@@ -1015,6 +1038,102 @@ fn test_can_parse_blockchain_tests() {
     );
 }
 
+/// Manually constructs the expected post-state for tloadDoesNotPersistCrossTxn_Cancun
+/// and computes the state root. If this doesn't match the block's expected state root,
+/// then our trie/RLP encoding is wrong. If it does match, the problem is in execution.
+#[test]
+fn test_tload_does_not_persist_expected_state_root() {
+    use claudeth::crypto::keccak256;
+    use claudeth::state::{Account, Storage, Trie, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
+    use claudeth::types::{Address, Hash, U256};
+
+    let expected_state_root = Hash::from_str(
+        "0x55238a901fb3deeff52a9939dae4f9b71160562810c808d77d36ff6559a0f2c8",
+    )
+    .unwrap();
+
+    // Account 1: Beacon root contract 0x000f3df6d732807ef1319fb7b8bb8522d0beac02
+    // nonce=1, balance=0, code=..., storage={0x03b6=>0x03b6, 0x079e=>0x079e}
+    let beacon_addr =
+        Address::from_str("0x000f3df6d732807ef1319fb7b8bb8522d0beac02").unwrap();
+    let beacon_code = hex::decode("3373fffffffffffffffffffffffffffffffffffffffe14604d57602036146024575f5ffd5b5f35801560495762001fff810690815414603c575f5ffd5b62001fff01545f5260205ff35b5f5ffd5b62001fff42064281555f359062001fff015500").unwrap();
+    let beacon_code_hash = keccak256(&beacon_code);
+    let mut beacon_storage = Storage::new();
+    beacon_storage.set(&U256::from(0x03b6u64), U256::from(0x03b6u64));
+    beacon_storage.set(&U256::from(0x079eu64), U256::from(0x079eu64));
+    let beacon_storage_root = beacon_storage.compute_root();
+    let beacon_account = Account::new(
+        U256::from(1u64),
+        U256::ZERO,
+        beacon_storage_root,
+        beacon_code_hash,
+    );
+
+    // Account 2: Test contract 0xa00000000000000000000000000000000000000a
+    // nonce=0, balance=0x01000000000000000000, code=..., storage={0x00=>0x5a}
+    let contract_addr =
+        Address::from_str("0xa00000000000000000000000000000000000000a").unwrap();
+    let contract_code = hex::decode("5f3560e01c80630accf739146021576343ac1c3914601957005b601f602e565b005b50601f605a5f5d5f5c5f55565b5f5c60015556").unwrap();
+    let contract_code_hash = keccak256(&contract_code);
+    let mut contract_storage = Storage::new();
+    contract_storage.set(&U256::ZERO, U256::from(0x5au64));
+    let contract_storage_root = contract_storage.compute_root();
+    let contract_balance = U256::from_str("0x01000000000000000000").unwrap();
+    let contract_account = Account::new(
+        U256::ZERO,
+        contract_balance,
+        contract_storage_root,
+        contract_code_hash,
+    );
+
+    // Account 3: Sender 0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b
+    // nonce=2, balance=0xfffffffffffc9cf13c
+    let sender_addr =
+        Address::from_str("0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b").unwrap();
+    let sender_balance = U256::from_str("0xfffffffffffc9cf13c").unwrap();
+    let sender_account = Account::new(
+        U256::from(2u64),
+        sender_balance,
+        EMPTY_TRIE_ROOT,
+        EMPTY_CODE_HASH,
+    );
+
+    // Account 4: Coinbase 0xba5e000000000000000000000000000000000000
+    // nonce=0, balance=0xfd63
+    let coinbase_addr =
+        Address::from_str("0xba5e000000000000000000000000000000000000").unwrap();
+    let coinbase_account = Account::new(
+        U256::ZERO,
+        U256::from(0xfd63u64),
+        EMPTY_TRIE_ROOT,
+        EMPTY_CODE_HASH,
+    );
+
+    // Build state trie
+    let mut trie = Trie::new();
+
+    let accounts = vec![
+        (beacon_addr, &beacon_account),
+        (contract_addr, &contract_account),
+        (sender_addr, &sender_account),
+        (coinbase_addr, &coinbase_account),
+    ];
+
+    for (addr, account) in &accounts {
+        let key = keccak256(addr.as_bytes());
+        let rlp = account.encode_rlp();
+        trie.insert(key.as_bytes(), rlp);
+    }
+
+    let computed_root = trie.compute_root();
+
+    assert_eq!(
+        computed_root, expected_state_root,
+        "Manually constructed post-state root doesn't match expected block state root. \
+         This means our trie/RLP encoding differs from Ethereum's."
+    );
+}
+
 #[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {
@@ -1123,11 +1242,23 @@ fn test_execute_all_blockchain_tests() {
                     }
                 };
 
+                // Convert withdrawals
+                let withdrawals = match convert_test_withdrawals(&test_block.withdrawals) {
+                    Ok(w) => w,
+                    Err(e) => {
+                        failure_reason =
+                            format!("Block {block_idx}: Failed to convert withdrawals: {e}");
+                        test_failed = true;
+                        break;
+                    }
+                };
+
                 // Execute block
                 match process_block(
                     &block_header,
                     &parent_header,
                     &transactions,
+                    &withdrawals,
                     &mut state,
                     chain_id,
                     &[],

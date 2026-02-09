@@ -1,24 +1,30 @@
 # Claudeth
 
 Claudeth is a minimal Ethereum State Transition Function (STF) guest program
-written in Rust for generating proofs of Ethereum mainnet blocks. It compiles
-in `no_std` mode for the `riscv32im-unknown-none-elf` target.
+written in Rust for generating proofs of Ethereum mainnet blocks. It compiles in
+`no_std` mode for the `riscv32im-unknown-none-elf` target.
 
 ## Current Status
 
 **Production-Ready Features:**
-- ✅ Complete EVM interpreter with all opcodes (arithmetic, control flow, memory, storage, logs)
+
+- ✅ Complete EVM interpreter with all opcodes (arithmetic, control flow,
+  memory, storage, logs)
 - ✅ Transaction validation and execution (Legacy, EIP-2930, EIP-1559)
-- ✅ Block processing with full validation (header, gas limits, roots, bloom filters)
+- ✅ Block processing with full validation (header, gas limits, roots, bloom
+  filters)
 - ✅ State root computation and validation via Merkle Patricia Trie
 - ✅ Receipt generation with logs and bloom filters
 - ✅ Gas metering and refunds (EIP-3529 compliant)
 - ✅ Compiles to `riscv32im-unknown-none-elf` with `no_std`
 
 **Testing Status:**
-- ⚠️ EELS compliance testing (0/20 blockchain test fixtures passing - debugging in progress)
+
+- ⚠️ EELS compliance testing (0/20 blockchain test fixtures passing - debugging
+  in progress)
 
 **In Progress:**
+
 - ⚠️ Witness-based state reconstruction (currently accepts full state snapshots)
 - ⚠️ Production validation (needs testing against real mainnet blocks)
 - ⚠️ Dependency elimination (`k256` used for secp256k1)
@@ -26,6 +32,7 @@ in `no_std` mode for the `riscv32im-unknown-none-elf` target.
 ## Architecture
 
 Claudeth implements the Ethereum post-Fusaka fork STF and validates:
+
 - Block headers against parent headers
 - Transaction roots via MPT
 - Receipt roots via MPT
@@ -34,7 +41,13 @@ Claudeth implements the Ethereum post-Fusaka fork STF and validates:
 - Gas usage and limits
 
 The codebase embeds a **Partial MPT** implementation capable of:
+
 - Building tries from account/storage data
 - Computing roots
 - Generating and verifying Merkle proofs
 - (Future) Reconstructing minimal state from witnesses
+
+## References implementation
+
+- [Ethereum Execution Layer Specification](https://github.com/ethereum/execution-specs)
+- [revm](https://github.com/bluealloy/revm)

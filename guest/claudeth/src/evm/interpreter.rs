@@ -521,6 +521,7 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 
     warm_addresses.push(tx_ctx.origin); // Sender
     warm_addresses.push(call_ctx.address); // Recipient/contract being called
+    warm_addresses.push(block_ctx.coinbase); // EIP-3651: Warm COINBASE
     // Precompile addresses (0x01-0x0a for Prague)
     for i in 1..=10 {
         let mut addr_bytes = [0u8; 20];

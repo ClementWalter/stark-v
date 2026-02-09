@@ -109,6 +109,7 @@ fn test_debug_optionstest_prague() {
         &block_header,
         &parent_header,
         &[tx],
+        &[],
         &mut state,
         chain_id,
         &[],

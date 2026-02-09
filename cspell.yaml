@@ -156,6 +156,7 @@ words:
   - returndata
   - returndatacopy
   - returndatasize
+  - revm
   - ripemd
   - risc0
   - riscv
