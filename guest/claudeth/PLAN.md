@@ -119,13 +119,31 @@ Goal: finalize per-transaction correctness before block processing.
 
 ## Immediate Next Task (Execute Now)
 
-**Phase D: EELS Gas/Execution Mismatches** (NEXT)
+**Phase D: EELS Gas/Execution Mismatches** (BLOCKED - NEEDS DEBUGGING TOOLS)
 
-### Task D3.x: Investigate Gas/Execution Mismatches (READY)
-- Rerun EELS tests to confirm storage-root mismatches are resolved after storage-key hashing fix.
-- Inspect EELS access lists to confirm whether warm accesses are expected.
-- Add targeted test vectors for cold vs warm access behavior if needed.
-- Trace failing transactions (ShanghaiLove, StrangeContractCreation) to pinpoint opcode/gas mismatch.
+### Task D3.x: Investigate Gas/Execution Mismatches (BLOCKED)
+**Status**: Requires debugging infrastructure before fixes can be implemented
+
+**Blockers**:
+1. Need gas consumption tracing (per-opcode logging) to debug gas mismatches
+2. Need state change tracking to debug state root mismatches
+3. Need bytecode disassembler to understand test contract operations
+4. Need execution tracing to debug transaction execution failures
+
+**Tasks when unblocked**:
+- Build gas tracing infrastructure (conditional compilation for debug builds)
+- Build state change visualization (account/storage deltas per transaction)
+- Create EVM bytecode disassembler utility
+- Debug execution failures first (ShanghaiLove, StrangeContractCreation)
+- Then tackle gas mismatches with detailed traces
+- Finally debug state root mismatches with MPT visualization
+
+**Current Failures** (Session 47 analysis):
+- State root mismatches: 4 tests (correct gas, wrong final state)
+- Large gas undercharges: 4 tests (mergeExample -21100, basefeeExample -1200)
+- Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage +2100-4200)
+- Receipt root mismatches: 2 tests (likely symptom of gas overcharges)
+- Execution failures: 4 tests (contracts fail to execute)
 
 ### Task C0: no_std riscv32 Compilation (✅ COMPLETE)
 - Fix missing vec! macro imports in interpreter, account, trie, node, receipt
