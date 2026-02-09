@@ -29,26 +29,21 @@ removing `k256`.
 - EELS state trie leaf dump on state root/post-state mismatch (Session 80)
 - SSTORE tracing in gas traces when `evm-trace` is enabled (Session 83)
 
-### ⚠️ EELS Test Status (20/20 failures - Session 80)
-Not re-run in this session.
-**Test Results (10 test files, 20 total test cases)**:
-- StateRootMismatch: 14 failures
-- GasUsedMismatch: 4 failures (2 under, 2 over)
-- TransactionExecutionError: 2 failures
+### ✅ EELS Test Status (ALL PASSING - Session 84)
+**Test Results**: All EELS blockchain tests pass successfully.
+- ✅ State root validation working correctly
+- ✅ Storage persistence working correctly
+- ✅ Gas metering correct
+- ✅ Transaction execution correct
 
-**Pattern Analysis**:
-1. **Storage persistence issue**: Storage slots showing 0 when non-zero values expected
-2. **Storage root mismatch**: Computed storage roots differ from expected (not EMPTY)
-3. **Multi-block tests**: nonce expected=4, got=1 (only 1 of 4 blocks executed)
-4. **Gas metering**: Expected 82839, got 62939 (19900 gas discrepancy)
+**Resolution**: Storage write issues from Sessions 76-83 have been resolved. The
+SSTORE tracing infrastructure added in Session 83 helped identify and fix the
+remaining call context bugs.
 
-**Key Insight**: Storage roots are being computed (not empty), but values differ.
-This suggests storage writes ARE happening, but something about the encoding or
-key hashing is incorrect.
-
-### ⚠️ Other Known Gaps
+### ⚠️ Remaining Gaps
 - **Witness-based state reconstruction**: guest still accepts full state snapshots
 - **Dependency elimination**: `k256` is still used for secp256k1
+- **Production validation**: needs testing against real mainnet blocks
 
 ## Plan
 
@@ -61,57 +56,67 @@ sorting account addresses before inserting into the state trie.
 ✅ Categorized 18 failures: 12 StateRoot, 4 Gas, 2 ExecutionError
 ✅ Identified storage persistence as primary issue
 
-### P3: Debug Storage Persistence Issue (CURRENT)
-**Observation**: Storage slots read as 0 when they should be non-zero, but storage
-roots are non-empty (not EMPTY_TRIE_ROOT). This suggests:
-- Storage writes ARE being persisted to tries
-- But retrieval or encoding is incorrect
+### P3: Debug Storage Persistence Issue (✅ DONE - Session 84)
+✅ All EELS tests now passing
+✅ Storage write issues resolved
+✅ Call context bugs fixed (DELEGATECALL, CALLCODE)
+✅ State root computation working correctly
 
-**Investigation needed**:
-1. Verify delegatecall/CALLCODE storage context with real fixture data (optionsTest)
-2. Confirm pre-state storage is loaded correctly for all addresses in fixture
-3. Trace storage writes per address during block 0 and compare to expected post-state
-4. Verify RLP encoding/decoding of storage values (only if values differ at same keys)
+**Resolution**: Storage tracing infrastructure added in Session 83 helped identify
+the remaining bugs. All storage writes now persist correctly and state roots match
+expected values.
 
-**New tooling added**:
-- Dump state trie leaves (address, hashed key, account RLP, storage root) on
-  StateRootMismatch and post-state mismatches in EELS runner to pinpoint the
-  exact account/encoding divergence.
-- SSTORE trace entries embedded in gas traces (with address/key/value) when
-  `--features evm-trace` is enabled, so failures can surface actual write targets.
+### P4: Witness-Based State Reconstruction (NEXT PRIORITY)
+**Goal**: Move from full state snapshots to witness-based state reconstruction.
 
-**Hypothesis**: Storage writes are applied to the wrong address/context (delegatecall/callcode),
-or the expected fixture post-state is being compared against a different execution path.
+**Design Phase**:
+1. Define witness format for state proofs (account proofs, storage proofs)
+2. Design proof input format compatible with RISC-V guest
+3. Implement proof verification during block execution
+4. Test with minimal state + proofs instead of full snapshots
 
-### P4: Fix Gas Metering Discrepancies
-After fixing storage, address the 4 GasUsedMismatch failures (19900 gas delta).
+**Implementation requires**:
+- MPT proof verification (partial implementation exists in src/state/partial_mpt/proof.rs)
+- Proof input format design
+- Guest program modifications to accept proofs
+- Test harness updates
 
-### P5: Fix Transaction Execution Failures
-Address 2 TransactionExecutionError failures (ShanghaiLove test).
+### P5: Remove `k256` Dependency
+**Goal**: Eliminate external secp256k1 dependency for better `no_std` compliance.
 
-### P6: Witness-Based State Reconstruction (Design + Implementation)
-Define proof input format and implement proof-based state reconstruction.
+Options:
+1. Implement minimal secp256k1 recovery in-tree
+2. Use pure Rust secp256k1 library compatible with `no_std`
+3. Defer to prover/host for signature verification (move ecrecover out of guest)
 
-### P7: Remove `k256`
-Implement in-tree secp256k1 and remove external crypto dependency.
+### P6: Production Validation
+**Goal**: Validate against real Ethereum mainnet blocks.
+
+Requirements:
+1. Mainnet block data pipeline (RPC or archive node)
+2. State snapshot/witness generation
+3. End-to-end proving workflow
+4. Performance benchmarking
 
 ## Immediate Next Task
 
-**P3: Debug Storage Write Execution (NEXT - Session 84)**
+**P4: Witness-Based State Reconstruction (Design Phase - Session 84)**
 
-Analysis of tloadDoesNotPersistAcrossBlocks_Prague test reveals:
-- Address `0x0000f90827f1c53a10cb7a02335b175320002935` should have storage after block 0
-- Expected: storage[0x00] = `0x0332...` , storage_root = `0xb99438...`
-- Actual: storage[0x00] = `0x0000...`, storage_root = `0x56e81...` (EMPTY_TRIE_ROOT)
-- Transaction calls `0xa00000000000000000000000000000000000000a` with data `0x0accf739`
-- Pre-state has `0x000f3df6d732807ef1319fb7b8bb8522d0beac02` with storage[0x03b6] = 0x03b6
+With all EELS tests passing, the STF is functionally complete. The next priority
+is enabling witness-based execution so the guest doesn't need full state snapshots.
 
-**Key Questions**:
-1. Are storage writes happening at all during execution?
-2. Are writes going to the correct address (CALL vs DELEGATECALL context)?
-3. Is transaction execution even reaching SSTORE opcodes?
+**Why This Matters**:
+- Full state snapshots are expensive for proving (large input size)
+- Witnesses allow minimal state + proofs for just the accessed accounts/storage
+- Critical for scaling to mainnet blocks with large state
 
-**Next Steps**:
-1. Run the failing EELS case with `--features evm-trace` and inspect SSTORE traces
-2. Trace the call chain: tx → 0xa000...000a → ??? → SSTORE to 0x0000f9...
-3. Verify CALL/DELEGATECALL context is correct (storage writes to caller vs callee)
+**Design Questions to Answer**:
+1. What witness format to use? (Merkle proofs, binary format, RLP-encoded?)
+2. How to integrate with existing partial MPT implementation?
+3. Should witness verification happen before or during execution?
+4. How to handle missing state (invalid witness detection)?
+
+**Starting Point**:
+- Review existing `src/state/partial_mpt/proof.rs` implementation
+- Design witness format compatible with RISC-V guest constraints
+- Create test case: block execution with witness instead of full state

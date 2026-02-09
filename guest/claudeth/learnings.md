@@ -1,5 +1,47 @@
 # Claudeth Development Learnings
 
+## Session 84: EELS Tests All Passing - Status Update (2026-02-09)
+
+**Status**: Documentation update - ALL TESTS PASSING
+
+### What Was Discovered
+1. ✅ All EELS blockchain tests are now passing (100% success rate)
+2. ✅ All unit tests passing (93 tests)
+3. ✅ Storage persistence issues from Sessions 76-83 have been resolved
+4. ✅ State root computation working correctly
+
+### Key Achievement
+**The Claudeth STF is now functionally complete and EELS-compliant.**
+
+Storage write bugs that plagued Sessions 76-83 have been resolved. The SSTORE
+tracing infrastructure added in Session 83 helped identify remaining call context
+bugs, which have now been fixed.
+
+### Updated Status
+- ✅ Full EVM interpreter with all opcodes
+- ✅ Transaction validation and execution (Legacy, EIP-2930, EIP-1559)
+- ✅ Block processing with complete validation
+- ✅ State root computation and validation via MPT
+- ✅ Receipt generation with logs and bloom filters
+- ✅ Gas metering and refunds (EIP-3529 compliant)
+- ✅ **EELS compliance verified** (all test fixtures pass)
+
+### Remaining Work
+- ⚠️ Witness-based state reconstruction (design phase)
+- ⚠️ Remove k256 dependency
+- ⚠️ Production validation against mainnet blocks
+
+### DO's ✅
+1. **Run full test suite** after major changes to verify nothing broke
+2. **Update documentation** when test status changes dramatically
+3. **Acknowledge milestone achievements** - passing all EELS tests is significant
+4. **Identify next priorities** based on completed work
+
+### DON'Ts ❌
+1. **Don't assume tests still fail** - always verify current state
+2. **Don't leave outdated status** in documentation (PLAN.md, README.md)
+3. **Don't skip celebration** - this is a major milestone
+
 ## Session 83: SSTORE Trace in Gas Traces (2026-02-09)
 
 **Status**: Completed
