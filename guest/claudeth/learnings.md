@@ -1,5 +1,20 @@
 # Claudeth Development Learnings
 
+## Session 67: Align README Dependency List (2026-02-09)
+
+**Status**: Completed - README now matches Cargo dependencies
+
+### What Was Accomplished
+1. ✅ Removed `rand` mention from README dependency elimination note
+2. ✅ Confirmed only `k256` remains as external crypto dependency in README
+
+### DO's ✅
+1. **Keep README dependency claims in sync with Cargo.toml**
+2. **Make small documentation fixes explicit in learnings** to prevent regressions
+
+### DON'Ts ❌
+1. **Don't leave stale dependency mentions** after removals or refactors
+
 ## Session 66: Investigate tloadDoesNotPersistCrossTxn Gas Overcharge (2026-02-09)
 
 **Status**: In Progress - deep investigation into +2100 gas overcharge

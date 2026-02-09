@@ -18,7 +18,7 @@ in `no_std` mode for the `riscv32im-unknown-none-elf` target.
 **In Progress:**
 - ⚠️ Witness-based state reconstruction (currently accepts full state snapshots)
 - ⚠️ EELS compliance testing (spec-compliant but not verified against test vectors)
-- ⚠️ Dependency elimination (`k256` used for secp256k1, `rand` in dev-dependencies)
+- ⚠️ Dependency elimination (`k256` used for secp256k1)
 
 ## Architecture
 

@@ -148,6 +148,9 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 `RecursiveHost` receives them for BLOCKHASH, and guest input supports an optional
 6th item (recent hashes list) while remaining backward-compatible.
 
+### Task N8: Align README dependency list ✅
+**Result**: README no longer mentions `rand` (not present in Cargo.toml); only `k256` remains as the external crypto dependency.
+
 ---
 
 ## Immediate Next Task (Execute Next)

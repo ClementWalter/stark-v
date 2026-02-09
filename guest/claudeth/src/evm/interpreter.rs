@@ -819,6 +819,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let is_warm = self.access_storage(&address, &key);
 
                 // Charge dynamic gas (SET/RESET/CLEAR/NOOP)
+                // EIP-2929: RESET/CLEAR use reduced base (2900) + access cost (2100 cold / 100 warm)
+                // SET uses full base (20000) + access cost (2100 cold / 100 warm)
                 let sstore_gas = sstore_gas_cost(current_value, new_value);
                 self.consume_gas(sstore_gas)?;
 
@@ -1801,9 +1803,9 @@ mod tests {
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Gas: PUSH1(3) + PUSH1(3) + SSTORE cold SET(20000+2100=22100)
-        //      PUSH1(3) + PUSH1(3) + SSTORE warm RESET(5000+100=5100) + STOP(0)
-        // Total: 3 + 3 + 22100 + 3 + 3 + 5100 + 0 = 27212
-        assert_eq!(result.gas_used, 27212);
+        //      PUSH1(3) + PUSH1(3) + SSTORE warm RESET(2900+100=3000) + STOP(0)
+        // Total: 3 + 3 + 22100 + 3 + 3 + 3000 + 0 = 25112
+        assert_eq!(result.gas_used, 25112);
     }
 
     // =============================================================================

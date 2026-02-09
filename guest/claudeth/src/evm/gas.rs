@@ -159,11 +159,11 @@ pub const GAS_SLOAD_WARM: u64 = 100;
 /// Gas cost for SSTORE when setting a new non-zero value (from zero)
 pub const GAS_SSTORE_SET: u64 = 20000;
 
-/// Gas cost for SSTORE when modifying an existing value
-pub const GAS_SSTORE_RESET: u64 = 5000;
+/// Gas cost for SSTORE when modifying an existing value (EIP-2929: reduced from 5000 to account for separate access cost)
+pub const GAS_SSTORE_RESET: u64 = 2900;
 
-/// Gas cost for SSTORE when clearing a value (to zero)
-pub const GAS_SSTORE_CLEAR: u64 = 5000;
+/// Gas cost for SSTORE when clearing a value (to zero) (EIP-2929: same as RESET)
+pub const GAS_SSTORE_CLEAR: u64 = 2900;
 
 /// Sentry gas reserved for SSTORE (EIP-2200)
 pub const GAS_SSTORE_SENTRY: u64 = 2300;
