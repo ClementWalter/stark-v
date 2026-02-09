@@ -37,7 +37,7 @@ use crate::stf::transaction::{
     calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas, validate_nonce,
     validate_signature, ValidationError,
 };
-use crate::types::{Address, Transaction, U256};
+use crate::types::{Address, Hash, Transaction, U256};
 
 // =============================================================================
 // Execution Result
@@ -130,12 +130,13 @@ impl From<ValidationError> for ExecutionError {
 ///
 /// // Create a simple transaction (would need proper signature in practice)
 /// // let tx = Transaction::Legacy(...);
-/// // let result = execute_transaction(&tx, &mut state, &block_ctx, 0, U256::ONE, U256::from_u64(30_000_000));
+/// // let result = execute_transaction(&tx, &mut state, &block_ctx, Hash::ZERO, 0, U256::ONE, U256::from_u64(30_000_000));
 /// ```
 pub fn execute_transaction<S: State + Clone>(
     tx: &Transaction,
     state: &mut S,
     block_ctx: &BlockContext,
+    parent_hash: Hash,
     cumulative_gas_used: u64,
     expected_chain_id: U256,
     block_gas_limit: U256,
@@ -221,13 +222,19 @@ pub fn execute_transaction<S: State + Clone>(
     // Clone state for execution (we'll get it back with modifications)
     let exec_state = state.clone();
 
+    let exec_ctx = ExecutionContexts {
+        block_ctx,
+        parent_hash,
+        tx_ctx: &tx_ctx,
+    };
+
     let exec_result = if tx.to().is_none() {
         // Contract creation
-        execute_create(tx, exec_state, &sender, block_ctx, &tx_ctx, gas_available)
+        execute_create(tx, exec_state, &sender, exec_ctx, gas_available)
     } else {
         // Contract call or value transfer
         let to = tx.to().unwrap();
-        execute_call(tx, exec_state, &sender, &to, block_ctx, &tx_ctx, gas_available)
+        execute_call(tx, exec_state, &sender, &to, exec_ctx, gas_available)
     };
 
     let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, returned_state) = match exec_result {
@@ -281,14 +288,19 @@ pub fn execute_transaction<S: State + Clone>(
 // Type alias for execution result to avoid clippy::type_complexity warning
 type ExecutionResultWithState<S> = (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, S);
 
+struct ExecutionContexts<'a> {
+    block_ctx: &'a BlockContext,
+    parent_hash: Hash,
+    tx_ctx: &'a TxContext,
+}
+
 /// Executes a contract call transaction
 fn execute_call<S: State + Clone>(
     _tx: &Transaction,
     state: S,
     _sender: &Address,
     _to: &Address,
-    block_ctx: &BlockContext,
-    tx_ctx: &TxContext,
+    contexts: ExecutionContexts<'_>,
     gas_available: u64,
 ) -> Result<ExecutionResultWithState<S>, ExecutionError> {
     // Get contract code
@@ -307,8 +319,9 @@ fn execute_call<S: State + Clone>(
         call_data: _tx.data().to_vec(),
     };
     let host = RecursiveHost::new()
-        .with_block_context(block_ctx.clone())
-        .with_tx_context(tx_ctx.clone());
+        .with_block_context(contexts.block_ctx.clone())
+        .with_parent_hash(contexts.parent_hash)
+        .with_tx_context(contexts.tx_ctx.clone());
 
     // Extract access list (EIP-2930) for warm/cold tracking
     let access_list: Vec<(Address, Vec<U256>)> = match _tx {
@@ -344,8 +357,8 @@ fn execute_call<S: State + Clone>(
         gas_available,
         state,
         host,
-        block_ctx.clone(),
-        tx_ctx.clone(),
+        contexts.block_ctx.clone(),
+        contexts.tx_ctx.clone(),
         call_ctx,
         &access_list,
     );
@@ -369,8 +382,7 @@ fn execute_create<S: State + Clone>(
     tx: &Transaction,
     state: S,
     sender: &Address,
-    block_ctx: &BlockContext,
-    tx_ctx: &TxContext,
+    contexts: ExecutionContexts<'_>,
     gas_available: u64,
 ) -> Result<ExecutionResultWithState<S>, ExecutionError> {
     // Compute contract address
@@ -388,8 +400,9 @@ fn execute_create<S: State + Clone>(
         call_data: Vec::new(),
     };
     let host = RecursiveHost::new()
-        .with_block_context(block_ctx.clone())
-        .with_tx_context(tx_ctx.clone());
+        .with_block_context(contexts.block_ctx.clone())
+        .with_parent_hash(contexts.parent_hash)
+        .with_tx_context(contexts.tx_ctx.clone());
 
     // Extract access list (EIP-2930) for warm/cold tracking
     let access_list: Vec<(Address, Vec<U256>)> = match tx {
@@ -425,8 +438,8 @@ fn execute_create<S: State + Clone>(
         gas_available,
         state,
         host,
-        block_ctx.clone(),
-        tx_ctx.clone(),
+        contexts.block_ctx.clone(),
+        contexts.tx_ctx.clone(),
         call_ctx,
         &access_list,
     );
@@ -537,6 +550,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
+            Hash::ZERO,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -571,6 +585,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
+            Hash::ZERO,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -612,6 +627,7 @@ mod tests {
             &tx,
             &mut state,
             &block_ctx,
+            Hash::ZERO,
             0,
             U256::ONE,
             U256::from_u64(30_000_000),
@@ -639,6 +655,11 @@ mod tests {
         let state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let sender = Address::from([0x01; 20]);
         let recipient = Address::from([0x02; 20]);
@@ -656,7 +677,8 @@ mod tests {
         });
 
         // Execute call directly (bypassing signature validation)
-        let result = execute_call(&tx, state, &sender, &recipient, &block_ctx, &tx_ctx, 21000);
+        let result =
+            execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, return_data, logs, contract_address, _state) = result.unwrap();
@@ -673,6 +695,11 @@ mod tests {
         let state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let sender = Address::from([0x01; 20]);
         let recipient = Address::from([0x02; 20]);
@@ -689,7 +716,8 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_call(&tx, state, &sender, &recipient, &block_ctx, &tx_ctx, 21000);
+        let result =
+            execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
     }
@@ -699,6 +727,11 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let sender = Address::from([0x01; 20]);
         let contract = Address::from([0x02; 20]);
@@ -721,7 +754,8 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_call(&tx, state, &sender, &contract, &block_ctx, &tx_ctx, 100000);
+        let result =
+            execute_call(&tx, state, &sender, &contract, contexts, 100000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, return_data, logs, _, _state) = result.unwrap();
@@ -737,6 +771,11 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000));
@@ -758,7 +797,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_create(&tx, state, &sender, &block_ctx, &tx_ctx, 100000);
+        let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _state) = result.unwrap();
@@ -778,6 +817,11 @@ mod tests {
         let mut state = InMemoryState::new();
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000));
@@ -797,7 +841,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_create(&tx, state, &sender, &block_ctx, &tx_ctx, 100000);
+        let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
         let (success, _, _gas_refund, _, logs, contract_address, _state) = result.unwrap();
@@ -885,6 +929,11 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
             execute_call(
@@ -902,8 +951,7 @@ mod tests {
                 state,
                 &Address::from([0x11; 20]),
                 &to_addr,
-                &block_ctx,
-                &tx_ctx,
+                contexts,
                 100000,
             )
             .unwrap();
@@ -928,6 +976,11 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
             execute_call(
@@ -945,8 +998,7 @@ mod tests {
                 state,
                 &Address::from([0x11; 20]),
                 &to_addr,
-                &block_ctx,
-                &tx_ctx,
+                contexts,
                 100000,
             )
             .unwrap();
@@ -972,6 +1024,11 @@ mod tests {
         state.set_code(&to_addr, code);
         let block_ctx = BlockContext::default();
         let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            tx_ctx: &tx_ctx,
+        };
 
         let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
             execute_call(
@@ -989,8 +1046,7 @@ mod tests {
                 state,
                 &Address::from([0x11; 20]),
                 &to_addr,
-                &block_ctx,
-                &tx_ctx,
+                contexts,
                 100000,
             )
             .unwrap();

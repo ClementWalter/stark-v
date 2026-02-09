@@ -34,7 +34,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: Test runner exists but execution mismatches remain (0/20 passing in current sample).
-4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH always returns zero due to missing block hash history.
+4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH now returns parent hash only (still missing full 256-block history).
 5. **riscv32 allocator**: now a fixed-size bump heap (no deallocation); heap sizing/tuning may be needed for large blocks.
 
 ---
@@ -253,6 +253,7 @@ Goal: finalize per-transaction correctness before block processing.
 17. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
 18. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
 19. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+20. ✅ **IMPLEMENTED**: BLOCKHASH returns parent hash when requested (still missing 256-block history)
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 

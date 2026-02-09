@@ -128,8 +128,10 @@ pub struct RecursiveHost {
     pub max_depth: usize,
     /// Current call depth
     pub depth: usize,
-    /// Block number for BLOCKHASH lookups (not implemented)
+    /// Block number for BLOCKHASH lookups
     pub block_number: u64,
+    /// Parent block hash for BLOCKHASH lookups
+    pub parent_hash: Option<Hash>,
     /// Block context for environment opcodes
     pub block_ctx: crate::evm::interpreter::BlockContext,
     /// Transaction context for environment opcodes
@@ -142,6 +144,7 @@ impl Default for RecursiveHost {
             max_depth: 1024,
             depth: 0,
             block_number: 0,
+            parent_hash: None,
             block_ctx: crate::evm::interpreter::BlockContext::default(),
             tx_ctx: crate::evm::interpreter::TxContext::default(),
         }
@@ -156,7 +159,14 @@ impl RecursiveHost {
 
     /// Configure the block context for child executions.
     pub fn with_block_context(mut self, block_ctx: crate::evm::interpreter::BlockContext) -> Self {
+        self.block_number = block_ctx.number.as_u64();
         self.block_ctx = block_ctx;
+        self
+    }
+
+    /// Configure the parent block hash for BLOCKHASH lookups.
+    pub fn with_parent_hash(mut self, parent_hash: Hash) -> Self {
+        self.parent_hash = Some(parent_hash);
         self
     }
 
@@ -175,6 +185,7 @@ impl RecursiveHost {
             max_depth: self.max_depth,
             depth: self.depth + 1,
             block_number: self.block_number,
+            parent_hash: self.parent_hash,
             block_ctx: self.block_ctx.clone(),
             tx_ctx: self.tx_ctx.clone(),
         })
@@ -401,7 +412,20 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
     }
 
     fn blockhash(&self, _number: &U256) -> Option<Hash> {
-        // TODO: Implement proper block hash lookups
+        let requested = _number.as_u64();
+        if requested >= self.block_number {
+            return None;
+        }
+
+        let distance = self.block_number - requested;
+        if distance == 1 {
+            return self.parent_hash;
+        }
+
+        if distance > 256 {
+            return None;
+        }
+
         None
     }
 
@@ -446,4 +470,37 @@ fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) -> A
     let mut address = Address::ZERO;
     address.as_bytes_mut()[..].copy_from_slice(&hash.as_bytes()[12..]);
     address
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::evm::interpreter::BlockContext;
+    use crate::state::InMemoryState;
+
+    #[test]
+    fn test_recursive_host_blockhash_parent_only() {
+        let parent_hash = Hash::from([0x11; 32]);
+        let block_ctx = BlockContext {
+            number: U256::from_u64(100),
+            ..BlockContext::default()
+        };
+
+        let host = RecursiveHost::new()
+            .with_block_context(block_ctx)
+            .with_parent_hash(parent_hash);
+
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &U256::from_u64(99)),
+            Some(parent_hash)
+        );
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &U256::from_u64(100)),
+            None
+        );
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &U256::from_u64(98)),
+            None
+        );
+    }
 }

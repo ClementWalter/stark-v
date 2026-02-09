@@ -264,6 +264,7 @@ pub fn process_block<S: State + Clone>(
     };
 
     // Step 3: Execute all transactions
+    let parent_hash = parent.compute_hash();
     let mut cumulative_gas_used = 0u64;
     let mut receipts = Vec::with_capacity(transactions.len());
     let mut transaction_results = Vec::with_capacity(transactions.len());
@@ -274,6 +275,7 @@ pub fn process_block<S: State + Clone>(
             tx,
             state,
             &block_ctx,
+            parent_hash,
             cumulative_gas_used,
             chain_id,
             U256::from_u64(block.gas_limit),

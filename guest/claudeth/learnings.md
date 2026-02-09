@@ -1,5 +1,20 @@
 # Claudeth Development Learnings
 
+## Session 44: Parent-Only BLOCKHASH + Execution Context Refactor (2026-02-09)
+
+**Status**: BLOCKHASH now returns parent hash; clippy too-many-arguments resolved via context struct
+
+### DO's ✅
+1. **Pass parent hash into RecursiveHost** and set block number from `BlockContext` for `BLOCKHASH` support
+2. **Bundle block/tx contexts into a struct** to keep execution helpers under clippy arg limits
+3. **Run `prek` with an absolute `CARGO_TARGET_DIR` inside the claudeth crate** to avoid sandbox path errors
+4. **Point `RUSTUP_HOME` at the preinstalled toolchain and set `RUSTUP_OFFLINE=1`** to avoid network syncs
+
+### DON'Ts ❌
+1. **Don't leave `BLOCKHASH` unimplemented**; even parent-only support is better than always zero
+2. **Don't silence `clippy::too_many_arguments`**; refactor instead of allow attributes
+3. **Don't set `RUSTUP_HOME` to an empty temp dir** in offline mode unless the toolchain is already installed
+
 ## Session 42: Fix Storage Trie Key Hashing + Pre-commit Sandbox Workaround (2026-02-09)
 
 **Status**: Storage root mismatch fix implemented; pre-commit hooks pass in sandbox
