@@ -130,6 +130,10 @@ pub struct RecursiveHost {
     pub depth: usize,
     /// Block number for BLOCKHASH lookups (not implemented)
     pub block_number: u64,
+    /// Block context for environment opcodes
+    pub block_ctx: crate::evm::interpreter::BlockContext,
+    /// Transaction context for environment opcodes
+    pub tx_ctx: crate::evm::interpreter::TxContext,
 }
 
 impl Default for RecursiveHost {
@@ -138,6 +142,8 @@ impl Default for RecursiveHost {
             max_depth: 1024,
             depth: 0,
             block_number: 0,
+            block_ctx: crate::evm::interpreter::BlockContext::default(),
+            tx_ctx: crate::evm::interpreter::TxContext::default(),
         }
     }
 }
@@ -146,6 +152,18 @@ impl RecursiveHost {
     /// Create a new recursive host with default settings.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Configure the block context for child executions.
+    pub fn with_block_context(mut self, block_ctx: crate::evm::interpreter::BlockContext) -> Self {
+        self.block_ctx = block_ctx;
+        self
+    }
+
+    /// Configure the transaction context for child executions.
+    pub fn with_tx_context(mut self, tx_ctx: crate::evm::interpreter::TxContext) -> Self {
+        self.tx_ctx = tx_ctx;
+        self
     }
 
     /// Create a child host with incremented depth.
@@ -157,6 +175,8 @@ impl RecursiveHost {
             max_depth: self.max_depth,
             depth: self.depth + 1,
             block_number: self.block_number,
+            block_ctx: self.block_ctx.clone(),
+            tx_ctx: self.tx_ctx.clone(),
         })
     }
 }
@@ -199,6 +219,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
         // Create EVM with proper context
         let mut evm = Evm::new(code, msg.gas, call_state, child_host)
+            .with_block_context(self.block_ctx.clone())
+            .with_tx_context(self.tx_ctx.clone())
             .with_call_context(call_ctx);
 
         // Execute
@@ -269,6 +291,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
         // Create EVM with proper context
         let mut evm = Evm::new(msg.init_code.clone(), msg.gas, create_state, child_host)
+            .with_block_context(self.block_ctx.clone())
+            .with_tx_context(self.tx_ctx.clone())
             .with_call_context(call_ctx);
 
         // Execute

@@ -32,6 +32,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: no EELS test vector integration or runner.
+4. **EVM context wiring**: block/tx/call contexts were not propagated into EVM execution, so environment opcodes use defaults.
 
 ---
 
@@ -227,11 +228,12 @@ Goal: finalize per-transaction correctness before block processing.
 1. ✅ Identified root cause: NullHost was failing all contract calls
 2. ✅ Implemented RecursiveHost with proper call/create recursion
 3. ✅ Added EVM builder methods for setting contexts
-4. ⚠️ Bug persists: Storage writes from called contracts not persisting
-5. TODO: Debug why cloned state changes aren't merging back correctly
-6. TODO: Investigate DELEGATECALL, CALLCODE, STATICCALL handling
-7. TODO: Fix value transfers in calls
-8. TODO: Re-run tests after fixes
+4. ✅ Wire block/tx/call contexts into EVM execution and RecursiveHost
+5. ⚠️ Bug persists: Storage writes from called contracts not persisting
+6. TODO: Debug why cloned state changes aren't merging back correctly
+7. TODO: Investigate DELEGATECALL, CALLCODE, STATICCALL handling
+8. TODO: Fix value transfers in calls
+9. TODO: Re-run tests after fixes
 
 **Verification**: All EELS tests passing
 

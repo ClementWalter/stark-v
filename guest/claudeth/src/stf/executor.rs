@@ -27,7 +27,9 @@ use std::vec::Vec;
 use alloc::vec::Vec;
 
 use crate::evm::host::RecursiveHost;
-use crate::evm::interpreter::{execute_bytecode_with_host, BlockContext, LogEntry};
+use crate::evm::interpreter::{
+    execute_bytecode_with_host_and_contexts, BlockContext, CallContext, LogEntry, TxContext,
+};
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
@@ -180,6 +182,11 @@ pub fn execute_transaction<S: State + Clone>(
 
     validate_balance(tx, state.get_balance(&sender), total_cost)?;
 
+    let tx_ctx = TxContext {
+        origin: sender,
+        gas_price: effective_gas_price,
+    };
+
     // Step 2: Pre-execution state changes
     // Charge upfront gas cost from sender balance
     let sender_balance = state.get_balance(&sender);
@@ -211,11 +218,11 @@ pub fn execute_transaction<S: State + Clone>(
 
     let exec_result = if tx.to().is_none() {
         // Contract creation
-        execute_create(tx, exec_state, &sender, gas_available)
+        execute_create(tx, exec_state, &sender, block_ctx, &tx_ctx, gas_available)
     } else {
         // Contract call or value transfer
         let to = tx.to().unwrap();
-        execute_call(tx, exec_state, &sender, &to, gas_available)
+        execute_call(tx, exec_state, &sender, &to, block_ctx, &tx_ctx, gas_available)
     };
 
     let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, returned_state) = match exec_result {
@@ -275,6 +282,8 @@ fn execute_call<S: State + Clone>(
     state: S,
     _sender: &Address,
     _to: &Address,
+    block_ctx: &BlockContext,
+    tx_ctx: &TxContext,
     gas_available: u64,
 ) -> Result<ExecutionResultWithState<S>, ExecutionError> {
     // Get contract code
@@ -286,7 +295,24 @@ fn execute_call<S: State + Clone>(
     }
 
     // Execute bytecode with recursive host for contract calls
-    let result = execute_bytecode_with_host(&code, gas_available, state, RecursiveHost::new());
+    let call_ctx = CallContext {
+        address: *_to,
+        caller: *_sender,
+        call_value: _tx.value(),
+        call_data: _tx.data().to_vec(),
+    };
+    let host = RecursiveHost::new()
+        .with_block_context(block_ctx.clone())
+        .with_tx_context(tx_ctx.clone());
+    let result = execute_bytecode_with_host_and_contexts(
+        &code,
+        gas_available,
+        state,
+        host,
+        block_ctx.clone(),
+        tx_ctx.clone(),
+        call_ctx,
+    );
 
     match result {
         Ok((exec_result, returned_state)) => Ok((
@@ -307,6 +333,8 @@ fn execute_create<S: State + Clone>(
     tx: &Transaction,
     state: S,
     sender: &Address,
+    block_ctx: &BlockContext,
+    tx_ctx: &TxContext,
     gas_available: u64,
 ) -> Result<ExecutionResultWithState<S>, ExecutionError> {
     // Compute contract address
@@ -317,7 +345,24 @@ fn execute_create<S: State + Clone>(
     let init_code = tx.data().to_vec();
 
     // Execute init code with recursive host for contract calls
-    let result = execute_bytecode_with_host(&init_code, gas_available, state, RecursiveHost::new());
+    let call_ctx = CallContext {
+        address: contract_address,
+        caller: *sender,
+        call_value: tx.value(),
+        call_data: Vec::new(),
+    };
+    let host = RecursiveHost::new()
+        .with_block_context(block_ctx.clone())
+        .with_tx_context(tx_ctx.clone());
+    let result = execute_bytecode_with_host_and_contexts(
+        &init_code,
+        gas_available,
+        state,
+        host,
+        block_ctx.clone(),
+        tx_ctx.clone(),
+        call_ctx,
+    );
 
     match result {
         Ok((exec_result, mut returned_state)) => {
@@ -525,6 +570,8 @@ mod tests {
     #[test]
     fn test_execute_call_value_transfer_only() {
         let state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let sender = Address::from([0x01; 20]);
         let recipient = Address::from([0x02; 20]);
@@ -542,7 +589,7 @@ mod tests {
         });
 
         // Execute call directly (bypassing signature validation)
-        let result = execute_call(&tx, state, &sender, &recipient, 21000);
+        let result = execute_call(&tx, state, &sender, &recipient, &block_ctx, &tx_ctx, 21000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, return_data, logs, contract_address, _state) = result.unwrap();
@@ -557,6 +604,8 @@ mod tests {
     #[test]
     fn test_execute_call_no_value() {
         let state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let sender = Address::from([0x01; 20]);
         let recipient = Address::from([0x02; 20]);
@@ -573,7 +622,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_call(&tx, state, &sender, &recipient, 21000);
+        let result = execute_call(&tx, state, &sender, &recipient, &block_ctx, &tx_ctx, 21000);
 
         assert!(result.is_ok());
     }
@@ -581,7 +630,8 @@ mod tests {
     #[test]
     fn test_execute_call_with_code() {
         let mut state = InMemoryState::new();
-        let _block_ctx = BlockContext::default();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let sender = Address::from([0x01; 20]);
         let contract = Address::from([0x02; 20]);
@@ -604,7 +654,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_call(&tx, state, &sender, &contract, 100000);
+        let result = execute_call(&tx, state, &sender, &contract, &block_ctx, &tx_ctx, 100000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, return_data, logs, _, _state) = result.unwrap();
@@ -618,7 +668,8 @@ mod tests {
     #[test]
     fn test_execute_create_simple() {
         let mut state = InMemoryState::new();
-        let _block_ctx = BlockContext::default();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000));
@@ -640,7 +691,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_create(&tx, state, &sender, 100000);
+        let result = execute_create(&tx, state, &sender, &block_ctx, &tx_ctx, 100000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _state) = result.unwrap();
@@ -658,7 +709,8 @@ mod tests {
     #[test]
     fn test_execute_create_with_value() {
         let mut state = InMemoryState::new();
-        let _block_ctx = BlockContext::default();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let sender = Address::from([0x01; 20]);
         state.set_balance(&sender, U256::from_u64(1_000_000));
@@ -678,7 +730,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result = execute_create(&tx, state, &sender, 100000);
+        let result = execute_create(&tx, state, &sender, &block_ctx, &tx_ctx, 100000);
 
         assert!(result.is_ok());
         let (success, _, _gas_refund, _, logs, contract_address, _state) = result.unwrap();
@@ -764,6 +816,8 @@ mod tests {
         let mut state = InMemoryState::new();
         let to_addr = Address::from([0x44; 20]);
         state.set_code(&to_addr, code);
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
             execute_call(
@@ -781,6 +835,8 @@ mod tests {
                 state,
                 &Address::from([0x11; 20]),
                 &to_addr,
+                &block_ctx,
+                &tx_ctx,
                 100000,
             )
             .unwrap();
@@ -803,6 +859,8 @@ mod tests {
         let mut state = InMemoryState::new();
         let to_addr = Address::from([0x55; 20]);
         state.set_code(&to_addr, code);
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
             execute_call(
@@ -820,6 +878,8 @@ mod tests {
                 state,
                 &Address::from([0x11; 20]),
                 &to_addr,
+                &block_ctx,
+                &tx_ctx,
                 100000,
             )
             .unwrap();
@@ -843,6 +903,8 @@ mod tests {
         let mut state = InMemoryState::new();
         let to_addr = Address::from([0x66; 20]);
         state.set_code(&to_addr, code);
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
 
         let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _state) =
             execute_call(
@@ -860,6 +922,8 @@ mod tests {
                 state,
                 &Address::from([0x11; 20]),
                 &to_addr,
+                &block_ctx,
+                &tx_ctx,
                 100000,
             )
             .unwrap();

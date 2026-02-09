@@ -1227,7 +1227,31 @@ pub fn execute_bytecode_with_host<S: State, H: Host<S>>(
     state: S,
     host: H,
 ) -> Result<(ExecutionResult, S), EvmError> {
-    let mut evm = Evm::new(code.to_vec(), gas_limit, state, host);
+    execute_bytecode_with_host_and_contexts(
+        code,
+        gas_limit,
+        state,
+        host,
+        BlockContext::default(),
+        TxContext::default(),
+        CallContext::default(),
+    )
+}
+
+/// Execute bytecode with a custom host and explicit contexts.
+pub fn execute_bytecode_with_host_and_contexts<S: State, H: Host<S>>(
+    code: &[u8],
+    gas_limit: u64,
+    state: S,
+    host: H,
+    block_ctx: BlockContext,
+    tx_ctx: TxContext,
+    call_ctx: CallContext,
+) -> Result<(ExecutionResult, S), EvmError> {
+    let mut evm = Evm::new(code.to_vec(), gas_limit, state, host)
+        .with_block_context(block_ctx)
+        .with_tx_context(tx_ctx)
+        .with_call_context(call_ctx);
     let result = evm.run()?;
     Ok((result, evm.state))
 }

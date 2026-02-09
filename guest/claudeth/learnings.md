@@ -1,5 +1,26 @@
 # Claudeth Development Learnings
 
+## Session 33: Wire EVM Context Propagation (2026-02-09)
+
+**Status**: Phase D Task D3 IN PROGRESS (context propagation complete)
+
+### What Was Accomplished
+1. ✅ Added `execute_bytecode_with_host_and_contexts` to inject block/tx/call contexts
+2. ✅ Executor now passes `BlockContext`, `TxContext`, and `CallContext` into EVM runs
+3. ✅ RecursiveHost now carries block/tx contexts into nested calls/creates
+4. ✅ `cargo test -p claudeth --release` passing
+5. ⚠️ `prek run --all-files` failed offline due to rustup channel sync for nightly-2025-07-14
+
+### DO's ✅
+1. **Always propagate block/tx/call contexts** for top-level and nested EVM execution
+2. **Run tests in release mode** with `cargo test -p claudeth --release`
+3. **Use an absolute `HOME` for `prek`** to avoid relative-path permission issues
+4. **Ensure the required nightly toolchain is cached** before running `prek` offline
+
+### DON'Ts ❌
+1. **Don't rely on default EVM contexts** for environment opcodes
+2. **Don't ignore `prek` failures** even if they are caused by offline rustup sync
+
 ## Session 32: Phase D Task D3 - Implement RecursiveHost (2026-02-09)
 
 **Status**: Phase D Task D3 IN PROGRESS (RecursiveHost implemented but bug persists)
