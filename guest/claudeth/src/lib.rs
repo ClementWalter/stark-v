@@ -1,7 +1,8 @@
-//! Claudeth - Dependency-free Ethereum State Transition Function for stark-v zkVM
+//! Claudeth - Minimal-dependency Ethereum State Transition Function for stark-v zkVM
 //!
-//! This library implements the Ethereum protocol execution layer with zero external dependencies,
-//! designed for efficient proof generation in zkVM environments.
+//! This library implements the Ethereum protocol execution layer with minimal external dependencies,
+//! designed for efficient proof generation in zkVM environments. It currently relies on `serde`
+//! and `k256` (for secp256k1) until in-tree replacements are finished.
 //!
 //! ## Features
 //!

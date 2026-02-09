@@ -849,6 +849,7 @@ fn test_execute_all_blockchain_tests() {
                     }
                     Err(e) => {
                         // Extract transaction results from error for debugging
+                        #[cfg(feature = "evm-trace")]
                         let tx_results = match &e {
                             claudeth::stf::BlockProcessingError::GasUsedMismatch { transaction_results, .. } => Some(transaction_results),
                             claudeth::stf::BlockProcessingError::ReceiptsRootMismatch { transaction_results, .. } => Some(transaction_results),

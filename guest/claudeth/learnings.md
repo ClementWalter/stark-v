@@ -1,5 +1,25 @@
 # Claudeth Development Learnings
 
+## Session 52: Docs Alignment + Prek Sandbox Fix (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Updated crate-level docs to reflect minimal dependencies (`serde`, `k256`).
+2. ✅ Fixed unused-variable warning in EELS tests by gating debug-only data under `cfg(feature = "evm-trace")`.
+3. ✅ Ran `prek` successfully inside the sandbox with explicit `PREK_HOME`, `--log-file`, and absolute `CARGO_TARGET_DIR`.
+
+### DO's ✅
+
+1. **Set `PREK_HOME` to a writable directory** and pass `--log-file` to avoid writes to `~/.cache`.
+2. **Use an absolute `CARGO_TARGET_DIR` inside the claudeth crate** when running `prek`, since it executes from the workspace root.
+3. **Gate debug-only variables with `#[cfg(feature = "evm-trace")]`** to avoid unused warnings in normal builds.
+
+### DON'Ts ❌
+
+1. **Don't rely on prek's default log path** in sandboxed environments.
+2. **Don't use a relative `CARGO_TARGET_DIR`** when `prek` runs from the workspace root.
+
 ## Session 51: Surface Gas Traces in Block Processing Errors (2026-02-09)
 
 **Status**: Gas tracing now fully integrated into EELS test debugging workflow.

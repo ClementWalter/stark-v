@@ -4,7 +4,7 @@ Date: 2026-02-09
 
 ## Executive Summary
 
-Claudeth is intended to be a **dependency-free** Ethereum State Transition Function (STF) guest program that compiles `no_std` for `riscv32`, embeds a partial MPT, and can process Ethereum mainnet blocks starting at Fusaka. The repository already contains substantial core functionality, but several README-critical gaps remain.
+Claudeth is intended to be a **minimal-dependency** Ethereum State Transition Function (STF) guest program that compiles `no_std` for `riscv32`, embeds a partial MPT, and can process Ethereum mainnet blocks starting at Fusaka. Today it still depends on `serde` and `k256`, so it is not yet dependency-free. The repository already contains substantial core functionality, but several README-critical gaps remain.
 
 This plan reflects **verified code presence** (from `src/`) and enumerates the **missing requirements** that must be implemented to match the README.
 
@@ -33,10 +33,11 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
-2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
-3. **EELS compliance**: Test runner exists but execution mismatches remain (0/20 passing in current sample).
-4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH now returns parent hash only (still missing full 256-block history).
-5. **riscv32 allocator**: now a fixed-size bump heap (no deallocation); heap sizing/tuning may be needed for large blocks.
+2. **Docs alignment**: crate-level docs still claim dependency-free; must align with README and current deps.
+3. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
+4. **EELS compliance**: Test runner exists; last known from learnings was 0/20 passing, needs rerun to confirm current status.
+5. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH now returns parent hash only (still missing full 256-block history).
+6. **riscv32 allocator**: now a fixed-size bump heap (no deallocation); heap sizing/tuning may be needed for large blocks.
 
 ---
 
@@ -114,6 +115,13 @@ Goal: finalize per-transaction correctness before block processing.
 - **Transactions root computation and validation** (NEW)
 - **Logs bloom computation and validation** (NEW)
 - **State root computation and validation** (NEW)
+
+---
+
+## Recent Completion (2026-02-09)
+
+### Task X1: Update crate-level docs ✅
+**Result**: `src/lib.rs` now states "minimal dependencies" and calls out `serde`/`k256`.
 
 ---
 
