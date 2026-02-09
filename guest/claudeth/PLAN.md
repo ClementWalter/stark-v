@@ -30,20 +30,25 @@ EIP-2935 historical block hashes system calls.
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
   `parent_beacon_block_root`)
-- Guest input decoding supports withdrawals when `withdrawals_root` is present
 - Guest input decoding supports optional recent block hashes for BLOCKHASH
+- Guest input decoding accepts withdrawals list when `withdrawals_root` is
+  present
 - `TxContext` carries blob versioned hashes; `RecursiveHost::blobhash` reads
   from `TxContext`
 - Blob transactions populate `TxContext.blob_versioned_hashes`
 - Blob data fee charged from sender and block blob gas used tracked/validated
 - `no_std` riscv32 guest entry and bump allocator
-- Deterministic state root computation by sorting account addresses before trie insertion
+- Deterministic state root computation by sorting account addresses before trie
+  insertion
 
 ### Known Gaps / Limitations
 
 - Witness-based state reconstruction is not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
+- Guest input rejects an empty withdrawals list when `withdrawals_root` is
+  present and does not explicitly gate withdrawals list presence on the header
+  field
 
 ## Testing Status
 
@@ -52,14 +57,22 @@ EIP-2935 historical block hashes system calls.
 
 ## Plan
 
-### P1: EIP-4844 Blob Gas Accounting (done)
+### P0: Guest Input Withdrawals Presence (fix)
 
-### P2: Witness-Based State Reconstruction
+- Require a withdrawals list if and only if `withdrawals_root` is present.
+- Allow an empty withdrawals list when `withdrawals_root` is present.
+- Add unit coverage for the presence rule.
 
-### P3: Remove `k256`
+### P1: Witness-Based State Reconstruction
+
+- Specify witness format (accounts, storage proofs, code) and validation rules.
+- Implement proof verification and minimal state reconstruction in `State`.
+
+### P2: Remove `k256`
+
+- Replace `k256` with in-tree secp256k1 implementation.
 
 ## Immediate Next Task
 
-Define the witness-based state reconstruction milestone:
-- Specify witness format (accounts, storage proofs, code) and validation rules.
-- Implement proof verification and minimal state reconstruction in `State`.
+Fix guest input validation for withdrawals list presence (allow empty list,
+require presence only when `withdrawals_root` is set), then add tests.

@@ -34,8 +34,9 @@ Date: 2026-02-09
 - Input is an RLP list of 5–7 items:
   `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries`,
   optional `block_hashes`, optional `withdrawals`.
-- If `withdrawals_root` is present, a withdrawals list must be provided.
-- If `withdrawals_root` is absent, the withdrawals list must be empty.
+- A withdrawals list must be provided if and only if `withdrawals_root` is
+  present in the header. The list may be empty.
+- If `withdrawals_root` is absent, no withdrawals list should be provided.
 - Recent block hashes must be ordered oldest → newest and capped at 256 entries.
 
 ## Transactions and Context
@@ -83,14 +84,12 @@ Date: 2026-02-09
 ## Pre-commit Hygiene
 
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable.
-- Always run `prek run` before committing; fix linting errors.
+- Always run `cargo test -p claudeth --release` and `prek run` before committing.
 
 ## Do / Don't (Next Iteration)
 
 **Do**
 
-- Run `cargo test -p claudeth --release` and `prek run` before committing.
-- Provide recent block hashes in guest input for correct `BLOCKHASH` results.
 - Keep EIP-4788 and EIP-2935 system calls before transaction execution.
 - Ensure `TxContext.blob_versioned_hashes` is set so `BLOBHASH` returns data for
   blob txs.
@@ -98,11 +97,11 @@ Date: 2026-02-09
 - Validate `blob_gas_used` and enforce the Cancun max blob gas per block.
 - Sort addresses before computing the state root and use `keccak256(address)`
   as the trie key.
+- Require a withdrawals list when `withdrawals_root` is present, even if empty.
 
 **Don't**
 
 - Cap memory expansion gas.
 - Treat EVM `REVERT` as exceptional.
 - Leave unused `src/*.rs` files (pre-commit will fail).
-- Quote EELS test counts without rerunning.
-- Iterate `HashMap` order when computing the state root.
+- Reject an empty withdrawals list when `withdrawals_root` is present.

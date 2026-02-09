@@ -114,16 +114,20 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
 
     let transactions = decode_transactions(&items[3])?;
     let state_entries = decode_state_entries(&items[4])?;
-    let (block_hashes, withdrawals) = match items.len() {
-        5 => (Vec::new(), Vec::new()),
+    let (block_hashes, withdrawals, has_withdrawals_list) = match items.len() {
+        5 => (Vec::new(), Vec::new(), false),
         6 => {
             if block.withdrawals_root.is_some() {
-                (Vec::new(), decode_withdrawals(&items[5])?)
+                (Vec::new(), decode_withdrawals(&items[5])?, true)
             } else {
-                (decode_block_hashes(&items[5])?, Vec::new())
+                (decode_block_hashes(&items[5])?, Vec::new(), false)
             }
         }
-        7 => (decode_block_hashes(&items[5])?, decode_withdrawals(&items[6])?),
+        7 => (
+            decode_block_hashes(&items[5])?,
+            decode_withdrawals(&items[6])?,
+            true,
+        ),
         _ => unreachable!("length checked above"),
     };
 
@@ -131,13 +135,7 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
         return Err(GuestError::InvalidInput);
     }
 
-    if block.withdrawals_root.is_some() && withdrawals.is_empty() {
-        return Err(GuestError::InvalidInput);
-    }
-
-    if block.withdrawals_root.is_none() && !withdrawals.is_empty() {
-        return Err(GuestError::InvalidInput);
-    }
+    validate_withdrawals_presence(&block, has_withdrawals_list)?;
 
     let mut state = InMemoryState::new();
     apply_state_entries(&mut state, &state_entries);
@@ -259,6 +257,21 @@ fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
             state.sstore(&entry.address, key, *value);
         }
     }
+}
+
+fn validate_withdrawals_presence(
+    block: &BlockHeader,
+    has_withdrawals_list: bool,
+) -> Result<(), GuestError> {
+    if block.withdrawals_root.is_some() && !has_withdrawals_list {
+        return Err(GuestError::InvalidInput);
+    }
+
+    if block.withdrawals_root.is_none() && has_withdrawals_list {
+        return Err(GuestError::InvalidInput);
+    }
+
+    Ok(())
 }
 
 fn encode_success(gas_used: u64, receipts_root: Hash, state_root: Hash) -> Vec<u8> {
@@ -390,6 +403,38 @@ enum GuestError {
     Block(BlockProcessingError),
     Rlp(RlpError),
     InvalidInput,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use claudeth::types::Hash;
+
+    #[test]
+    fn test_withdrawals_presence_allows_empty_list() {
+        let mut header = BlockHeader::default();
+        header.withdrawals_root = Some(Hash::from([0x11; 32]));
+
+        let result = validate_withdrawals_presence(&header, true);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_withdrawals_presence_requires_list_when_root_present() {
+        let mut header = BlockHeader::default();
+        header.withdrawals_root = Some(Hash::from([0x22; 32]));
+
+        let result = validate_withdrawals_presence(&header, false);
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
+
+    #[test]
+    fn test_withdrawals_presence_rejects_list_when_root_absent() {
+        let header = BlockHeader::default();
+
+        let result = validate_withdrawals_presence(&header, true);
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
 }
 
 #[cfg(target_arch = "riscv32")]
