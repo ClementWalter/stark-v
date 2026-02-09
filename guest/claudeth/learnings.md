@@ -1,5 +1,32 @@
 # Claudeth Development Learnings
 
+## Session 59: Warm CREATE/CREATE2 Addresses (2026-02-09)
+
+**Status**: Completed - EIP-2929 warm tracking for CREATE/CREATE2 (NO TEST IMPACT)
+
+### What Was Accomplished
+1. ✅ Marked the computed CREATE address as warm before host execution
+2. ✅ Marked the computed CREATE2 address as warm using salt + init code
+3. ✅ Reused the same address derivation helpers as the host
+4. ✅ Verified via test run: No change in EELS test results (still 0/20 passing)
+
+### Key Finding
+**The CREATE/CREATE2 warming was correct but did NOT fix the mergeExample -19900 gas undercharge.**
+- This proves the missing gas is NOT related to EIP-2929 warm/cold access for the created address
+- The 19900 gas must come from a different specification requirement
+- Need to investigate other potential sources (see Session 58 hypotheses)
+
+### DO's ✅
+1. **Warm CREATE/CREATE2 addresses explicitly** so subsequent BALANCE/EXTCODE* calls are warm.
+2. **Compute CREATE address using the caller nonce minus one** to match host behavior.
+3. **Warm the address even if CREATE later fails**; the access already occurred.
+4. **Verify fixes with test runs** - Don't assume a change will fix an issue without checking.
+
+### DON'Ts ❌
+1. **Don't refund gas for CREATE warm access**; EIP-2929 warm/cold pricing does not apply to CREATE.
+2. **Don't duplicate address derivation logic across modules**; share helpers to keep consistency.
+3. **Don't assume warming was the missing cost** - The -19900 gas in mergeExample must be something else.
+
 ## Session 57: BLOCKHASH Recent History Support (2026-02-09)
 
 **Status**: Completed - RecursiveHost supports optional recent block hashes

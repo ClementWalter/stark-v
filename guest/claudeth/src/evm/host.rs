@@ -457,7 +457,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 }
 
 /// Compute CREATE address: keccak256(rlp([sender, nonce]))[12:]
-fn compute_create_address(sender: &Address, nonce: U256) -> Address {
+pub(crate) fn compute_create_address(sender: &Address, nonce: U256) -> Address {
     use crate::crypto::{keccak256, rlp};
 
     let sender_bytes = rlp::encode_address(sender);
@@ -471,7 +471,7 @@ fn compute_create_address(sender: &Address, nonce: U256) -> Address {
 }
 
 /// Compute CREATE2 address: keccak256(0xff ++ sender ++ salt ++ keccak256(init_code))[12:]
-fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) -> Address {
+pub(crate) fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) -> Address {
     use crate::crypto::keccak256;
 
     let code_hash = keccak256(init_code);

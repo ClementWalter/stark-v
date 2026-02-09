@@ -31,7 +31,10 @@ use std::collections::BTreeSet;
 #[cfg(target_arch = "riscv32")]
 use alloc::collections::BTreeSet;
 
-use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
+use crate::evm::host::{
+    compute_create2_address, compute_create_address, CallKind, CallMessage, CreateMessage, Host,
+    NullHost,
+};
 use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
@@ -970,6 +973,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let init_code_cost = init_code_gas_cost(size);
                 self.consume_gas(init_code_cost)?;
 
+                // EIP-2929: mark the created address as warm for this transaction
+                let nonce = self.state.get_nonce(&self.call_ctx.address);
+                let contract_address =
+                    compute_create_address(&self.call_ctx.address, nonce.saturating_sub(U256::ONE));
+                self.access_address(&contract_address);
+
                 let max_gas = self.gas_remaining - (self.gas_remaining / 64);
                 let msg = CreateMessage {
                     gas: max_gas,
@@ -1195,6 +1204,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let init_code_cost = init_code_gas_cost(size);
                 let hash_cost = create2_hash_cost(size);
                 self.consume_gas(init_code_cost + hash_cost)?;
+
+                // EIP-2929: mark the created address as warm for this transaction
+                let contract_address =
+                    compute_create2_address(&self.call_ctx.address, &salt, &init_code);
+                self.access_address(&contract_address);
 
                 let max_gas = self.gas_remaining - (self.gas_remaining / 64);
                 let msg = CreateMessage {

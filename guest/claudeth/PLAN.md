@@ -131,6 +131,9 @@ so they revert correctly on failed execution while gas/nonce changes still persi
 **Result**: `RecursiveHost` accepts optional recent block hashes (up to 256) for BLOCKHASH lookups,
 while preserving parent-hash fallback behavior.
 
+### Task N4: Warm CREATE/CREATE2 addresses for EIP-2929 ✅
+**Result**: CREATE/CREATE2 now mark the computed contract address as warm during execution.
+
 ---
 
 ## Immediate Next Task (Execute Now)
@@ -169,13 +172,11 @@ Gas Trace (initial: 340474, used: 22130)
 ```
 
 **Next: Use Traces for Systematic Debugging**:
-1. 🔍 **IN PROGRESS**: Analyze mergeExample (-19900 gas) - CREATE with access list undercharge
-   - Verified our gas calculation (62939) matches implementation exactly
-   - Expected gas is 82839, difference is exactly 19900
-   - **LIKELY ROOT CAUSE**: Missing EIP-2929 cold access charge for created contract address
-   - CREATE opcode (line 961-994 in interpreter.rs) doesn't call `access_address()` for target
-   - CALL opcode does charge EIP-2929 (lines 1008-1011) with warm/cold tracking
-   - **FIX**: Add `access_address()` call for computed contract address in CREATE/CREATE2
+1. ✅ **DONE**: Warm created address for EIP-2929 in CREATE/CREATE2
+   - Added `access_address()` on computed CREATE/CREATE2 address in `interpreter.rs`
+   - Keeps the created address warm for subsequent accesses in the same transaction
+   - **RESULT**: No change in test results - still -19900 gas undercharge in mergeExample
+   - **ANALYSIS**: The warming was correct but doesn't explain the missing 19900 gas
 2. ⏭️ Analyze tipInsideBlock (+9200 gas): 3 transactions with different patterns
 3. ⏭️ Analyze transient storage tests (+2100-4200 gas): TLOAD/TSTORE costs likely wrong
 4. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail to execute
