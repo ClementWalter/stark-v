@@ -244,9 +244,11 @@ Goal: finalize per-transaction correctness before block processing.
 10. ✅ **IMPLEMENTED**: EIP-2929 warm/cold access tracking (Session 38)
 11. ✅ Added unit test verifying warm BALANCE refund behavior (Session 39)
 12. ✅ **CRITICAL FIX**: Charge EIP-2929 warm/cold gas for SSTORE (Session 40)
-13. ⚠️ **REMAINING**: shanghaiExample off by 2 gas (75192 expected, 75190 computed)
-14. ⚠️ **REMAINING**: optionsTest state root mismatch (gas correct, state wrong)
-15. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+13. ✅ **FIXED**: Charge EIP-3860 initcode gas for CREATE transactions (Session 41)
+14. ⚠️ **REMAINING**: optionsTest + shanghaiExample state root mismatches (gas now correct!)
+15. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
+16. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
+17. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 
