@@ -1,5 +1,117 @@
 # Claudeth Development Learnings
 
+## Session 47: EELS Test Analysis - Multiple Failure Categories (2026-02-09)
+
+**Status**: Analyzed all 20 EELS test failures, identified 5 distinct categories
+
+### What Was Accomplished
+1. ✅ **ANALYZED**: Ran full EELS test suite, confirmed 0/20 passing with diverse failure modes
+2. ✅ **CATEGORIZED**: Grouped failures into state roots, gas accounting, receipts, execution
+3. ✅ **INVESTIGATED**: Deep-dived into mergeExample (-21100 gas) to understand call mechanics
+4. ✅ **DOCUMENTED**: Updated PLAN.md with failure breakdown and investigation notes
+
+### Failure Categories Found
+
+**1. State Root Mismatches (4 tests)**:
+- optionsTest_Prague, optionsTest_Cancun
+- shanghaiExample_Prague, shanghaiExample_Cancun
+- All have correct gas usage but wrong final state root
+- Likely MPT implementation bug or account encoding issue
+
+**2. Large Gas Undercharges (4 tests)**:
+- mergeExample (both forks): -21100 gas (expected 82839, computed 61739)
+- basefeeExample (both forks): -1200 gas (expected 82856, computed 81656)
+- Both involve CREATE transactions with access lists
+- Intrinsic gas calculation verified correct (59510 for mergeExample)
+- Missing ~23k gas in contract execution (likely CALL-related)
+
+**3. Gas Overcharges (6 tests)**:
+- tipInsideBlock (both forks): +9200 gas
+- tloadDoesNotPersistCrossTxn (both forks): +2100 gas
+- transStorageBlockchain (both forks): +4200 gas
+- Transient storage tests suggest TLOAD/TSTORE may have wrong costs
+- But TLOAD/TSTORE correctly set to GAS_SLOAD_WARM (100 gas)
+
+**4. Receipt Root Mismatches (2 tests)**:
+- tloadDoesNotPersistAcrossBlocks (both forks)
+- Receipt root mismatch suggests wrong logs or gas usage in receipts
+
+**5. Execution Failures (4 tests)**:
+- ShanghaiLove (both forks): TransactionExecutionError(ExecutionFailed)
+- StrangeContractCreation (both forks): TransactionExecutionError(ExecutionFailed)
+- Contracts fail to execute (need to debug specific opcode failures)
+
+### Investigation: mergeExample Gas Undercharge
+
+**Test Details**:
+- CREATE transaction with access list (1 address + 2 storage keys)
+- Init code: `0x4460015560068060116000396000f300fe600f60005500` (23 bytes)
+- Access list: addr `0x095e...2d87`, slots [0x0, 0x1]
+- Expected gas: 82839, Computed: 61739, Diff: -21100
+
+**Intrinsic Gas Verified Correct**:
+```
+Base: 21000
+Data: 308 (5 zero bytes * 4 + 18 non-zero * 16)
+Access list: 6200 (2400 + 2*1900)
+CREATE: 32000
+EIP-3860 initcode: 2 (23 bytes = 1 word)
+Total: 59510 ✓
+```
+
+**Missing Gas**: 82839 - 59510 = 23329 (execution cost)
+**Computed Execution**: 61739 - 59510 = 2229
+**Undercharge**: 23329 - 2229 = 21100
+
+**Hypothesis**: Init code makes calls to beacon contract `0x000f3df6...beac02`, but gas accounting for recursive calls may be incorrect. The 21100 shortfall is close to 21000 base transaction cost, suggesting a fundamental gas accounting bug.
+
+**Code Verified**:
+- ✅ `opcode_gas_cost(0xF1)` returns 2600 (CALL cold cost)
+- ✅ Base gas charged at line 395-396 in interpreter.rs
+- ✅ Warm refund (2500) applied at lines 982-984
+- ✅ Value transfer + new account costs charged at lines 994-999
+- ✅ EIP-150 gas forwarding rule applied at lines 1002-1009
+- ✅ `gas_used` from RecursiveHost charged at line 1025
+- ✅ Access list addresses pre-warmed at lines 1414-1417
+- ✅ Access list storage slots pre-warmed at lines 1426-1430
+
+**Potential Issues**:
+1. RecursiveHost creates fresh EVM with empty warm sets (but parent checks before call)
+2. Gas accounting in CREATE init code execution may be wrong
+3. Calls made FROM init code may not be tracked properly
+4. Access list may not apply to addresses called from within CREATE
+
+### DO's ✅
+
+1. **Run full EELS test suite with --ignored flag** to see all failures at once
+2. **Categorize failures by type** before diving into implementation fixes
+3. **Verify intrinsic gas calculations** with manual computation before blaming execution
+4. **Check opcode gas costs in gas.rs** and trace through interpreter to verify charging
+5. **Update PLAN.md with detailed failure analysis** to guide next session
+
+### DON'Ts ❌
+
+1. **Don't assume one fix will solve all tests** - we have 5 distinct failure categories
+2. **Don't fix gas costs without understanding root cause** - may mask other bugs
+3. **Don't ignore state root mismatches** - even if gas is correct, state is wrong
+4. **Don't modify gas constants in gas.rs** without EIP references confirming the change
+
+### Next Steps
+
+**Recommended Priorities**:
+1. **Fix execution failures first** (ShanghaiLove, StrangeContractCreation) - these are blocking execution
+2. **Debug state root mismatches** (optionsTest, shanghaiExample) - execution succeeds but state wrong
+3. **Investigate mergeExample gas undercharge** - large systematic error suggests fundamental bug
+4. **Check transient storage overcharges** - smaller discrepancies, likely simple fix
+5. **Fix basefeeExample and tipInsideBlock** - remaining gas accounting issues
+
+**Debug Approach for mergeExample**:
+1. Add detailed gas logging to track consumption through execution
+2. Disassemble init code `0x4460015560068060116000396000f300fe600f60005500` to understand operations
+3. Check if beacon contract calls are being made and their gas consumption
+4. Verify RecursiveHost gas_used includes all child call costs
+5. Check if CREATE gas accounting includes init code execution properly
+
 ## Session 46: Use EMPTY_OMMERS_HASH for Block Headers (2026-02-09)
 
 **Status**: Default block headers and EELS conversions now use the Ethereum empty ommers hash

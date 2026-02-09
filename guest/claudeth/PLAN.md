@@ -232,7 +232,14 @@ Goal: finalize per-transaction correctness before block processing.
 ### Task D3: Fix Spec Mismatches (IN PROGRESS - Gas Accounting)
 **Goal**: Achieve 100% pass rate on EELS test suite
 
-**Current Status**: Blocks executing, but gas accounting issues remain (0/20 tests passing)
+**Current Status**: Blocks executing, multiple categories of failures (0/20 tests passing)
+
+**Failure Categories**:
+1. State root mismatches: 4 tests (optionsTest x2, shanghaiExample x2)
+2. Gas undercharges: 4 tests (mergeExample -21100, basefeeExample -1200)
+3. Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage tests)
+4. Receipt root mismatch: 2 tests (tloadDoesNotPersistAcrossBlocks)
+5. Execution failures: 4 tests (ShanghaiLove, StrangeContractCreation)
 
 **Subtasks**:
 1. ✅ Identified root cause: NullHost was failing all contract calls (Session 32)
@@ -257,8 +264,11 @@ Goal: finalize per-transaction correctness before block processing.
 20. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
 21. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
 22. ✅ **FIXED**: Default ommers hash now uses EMPTY_OMMERS_HASH (keccak256(rlp([])))
+23. ⚠️ **INVESTIGATING**: mergeExample -21100 gas undercharge (CREATE with access list, recursive calls)
+24. ⚠️ **INVESTIGATING**: tipInsideBlock +9200 gas overcharge (reason unknown)
+25. ⚠️ **INVESTIGATING**: Transient storage tests overcharge by 2100-4200 gas
 
-**Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
+**Verification**: All EELS tests passing (currently 0/20, diverse failure modes)
 
 **Major Breakthrough (Session 36)**:
 - ALL blocks were failing parent hash validation and never executing
