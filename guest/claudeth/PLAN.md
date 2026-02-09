@@ -119,26 +119,37 @@ Goal: finalize per-transaction correctness before block processing.
 
 ## Immediate Next Task (Execute Now)
 
-**Phase D: EELS Gas/Execution Mismatches** (BLOCKED - NEEDS DEBUGGING TOOLS)
+**Phase D: EELS Gas/Execution Mismatches** (PARTIALLY UNBLOCKED - GAS TRACING READY)
 
-### Task D3.x: Investigate Gas/Execution Mismatches (PARTIALLY UNBLOCKED)
-**Status**: Debug tooling partially in place; still need gas/state tracing to proceed.
-
-**Remaining Blockers**:
-1. Gas consumption tracing (per-opcode logging) to debug gas mismatches
-2. State change tracking to debug state root mismatches
-3. Execution tracing to debug transaction execution failures
+### Task D3.x: Investigate Gas/Execution Mismatches (GAS TRACING COMPLETE)
+**Status**: Gas tracing infrastructure complete and ready for debugging.
 
 **Recent Unblocks**:
-- ✅ EVM bytecode disassembler utility (added to assist EELS debugging)
+- ✅ EVM bytecode disassembler utility (Session 48)
+- ✅ Gas tracing infrastructure with per-opcode logging (Session 49)
 
-**Tasks to complete next**:
-- Build gas tracing infrastructure (conditional compilation for debug builds)
-- Build state change visualization (account/storage deltas per transaction)
-- Add execution trace hooks for transaction failure analysis
-- Debug execution failures first (ShanghaiLove, StrangeContractCreation)
-- Then tackle gas mismatches with detailed traces
-- Finally debug state root mismatches with MPT visualization
+**Completed in Session 49**:
+- Added `evm::trace` module with GasTracer
+- Feature flag `evm-trace` for conditional compilation
+- Per-opcode tracking: PC, opcode name, gas before/after, cumulative gas
+- Integration with EVM interpreter step() method
+- Unit tests and integration tests for tracing
+
+**Usage**:
+```bash
+cargo test --features evm-trace test_name
+```
+
+**Remaining Work**:
+1. Wire gas tracing into EELS test runner to identify mismatches
+2. Build state change tracking to debug state root mismatches
+3. Add execution trace hooks for transaction failure analysis
+
+**Next Steps**:
+- Add gas tracing to EELS test runner with per-transaction output
+- Use traces to debug gas mismatches (mergeExample, tipInsideBlock, etc.)
+- Debug execution failures (ShanghaiLove, StrangeContractCreation)
+- Then tackle state root mismatches with MPT visualization
 
 **Current Failures** (Session 47 analysis):
 - State root mismatches: 4 tests (correct gas, wrong final state)

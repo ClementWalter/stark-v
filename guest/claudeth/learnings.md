@@ -1,5 +1,71 @@
 # Claudeth Development Learnings
 
+## Session 49: Add Gas Tracing Infrastructure (2026-02-09)
+
+**Status**: Implemented comprehensive gas tracing infrastructure to debug EELS test failures.
+
+### What Was Accomplished
+1. ✅ **CREATED**: `evm::trace` module with GasTracer recording per-opcode gas consumption
+2. ✅ **FEATURE FLAG**: Added `evm-trace` feature for conditional compilation (zero overhead when disabled)
+3. ✅ **INTEGRATED**: Wired tracer into EVM interpreter step() method
+4. ✅ **TESTED**: Added unit tests and integration tests for tracing functionality
+5. ✅ **COMMITTED**: Clean commit with zero clippy warnings, all 1083 tests passing
+
+### Key Implementation Details
+
+**GasTracer records**:
+- Program counter (PC) for each opcode
+- Opcode byte and mnemonic name
+- Gas before/after execution
+- Per-opcode gas cost
+- Cumulative gas used from start
+
+**Feature flag usage**:
+```rust
+#[cfg(feature = "evm-trace")]
+let tracer = evm.tracer().expect("tracer should be present");
+```
+
+**Integration**:
+- Tracer is `Option<GasTracer>` in Evm struct
+- Only compiled when `evm-trace` feature is enabled
+- Records at end of step() method after all gas consumption
+- Tracks total gas including dynamic costs (memory expansion, etc.)
+
+### DO's ✅
+
+1. **Use feature flags for debug infrastructure** - Zero overhead when disabled
+2. **Track gas at the end of step()** - Captures all gas consumption (base + dynamic)
+3. **Use cfg(feature) consistently** - Imports, fields, methods all conditional
+4. **Write comprehensive tests** - Both unit tests and integration tests
+5. **Format output for readability** - Clear columns with PC, opcode, gas costs
+6. **Provide builder methods** - `with_tracing()` for ergonomic API
+
+### DON'Ts ❌
+
+1. **Don't track gas in multiple places** - Single recording point at end of step()
+2. **Don't use debug-only features in production** - Always behind feature flag
+3. **Don't forget to make imports conditional** - Unused import warnings without feature
+4. **Don't assume opcode values** - 0x99 is SWAP10, not UNKNOWN
+5. **Don't hardcode gas values in tests** - Calculate expected values from opcodes
+
+### Next Steps
+
+**Wire tracing into EELS tests**:
+1. Add `--features evm-trace` to test runs when debugging
+2. Modify EELS test runner to capture and print traces on failure
+3. Compare expected vs actual gas line-by-line to identify discrepancies
+4. Focus on specific tests: mergeExample (-21100 gas), tipInsideBlock (+9200 gas)
+
+**Example EELS integration**:
+```rust
+#[cfg(feature = "evm-trace")]
+if let Some(tracer) = evm.tracer() {
+    eprintln!("Gas trace for transaction {}:", i);
+    tracer.print();
+}
+```
+
 ## Session 48: Add EVM Disassembler for EELS Debugging (2026-02-09)
 
 **Status**: Added a lightweight EVM bytecode disassembler and wired it into EELS test failures.
