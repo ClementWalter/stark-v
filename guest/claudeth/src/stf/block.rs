@@ -408,7 +408,7 @@ fn apply_history_storage_system_call<S: State + Clone>(
 ///     difficulty: U256::ZERO,
 ///     number: 0,
 ///     gas_limit: 30_000_000,
-///     gas_used: 0,
+///     gas_used: 15_000_000,
 ///     timestamp: 1000,
 ///     extra_data: Default::default(),
 ///     mix_hash: Default::default(),
@@ -424,6 +424,7 @@ fn apply_history_storage_system_call<S: State + Clone>(
 /// block.number = 1;
 /// block.timestamp = 2000;
 /// block.parent_hash = parent.compute_hash();
+/// block.gas_used = 0;
 ///
 /// let transactions = vec![];
 /// let withdrawals = vec![];
@@ -626,7 +627,7 @@ mod tests {
             difficulty: U256::ZERO,
             number: 100,
             gas_limit: 30_000_000,
-            gas_used: 0,
+            gas_used: 15_000_000,
             timestamp: 1000,
             extra_data: Bytes::new(),
             mix_hash: Hash::ZERO,
@@ -644,6 +645,7 @@ mod tests {
         block.number = parent.number + 1;
         block.timestamp = parent.timestamp + 12;
         block.parent_hash = parent.compute_hash();
+        block.gas_used = 0;
         block
     }
 

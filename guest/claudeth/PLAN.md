@@ -24,6 +24,8 @@ EIP-2935 historical block hashes system calls.
   validation of receipts root, tx root, logs bloom, state root
 - Block header validation includes gas-used bounds, extra data length, and
   post-merge invariants (including empty ommers hash)
+- Header validation includes base fee per gas and excess blob gas against parent
+  (execution-specs)
 - EIP-4895 withdrawals application and withdrawals root validation
 - EIP-4788 beacon root system call during block processing
 - EIP-2935 historical block hashes system call during block processing
@@ -38,7 +40,6 @@ EIP-2935 historical block hashes system calls.
 ### Known Gaps / Limitations
 
 - EIP-4844 blob transactions (type 0x03) not implemented
-- Base fee and excess blob gas header validation not implemented
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
@@ -46,21 +47,16 @@ EIP-2935 historical block hashes system calls.
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-09): pass
-- `cargo clippy -p claudeth -- -D warnings` (2026-02-09): pass
+- `prek run` (2026-02-09): pass (no files to check)
 
 ## Plan
 
 ### Completed This Iteration
 
-- Enforced `BlockHeader::validate()` at block processing entry (gas fields,
-  extra data, post-merge checks)
-- Added empty ommers hash validation for post-merge headers
+- Added base fee per gas validation against parent (EIP-1559 formula).
+- Added excess blob gas validation against parent (EIP-4844 formula).
 
 ### P1: Add EIP-4844 blob transaction support (type 0x03)
-
-### P2: Header Validation for Base Fee / Excess Blob Gas
-
-- Validate base fee per gas and excess blob gas against parent (execution-specs)
 
 ### P3: Witness-Based State Reconstruction
 

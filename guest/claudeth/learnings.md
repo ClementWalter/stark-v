@@ -18,6 +18,8 @@ Date: 2026-02-09
 - Post-merge headers must have `difficulty == 0`, `mix_hash == 0`, and `nonce == 0`.
 - Extra data length is capped at 32 bytes; gas used must not exceed gas limit.
 - Ommers hash is expected to be the empty ommers hash in post-merge blocks.
+- Base fee per gas is derived from the parent gas used vs target (EIP-1559): tests that expect unchanged base fee should set parent `gas_used == gas_limit / 2`.
+- Excess blob gas is computed from `parent.excess_blob_gas + parent.blob_gas_used`, floored at 0 if below the Cancun target (393,216).
 
 ## Guest Input Decoding
 
@@ -85,6 +87,10 @@ Date: 2026-02-09
 - Execute the EIP-2935 system call before computing the block state root.
 - Provide recent block hashes in guest input for correct `BLOCKHASH` results.
 - Use `EMPTY_OMMERS_HASH` for post-merge headers (including tests).
+- When header base fee validation is enabled, either compute the expected base fee
+  from the parent or set parent `gas_used == gas_limit / 2` in fixtures.
+- Keep test helpers for empty blocks setting `block.gas_used = 0` (don’t inherit
+  the parent’s gas used).
 
 **Don't**
 

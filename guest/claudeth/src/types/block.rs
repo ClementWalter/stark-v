@@ -146,6 +146,12 @@ impl BlockHeader {
     pub const GAS_LIMIT_BOUND_DIVISOR: u64 = 1024;
     /// Minimum gas limit per block
     pub const MIN_GAS_LIMIT: u64 = 5000;
+    /// Base fee elasticity multiplier (EIP-1559)
+    const ELASTICITY_MULTIPLIER: u64 = 2;
+    /// Base fee max change denominator (EIP-1559)
+    const BASE_FEE_MAX_CHANGE_DENOMINATOR: u64 = 8;
+    /// Target blob gas per block (EIP-4844)
+    const TARGET_BLOB_GAS_PER_BLOCK: u64 = 393_216;
 
     /// Validates gas fields (gas_used <= gas_limit).
     ///
@@ -258,14 +264,16 @@ impl BlockHeader {
     /// ```
     /// use claudeth::types::BlockHeader;
     ///
-    /// let parent = BlockHeader::default();
-    /// let mut child = BlockHeader::default();
-    /// child.parent_hash = parent.compute_hash();
-    /// child.number = parent.number + 1;
-    /// child.timestamp = parent.timestamp + 1;
-    ///
-    /// assert!(child.validate_against_parent(&parent).is_ok());
-    /// ```
+/// let mut parent = BlockHeader::default();
+/// parent.gas_used = parent.gas_limit / 2;
+/// let mut child = BlockHeader::default();
+/// child.parent_hash = parent.compute_hash();
+/// child.number = parent.number + 1;
+/// child.timestamp = parent.timestamp + 1;
+/// child.base_fee_per_gas = parent.base_fee_per_gas;
+///
+/// assert!(child.validate_against_parent(&parent).is_ok());
+/// ```
     pub fn validate_against_parent(&self, parent: &BlockHeader) -> Result<(), ValidationError> {
         let parent_hash = parent.compute_hash();
         if self.parent_hash != parent_hash {
@@ -310,6 +318,52 @@ impl BlockHeader {
                 gas_limit: self.gas_limit,
                 max_gas_limit,
             });
+        }
+
+        let (parent_base_fee_per_gas, base_fee_per_gas) =
+            match (parent.base_fee_per_gas, self.base_fee_per_gas) {
+                (Some(parent_base_fee), Some(child_base_fee)) => {
+                    (parent_base_fee, child_base_fee)
+                }
+                (None, None) => (0, 0),
+                _ => return Err(ValidationError::MissingBaseFeePerGas),
+            };
+        if self.base_fee_per_gas.is_some() {
+            let expected_base_fee = calculate_base_fee_per_gas(
+                parent.gas_limit,
+                parent.gas_used,
+                parent_base_fee_per_gas,
+            )?;
+            if expected_base_fee != base_fee_per_gas {
+                return Err(ValidationError::BaseFeePerGasMismatch {
+                    expected: expected_base_fee,
+                    actual: base_fee_per_gas,
+                });
+            }
+        }
+
+        let header_has_blob_fields =
+            self.blob_gas_used.is_some() || self.excess_blob_gas.is_some();
+        let parent_has_blob_fields =
+            parent.blob_gas_used.is_some() || parent.excess_blob_gas.is_some();
+
+        if header_has_blob_fields {
+            if self.blob_gas_used.is_none() || self.excess_blob_gas.is_none() {
+                return Err(ValidationError::MissingBlobGasFields);
+            }
+
+            let parent_excess_blob_gas = parent.excess_blob_gas.unwrap_or(0);
+            let parent_blob_gas_used = parent.blob_gas_used.unwrap_or(0);
+            let expected_excess_blob_gas =
+                calculate_excess_blob_gas(parent_excess_blob_gas, parent_blob_gas_used);
+            if self.excess_blob_gas != Some(expected_excess_blob_gas) {
+                return Err(ValidationError::ExcessBlobGasMismatch {
+                    expected: expected_excess_blob_gas,
+                    actual: self.excess_blob_gas.unwrap(),
+                });
+            }
+        } else if parent_has_blob_fields {
+            return Err(ValidationError::MissingBlobGasFields);
         }
 
         Ok(())
@@ -496,6 +550,49 @@ impl BlockHeader {
     }
 }
 
+fn calculate_base_fee_per_gas(
+    parent_gas_limit: u64,
+    parent_gas_used: u64,
+    parent_base_fee_per_gas: u64,
+) -> Result<u64, ValidationError> {
+    let parent_gas_target = parent_gas_limit / BlockHeader::ELASTICITY_MULTIPLIER;
+    if parent_gas_target == 0 {
+        return Ok(parent_base_fee_per_gas);
+    }
+
+    let parent_base_fee = parent_base_fee_per_gas as u128;
+    let parent_gas_target = parent_gas_target as u128;
+    let parent_gas_used = parent_gas_used as u128;
+
+    let expected_base_fee = if parent_gas_used == parent_gas_target {
+        parent_base_fee
+    } else if parent_gas_used > parent_gas_target {
+        let gas_used_delta = parent_gas_used - parent_gas_target;
+        let parent_fee_gas_delta = parent_base_fee * gas_used_delta;
+        let target_fee_gas_delta = parent_fee_gas_delta / parent_gas_target;
+        let mut base_fee_per_gas_delta =
+            target_fee_gas_delta / BlockHeader::BASE_FEE_MAX_CHANGE_DENOMINATOR as u128;
+        if base_fee_per_gas_delta < 1 {
+            base_fee_per_gas_delta = 1;
+        }
+        parent_base_fee + base_fee_per_gas_delta
+    } else {
+        let gas_used_delta = parent_gas_target - parent_gas_used;
+        let parent_fee_gas_delta = parent_base_fee * gas_used_delta;
+        let target_fee_gas_delta = parent_fee_gas_delta / parent_gas_target;
+        let base_fee_per_gas_delta =
+            target_fee_gas_delta / BlockHeader::BASE_FEE_MAX_CHANGE_DENOMINATOR as u128;
+        parent_base_fee.saturating_sub(base_fee_per_gas_delta)
+    };
+
+    u64::try_from(expected_base_fee).map_err(|_| ValidationError::BaseFeeOverflow)
+}
+
+fn calculate_excess_blob_gas(parent_excess_blob_gas: u64, parent_blob_gas_used: u64) -> u64 {
+    let parent_blob_gas = parent_excess_blob_gas.saturating_add(parent_blob_gas_used);
+    parent_blob_gas.saturating_sub(BlockHeader::TARGET_BLOB_GAS_PER_BLOCK)
+}
+
 impl Default for BlockHeader {
     fn default() -> Self {
         BlockHeader {
@@ -589,6 +686,16 @@ pub enum ValidationError {
     GasLimitTooLow { gas_limit: u64, min_gas_limit: u64 },
     /// Gas limit above allowed bound (parent + parent/1024)
     GasLimitTooHigh { gas_limit: u64, max_gas_limit: u64 },
+    /// Base fee per gas is missing in parent or child header
+    MissingBaseFeePerGas,
+    /// Base fee per gas does not match expected value
+    BaseFeePerGasMismatch { expected: u64, actual: u64 },
+    /// Base fee calculation overflowed the supported range
+    BaseFeeOverflow,
+    /// Blob gas fields are missing or inconsistent
+    MissingBlobGasFields,
+    /// Excess blob gas does not match expected value
+    ExcessBlobGasMismatch { expected: u64, actual: u64 },
 }
 
 impl fmt::Display for ValidationError {
@@ -651,6 +758,27 @@ impl fmt::Display for ValidationError {
                     "gas limit {gas_limit} exceeds allowed maximum {max_gas_limit}"
                 )
             }
+            ValidationError::MissingBaseFeePerGas => {
+                write!(f, "base fee per gas missing in parent or child header")
+            }
+            ValidationError::BaseFeePerGasMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "base fee per gas {actual} does not match expected {expected}"
+                )
+            }
+            ValidationError::BaseFeeOverflow => {
+                write!(f, "base fee per gas overflowed supported range")
+            }
+            ValidationError::MissingBlobGasFields => {
+                write!(f, "blob gas fields missing or inconsistent in header")
+            }
+            ValidationError::ExcessBlobGasMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "excess blob gas {actual} does not match expected {expected}"
+                )
+            }
         }
     }
 }
@@ -663,6 +791,10 @@ impl fmt::Display for ValidationError {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
+
+    fn set_parent_gas_target(parent: &mut BlockHeader) {
+        parent.gas_used = parent.gas_limit / BlockHeader::ELASTICITY_MULTIPLIER;
+    }
 
     // =========================================================================
     // Construction Tests
@@ -785,33 +917,39 @@ mod tests {
 
     #[test]
     fn test_validate_against_parent_valid() {
-        let parent = BlockHeader::default();
+        let mut parent = BlockHeader::default();
+        set_parent_gas_target(&mut parent);
         let mut child = BlockHeader::default();
         child.parent_hash = parent.compute_hash();
         child.number = parent.number + 1;
         child.timestamp = parent.timestamp + 1;
         child.gas_limit = parent.gas_limit;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
         assert!(child.validate_against_parent(&parent).is_ok());
     }
 
     #[test]
     fn test_validate_against_parent_hash_mismatch() {
-        let parent = BlockHeader::default();
+        let mut parent = BlockHeader::default();
+        set_parent_gas_target(&mut parent);
         let mut child = BlockHeader::default();
         child.parent_hash = Hash::from([0x11; 32]);
         child.number = parent.number + 1;
         child.timestamp = parent.timestamp + 1;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
         let err = child.validate_against_parent(&parent).unwrap_err();
         assert_eq!(err, ValidationError::ParentHashMismatch);
     }
 
     #[test]
     fn test_validate_against_parent_number_invalid() {
-        let parent = BlockHeader::default();
+        let mut parent = BlockHeader::default();
+        set_parent_gas_target(&mut parent);
         let mut child = BlockHeader::default();
         child.parent_hash = parent.compute_hash();
         child.number = parent.number + 2;
         child.timestamp = parent.timestamp + 1;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
         let err = child.validate_against_parent(&parent).unwrap_err();
         assert_eq!(
             err,
@@ -824,11 +962,13 @@ mod tests {
 
     #[test]
     fn test_validate_against_parent_timestamp_invalid() {
-        let parent = BlockHeader::default();
+        let mut parent = BlockHeader::default();
+        set_parent_gas_target(&mut parent);
         let mut child = BlockHeader::default();
         child.parent_hash = parent.compute_hash();
         child.number = parent.number + 1;
         child.timestamp = parent.timestamp;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
         let err = child.validate_against_parent(&parent).unwrap_err();
         assert_eq!(
             err,
@@ -843,12 +983,14 @@ mod tests {
     fn test_validate_against_parent_gas_limit_below_minimum() {
         let mut parent = BlockHeader::default();
         parent.gas_limit = BlockHeader::MIN_GAS_LIMIT;
+        set_parent_gas_target(&mut parent);
 
         let mut child = BlockHeader::default();
         child.parent_hash = parent.compute_hash();
         child.number = parent.number + 1;
         child.timestamp = parent.timestamp + 1;
         child.gas_limit = BlockHeader::MIN_GAS_LIMIT - 1;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
 
         let err = child.validate_against_parent(&parent).unwrap_err();
         assert_eq!(
@@ -864,6 +1006,7 @@ mod tests {
     fn test_validate_against_parent_gas_limit_too_low() {
         let mut parent = BlockHeader::default();
         parent.gas_limit = 100_000;
+        set_parent_gas_target(&mut parent);
 
         let max_change = parent.gas_limit / BlockHeader::GAS_LIMIT_BOUND_DIVISOR;
         let min_allowed = parent.gas_limit - max_change;
@@ -873,6 +1016,7 @@ mod tests {
         child.number = parent.number + 1;
         child.timestamp = parent.timestamp + 1;
         child.gas_limit = min_allowed - 1;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
 
         let err = child.validate_against_parent(&parent).unwrap_err();
         assert_eq!(
@@ -888,6 +1032,7 @@ mod tests {
     fn test_validate_against_parent_gas_limit_too_high() {
         let mut parent = BlockHeader::default();
         parent.gas_limit = 100_000;
+        set_parent_gas_target(&mut parent);
 
         let max_change = parent.gas_limit / BlockHeader::GAS_LIMIT_BOUND_DIVISOR;
         let max_allowed = parent.gas_limit + max_change;
@@ -897,6 +1042,7 @@ mod tests {
         child.number = parent.number + 1;
         child.timestamp = parent.timestamp + 1;
         child.gas_limit = max_allowed + 1;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
 
         let err = child.validate_against_parent(&parent).unwrap_err();
         assert_eq!(
@@ -904,6 +1050,66 @@ mod tests {
             ValidationError::GasLimitTooHigh {
                 gas_limit: max_allowed + 1,
                 max_gas_limit: max_allowed
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_against_parent_base_fee_mismatch() {
+        let mut parent = BlockHeader::default();
+        set_parent_gas_target(&mut parent);
+
+        let expected_base_fee = calculate_base_fee_per_gas(
+            parent.gas_limit,
+            parent.gas_used,
+            parent.base_fee_per_gas.unwrap(),
+        )
+        .expect("base fee calculation");
+
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        child.gas_limit = parent.gas_limit;
+        child.base_fee_per_gas = Some(expected_base_fee + 1);
+
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::BaseFeePerGasMismatch {
+                expected: expected_base_fee,
+                actual: expected_base_fee + 1
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_against_parent_excess_blob_gas_mismatch() {
+        let mut parent = BlockHeader::default();
+        set_parent_gas_target(&mut parent);
+        parent.blob_gas_used = Some(0);
+        parent.excess_blob_gas = Some(400_000);
+
+        let expected_excess = calculate_excess_blob_gas(
+            parent.excess_blob_gas.unwrap(),
+            parent.blob_gas_used.unwrap(),
+        );
+
+        let mut child = BlockHeader::default();
+        child.parent_hash = parent.compute_hash();
+        child.number = parent.number + 1;
+        child.timestamp = parent.timestamp + 1;
+        child.gas_limit = parent.gas_limit;
+        child.base_fee_per_gas = parent.base_fee_per_gas;
+        child.blob_gas_used = Some(0);
+        child.excess_blob_gas = Some(expected_excess + 1);
+
+        let err = child.validate_against_parent(&parent).unwrap_err();
+        assert_eq!(
+            err,
+            ValidationError::ExcessBlobGasMismatch {
+                expected: expected_excess,
+                actual: expected_excess + 1
             }
         );
     }
