@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 86)
+Date: 2026-02-09 (Session 87)
 
 ## Summary
 
@@ -10,7 +10,7 @@ processing with root validations, and a partial MPT. The largest remaining gaps
 are witness-based state reconstruction, removing `k256`, and production
 validation against real mainnet blocks.
 
-## Verified Status (From Code Inspection + Prior Test Runs)
+## Verified Status (From Code Inspection; Test Status from Prior Runs)
 
 ### ✅ Implemented
 - EVM interpreter with full opcode coverage (incl. PUSH0, TLOAD/TSTORE, BLOBHASH)
@@ -28,6 +28,7 @@ validation against real mainnet blocks.
 - Delegatecall storage context regression test (Session 78)
 - EELS state trie leaf dump on state root/post-state mismatch (Session 80)
 - SSTORE tracing in gas traces when `evm-trace` is enabled (Session 83)
+- State trie keys use `keccak256(address)` as per Ethereum (verified in `compute_state_root`)
 
 ### ⚠️ EELS Test Status (FAILING - Session 86 Re-verification)
 **Test Results**: 0/20 passing
@@ -38,12 +39,24 @@ validation against real mainnet blocks.
 **NOTE**: Session 84 incorrectly claimed all tests were passing. This was a documentation-only
 commit without actual test verification. The actual status has always been 0/20 passing.
 
+**Provenance**: EELS status is from the last re-run on 2026-02-09; not re-run in this session.
+
+### ✅ Unit/Doc Tests (Release)
+Ran `cargo test -p claudeth --release` on 2026-02-09:
+- Unit tests and doc tests passed
+- EELS tests remain ignored by default (`#[ignore]`), so their status is unchanged
+
 ### ⚠️ Remaining Gaps
 - **Witness-based state reconstruction**: guest still accepts full state snapshots
 - **Dependency elimination**: `k256` is still used for secp256k1
 - **Production validation**: needs testing against real mainnet blocks
 
 ## Plan
+
+### P0: Documentation Accuracy (DONE)
+Goal: Ensure comments and docs match the actual state trie keying.
+
+✅ Updated state root documentation to reflect `keccak256(address)` keying.
 
 ### P1: Deterministic State Root Computation (DONE)
 Goal: ensure state root construction is independent of HashMap iteration order by

@@ -1,5 +1,24 @@
 # Claudeth Development Learnings
 
+## Session 87: Documentation Accuracy Fix (2026-02-09)
+
+**Status**: Documentation-only change in code comments
+
+### What Was Accomplished
+1. ✅ Corrected state root documentation to match `keccak256(address)` keying
+2. ✅ Updated PLAN.md provenance to note EELS status was not re-run this session
+3. ✅ Ran `cargo test -p claudeth --release` (unit/doc tests pass; EELS ignored by default)
+
+### DO's ✅
+1. **Keep comments aligned with actual keying/encoding rules** (MPT uses keccak256(address))
+2. **Document test provenance explicitly** when not re-running suites
+3. **Remember `#[ignore]` integration tests** so status is not assumed from `cargo test`
+
+### DON'Ts ❌
+1. **Don't leave stale or misleading comments** around state root computation
+2. **Don't imply tests were re-run** unless they actually were
+3. **Don't assume `cargo test` covers ignored EELS fixtures**
+
 ## Session 86: Status Correction - EELS Tests Are Failing (2026-02-09)
 
 **Status**: Documentation correction only - no code changes

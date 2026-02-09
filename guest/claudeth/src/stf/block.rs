@@ -43,7 +43,7 @@ pub struct BlockProcessingResult {
     pub receipts: Vec<TransactionReceipt>,
     /// Computed receipts root
     pub receipts_root: Hash,
-    /// Computed state root (placeholder - requires full state trie)
+    /// Computed state root from the in-memory state
     pub state_root: Hash,
     /// Individual transaction execution results
     pub transaction_results: Vec<TransactionExecutionResult>,
@@ -171,7 +171,7 @@ fn calculate_logs_bloom(receipts: &[TransactionReceipt]) -> [u8; 256] {
 /// Computes the state root from the current state
 ///
 /// The state root is the root of a Merkle Patricia Trie where:
-/// - Key: Address (20 bytes)
+/// - Key: keccak256(address) (Ethereum state trie keying)
 /// - Value: RLP-encoded Account
 ///
 /// # Arguments
