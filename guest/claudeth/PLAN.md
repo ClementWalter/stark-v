@@ -93,13 +93,21 @@ Implement in-tree secp256k1 and remove external crypto dependency.
 
 ## Immediate Next Task
 
-**P3: Use EELS State Trie Leaf Dumps to Identify Divergence (CURRENT)**
+**P3: Debug Storage Write Execution (CURRENT - Session 82)**
 
-With state trie leaf dumps now available on mismatches, focus on one failing
-test (optionsTest_Prague) and compare:
-1. Our emitted account RLP + storage root for each address
-2. Expected account fields derived from fixture post-state
-3. Identify the first address whose account RLP differs
+Analysis of tloadDoesNotPersistAcrossBlocks_Prague test reveals:
+- Address `0x0000f90827f1c53a10cb7a02335b175320002935` should have storage after block 0
+- Expected: storage[0x00] = `0x0332...` , storage_root = `0xb99438...`
+- Actual: storage[0x00] = `0x0000...`, storage_root = `0x56e81...` (EMPTY_TRIE_ROOT)
+- Transaction calls `0xa00000000000000000000000000000000000000a` with data `0x0accf739`
+- Pre-state has `0x000f3df6d732807ef1319fb7b8bb8522d0beac02` with storage[0x03b6] = 0x03b6
 
-**Why this matters**: This narrows the mismatch to a single account/field before
-changing any core logic.
+**Key Questions**:
+1. Are storage writes happening at all during execution?
+2. Are writes going to the correct address (CALL vs DELEGATECALL context)?
+3. Is transaction execution even reaching SSTORE opcodes?
+
+**Next Steps**:
+1. Add execution tracing to see SSTORE opcodes and target addresses
+2. Trace the call chain: tx → 0xa000...000a → ??? → SSTORE to 0x0000f9...
+3. Verify CALL/DELEGATECALL context is correct (storage writes to caller vs callee)

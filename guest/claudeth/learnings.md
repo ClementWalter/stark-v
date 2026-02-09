@@ -1,5 +1,63 @@
 # Claudeth Development Learnings
 
+## Session 82: Storage Root Investigation - Runtime Writes Missing (2026-02-09)
+
+**Status**: Investigation in progress
+
+### What Was Investigated
+1. ✅ Analyzed tloadDoesNotPersistAcrossBlocks_Prague test in detail
+2. ✅ Verified pre-state storage loading works correctly (writes to HashMap, can be read back)
+3. ✅ Identified that address `0x0000f90827f1c53a10cb7a02335b175320002935` should have storage after block 0 execution
+4. ✅ Confirmed storage root is EMPTY_TRIE_ROOT when it should be non-empty
+5. ✅ Traced execution flow: tx → 0xa00000000000000000000000000000000000000a (has TSTORE/SSTORE code)
+
+###Key Findings
+
+**Test Structure**:
+- Pre-state: `0x0000f90827f1c53a10cb7a02335b175320002935` has code, nonce=1, but empty storage
+- Transaction calls `0xa00000000000000000000000000000000000000a` with calldata `0x0accf739`
+- Expected post-block-0: storage[0x00] = `0x0332...` for `0x0000f90827...`
+- Actual post-block-0: storage[0x00] = `0x0000...` (EMPTY)
+
+**Storage Implementation Verified Correct**:
+- `Storage::set` correctly hashes keys and RLP-encodes values (storage.rs)
+- `InMemoryState::sstore` calls Storage::set and updates account.storage_root (execution.rs:334-346)
+- Pre-state loading works: storage values can be written and read back (apply_pre_state at line 291-295)
+
+**Code Flow Analysis**:
+- Called contract `0xa00000000000000000000000000000000000000a` has both TSTORE (0x5d) and SSTORE (0x55) opcodes
+- Function selector `0x0accf739` likely triggers contract-to-contract calls
+- Expected storage writes are at DIFFERENT address than the called contract (proxy/delegate pattern?)
+
+**Hypothesis**:
+The issue is likely related to call context:
+1. Transaction calls contract A
+2. Contract A calls/delegatecalls contract B
+3. Contract B executes SSTORE
+4. But storage writes may not be persisting to the correct address
+
+**Critical Code Path to Trace**:
+1. Transaction execution → RecursiveHost::call
+2. CALL/DELEGATECALL/CALLCODE handling → storage write address resolution
+3. SSTORE opcode → which address gets the write?
+4. State root computation → are all storage-modified accounts included?
+
+### Next Steps
+1. Add execution tracing to capture SSTORE operations and target addresses
+2. Verify CALL vs DELEGATECALL storage context is correct
+3. Check if storage writes are being lost between transaction execution and state root computation
+4. Consider: is there a storage cache flush missing?
+
+### DO's ✅
+1. **Trace actual execution** - don't assume code paths work correctly
+2. **Check call context** - CALL/DELEGATECALL have different storage semantics
+3. **Verify pre-state AND runtime writes** - both must work for tests to pass
+
+### DON'Ts ❌
+1. **Don't assume storage implementation is broken** - unit tests pass, likely integration issue
+2. **Don't modify storage logic without understanding root cause** - could break working functionality
+3. **Don't ignore call semantics** - proxy patterns rely on correct DELEGATECALL behavior
+
 ## Session 81: EELS State Trie Leaf Dumps (2026-02-09)
 
 **Status**: Completed - added diagnostics only
