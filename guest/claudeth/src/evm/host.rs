@@ -116,3 +116,247 @@ impl<S: State> Host<S> for NullHost {
         U256::ZERO
     }
 }
+
+/// Recursive host that executes calls/creates by spawning new EVM instances.
+///
+/// This host enables full contract-to-contract call support.
+/// CALL/DELEGATECALL/STATICCALL/CALLCODE and CREATE/CREATE2 opcodes
+/// will recursively execute the target contract code.
+#[derive(Debug, Clone)]
+pub struct RecursiveHost {
+    /// Maximum call depth (default: 1024 per EVM spec)
+    pub max_depth: usize,
+    /// Current call depth
+    pub depth: usize,
+    /// Block number for BLOCKHASH lookups (not implemented)
+    pub block_number: u64,
+}
+
+impl Default for RecursiveHost {
+    fn default() -> Self {
+        Self {
+            max_depth: 1024,
+            depth: 0,
+            block_number: 0,
+        }
+    }
+}
+
+impl RecursiveHost {
+    /// Create a new recursive host with default settings.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a child host with incremented depth.
+    fn child(&self) -> Option<Self> {
+        if self.depth >= self.max_depth {
+            return None;
+        }
+        Some(Self {
+            max_depth: self.max_depth,
+            depth: self.depth + 1,
+            block_number: self.block_number,
+        })
+    }
+}
+
+impl<S: State + Clone> Host<S> for RecursiveHost {
+    fn call(&mut self, state: &mut S, msg: CallMessage) -> CallResult {
+        // Check call depth
+        let Some(child_host) = self.child() else {
+            return CallResult {
+                success: false,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            };
+        };
+
+        // Get contract code from code_address
+        let code = state.get_code(&msg.code_address).to_vec();
+
+        // If no code, return success (simple value transfer)
+        if code.is_empty() {
+            return CallResult {
+                success: true,
+                return_data: Vec::new(),
+                gas_used: 0,
+            };
+        }
+
+        // Clone state to avoid borrowing issues
+        let call_state = state.clone();
+
+        // Build call context for the called contract
+        use crate::evm::interpreter::{CallContext, Evm, EvmError};
+
+        let call_ctx = CallContext {
+            address: msg.address,
+            caller: msg.caller,
+            call_value: msg.value,
+            call_data: msg.input.clone(),
+        };
+
+        // Create EVM with proper context
+        let mut evm = Evm::new(code, msg.gas, call_state, child_host)
+            .with_call_context(call_ctx);
+
+        // Execute
+        let result = evm.run();
+
+        match result {
+            Ok(exec_result) => {
+                // Merge state changes back if call succeeded
+                if exec_result.success {
+                    *state = evm.into_state();
+                } else {
+                    // Discard failed call state (don't consume evm)
+                    // But we need to consume it anyway for type system
+                    let _ = evm.into_state();
+                }
+                CallResult {
+                    success: exec_result.success,
+                    return_data: exec_result.return_data,
+                    gas_used: exec_result.gas_used,
+                }
+            }
+            Err(EvmError::OutOfGas) => CallResult {
+                success: false,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            },
+            Err(_) => CallResult {
+                success: false,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            },
+        }
+    }
+
+    fn create(&mut self, state: &mut S, msg: CreateMessage) -> CreateResult {
+        // Check call depth
+        let Some(child_host) = self.child() else {
+            return CreateResult {
+                success: false,
+                address: None,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            };
+        };
+
+        // Compute contract address
+        let nonce = state.get_nonce(&msg.caller);
+        let contract_address = if let Some(salt) = msg.salt {
+            // CREATE2
+            compute_create2_address(&msg.caller, &salt, &msg.init_code)
+        } else {
+            // CREATE
+            compute_create_address(&msg.caller, nonce.saturating_sub(U256::ONE))
+        };
+
+        // Clone state
+        let create_state = state.clone();
+
+        // Build call context for the constructor
+        use crate::evm::interpreter::{CallContext, Evm, EvmError};
+
+        let call_ctx = CallContext {
+            address: contract_address,
+            caller: msg.caller,
+            call_value: msg.value,
+            call_data: Vec::new(), // Init code has no call data
+        };
+
+        // Create EVM with proper context
+        let mut evm = Evm::new(msg.init_code.clone(), msg.gas, create_state, child_host)
+            .with_call_context(call_ctx);
+
+        // Execute
+        let result = evm.run();
+
+        match result {
+            Ok(exec_result) => {
+                if exec_result.success && !exec_result.return_data.is_empty() {
+                    // Deploy the contract code
+                    let mut final_state = evm.into_state();
+                    final_state.set_code(&contract_address, exec_result.return_data.clone());
+                    *state = final_state;
+                    CreateResult {
+                        success: true,
+                        address: Some(contract_address),
+                        return_data: exec_result.return_data,
+                        gas_used: exec_result.gas_used,
+                    }
+                } else {
+                    // Discard failed create state
+                    let _ = evm.into_state();
+                    CreateResult {
+                        success: false,
+                        address: None,
+                        return_data: exec_result.return_data,
+                        gas_used: exec_result.gas_used,
+                    }
+                }
+            }
+            Err(EvmError::OutOfGas) => CreateResult {
+                success: false,
+                address: None,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            },
+            Err(_) => CreateResult {
+                success: false,
+                address: None,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            },
+        }
+    }
+
+    fn blockhash(&self, _number: &U256) -> Option<Hash> {
+        // TODO: Implement proper block hash lookups
+        None
+    }
+
+    fn blobhash(&self, _index: &U256) -> Option<Hash> {
+        None
+    }
+
+    fn blobbasefee(&self) -> U256 {
+        U256::ZERO
+    }
+}
+
+/// Compute CREATE address: keccak256(rlp([sender, nonce]))[12:]
+fn compute_create_address(sender: &Address, nonce: U256) -> Address {
+    use crate::crypto::{keccak256, rlp};
+
+    let sender_bytes = rlp::encode_address(sender);
+    let nonce_bytes = rlp::encode_u256(&nonce);
+    let encoded = rlp::encode_list(&[sender_bytes, nonce_bytes]);
+    let hash = keccak256(&encoded);
+
+    let mut address = Address::ZERO;
+    address.as_bytes_mut()[..].copy_from_slice(&hash.as_bytes()[12..]);
+    address
+}
+
+/// Compute CREATE2 address: keccak256(0xff ++ sender ++ salt ++ keccak256(init_code))[12:]
+fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) -> Address {
+    use crate::crypto::keccak256;
+
+    let code_hash = keccak256(init_code);
+    let salt_bytes = salt.to_be_bytes();
+
+    let mut data = Vec::with_capacity(1 + 20 + 32 + 32);
+    data.push(0xff);
+    data.extend_from_slice(sender.as_bytes());
+    data.extend_from_slice(&salt_bytes);
+    data.extend_from_slice(code_hash.as_bytes());
+
+    let hash = keccak256(&data);
+
+    let mut address = Address::ZERO;
+    address.as_bytes_mut()[..].copy_from_slice(&hash.as_bytes()[12..]);
+    address
+}

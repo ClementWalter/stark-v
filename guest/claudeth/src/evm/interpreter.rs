@@ -251,6 +251,29 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         }
     }
 
+    /// Set the block context (for BLOCKHASH, TIMESTAMP, etc.)
+    pub fn with_block_context(mut self, block_ctx: BlockContext) -> Self {
+        self.block_ctx = block_ctx;
+        self
+    }
+
+    /// Set the transaction context (for ORIGIN, GASPRICE)
+    pub fn with_tx_context(mut self, tx_ctx: TxContext) -> Self {
+        self.tx_ctx = tx_ctx;
+        self
+    }
+
+    /// Set the call context (for ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, etc.)
+    pub fn with_call_context(mut self, call_ctx: CallContext) -> Self {
+        self.call_ctx = call_ctx;
+        self
+    }
+
+    /// Consume the EVM and return the final state
+    pub fn into_state(self) -> S {
+        self.state
+    }
+
     /// Analyze code to find valid JUMPDEST positions
     fn analyze_jumpdests(code: &[u8]) -> Vec<bool> {
         let mut jumpdests = vec![false; code.len()];

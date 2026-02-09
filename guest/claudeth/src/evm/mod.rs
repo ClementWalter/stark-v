@@ -36,7 +36,7 @@ pub use stack::{Stack, StackError, MAX_STACK_SIZE};
 
 // Re-export Interpreter types and functions
 pub use host::{
-    CallKind, CallMessage, CallResult, CreateMessage, CreateResult, Host, NullHost,
+    CallKind, CallMessage, CallResult, CreateMessage, CreateResult, Host, NullHost, RecursiveHost,
 };
 pub use interpreter::{
     execute_bytecode, execute_bytecode_with_host, BlockContext, EvmError, ExecutionResult,

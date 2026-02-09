@@ -26,7 +26,7 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::evm::host::NullHost;
+use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{execute_bytecode_with_host, BlockContext, LogEntry};
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
@@ -270,7 +270,7 @@ pub fn execute_transaction<S: State + Clone>(
 type ExecutionResultWithState<S> = (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, S);
 
 /// Executes a contract call transaction
-fn execute_call<S: State>(
+fn execute_call<S: State + Clone>(
     _tx: &Transaction,
     state: S,
     _sender: &Address,
@@ -285,9 +285,8 @@ fn execute_call<S: State>(
         return Ok((true, 0, 0, Vec::new(), Vec::new(), None, state));
     }
 
-    // Execute bytecode (using NullHost for now)
-    // TODO: Pass real host when API supports it
-    let result = execute_bytecode_with_host(&code, gas_available, state, NullHost);
+    // Execute bytecode with recursive host for contract calls
+    let result = execute_bytecode_with_host(&code, gas_available, state, RecursiveHost::new());
 
     match result {
         Ok((exec_result, returned_state)) => Ok((
@@ -304,7 +303,7 @@ fn execute_call<S: State>(
 }
 
 /// Executes a contract creation transaction
-fn execute_create<S: State>(
+fn execute_create<S: State + Clone>(
     tx: &Transaction,
     state: S,
     sender: &Address,
@@ -317,9 +316,8 @@ fn execute_create<S: State>(
     // Execute init code
     let init_code = tx.data().to_vec();
 
-    // Execute bytecode (using NullHost for now)
-    // TODO: Pass real host when API supports it
-    let result = execute_bytecode_with_host(&init_code, gas_available, state, NullHost);
+    // Execute init code with recursive host for contract calls
+    let result = execute_bytecode_with_host(&init_code, gas_available, state, RecursiveHost::new());
 
     match result {
         Ok((exec_result, mut returned_state)) => {

@@ -1,5 +1,80 @@
 # Claudeth Development Learnings
 
+## Session 32: Phase D Task D3 - Implement RecursiveHost (2026-02-09)
+
+**Status**: Phase D Task D3 IN PROGRESS (RecursiveHost implemented but bug persists)
+
+### What Was Accomplished
+1. ✅ Identified critical bug: NullHost was causing all contract calls to fail
+2. ✅ Implemented RecursiveHost for recursive contract execution
+3. ✅ Added EVM builder methods (with_call_context, with_tx_context, with_block_context)
+4. ✅ Added into_state() method to extract state from EVM
+5. ✅ Updated executor to use RecursiveHost instead of NullHost
+6. ✅ All 1076 unit tests passing
+7. ⚠️ EELS tests still failing (0/20 passing)
+
+### Root Cause Analysis
+**The smoking gun**: executor.rs line 290 and 322 were using `NullHost`, which returns failure for ALL call/create operations:
+```rust
+// OLD CODE (BROKEN):
+execute_bytecode_with_host(&code, gas_available, state, NullHost)
+// NullHost.call() always returns CallResult { success: false, ... }
+```
+
+This meant:
+- Every CALL opcode returned 0 (failure)
+- Every CREATE opcode failed
+- Contracts couldn't interact with each other
+- Storage writes in called contracts never happened (calls failed)
+
+### Implementation Details
+
+**RecursiveHost structure**:
+- Tracks call depth (max 1024 per EVM spec)
+- Clones state for child calls
+- Sets proper CallContext (address, caller, value, data)
+- Merges state back on success, discards on failure
+
+**EVM enhancements**:
+- Added `with_call_context()`, `with_tx_context()`, `with_block_context()` builder methods
+- Added `into_state()` to extract final state
+- These enable proper context setup for nested calls
+
+### Known Issues
+
+**Bug persists despite RecursiveHost**: EELS tests still fail with storage mismatches. Possible causes:
+1. State cloning/merging logic incorrect
+2. CALL variants (DELEGATECALL, CALLCODE, STATICCALL) not handled correctly
+3. Value transfers not working
+4. Gas accounting issues preventing calls from succeeding
+5. Missing context information (block_ctx, tx_ctx not passed to child calls)
+
+### DO's ✅
+1. **Always implement real Host for production** - NullHost is only for simple tests
+2. **Use RecursiveHost for contract-to-contract calls** - it's now the default
+3. **Set proper call context** - address, caller, value, data are all required
+4. **Clone state for child calls** - prevents borrowing issues
+5. **Test with EELS vectors** - they expose real-world execution bugs
+
+### DON'Ts ❌
+1. **Don't use NullHost in production** - it silently fails all calls
+2. **Don't assume execute_bytecode_with_host sets context** - you must set it manually
+3. **Don't forget to merge state after successful calls** - or changes are lost
+4. **Don't skip recursive call testing** - most contracts interact with other contracts
+
+### Next Steps for Task D3
+**Immediate priorities**:
+1. Debug why RecursiveHost state merging doesn't work
+2. Check if block_ctx and tx_ctx need to be passed to child calls
+3. Verify gas forwarding calculations
+4. Test DELEGATECALL, CALLCODE, STATICCALL opcodes
+5. Add logging/tracing to understand execution flow
+
+**Alternative approach** if state merging is fundamentally broken:
+- Instead of cloning state, pass `&mut S` through the recursion
+- Requires rethinking the Host trait API
+- May need to redesign how EVM owns vs. borrows state
+
 ## Session 31: Phase D Task D2.4 - Post-State Validation (2026-02-09)
 
 **Status**: Phase D Task D2.4 COMPLETE ✅
