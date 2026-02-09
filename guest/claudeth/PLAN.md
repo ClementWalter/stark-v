@@ -199,13 +199,33 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 
 ## Immediate Next Task (Execute Next)
 
-**Phase D: Re-baseline EELS After EIP-6780 SELFDESTRUCT**
+### Task N14: Implement EIP-161 Empty Account Deletion 🚧
 
-**Goal**:
-- Re-run EELS tests to see if state root mismatches or execution failures change
-- Re-categorize failures with fresh gas traces if needed
+**Status**: IN PROGRESS (Session 73)
 
-**Last Known Status** (Session 72):
+**Root Cause Identified**: State root mismatches are caused by NOT deleting empty accounts at transaction end.
+
+**EIP-161 Requirement**:
+> "At the end of the transaction, any account *touched* by the execution of that transaction which is now empty SHALL instead become non-existent (i.e. **deleted**)."
+
+**Current Behavior**:
+- We skip empty accounts in `compute_state_root` (line 371-373 in execution.rs)
+- But empty accounts remain in `self.accounts` HashMap
+- This causes state root mismatches because touched-but-empty accounts should be DELETED
+
+**Required Changes**:
+1. Track which accounts are "touched" during transaction execution
+2. After transaction completes, delete accounts that are both:
+   - Touched during execution
+   - Empty (nonce=0, balance=0, code=empty, storage=empty)
+
+**Implementation Plan**:
+- Add `touched_accounts: HashSet<Address>` to `InMemoryState`
+- Mark accounts as touched when accessed (balance, nonce, code, storage reads/writes)
+- Add `delete_account(&mut self, address: &Address)` method to `State` trait
+- Call cleanup at end of each transaction in `execute_transaction` (stf/transaction.rs)
+
+**Last Known EELS Status** (Session 73 re-run):
 - State root mismatches: 12 tests
 - Gas undercharges: 2 tests (mergeExample -19900)
 - Gas overcharges: 2 tests (tipInsideBlock +5000)

@@ -87,7 +87,10 @@ impl U256 {
 
     /// Count number of ones
     pub const fn count_ones(&self) -> u32 {
-        self.0[0].count_ones() + self.0[1].count_ones() + self.0[2].count_ones() + self.0[3].count_ones()
+        self.0[0].count_ones()
+            + self.0[1].count_ones()
+            + self.0[2].count_ones()
+            + self.0[3].count_ones()
     }
 
     /// Number of bits needed to represent this value
@@ -118,31 +121,43 @@ impl U256 {
     /// Create from little-endian bytes
     pub fn from_le_bytes(bytes: [u8; 32]) -> Self {
         let mut limbs = [0u64; 4];
-        limbs[0] = u64::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]]);
-        limbs[1] = u64::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]]);
-        limbs[2] = u64::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23]]);
-        limbs[3] = u64::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31]]);
+        limbs[0] = u64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]);
+        limbs[1] = u64::from_le_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ]);
+        limbs[2] = u64::from_le_bytes([
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
+        ]);
+        limbs[3] = u64::from_le_bytes([
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
+        ]);
         U256(limbs)
     }
 
     /// Create from big-endian bytes
     pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
         let mut limbs = [0u64; 4];
-        limbs[3] = u64::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]]);
-        limbs[2] = u64::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]]);
-        limbs[1] = u64::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23]]);
-        limbs[0] = u64::from_be_bytes([bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31]]);
+        limbs[3] = u64::from_be_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]);
+        limbs[2] = u64::from_be_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ]);
+        limbs[1] = u64::from_be_bytes([
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
+        ]);
+        limbs[0] = u64::from_be_bytes([
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
+        ]);
         U256(limbs)
     }
 
     /// Checked addition
     pub const fn checked_add(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_add(rhs);
-        if overflow {
-            None
-        } else {
-            Some(result)
-        }
+        if overflow { None } else { Some(result) }
     }
 
     /// Overflowing addition
@@ -169,21 +184,13 @@ impl U256 {
     /// Saturating addition
     pub const fn saturating_add(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_add(rhs);
-        if overflow {
-            Self::MAX
-        } else {
-            result
-        }
+        if overflow { Self::MAX } else { result }
     }
 
     /// Checked subtraction
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_sub(rhs);
-        if overflow {
-            None
-        } else {
-            Some(result)
-        }
+        if overflow { None } else { Some(result) }
     }
 
     /// Overflowing subtraction
@@ -210,21 +217,13 @@ impl U256 {
     /// Saturating subtraction
     pub const fn saturating_sub(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_sub(rhs);
-        if overflow {
-            Self::ZERO
-        } else {
-            result
-        }
+        if overflow { Self::ZERO } else { result }
     }
 
     /// Checked multiplication
     pub const fn checked_mul(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_mul(rhs);
-        if overflow {
-            None
-        } else {
-            Some(result)
-        }
+        if overflow { None } else { Some(result) }
     }
 
     /// Overflowing multiplication
@@ -262,11 +261,7 @@ impl U256 {
     /// Saturating multiplication
     pub const fn saturating_mul(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_mul(rhs);
-        if overflow {
-            Self::MAX
-        } else {
-            result
-        }
+        if overflow { Self::MAX } else { result }
     }
 
     /// Checked division
@@ -324,7 +319,10 @@ impl U256 {
             remainder.0[0] |= bit;
 
             // if remainder >= rhs
-            if matches!(remainder.cmp_const(&rhs), Ordering::Greater | Ordering::Equal) {
+            if matches!(
+                remainder.cmp_const(&rhs),
+                Ordering::Greater | Ordering::Equal
+            ) {
                 remainder = remainder.sub_const(rhs);
                 // quotient |= 1 << i
                 let word = i / 64;
@@ -475,19 +473,30 @@ impl Default for U256 {
 
 impl fmt::Debug for U256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "U256(0x{:016x}{:016x}{:016x}{:016x})", self.0[3], self.0[2], self.0[1], self.0[0])
+        write!(
+            f,
+            "U256(0x{:016x}{:016x}{:016x}{:016x})",
+            self.0[3], self.0[2], self.0[1], self.0[0]
+        )
     }
 }
 
 impl fmt::Display for U256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "0x{:016x}{:016x}{:016x}{:016x}", self.0[3], self.0[2], self.0[1], self.0[0])
+        write!(
+            f,
+            "0x{:016x}{:016x}{:016x}{:016x}",
+            self.0[3], self.0[2], self.0[1], self.0[0]
+        )
     }
 }
 
 impl PartialEq for U256 {
     fn eq(&self, other: &Self) -> bool {
-        self.0[0] == other.0[0] && self.0[1] == other.0[1] && self.0[2] == other.0[2] && self.0[3] == other.0[3]
+        self.0[0] == other.0[0]
+            && self.0[1] == other.0[1]
+            && self.0[2] == other.0[2]
+            && self.0[3] == other.0[3]
     }
 }
 
@@ -735,7 +744,10 @@ impl FromStr for U256 {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+        let s = s
+            .strip_prefix("0x")
+            .or_else(|| s.strip_prefix("0X"))
+            .unwrap_or(s);
 
         if s.is_empty() {
             return Err("empty string");
@@ -766,7 +778,10 @@ impl FromStr for U256 {
 // Serde implementations
 impl Serialize for U256 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let hex = format!("0x{:016x}{:016x}{:016x}{:016x}", self.0[3], self.0[2], self.0[1], self.0[0]);
+        let hex = format!(
+            "0x{:016x}{:016x}{:016x}{:016x}",
+            self.0[3], self.0[2], self.0[1], self.0[0]
+        );
         serializer.serialize_str(&hex)
     }
 }
@@ -794,7 +809,16 @@ impl U512 {
     pub const ONE: Self = U512([1, 0, 0, 0, 0, 0, 0, 0]);
 
     /// Maximum value
-    pub const MAX: Self = U512([u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
+    pub const MAX: Self = U512([
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+        u64::MAX,
+    ]);
 
     /// Create from a single u64
     #[inline]
@@ -805,15 +829,27 @@ impl U512 {
     /// Check if value is zero
     #[inline]
     pub const fn is_zero(&self) -> bool {
-        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
-            && self.0[4] == 0 && self.0[5] == 0 && self.0[6] == 0 && self.0[7] == 0
+        self.0[0] == 0
+            && self.0[1] == 0
+            && self.0[2] == 0
+            && self.0[3] == 0
+            && self.0[4] == 0
+            && self.0[5] == 0
+            && self.0[6] == 0
+            && self.0[7] == 0
     }
 
     /// Check if value is one
     #[inline]
     pub const fn is_one(&self) -> bool {
-        self.0[0] == 1 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
-            && self.0[4] == 0 && self.0[5] == 0 && self.0[6] == 0 && self.0[7] == 0
+        self.0[0] == 1
+            && self.0[1] == 0
+            && self.0[2] == 0
+            && self.0[3] == 0
+            && self.0[4] == 0
+            && self.0[5] == 0
+            && self.0[6] == 0
+            && self.0[7] == 0
     }
 
     /// Count leading zeros
@@ -842,8 +878,14 @@ impl U512 {
 
     /// Count number of ones
     pub const fn count_ones(&self) -> u32 {
-        self.0[0].count_ones() + self.0[1].count_ones() + self.0[2].count_ones() + self.0[3].count_ones()
-            + self.0[4].count_ones() + self.0[5].count_ones() + self.0[6].count_ones() + self.0[7].count_ones()
+        self.0[0].count_ones()
+            + self.0[1].count_ones()
+            + self.0[2].count_ones()
+            + self.0[3].count_ones()
+            + self.0[4].count_ones()
+            + self.0[5].count_ones()
+            + self.0[6].count_ones()
+            + self.0[7].count_ones()
     }
 
     /// Number of bits needed to represent this value
@@ -894,11 +936,7 @@ impl U512 {
     /// Checked addition
     pub const fn checked_add(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_add(rhs);
-        if overflow {
-            None
-        } else {
-            Some(result)
-        }
+        if overflow { None } else { Some(result) }
     }
 
     /// Overflowing addition
@@ -921,21 +959,13 @@ impl U512 {
     /// Saturating addition
     pub const fn saturating_add(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_add(rhs);
-        if overflow {
-            Self::MAX
-        } else {
-            result
-        }
+        if overflow { Self::MAX } else { result }
     }
 
     /// Checked subtraction
     pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_sub(rhs);
-        if overflow {
-            None
-        } else {
-            Some(result)
-        }
+        if overflow { None } else { Some(result) }
     }
 
     /// Overflowing subtraction
@@ -958,21 +988,13 @@ impl U512 {
     /// Saturating subtraction
     pub const fn saturating_sub(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_sub(rhs);
-        if overflow {
-            Self::ZERO
-        } else {
-            result
-        }
+        if overflow { Self::ZERO } else { result }
     }
 
     /// Checked multiplication
     pub const fn checked_mul(self, rhs: Self) -> Option<Self> {
         let (result, overflow) = self.overflowing_mul(rhs);
-        if overflow {
-            None
-        } else {
-            Some(result)
-        }
+        if overflow { None } else { Some(result) }
     }
 
     /// Overflowing multiplication (simplified - checks for any high bits)
@@ -1049,11 +1071,7 @@ impl U512 {
     /// Saturating multiplication
     pub const fn saturating_mul(self, rhs: Self) -> Self {
         let (result, overflow) = self.overflowing_mul(rhs);
-        if overflow {
-            Self::MAX
-        } else {
-            result
-        }
+        if overflow { Self::MAX } else { result }
     }
 
     /// Checked division
@@ -1107,7 +1125,10 @@ impl U512 {
             let bit = self.shr_const(i).0[0] & 1;
             remainder.0[0] |= bit;
 
-            if matches!(remainder.cmp_const(&rhs), Ordering::Greater | Ordering::Equal) {
+            if matches!(
+                remainder.cmp_const(&rhs),
+                Ordering::Greater | Ordering::Equal
+            ) {
                 remainder = remainder.sub_const(rhs);
                 let word = i / 64;
                 let bit = i % 64;
@@ -1477,8 +1498,14 @@ impl TryFrom<U512> for U256 {
 impl TryFrom<U512> for u64 {
     type Error = &'static str;
     fn try_from(value: U512) -> Result<Self, Self::Error> {
-        if value.0[1] != 0 || value.0[2] != 0 || value.0[3] != 0
-            || value.0[4] != 0 || value.0[5] != 0 || value.0[6] != 0 || value.0[7] != 0 {
+        if value.0[1] != 0
+            || value.0[2] != 0
+            || value.0[3] != 0
+            || value.0[4] != 0
+            || value.0[5] != 0
+            || value.0[6] != 0
+            || value.0[7] != 0
+        {
             Err("value too large for u64")
         } else {
             Ok(value.0[0])
@@ -1489,8 +1516,13 @@ impl TryFrom<U512> for u64 {
 impl TryFrom<U512> for u128 {
     type Error = &'static str;
     fn try_from(value: U512) -> Result<Self, Self::Error> {
-        if value.0[2] != 0 || value.0[3] != 0
-            || value.0[4] != 0 || value.0[5] != 0 || value.0[6] != 0 || value.0[7] != 0 {
+        if value.0[2] != 0
+            || value.0[3] != 0
+            || value.0[4] != 0
+            || value.0[5] != 0
+            || value.0[6] != 0
+            || value.0[7] != 0
+        {
             Err("value too large for u128")
         } else {
             Ok((value.0[0] as u128) | ((value.0[1] as u128) << 64))
@@ -1503,7 +1535,10 @@ impl FromStr for U512 {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+        let s = s
+            .strip_prefix("0x")
+            .or_else(|| s.strip_prefix("0X"))
+            .unwrap_or(s);
 
         if s.is_empty() {
             return Err("empty string");
@@ -1534,8 +1569,10 @@ impl FromStr for U512 {
 // Serde
 impl Serialize for U512 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let hex = format!("0x{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}",
-            self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0]);
+        let hex = format!(
+            "0x{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}{:016x}",
+            self.0[7], self.0[6], self.0[5], self.0[4], self.0[3], self.0[2], self.0[1], self.0[0]
+        );
         serializer.serialize_str(&hex)
     }
 }
@@ -1638,13 +1675,19 @@ mod tests {
 
     #[test]
     fn test_u256_checked_add() {
-        assert_eq!(U256::from(5u64).checked_add(U256::from(3u64)), Some(U256::from(8u64)));
+        assert_eq!(
+            U256::from(5u64).checked_add(U256::from(3u64)),
+            Some(U256::from(8u64))
+        );
         assert_eq!(U256::MAX.checked_add(U256::ONE), None);
     }
 
     #[test]
     fn test_u256_saturating_add() {
-        assert_eq!(U256::from(5u64).saturating_add(U256::from(3u64)), U256::from(8u64));
+        assert_eq!(
+            U256::from(5u64).saturating_add(U256::from(3u64)),
+            U256::from(8u64)
+        );
         assert_eq!(U256::MAX.saturating_add(U256::ONE), U256::MAX);
     }
 
@@ -1673,13 +1716,19 @@ mod tests {
 
     #[test]
     fn test_u256_checked_sub() {
-        assert_eq!(U256::from(10u64).checked_sub(U256::from(3u64)), Some(U256::from(7u64)));
+        assert_eq!(
+            U256::from(10u64).checked_sub(U256::from(3u64)),
+            Some(U256::from(7u64))
+        );
         assert_eq!(U256::ZERO.checked_sub(U256::ONE), None);
     }
 
     #[test]
     fn test_u256_saturating_sub() {
-        assert_eq!(U256::from(10u64).saturating_sub(U256::from(3u64)), U256::from(7u64));
+        assert_eq!(
+            U256::from(10u64).saturating_sub(U256::from(3u64)),
+            U256::from(7u64)
+        );
         assert_eq!(U256::ZERO.saturating_sub(U256::ONE), U256::ZERO);
     }
 
@@ -1710,14 +1759,20 @@ mod tests {
 
     #[test]
     fn test_u256_checked_mul() {
-        assert_eq!(U256::from(6u64).checked_mul(U256::from(7u64)), Some(U256::from(42u64)));
+        assert_eq!(
+            U256::from(6u64).checked_mul(U256::from(7u64)),
+            Some(U256::from(42u64))
+        );
         let large = U256([0, 0, 1, 0]);
         assert_eq!(large.checked_mul(large), None);
     }
 
     #[test]
     fn test_u256_saturating_mul() {
-        assert_eq!(U256::from(6u64).saturating_mul(U256::from(7u64)), U256::from(42u64));
+        assert_eq!(
+            U256::from(6u64).saturating_mul(U256::from(7u64)),
+            U256::from(42u64)
+        );
         let large = U256([0, 0, 1, 0]);
         assert_eq!(large.saturating_mul(large), U256::MAX);
     }
@@ -1753,7 +1808,10 @@ mod tests {
 
     #[test]
     fn test_u256_checked_div() {
-        assert_eq!(U256::from(42u64).checked_div(U256::from(6u64)), Some(U256::from(7u64)));
+        assert_eq!(
+            U256::from(42u64).checked_div(U256::from(6u64)),
+            Some(U256::from(7u64))
+        );
         assert_eq!(U256::ONE.checked_div(U256::ZERO), None);
     }
 
@@ -1940,7 +1998,12 @@ mod tests {
 
     #[test]
     fn test_u256_byte_roundtrip() {
-        let original = U256([0x1122334455667788, 0x99aabbccddeeff00, 0x0011223344556677, 0x8899aabbccddeeff]);
+        let original = U256([
+            0x1122334455667788,
+            0x99aabbccddeeff00,
+            0x0011223344556677,
+            0x8899aabbccddeeff,
+        ]);
         let le_bytes = original.to_le_bytes();
         let be_bytes = original.to_be_bytes();
         assert_eq!(U256::from_le_bytes(le_bytes), original);
@@ -1967,8 +2030,14 @@ mod tests {
 
     #[test]
     fn test_u256_from_str_case_insensitive() {
-        assert_eq!(U256::from_str("abc").unwrap(), U256::from_str("ABC").unwrap());
-        assert_eq!(U256::from_str("0xDeAdBeEf").unwrap(), U256::from(0xdeadbeefu64));
+        assert_eq!(
+            U256::from_str("abc").unwrap(),
+            U256::from_str("ABC").unwrap()
+        );
+        assert_eq!(
+            U256::from_str("0xDeAdBeEf").unwrap(),
+            U256::from(0xdeadbeefu64)
+        );
     }
 
     #[test]
@@ -1977,13 +2046,19 @@ mod tests {
         assert!(U256::from_str("g").is_err());
         assert!(U256::from_str("0x").is_err());
         // String too long (> 64 hex chars)
-        assert!(U256::from_str("1" .repeat(65).as_str()).is_err());
+        assert!(U256::from_str("1".repeat(65).as_str()).is_err());
     }
 
     #[test]
     fn test_u256_display() {
-        assert_eq!(format!("{}", U256::ZERO), "0x0000000000000000000000000000000000000000000000000000000000000000");
-        assert_eq!(format!("{}", U256::ONE), "0x0000000000000000000000000000000000000000000000000000000000000001");
+        assert_eq!(
+            format!("{}", U256::ZERO),
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        );
+        assert_eq!(
+            format!("{}", U256::ONE),
+            "0x0000000000000000000000000000000000000000000000000000000000000001"
+        );
     }
 
     // =============================================================================

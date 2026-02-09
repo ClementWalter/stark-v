@@ -26,10 +26,8 @@ use crate::types::{Address, Bytes, Hash, U256};
 ///
 /// This is 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347.
 pub const EMPTY_OMMERS_HASH: Hash = Hash::new([
-    0x1d, 0xcc, 0x4d, 0xe8, 0xde, 0xc7, 0x5d, 0x7a,
-    0xab, 0x85, 0xb5, 0x67, 0xb6, 0xcc, 0xd4, 0x1a,
-    0xd3, 0x12, 0x45, 0x1b, 0x94, 0x8a, 0x74, 0x13,
-    0xf0, 0xa1, 0x42, 0xfd, 0x40, 0xd4, 0x93, 0x47,
+    0x1d, 0xcc, 0x4d, 0xe8, 0xde, 0xc7, 0x5d, 0x7a, 0xab, 0x85, 0xb5, 0x67, 0xb6, 0xcc, 0xd4, 0x1a,
+    0xd3, 0x12, 0x45, 0x1b, 0x94, 0x8a, 0x74, 0x13, 0xf0, 0xa1, 0x42, 0xfd, 0x40, 0xd4, 0x93, 0x47,
 ]);
 
 // Helper functions for serializing/deserializing [u8; 256]
@@ -613,7 +611,10 @@ pub enum ValidationError {
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValidationError::GasUsedExceedsLimit { gas_used, gas_limit } => {
+            ValidationError::GasUsedExceedsLimit {
+                gas_used,
+                gas_limit,
+            } => {
                 write!(f, "gas used ({gas_used}) exceeds gas limit ({gas_limit})")
             }
             ValidationError::ExtraDataTooLarge { size, max_size } => {
@@ -632,7 +633,10 @@ impl fmt::Display for ValidationError {
                 write!(f, "parent hash does not match provided parent header")
             }
             ValidationError::InvalidBlockNumber { expected, actual } => {
-                write!(f, "block number {actual} does not match expected {expected}")
+                write!(
+                    f,
+                    "block number {actual} does not match expected {expected}"
+                )
             }
             ValidationError::InvalidTimestamp { parent, actual } => {
                 write!(
@@ -644,10 +648,7 @@ impl fmt::Display for ValidationError {
                 gas_limit,
                 min_gas_limit,
             } => {
-                write!(
-                    f,
-                    "gas limit {gas_limit} below minimum {min_gas_limit}"
-                )
+                write!(f, "gas limit {gas_limit} below minimum {min_gas_limit}")
             }
             ValidationError::GasLimitTooLow {
                 gas_limit,

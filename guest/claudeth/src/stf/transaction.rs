@@ -426,10 +426,7 @@ pub fn validate_balance(
 /// # Ok(())
 /// # }
 /// ```
-pub fn validate_chain_id(
-    tx: &Transaction,
-    expected_chain_id: U256,
-) -> Result<(), ValidationError> {
+pub fn validate_chain_id(tx: &Transaction, expected_chain_id: U256) -> Result<(), ValidationError> {
     match tx.chain_id() {
         Some(chain_id) => {
             if chain_id != expected_chain_id {
@@ -519,8 +516,8 @@ pub fn validate_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::transaction::{Eip1559Transaction, Eip2930Transaction, LegacyTransaction};
     use crate::types::Bytes;
+    use crate::types::transaction::{Eip1559Transaction, Eip2930Transaction, LegacyTransaction};
     use k256::ecdsa::SigningKey;
 
     // Helper to create a valid signed transaction for testing
@@ -893,12 +890,10 @@ mod tests {
     #[test]
     fn test_calculate_intrinsic_gas_with_access_list() {
         let (mut tx, _) = create_signed_eip1559_tx();
-        tx.access_list = vec![
-            AccessListEntry {
-                address: Address::from([0x11; 20]),
-                storage_keys: vec![crate::types::Hash::from([0x22; 32])],
-            },
-        ];
+        tx.access_list = vec![AccessListEntry {
+            address: Address::from([0x11; 20]),
+            storage_keys: vec![crate::types::Hash::from([0x22; 32])],
+        }];
         let tx = Transaction::Eip1559(tx);
 
         let gas = calculate_intrinsic_gas(&tx);
@@ -1159,28 +1154,32 @@ mod tests {
         // Test Legacy
         let (legacy_tx, _) = create_signed_legacy_tx();
         let legacy = Transaction::Legacy(legacy_tx);
-        assert!(validate_transaction(
-            &legacy,
-            U256::from(0u64),
-            U256::from(1_000_000_000_000_000u64),
-            U256::from(30_000_000u64),
-            U256::from(10u64),
-            U256::from(1u64),
-        )
-        .is_ok());
+        assert!(
+            validate_transaction(
+                &legacy,
+                U256::from(0u64),
+                U256::from(1_000_000_000_000_000u64),
+                U256::from(30_000_000u64),
+                U256::from(10u64),
+                U256::from(1u64),
+            )
+            .is_ok()
+        );
 
         // Test EIP-1559
         let (eip1559_tx, _) = create_signed_eip1559_tx();
         let eip1559 = Transaction::Eip1559(eip1559_tx);
-        assert!(validate_transaction(
-            &eip1559,
-            U256::from(0u64),
-            U256::from(1_000_000_000_000_000u64),
-            U256::from(30_000_000u64),
-            U256::from(10u64),
-            U256::from(1u64),
-        )
-        .is_ok());
+        assert!(
+            validate_transaction(
+                &eip1559,
+                U256::from(0u64),
+                U256::from(1_000_000_000_000_000u64),
+                U256::from(30_000_000u64),
+                U256::from(10u64),
+                U256::from(1u64),
+            )
+            .is_ok()
+        );
     }
 
     // =========================================================================

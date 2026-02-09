@@ -258,8 +258,8 @@ impl FromStr for Address {
         let mut bytes = [0u8; 20];
         for i in 0..20 {
             let hex_byte = &s[i * 2..i * 2 + 2];
-            bytes[i] = u8::from_str_radix(hex_byte, 16)
-                .map_err(|_| ParseAddressError::InvalidHex)?;
+            bytes[i] =
+                u8::from_str_radix(hex_byte, 16).map_err(|_| ParseAddressError::InvalidHex)?;
         }
 
         Ok(Address(bytes))
@@ -302,7 +302,9 @@ impl fmt::Display for ParseAddressError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseAddressError::InvalidHex => write!(f, "invalid hex character in address"),
-            ParseAddressError::InvalidLength => write!(f, "invalid address length (must be 40 hex characters)"),
+            ParseAddressError::InvalidLength => {
+                write!(f, "invalid address length (must be 40 hex characters)")
+            }
         }
     }
 }

@@ -8,12 +8,14 @@ pub mod executor;
 pub mod receipt;
 pub mod transaction;
 
-pub use block::{process_block, BlockProcessingError, BlockProcessingResult};
-pub use executor::{execute_transaction, BlockHashContext, ExecutionError, TransactionExecutionResult};
+pub use block::{BlockProcessingError, BlockProcessingResult, process_block};
+pub use executor::{
+    BlockHashContext, ExecutionError, TransactionExecutionResult, execute_transaction,
+};
 pub use receipt::{
-    calculate_receipts_root, calculate_receipts_root_with_types, Bloom, Log, TransactionReceipt,
+    Bloom, Log, TransactionReceipt, calculate_receipts_root, calculate_receipts_root_with_types,
 };
 pub use transaction::{
-    calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas, validate_nonce,
-    validate_signature, validate_transaction, ValidationError,
+    ValidationError, calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas,
+    validate_nonce, validate_signature, validate_transaction,
 };

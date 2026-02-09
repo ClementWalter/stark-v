@@ -428,7 +428,7 @@ mod tests {
         let message_hash = keccak256(message);
 
         // Sign the message with recovery
-        
+
         let (signature, recovery_id) = signing_key
             .sign_prehash_recoverable(message_hash.as_bytes())
             .expect("Failed to sign");
@@ -437,7 +437,8 @@ mod tests {
         let rec_id = recovery_id.to_byte();
 
         // Recover the public key
-        let recovered_pk = recover_public_key(&message_hash, &sig_bytes, rec_id).expect("Failed to recover");
+        let recovered_pk =
+            recover_public_key(&message_hash, &sig_bytes, rec_id).expect("Failed to recover");
 
         // Get original public key
         let pk_encoded = verifying_key.to_encoded_point(false);
@@ -459,7 +460,7 @@ mod tests {
         let message_hash = keccak256(message);
 
         // Sign the message with recovery
-        
+
         let (signature, recovery_id) = signing_key
             .sign_prehash_recoverable(message_hash.as_bytes())
             .expect("Failed to sign");
@@ -468,7 +469,8 @@ mod tests {
         let rec_id = recovery_id.to_byte();
 
         // Recover the address
-        let recovered_address = recover_address(&message_hash, &sig_bytes, rec_id).expect("Failed to recover");
+        let recovered_address =
+            recover_address(&message_hash, &sig_bytes, rec_id).expect("Failed to recover");
 
         // Compute expected address from public key
         let pk_encoded = verifying_key.to_encoded_point(false);

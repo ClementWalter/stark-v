@@ -16,10 +16,10 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::types::Hash;
 use super::node::{Node, bytes_to_nibbles};
 use super::trie::EMPTY_TRIE_ROOT;
 use super::trie::Trie;
+use crate::types::Hash;
 
 // =============================================================================
 // Proof Types
@@ -326,12 +326,8 @@ fn verify_node_chain(
                 let nibble = path[0] as usize;
                 if let Some(child_hash) = children[nibble] {
                     // Verify child exists in proof
-                    let child_node_hash = verify_node_chain(
-                        proof_nodes,
-                        index + 1,
-                        &path[1..],
-                        expected_value,
-                    )?;
+                    let child_node_hash =
+                        verify_node_chain(proof_nodes, index + 1, &path[1..], expected_value)?;
 
                     // Verify that the child hash matches
                     if child_node_hash == child_hash {
@@ -784,7 +780,12 @@ mod tests {
             let key = format!("key{i}");
             let value = format!("value{i}");
             let proof = trie.generate_proof(key.as_bytes()).unwrap();
-            assert!(verify_proof(root, key.as_bytes(), Some(value.as_bytes()), &proof));
+            assert!(verify_proof(
+                root,
+                key.as_bytes(),
+                Some(value.as_bytes()),
+                &proof
+            ));
         }
     }
 

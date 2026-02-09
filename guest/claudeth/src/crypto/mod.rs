@@ -13,11 +13,11 @@ pub mod secp256k1;
 pub use keccak::keccak256;
 
 // Re-export secp256k1 functions
-pub use secp256k1::{recover_address, recover_public_key, verify_signature, Secp256k1Error};
+pub use secp256k1::{Secp256k1Error, recover_address, recover_public_key, verify_signature};
 
 // Re-export RLP functions
 pub use rlp::{
-    decode_address, decode_byte, decode_bytes, decode_hash, decode_list, decode_u256, decode_u512,
-    decode_u64, encode_address, encode_byte, encode_bytes, encode_hash, encode_list, encode_u256,
-    encode_u512, encode_u64, RlpError,
+    RlpError, decode_address, decode_byte, decode_bytes, decode_hash, decode_list, decode_u64,
+    decode_u256, decode_u512, encode_address, encode_byte, encode_bytes, encode_hash, encode_list,
+    encode_u64, encode_u256, encode_u512,
 };

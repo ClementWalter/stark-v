@@ -1,5 +1,83 @@
 # Claudeth Development Learnings
 
+## Session 73: Attempt EIP-161 Empty Account Deletion (2026-02-09)
+
+**Status**: Implemented but doesn't fix state root mismatches
+
+### What Was Accomplished
+1. ✅ Added `touched_accounts` tracking to `InMemoryState`
+2. ✅ Implemented `touch_account()`, `delete_empty_touched_accounts()`, `clear_touched_accounts()`
+3. ✅ Added touch tracking to mutating methods: `set_balance`, `set_nonce`, `increment_nonce`, `set_code`, `sstore`, `selfdestruct`
+4. ✅ Wire cleanup into `execute_transaction` to delete empty touched accounts at transaction end
+5. ❌ EELS tests still 0/20 passing - state roots unchanged
+
+### Root Cause Analysis
+
+**EIP-161 Requirement**: "At the end of the transaction, any account *touched* by the execution of that transaction which is now empty SHALL instead become non-existent (i.e. **deleted**)."
+
+**What we implemented**:
+- Track accounts touched during execution
+- Delete accounts that are both touched AND empty at transaction end
+- Clear touched set after each transaction
+
+**Why it didn't fix state roots**:
+1. **Touching happens during pre-state loading too**: The EELS test harness loads pre-state by calling `set_balance`, `set_nonce`, etc., which mark accounts as touched. This could cause pre-existing accounts to be incorrectly deleted.
+2. **EIP-161 semantics are complex**: "Touched" has a specific meaning in Ethereum - it's not just any access, but specific operations like value transfers, SELFDESTRUCT beneficiaries, transaction sender/recipient, etc.
+3. **There may be other state root issues**: The account deletion is just ONE aspect of EIP-161. There could be issues with:
+   - How we serialize accounts for MPT
+   - How we handle account fields (code_hash, storage_root)
+   - How we handle empty storage tries
+   - MPT construction itself
+
+### Key Insights
+
+**EIP-161 is not just about deletion**:
+- Empty account deletion is triggered at END of transaction
+- But accounts can exist in intermediate states during execution
+- The issue may not be deletion, but how we represent accounts in the state trie
+
+**State root debugging is hard**:
+- Can't easily see what's different between expected and computed
+- Need tooling to dump both tries and compare them
+- May need to use a reference implementation (Geth/Reth) to generate expected state
+
+### Next Investigation Paths
+
+1. **Remove EIP-161 deletion and focus on simpler issues**:
+   - Maybe the problem is NOT account deletion
+   - Focus on account RLP encoding, MPT construction, or other basics
+
+2. **Compare with reference implementation**:
+   - Use Geth's state dump to see expected account states
+   - Compare field-by-field with our computed state
+   - Identify which accounts/fields differ
+
+3. **Add detailed state debugging**:
+   - Print all accounts included in state trie
+   - Print account fields for each (nonce, balance, code_hash, storage_root)
+   - Compare with EELS expected post-state
+
+4. **Focus on gas mismatches first**:
+   - mergeExample (-19900 gas)
+   - tipInsideBlock (+5000 gas)
+   - These might be simpler to fix and build confidence
+
+### DO's ✅
+1. **Implement EIPs even if they don't immediately fix bugs** - they're still correctness improvements
+2. **Track which accounts are affected by operations** - useful for debugging
+3. **Clean up per-transaction state** - prevents leaks between transactions
+4. **Consider side effects of implementation** - touching during pre-state load was not intended
+
+### DON'Ts ❌
+1. **Don't assume one fix will solve complex bugs** - state root involves many components
+2. **Don't mark accounts as touched during test harness pre-state loading** - need to distinguish execution-time touches from setup
+3. **Don't give up when a hypothesis doesn't work** - each attempt narrows the search space
+4. **Don't implement complex features without understanding the full spec** - EIP-161 has nuanced semantics
+
+### Decision: Revert or Keep?
+
+**Keep the implementation** - It's closer to correct behavior even if it doesn't fix the current bug. We can refine the touch tracking logic later to be more precise about what "touched" means per EIP-161.
+
 ## Session 72: Implement EIP-161 Contract Nonce (2026-02-09)
 
 **Status**: Completed - EIP-161 compliant but doesn't fix state root mismatches yet

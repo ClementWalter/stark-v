@@ -8,9 +8,8 @@ pub mod storage;
 pub use account::{Account, EMPTY_CODE_HASH};
 pub use execution::{InMemoryState, State};
 pub use partial_mpt::{
-    Node, NodeError, Trie, EMPTY_TRIE_ROOT,
-    bytes_to_nibbles, nibbles_to_bytes, common_prefix_length,
-    encode_compact_path, decode_compact_path,
+    EMPTY_TRIE_ROOT, Node, NodeError, Trie, bytes_to_nibbles, common_prefix_length,
+    decode_compact_path, encode_compact_path, nibbles_to_bytes,
     proof::{Proof, ProofError, verify_proof},
 };
 pub use storage::Storage;
@@ -18,7 +17,7 @@ pub use storage::Storage;
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::types::{Hash, U256, Address};
+    use crate::types::{Address, Hash, U256};
 
     // =========================================================================
     // Account State Integration Tests
@@ -75,7 +74,12 @@ mod integration_tests {
 
         // Verify proof
         let account_rlp = account.encode_rlp();
-        assert!(verify_proof(state_root, addr.as_bytes(), Some(&account_rlp), &proof));
+        assert!(verify_proof(
+            state_root,
+            addr.as_bytes(),
+            Some(&account_rlp),
+            &proof
+        ));
     }
 
     #[test]

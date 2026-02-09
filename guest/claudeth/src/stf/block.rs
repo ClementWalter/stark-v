@@ -22,8 +22,8 @@ use crate::crypto::rlp::encode_u256;
 use crate::evm::interpreter::BlockContext;
 use crate::state::{State, Trie};
 use crate::stf::{
-    calculate_receipts_root_with_types, execute_transaction, BlockHashContext, Bloom,
-    ExecutionError, TransactionExecutionResult, TransactionReceipt,
+    BlockHashContext, Bloom, ExecutionError, TransactionExecutionResult, TransactionReceipt,
+    calculate_receipts_root_with_types, execute_transaction,
 };
 use crate::types::{BlockHeader, Hash, Transaction, U256};
 
@@ -388,7 +388,7 @@ pub fn process_block<S: State + Clone>(
 mod tests {
     use super::*;
     use crate::state::InMemoryState;
-    use crate::types::{Address, Bytes, Hash, EMPTY_OMMERS_HASH};
+    use crate::types::{Address, Bytes, EMPTY_OMMERS_HASH, Hash};
 
     fn create_test_parent() -> BlockHeader {
         BlockHeader {
@@ -639,11 +639,18 @@ mod tests {
         use crate::stf::Log;
 
         // Create two receipts with logs (bloom is auto-generated from logs)
-        let log1 = Log::new(Address::from([1u8; 20]), vec![Hash::from([2u8; 32])], Bytes::new());
-        let receipt1 =
-            TransactionReceipt::new(true, U256::from(100u64), vec![log1.clone()]);
+        let log1 = Log::new(
+            Address::from([1u8; 20]),
+            vec![Hash::from([2u8; 32])],
+            Bytes::new(),
+        );
+        let receipt1 = TransactionReceipt::new(true, U256::from(100u64), vec![log1.clone()]);
 
-        let log2 = Log::new(Address::from([3u8; 20]), vec![Hash::from([4u8; 32])], Bytes::new());
+        let log2 = Log::new(
+            Address::from([3u8; 20]),
+            vec![Hash::from([4u8; 32])],
+            Bytes::new(),
+        );
         let receipt2 = TransactionReceipt::new(true, U256::from(200u64), vec![log2.clone()]);
 
         let receipts = vec![receipt1.clone(), receipt2.clone()];

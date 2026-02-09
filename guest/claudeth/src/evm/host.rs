@@ -72,7 +72,6 @@ pub struct CreateResult {
     pub gas_used: u64,
 }
 
-
 /// Host interface for external calls and block/tx data access.
 pub trait Host<S: State> {
     fn call(&mut self, state: &mut S, msg: CallMessage) -> CallResult;
@@ -360,7 +359,10 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
             // Add to new contract address
             let contract_balance = create_state.get_balance(&contract_address);
-            create_state.set_balance(&contract_address, contract_balance.saturating_add(msg.value));
+            create_state.set_balance(
+                &contract_address,
+                contract_balance.saturating_add(msg.value),
+            );
         }
 
         // EIP-161: Set nonce to 1 for newly created contracts
