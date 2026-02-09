@@ -450,6 +450,7 @@ dependencies = [
  "k256",
  "serde",
  "serde_json",
+ "walkdir",
 ]
 
 [[package]]
