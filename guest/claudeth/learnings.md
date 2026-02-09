@@ -3530,3 +3530,99 @@ Now that empty trie roots are correct, remaining mismatches are likely due to:
 ### DON'Ts ❌
 1. **Don't log traces unconditionally** in test runners or production paths
 2. **Don't forget to update tuple destructuring** when adding fields to execution results
+
+## Session 52: Fix CREATE Code Deposit Gas (2026-02-09)
+
+**Status**: Fixed basefeeExample gas mismatch by charging 200 gas/byte for deployed code
+
+### What Was Accomplished
+1. ✅ Identified missing gas charge: CREATE transactions weren't charging code deposit cost
+2. ✅ Implemented G_codedeposit (200 gas per byte) for deployed contract code
+3. ✅ basefeeExample now has correct gas (82856) - changed from GasUsedMismatch to ReceiptsRootMismatch
+4. ✅ All 1083 unit tests passing, zero clippy warnings
+5. ✅ mergeExample deficit reduced from -21100 to -19900 gas
+
+### Critical Bug Details
+
+**The Problem**:
+CREATE transactions execute init code which returns the deployed contract bytecode. Ethereum charges 200 gas per byte (G_codedeposit) for storing this deployed code, but we weren't charging this gas.
+
+**Why It Happened**:
+In `execute_create()`, we were calling `state.set_code()` to deploy the contract but not checking if sufficient gas remained or charging the deployment cost.
+
+**The Fix**:
+Added code deposit cost calculation and charging:
+```rust
+// Calculate code deposit cost: 200 gas per byte (G_codedeposit)
+let code_size = exec_result.return_data.len() as u64;
+let code_deposit_cost = code_size.saturating_mul(GAS_CODE_DEPOSIT);
+
+// Check if we have enough gas remaining
+let gas_remaining = gas_available.saturating_sub(exec_result.gas_used);
+if gas_remaining >= code_deposit_cost {
+    // Charge the gas and deploy
+    final_gas_used = final_gas_used.saturating_add(code_deposit_cost);
+    returned_state.set_code(&contract_address, exec_result.return_data.clone());
+} else {
+    // Out of gas - transaction fails
+    success = false;
+}
+```
+
+### Impact Analysis
+
+**basefeeExample** (FIXED ✓):
+- Expected: 82856 gas
+- Before: 81656 gas (-1200 undercharge)
+- After: 82856 gas (correct!)
+- Deployed code: 6 bytes = 6 * 200 = 1200 gas
+- Error changed: GasUsedMismatch → ReceiptsRootMismatch (gas is now correct, receipt encoding may be wrong)
+
+**mergeExample** (IMPROVED):
+- Expected: 82839 gas
+- Before: 61739 gas (-21100 undercharge)
+- After: 62939 gas (-19900 undercharge)
+- Improvement: +1200 gas (code deposit now charged)
+- Still missing: ~19900 gas from other sources (likely related to CREATE opcodes or recursive calls)
+
+### DO's ✅
+
+1. **Charge G_codedeposit for CREATE deployment** - 200 gas per byte of deployed code
+2. **Check gas remaining before code deposit** - Transaction fails if insufficient gas
+3. **Update final_gas_used after code deposit** - Must reflect all gas charged
+4. **Mark transaction as failed on OOG** - Don't deploy code if out of gas
+5. **Test with small gas differences first** - Easier to isolate root cause
+
+### DON'Ts ❌
+
+1. **Don't deploy code without charging gas** - Code deposit cost is mandatory
+2. **Don't ignore code deposit OOG** - Must fail transaction if insufficient gas
+3. **Don't assume all gas issues are the same** - Each test may have different root causes
+4. **Don't skip the gas trace analysis** - Traces reveal exactly what's missing
+
+### Next Steps
+
+**Immediate Priority**:
+1. **Investigate basefeeExample ReceiptsRootMismatch**: Gas is now correct, but receipt root is wrong
+   - Could be receipt RLP encoding issue
+   - Could be receipt ordering or status field issue
+2. **Debug mergeExample remaining -19900 gas**: Still a large undercharge
+   - Trace shows only 2229 gas in init code execution
+   - Missing gas might be in CREATE opcode or recursive calls
+   - May need to check if CREATE opcode itself has additional costs
+
+**Hypothesis for Remaining Issues**:
+- ReceiptsRootMismatch in basefeeExample: Receipt RLP encoding or field mismatch
+- mergeExample -19900 gas: CREATE opcode not charging all required gas (memory expansion, etc.)
+
+### Session Summary
+
+**Commit**: `0ccc2c5` - "fix(gas): charge 200 gas per byte for CREATE code deployment"
+
+**Work completed**:
+- Identified missing code deposit gas charge ✓
+- Implemented G_codedeposit (200 gas/byte) with OOG check ✓
+- Fixed basefeeExample gas validation ✓
+- All unit tests passing ✓
+
+**Major breakthrough**: Discovered that CREATE transactions weren't charging the mandatory 200 gas per byte for deployed code storage. This fixed one EELS test completely (gas-wise) and improved another. The fix correctly handles OOG scenarios by failing the transaction if insufficient gas remains for code deposit.

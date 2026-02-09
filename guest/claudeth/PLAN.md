@@ -289,11 +289,11 @@ Gas Trace (initial: 340474, used: 22130)
 
 **Current Status**: Blocks executing, multiple categories of failures (0/20 tests passing)
 
-**Failure Categories**:
+**Failure Categories** (after Session 52 fix):
 1. State root mismatches: 4 tests (optionsTest x2, shanghaiExample x2)
-2. Gas undercharges: 4 tests (mergeExample -21100, basefeeExample -1200)
+2. Gas undercharges: 1 test (mergeExample -19900, reduced from -21100)
 3. Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage tests)
-4. Receipt root mismatch: 2 tests (tloadDoesNotPersistAcrossBlocks)
+4. Receipt root mismatch: 3 tests (basefeeExample x2 NEW, tloadDoesNotPersistAcrossBlocks)
 5. Execution failures: 4 tests (ShanghaiLove, StrangeContractCreation)
 
 **Subtasks**:
@@ -315,13 +315,15 @@ Gas Trace (initial: 340474, used: 22130)
 16. ✅ **IMPLEMENTED**: BLOCKHASH returns parent hash when requested (still missing 256-block history) (Session 44)
 17. ✅ **CRITICAL FIX**: State trie now hashes address keys with keccak256(address) (Session 45)
 18. ⚠️ **REMAINING**: optionsTest + shanghaiExample state root mismatches (values changed after fix #17 but still wrong)
-19. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
-20. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
-21. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-22. ✅ **FIXED**: Default ommers hash now uses EMPTY_OMMERS_HASH (keccak256(rlp([])))
-23. ⚠️ **INVESTIGATING**: mergeExample -21100 gas undercharge (CREATE with access list, recursive calls)
-24. ⚠️ **INVESTIGATING**: tipInsideBlock +9200 gas overcharge (reason unknown)
-25. ⚠️ **INVESTIGATING**: Transient storage tests overcharge by 2100-4200 gas
+19. ✅ **FIXED**: basefeeExample gas mismatch - now charges G_codedeposit (200 gas/byte) for CREATE deployment (Session 52)
+20. ⚠️ **REMAINING**: mergeExample gas undercharge reduced to -19900 (was -21100, improved by 1200 gas from fix #19)
+21. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
+22. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+23. ✅ **FIXED**: Default ommers hash now uses EMPTY_OMMERS_HASH (keccak256(rlp([])))
+24. ⚠️ **NEW**: basefeeExample ReceiptsRootMismatch - gas is correct but receipt encoding may be wrong
+25. ⚠️ **INVESTIGATING**: mergeExample -19900 gas undercharge (CREATE with access list, missing ~20k gas)
+26. ⚠️ **INVESTIGATING**: tipInsideBlock +9200 gas overcharge (reason unknown)
+27. ⚠️ **INVESTIGATING**: Transient storage tests overcharge by 2100-4200 gas
 
 **Verification**: All EELS tests passing (currently 0/20, diverse failure modes)
 
