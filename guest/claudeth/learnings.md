@@ -1,5 +1,69 @@
 # Claudeth Development Learnings
 
+## Session 80: EELS Test Analysis and Storage Investigation (2026-02-09)
+
+**Status**: Investigation ongoing - no implementation changes
+
+### What Was Accomplished
+1. ✅ Re-ran EELS tests and confirmed 20/20 failures (14 StateRoot, 4 Gas, 2 ExecutionError)
+2. ✅ Verified all unit tests pass (1090 tests)
+3. ✅ Analyzed storage implementation - storage hashing and RLP encoding are correct
+4. ✅ Confirmed state root computation logic is correct (sorts addresses, hashes keys)
+5. ✅ Verified debug test shows storage DOES work in isolation
+
+### Key Findings
+
+**Test Status**:
+- All 20 EELS test cases fail (10 test files, 2 variants each: Cancun/Prague)
+- 14 StateRootMismatch failures
+- 4 GasUsedMismatch failures (mergeExample: -19900, tipInsideBlock: +5000)
+- 2 TransactionExecutionError failures (ShanghaiLove, StrangeContractCreation)
+
+**Storage Implementation Verified Correct**:
+- Storage keys are keccak256-hashed before MPT insertion (storage.rs:38, 57)
+- Storage values are RLP-encoded (storage.rs:69)
+- State trie keys use keccak256(address) (execution.rs:473)
+- Storage roots are computed per-account and included in account RLP (execution.rs:462-466)
+- Debug test confirms storage writes work correctly (key 0x01 → value 0x01)
+
+**Code Structure**:
+- `compute_state_root` in execution.rs:447-478 creates fresh trie, sorts addresses, computes storage roots
+- `storage_root` in execution.rs:211-216 returns computed root for an address
+- `process_block` in block.rs:257-400 executes transactions and validates roots
+
+### Hypothesis
+
+Since all components work correctly in isolation but all EELS tests fail:
+1. **Possible systematic issue** with how EELS fixtures encode expected values
+2. **Possible mismatch** between our RLP encoding and Ethereum's canonical encoding
+3. **Possible issue** with how we handle empty vs non-empty storage/accounts
+4. **Gas calculation discrepancy** suggests missing EIP or incorrect gas cost somewhere
+
+### Next Steps
+
+**Critical**: Need to create a minimal reproducible test case:
+1. Take ONE failing EELS test (e.g., optionsTest)
+2. Extract exact pre-state, transaction, and expected post-state
+3. Manually compute what the state root SHOULD be
+4. Compare our computed root step-by-step with expected
+5. Identify exact point of divergence (account RLP? storage root? trie construction?)
+
+**For Gas Issues**:
+1. Compare our gas calculation with reference implementation (geth/reth)
+2. Verify all EIPs are correctly implemented (2929, 3529, 3860)
+3. Check if intrinsic gas includes all required components
+
+### DO's ✅
+1. **Trust unit tests** - if they pass, the components are likely correct
+2. **Look for systematic issues** when ALL tests fail the same way
+3. **Create minimal test cases** to isolate the root cause
+4. **Compare against reference implementations** for complex calculations
+
+### DON'Ts ❌
+1. **Don't assume the problem is in storage** just because state roots mismatch
+2. **Don't modify working code** without understanding the root cause
+3. **Don't investigate multiple issues simultaneously** - focus on ONE clear failure
+
 ## Session 79: Delegatecall Storage Context Regression Test (2026-02-09)
 
 **Status**: Completed

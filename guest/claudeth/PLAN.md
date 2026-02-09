@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 78)
+Date: 2026-02-09 (Session 80)
 
 ## Summary
 
@@ -27,10 +27,10 @@ removing `k256`.
 - Deterministic state root computation with sorted addresses (Session 73)
 - Delegatecall storage context regression test (Session 78)
 
-### ⚠️ EELS Test Status (18/20 failures)
-**Test Results (10 test files, 18 total test cases)**:
-- StateRootMismatch: 12 failures
-- GasUsedMismatch: 4 failures
+### ⚠️ EELS Test Status (20/20 failures - Session 80)
+**Test Results (10 test files, 20 total test cases)**:
+- StateRootMismatch: 14 failures
+- GasUsedMismatch: 4 failures (2 under, 2 over)
 - TransactionExecutionError: 2 failures
 
 **Pattern Analysis**:
@@ -87,11 +87,21 @@ Implement in-tree secp256k1 and remove external crypto dependency.
 
 ## Immediate Next Task
 
-**P3: Debug Storage Persistence - Trace storage writes vs expected**
+**P3: Create Minimal Reproducible Test Case (CRITICAL)**
 
-Trace block 0 for optionsTest (or another failing fixture):
-1. Load full pre-state (all accounts) from the fixture
-2. Execute block 0 with tracing enabled
-3. Record per-address storage writes (address, key, value)
-4. Compare against expected post-state storage map
-5. Identify whether writes land on wrong address (delegatecall/context) or wrong key/value
+Since all unit tests pass but all EELS tests fail, we need to identify the exact divergence point:
+
+1. Pick the simplest failing test (optionsTest_Prague)
+2. Create a standalone test that:
+   - Loads exact pre-state from fixture
+   - Executes the exact transaction
+   - Manually computes expected state root step-by-step
+   - Compares with our computed root at each step (account RLP, storage root, trie construction)
+3. Document EXACT point where our computation diverges from expected
+4. This will reveal if the issue is in:
+   - Account RLP encoding
+   - Storage root computation
+   - State trie key hashing
+   - Trie construction/root computation
+
+**Why this matters**: Without understanding the root cause, any fix could break working code.
