@@ -34,7 +34,7 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
 3. **EELS compliance**: Test runner exists but execution mismatches remain (0/20 passing in current sample).
 4. **Gas metering accuracy**: EELS gas mismatches persist; BLOCKHASH always returns zero due to missing block hash history.
-5. **riscv32 allocator**: `BumpAllocator` always returns null; any allocation on riscv32 will fail at runtime.
+5. **riscv32 allocator**: now a fixed-size bump heap (no deallocation); heap sizing/tuning may be needed for large blocks.
 
 ---
 
@@ -129,7 +129,7 @@ Goal: finalize per-transaction correctness before block processing.
 - Fix missing format! macro import in block
 - Fix missing Box import in block and node
 - Fix missing String import in block
-- Add global allocator (BumpAllocator) for riscv32
+- Add global allocator (BumpAllocator) for riscv32 with a fixed-size bump heap
 - Add panic handler for riscv32
 - All 1168 tests passing (1076 unit + 92 doc)
 - Zero clippy warnings
@@ -156,7 +156,7 @@ Goal: finalize per-transaction correctness before block processing.
 ### Phase C Status: PAUSED - C2 needs design before implementation
 
 **Current State**:
-- Guest program compiles for riscv32, but allocator is a stub (runtime allocation likely fails) ⚠️
+- Guest program compiles for riscv32, and allocator is functional (fixed-size bump heap, no dealloc) ⚠️
 - MPT proof generation/verification implemented ✅
 - Witness-based reconstruction not yet designed ⚠️
 

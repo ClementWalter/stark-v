@@ -2841,3 +2841,19 @@ for input in [address, topic0, topic1, ...] {
 ### DON'Ts ❌
 1. **Don't call `self.clear_transient_storage()` inside the trait impl** (would recurse)
 2. **Don't assume `prek` respects cache env vars**; it still writes to `~/.cache/prek`
+
+
+## Session 41: Implement riscv32 Bump Allocator (2026-02-09)
+
+**Status**: Added fixed-size bump allocator for riscv32; allocations now succeed until heap is exhausted
+
+### DO's ✅
+1. **Provide a real allocator for riscv32** - returning null makes all allocations fail at runtime
+2. **Align allocations to layout requirements** - align up before bumping the offset
+3. **Use atomic offset updates** - compare_exchange avoids races if used in threaded contexts
+4. **Keep heap sizing explicit** - a fixed heap size makes constraints clear and adjustable
+
+### DON'Ts ❌
+1. **Don't ignore alignment** - misaligned allocations can break on some platforms
+2. **Don't silently overflow** - return null when the heap is exhausted
+3. **Don't assume deallocation** - bump allocators must document that dealloc is a no-op

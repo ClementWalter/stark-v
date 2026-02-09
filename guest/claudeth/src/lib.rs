@@ -29,6 +29,8 @@ extern crate alloc;
 #[cfg(target_arch = "riscv32")]
 use core::alloc::{GlobalAlloc, Layout};
 #[cfg(target_arch = "riscv32")]
+use core::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(target_arch = "riscv32")]
 use core::panic::PanicInfo;
 
 /// Simple bump allocator for riscv32 target
@@ -36,9 +38,53 @@ use core::panic::PanicInfo;
 struct BumpAllocator;
 
 #[cfg(target_arch = "riscv32")]
+const HEAP_SIZE: usize = 4 * 1024 * 1024;
+
+#[cfg(target_arch = "riscv32")]
+#[repr(align(16))]
+struct AlignedHeap([u8; HEAP_SIZE]);
+
+#[cfg(target_arch = "riscv32")]
+static mut HEAP: AlignedHeap = AlignedHeap([0; HEAP_SIZE]);
+
+#[cfg(target_arch = "riscv32")]
+static HEAP_OFFSET: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(target_arch = "riscv32")]
 unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        core::ptr::null_mut()
+        let layout = _layout;
+        let size = layout.size();
+        if size == 0 {
+            return core::ptr::null_mut();
+        }
+
+        let align = layout.align().max(core::mem::align_of::<usize>());
+        let mut current = HEAP_OFFSET.load(Ordering::Relaxed);
+
+        loop {
+            let aligned = (current + align - 1) & !(align - 1);
+            let next = aligned.saturating_add(size);
+
+            if next > HEAP_SIZE {
+                return core::ptr::null_mut();
+            }
+
+            match HEAP_OFFSET.compare_exchange(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    // SAFETY: aligned is within HEAP bounds as checked above.
+                    return unsafe { HEAP.0.as_mut_ptr().add(aligned) };
+                }
+                Err(updated) => {
+                    current = updated;
+                }
+            }
+        }
     }
 
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
