@@ -58,11 +58,23 @@ Since all components work correctly in isolation but all EELS tests fail:
 2. **Look for systematic issues** when ALL tests fail the same way
 3. **Create minimal test cases** to isolate the root cause
 4. **Compare against reference implementations** for complex calculations
+5. **Document investigation findings** even when no code changes are made
 
 ### DON'Ts ❌
 1. **Don't assume the problem is in storage** just because state roots mismatch
 2. **Don't modify working code** without understanding the root cause
 3. **Don't investigate multiple issues simultaneously** - focus on ONE clear failure
+4. **Don't skip creating minimal reproducible tests** - they're essential for debugging
+
+### Session Summary
+
+This session focused on understanding why ALL EELS tests fail despite unit tests passing.
+No code changes were made - this was purely investigation and documentation.
+The key insight is that since individual components work correctly, the issue must be
+in how they interact or in some systematic encoding/computation difference.
+
+**Action Required**: Create a minimal reproducible test case to identify the exact
+divergence point. This is the ONLY way to make progress without breaking working code.
 
 ## Session 79: Delegatecall Storage Context Regression Test (2026-02-09)
 
