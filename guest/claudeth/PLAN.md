@@ -230,13 +230,14 @@ Goal: finalize per-transaction correctness before block processing.
 3. ✅ Added EVM builder methods for setting contexts (Session 32)
 4. ✅ Wire block/tx/call contexts into EVM execution and RecursiveHost (Session 33)
 5. ✅ Fixed value transfers in RecursiveHost for CALL/CREATE operations (Session 34)
-6. ⚠️ **CRITICAL BUG REMAINS**: Storage writes not persisting, balances wrong, nonces wrong
-7. TODO: Debug why state changes from execution aren't being applied
-8. TODO: Add targeted logging to trace execution flow
-9. TODO: Test with single simple EELS case to isolate issue
-10. TODO: Investigate if transactions are failing validation silently
-11. TODO: Verify SSTORE operations update state correctly
-12. TODO: Check if State::Clone is creating issues
+6. ✅ Fixed CREATE value transfer to contract address before init execution (Session 35)
+7. ⚠️ **CRITICAL BUG REMAINS**: Storage writes not persisting, balances wrong, nonces wrong
+8. TODO: Debug why state changes from execution aren't being applied
+9. TODO: Add targeted logging to trace execution flow
+10. TODO: Test with single simple EELS case to isolate issue
+11. TODO: Investigate if transactions are failing validation silently
+12. TODO: Verify SSTORE operations update state correctly
+13. TODO: Check if State::Clone is creating issues
 
 **Verification**: All EELS tests passing (currently 0/20)
 

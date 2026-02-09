@@ -1,5 +1,27 @@
 # Claudeth Development Learnings
 
+## Session 35: Fix CREATE Value Transfer (2026-02-09)
+
+**Status**: Phase D Task D3 IN PROGRESS (pre-commit blocked by offline rustup sync)
+
+### What Was Accomplished
+1. ✅ Fixed contract creation value transfer to credit the new contract address before init code execution
+2. ✅ `cargo test -p claudeth --release` passing
+3. ⚠️ `prek run --all-files` failed offline due to rustup channel sync
+
+### Why This Matters
+CREATE value transfers must land at the contract address derived from the sender's pre-increment nonce. The init code runs with that balance present, so missing the transfer can produce systemic balance and storage mismatches in EELS tests.
+
+### DO's ✅
+1. **Transfer CREATE value to the computed contract address before init execution**
+2. **Compute CREATE address with the sender pre-increment nonce** (nonce - 1 after pre-exec increment)
+3. **Run tests in release mode** with `cargo test -p claudeth --release`
+4. **Use writable temp homes for pre-commit**: `HOME=/tmp/... RUSTUP_HOME=/tmp/... CARGO_HOME=/tmp/...`
+
+### DON'Ts ❌
+1. **Don't defer CREATE value transfer** to the init code path
+2. **Don't assume pre-commit will work offline** if rustup wants to sync
+
 ## Session 34: Fix RecursiveHost Value Transfers (2026-02-09)
 
 **Status**: Phase D Task D3 IN PROGRESS (value transfer logic fixed, but tests still failing)

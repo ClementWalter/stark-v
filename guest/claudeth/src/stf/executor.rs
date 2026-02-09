@@ -205,8 +205,12 @@ pub fn execute_transaction<S: State + Clone>(
             let recipient_balance = state.get_balance(&to);
             state.set_balance(&to, recipient_balance.saturating_add(value));
         } else {
-            // For contract creation, value will be at contract address
-            // We'll handle this after computing the address
+            // For contract creation, transfer value to the new contract address
+            // Contract address uses the sender's pre-increment nonce
+            let nonce = state.get_nonce(&sender).saturating_sub(U256::ONE);
+            let contract_address = compute_create_address(&sender, nonce);
+            let contract_balance = state.get_balance(&contract_address);
+            state.set_balance(&contract_address, contract_balance.saturating_add(value));
         }
     }
 
