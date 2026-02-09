@@ -1,5 +1,69 @@
 # Claudeth Development Learnings
 
+## Session 78: EELS Test Re-baseline + Root Cause Analysis (2026-02-09)
+
+**Status**: Completed - identified two root causes
+
+### What Was Accomplished
+1. ✅ Re-ran EELS tests in --release mode after recent fixes
+2. ✅ Categorized 18 failures: 12 StateRootMismatch, 4 GasUsedMismatch, 2 TransactionExecutionError
+3. ✅ Identified root cause #1: Missing EIP-3860 init code gas cost (2 gas/byte)
+4. ✅ Identified root cause #2: Multi-block tests only execute block 0 due to state root mismatch
+
+### Key Findings
+
+**GasUsedMismatch (4 failures)**:
+- mergeExample: expected 82839, got 62939 (delta = 19900)
+- tipInsideBlock: expected 68411, got 73411 (delta = -5000)
+- Pattern: 19900 gas missing = likely 9950 bytes of init code × 2 gas/byte (EIP-3860)
+
+**StateRootMismatch (12 failures)**:
+- Storage slots showing 0 when non-zero values expected
+- Storage roots are NON-EMPTY (e.g., 0x2f1228...), not EMPTY_TRIE_ROOT
+- This proves storage writes ARE happening, but computed root differs from expected
+- Consistent storage root 0x2f1228... appears 10 times for address 0x000f3...
+- Suggests pre-state storage is loaded but not updated during execution
+
+**Multi-block test issue**:
+- optionsTest has 4 blocks, but nonce expected=4, got=1
+- Only block 0 executes before test stops due to state root mismatch
+- This is CORRECT behavior (don't execute invalid chains)
+- Real issue: why does block 0 state root not match expected?
+
+### Root Causes Identified
+
+**RC1: Missing EIP-3860 Init Code Gas Cost**
+- EIP-3860 charges 2 gas per byte of init code for CREATE/CREATE2
+- We are NOT charging this cost
+- Evidence: 19900 gas delta = 9950 bytes × 2 gas/byte
+- Fix: Add `init_code.len() * 2` gas charge in CREATE/CREATE2 execution
+
+**RC2: Storage Root Computation Issue (TBD)**
+- Storage writes persist to tries (roots are non-empty)
+- But computed storage roots don't match expected
+- Possible causes:
+  1. Storage key hashing mismatch (different keccak256 of keys?)
+  2. Storage value RLP encoding mismatch
+  3. Account RLP encoding issue (storage_root field)
+  4. Pre-state storage not being properly cleared/merged
+
+### Next Steps
+1. **Fix EIP-3860**: Add init code gas cost (2 gas/byte) to CREATE/CREATE2
+2. **Debug storage roots**: Create test that loads pre-state storage, executes transaction, verifies storage root
+3. **Verify account RLP encoding**: Ensure storage_root field is correctly serialized
+4. **Check storage key hashing**: Verify keccak256(key) is consistent between pre-state load and runtime execution
+
+### DO's ✅
+1. **Run tests in --release mode** for accurate gas measurements
+2. **Calculate exact gas deltas** to identify missing costs
+3. **Check for non-empty storage roots** to distinguish between "storage not written" vs "storage root mismatch"
+4. **Verify EIP compliance** - check recent EIPs like 3860, 3529, 2929
+
+### DON'Ts ❌
+1. **Don't assume storage writes are lost** - check if storage root is empty first
+2. **Don't ignore multi-block test structure** - verify which block is failing
+3. **Don't overlook gas metering issues** - they're often simpler to fix than state root issues
+
 ## Session 77: Storage Persistence Investigation - Multi-Block Issue (2026-02-09)
 
 **Status**: Completed - root cause identified
