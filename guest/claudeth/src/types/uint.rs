@@ -422,12 +422,15 @@ impl U256 {
         U256(result)
     }
 
-    /// Convert to usize (truncates to lower 64 bits, then to usize)
+    /// Convert to usize, saturating at `usize::MAX` when the value does not fit.
     ///
-    /// # Panics
-    ///
-    /// Panics on 32-bit platforms if the value doesn't fit in usize
+    /// This is safe for EVM offset/size calculations: values exceeding `usize::MAX`
+    /// saturate to `usize::MAX`, which produces enormous memory-expansion gas costs
+    /// that cause an out-of-gas error.
     pub fn as_usize(&self) -> usize {
+        if self.0[1] != 0 || self.0[2] != 0 || self.0[3] != 0 {
+            return usize::MAX;
+        }
         self.0[0] as usize
     }
 

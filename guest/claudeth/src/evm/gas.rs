@@ -690,25 +690,27 @@ pub fn opcode_gas_cost(opcode: u8) -> u64 {
 /// let cost_to_1024 = memory_expansion_cost(0, 1024);
 /// assert!(cost_to_1024 > 96); // More than linear 3 * 32 words
 /// ```
-/// Maximum memory size (in words) used for gas calculation to avoid overflow and unbounded cost.
-const MAX_MEMORY_WORDS: usize = 1 << 20; // 32 MB
-
 pub fn memory_expansion_cost(old_size: usize, new_size: usize) -> u64 {
     if new_size <= old_size {
         return 0;
     }
 
-    let new_words = new_size.div_ceil(32).min(MAX_MEMORY_WORDS) as u64;
-    let old_words = old_size.div_ceil(32).min(MAX_MEMORY_WORDS) as u64;
+    fn word_cost(words: u64) -> u64 {
+        // cost = words^2 / 512 + 3 * words
+        // If words > 2^32, words^2 overflows u64 → return u64::MAX to guarantee OOG.
+        match words.checked_mul(words) {
+            Some(sq) => (sq / QUAD_COEFF_DIV).saturating_add(MEMORY_GAS.saturating_mul(words)),
+            None => u64::MAX,
+        }
+    }
 
-    let new_cost = (new_words.saturating_mul(new_words) / QUAD_COEFF_DIV)
-        .saturating_add(MEMORY_GAS.saturating_mul(new_words));
-    let old_cost = (old_words.saturating_mul(old_words) / QUAD_COEFF_DIV)
-        .saturating_add(MEMORY_GAS.saturating_mul(old_words));
+    let new_words = new_size.div_ceil(32) as u64;
+    let old_words = old_size.div_ceil(32) as u64;
 
-    // Cap cost to avoid draining gas in one opcode when sizes are huge (e.g. from stack)
-    const MAX_MEMORY_COST: u64 = 1 << 24; // ~16M gas
-    new_cost.saturating_sub(old_cost).min(MAX_MEMORY_COST)
+    let new_cost = word_cost(new_words);
+    let old_cost = word_cost(old_words);
+
+    new_cost.saturating_sub(old_cost)
 }
 
 /// Calculates the gas cost for call operations.

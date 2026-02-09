@@ -284,7 +284,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
         0x20 => {
             let offset = ctx.stack.peek(0).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             let words = size.div_ceil(32);
             utils::consume_gas(ctx.gas_remaining, 6 * words as u64)?;
@@ -345,7 +345,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
             let dest = ctx.stack.peek(0).map_err(EvmError::from)?.as_usize();
             let offset = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(2).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(ctx.gas_remaining, copy_gas_cost(size))?;
             for i in 0..size {
@@ -371,7 +371,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
             let dest = ctx.stack.peek(0).map_err(EvmError::from)?.as_usize();
             let offset = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(2).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(ctx.gas_remaining, copy_gas_cost(size))?;
             for i in 0..size {
@@ -403,7 +403,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
             let is_warm = access_address(ctx, &addr);
             let dest = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(3).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(ctx.gas_remaining, copy_gas_cost(size))?;
             environment::extcodecopy(ctx.stack, ctx.state, ctx.memory, is_warm, ctx.gas_remaining)?;
@@ -425,7 +425,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
             if end > ctx.return_data.len() {
                 return Err(EvmError::MemoryError(MemoryError::InvalidOffset));
             }
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), dest.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(ctx.gas_remaining, copy_gas_cost(size))?;
             for i in 0..size {
@@ -505,21 +505,21 @@ pub fn execute_opcode<S: State, H: Host<S>>(
         }
         0x51 => {
             let offset = ctx.stack.peek(0).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + 32);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(32));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             control::mload(ctx.stack, ctx.memory).map_err(opcode_error_to_evm)?;
             Continue(1)
         }
         0x52 => {
             let offset = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + 32);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(32));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             control::mstore(ctx.stack, ctx.memory).map_err(opcode_error_to_evm)?;
             Continue(1)
         }
         0x53 => {
             let offset = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + 1);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(1));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             control::mstore8(ctx.stack, ctx.memory).map_err(opcode_error_to_evm)?;
             Continue(1)
@@ -588,7 +588,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
             let dest = ctx.stack.peek(0).map_err(EvmError::from)?.as_usize();
             let src = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(2).map_err(EvmError::from)?.as_usize();
-            let max_offset = dest.max(src) + size;
+            let max_offset = dest.max(src).saturating_add(size);
             let mem_cost = memory_expansion_cost(ctx.memory.msize(), max_offset);
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(ctx.gas_remaining, copy_gas_cost(size))?;
@@ -638,7 +638,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
         0xF0 => {
             let offset = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(0).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(ctx.gas_remaining, init_code_gas_cost(size))?;
             let nonce = ctx.state.get_nonce(&ctx.call_address);
@@ -713,7 +713,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
         0xF3 => {
             let offset = ctx.stack.pop().map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.pop().map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             let data = utils::read_memory_bytes(ctx.memory, offset, size)?;
             return Ok((Return(data), None));
@@ -749,7 +749,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
         0xF5 => {
             let offset = ctx.stack.peek(2).map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.peek(1).map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             utils::consume_gas(
                 ctx.gas_remaining,
@@ -801,7 +801,7 @@ pub fn execute_opcode<S: State, H: Host<S>>(
         0xFD => {
             let offset = ctx.stack.pop().map_err(EvmError::from)?.as_usize();
             let size = ctx.stack.pop().map_err(EvmError::from)?.as_usize();
-            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset + size);
+            let mem_cost = memory_expansion_cost(ctx.memory.msize(), offset.saturating_add(size));
             utils::consume_gas(ctx.gas_remaining, mem_cost)?;
             let data = utils::read_memory_bytes(ctx.memory, offset, size)?;
             return Ok((Revert(data), None));

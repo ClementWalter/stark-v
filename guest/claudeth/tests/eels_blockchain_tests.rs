@@ -1152,8 +1152,7 @@ fn test_execute_all_blockchain_tests() {
     let mut failed = 0;
     let mut errors = 0;
 
-    for test_path in tests.iter().take(10) {
-        // Test first 10 files
+    for test_path in tests.iter() {
         let test_cases = match load_blockchain_test(test_path) {
             Ok(cases) => cases,
             Err(e) => {

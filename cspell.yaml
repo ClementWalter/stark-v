@@ -216,6 +216,7 @@ words:
   - unimp
   - uninlined
   - usize
+  - usizes
   - vaddr
   - venv
   - virt

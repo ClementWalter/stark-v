@@ -164,12 +164,19 @@ impl Memory {
         Ok(Self::memory_gas_cost(new_size))
     }
 
+    /// Maximum memory size (32 MB). The quadratic gas cost makes anything beyond ~4 MB
+    /// infeasible, but we cap here as defense-in-depth against allocation panics.
+    const MAX_MEMORY_SIZE: usize = 32 * 1024 * 1024;
+
     /// Ensure memory has at least the given capacity
     ///
     /// This is an internal method that expands memory as needed.
     /// It does not return gas cost (use `expand` for that).
     fn ensure_capacity(&mut self, size: usize) -> Result<(), MemoryError> {
         if size > self.data.len() {
+            if size > Self::MAX_MEMORY_SIZE {
+                return Err(MemoryError::Overflow);
+            }
             self.data.resize(size, 0);
         }
         Ok(())

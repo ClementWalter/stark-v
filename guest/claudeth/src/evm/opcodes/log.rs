@@ -29,7 +29,7 @@ pub fn execute_log(
     let offset = stack.pop().map_err(EvmError::from)?.as_usize();
     let size = stack.pop().map_err(EvmError::from)?.as_usize();
 
-    let mem_cost = memory_expansion_cost(memory.msize(), offset + size);
+    let mem_cost = memory_expansion_cost(memory.msize(), offset.saturating_add(size));
     utils::consume_gas(gas_remaining, mem_cost)?;
     utils::consume_gas(gas_remaining, log_gas_cost(num_topics, size))?;
 

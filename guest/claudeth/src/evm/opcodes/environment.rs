@@ -136,28 +136,6 @@ fn address_to_u256(addr: &Address) -> U256 {
     U256::from_be_bytes(bytes)
 }
 
-/// Convert U256 to usize, saturating to usize::MAX if the value is too large
-#[inline]
-fn u256_to_usize(value: &U256) -> usize {
-    let bytes = value.to_le_bytes();
-    let low_u64 = u64::from_le_bytes([
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-    ]);
-
-    #[cfg(target_pointer_width = "64")]
-    {
-        low_u64 as usize
-    }
-
-    #[cfg(target_pointer_width = "32")]
-    {
-        if low_u64 > usize::MAX as u64 {
-            usize::MAX
-        } else {
-            low_u64 as usize
-        }
-    }
-}
 
 // =============================================================================
 // Block Information Opcodes
@@ -256,7 +234,7 @@ pub fn callvalue(stack: &mut Stack, contract_ctx: &ContractContext) -> Result<()
 
 /// CALLDATALOAD (0x35) - Get input data of current environment
 pub fn calldataload(stack: &mut Stack, contract_ctx: &ContractContext) -> Result<(), OpcodeError> {
-    let offset = u256_to_usize(&stack.pop()?);
+    let offset = stack.pop()?.as_usize();
     let mut data = [0u8; 32];
 
     let call_data_len = contract_ctx.call_data.len();
@@ -282,9 +260,9 @@ pub fn calldatacopy(
     memory: &mut Memory,
     contract_ctx: &ContractContext,
 ) -> Result<(), OpcodeError> {
-    let dest_offset = u256_to_usize(&stack.pop()?);
-    let offset = u256_to_usize(&stack.pop()?);
-    let size = u256_to_usize(&stack.pop()?);
+    let dest_offset = stack.pop()?.as_usize();
+    let offset = stack.pop()?.as_usize();
+    let size = stack.pop()?.as_usize();
 
     if size == 0 {
         return Ok(());
@@ -319,9 +297,9 @@ pub fn codecopy(
     memory: &mut Memory,
     contract_ctx: &ContractContext,
 ) -> Result<(), OpcodeError> {
-    let dest_offset = u256_to_usize(&stack.pop()?);
-    let offset = u256_to_usize(&stack.pop()?);
-    let size = u256_to_usize(&stack.pop()?);
+    let dest_offset = stack.pop()?.as_usize();
+    let offset = stack.pop()?.as_usize();
+    let size = stack.pop()?.as_usize();
 
     if size == 0 {
         return Ok(());
@@ -359,9 +337,9 @@ pub fn returndatacopy(
     memory: &mut Memory,
     contract_ctx: &ContractContext,
 ) -> Result<(), OpcodeError> {
-    let dest_offset = u256_to_usize(&stack.pop()?);
-    let offset = u256_to_usize(&stack.pop()?);
-    let size = u256_to_usize(&stack.pop()?);
+    let dest_offset = stack.pop()?.as_usize();
+    let offset = stack.pop()?.as_usize();
+    let size = stack.pop()?.as_usize();
 
     if size == 0 {
         return Ok(());
@@ -435,9 +413,9 @@ pub fn extcodecopy<S: State>(
     if is_warm {
         *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
     }
-    let dest_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let code_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let dest_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let code_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     if size == 0 {
         return Ok(());
@@ -512,8 +490,8 @@ pub fn blobbasefee_with_host<S: State, H: Host<S>>(
 
 /// SHA3 (0x20) - Compute Keccak-256 hash
 pub fn sha3(stack: &mut Stack, memory: &mut Memory) -> Result<(), OpcodeError> {
-    let offset = u256_to_usize(&stack.pop()?);
-    let size = u256_to_usize(&stack.pop()?);
+    let offset = stack.pop()?.as_usize();
+    let size = stack.pop()?.as_usize();
 
     if size == 0 {
         // Hash of empty data
@@ -544,8 +522,8 @@ pub fn sha3(stack: &mut Stack, memory: &mut Memory) -> Result<(), OpcodeError> {
 
 /// RETURN (0xF3) - Halt execution returning output data
 pub fn op_return(stack: &mut Stack, memory: &mut Memory) -> Result<Vec<u8>, OpcodeError> {
-    let offset = u256_to_usize(&stack.pop()?);
-    let size = u256_to_usize(&stack.pop()?);
+    let offset = stack.pop()?.as_usize();
+    let size = stack.pop()?.as_usize();
 
     if size == 0 {
         return Ok(Vec::new());
@@ -566,8 +544,8 @@ pub fn op_return(stack: &mut Stack, memory: &mut Memory) -> Result<Vec<u8>, Opco
 
 /// REVERT (0xFD) - Halt execution reverting state changes
 pub fn revert(stack: &mut Stack, memory: &mut Memory) -> Result<Vec<u8>, OpcodeError> {
-    let offset = u256_to_usize(&stack.pop()?);
-    let size = u256_to_usize(&stack.pop()?);
+    let offset = stack.pop()?.as_usize();
+    let size = stack.pop()?.as_usize();
 
     if size == 0 {
         return Ok(Vec::new());
@@ -613,8 +591,8 @@ pub fn execute_create<S: State, H: Host<S>>(
     return_data: &mut Vec<u8>,
 ) -> Result<(), EvmError> {
     let value = stack.pop().map_err(EvmError::from)?;
-    let offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     let init_code = utils::read_memory_bytes(memory, offset, size)?;
     let max_gas = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
@@ -655,8 +633,8 @@ pub fn execute_create2<S: State, H: Host<S>>(
     return_data: &mut Vec<u8>,
 ) -> Result<(), EvmError> {
     let value = stack.pop().map_err(EvmError::from)?;
-    let offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let size = stack.pop().map_err(EvmError::from)?.as_usize();
     let salt = stack.pop().map_err(EvmError::from)?;
 
     let init_code = utils::read_memory_bytes(memory, offset, size)?;
@@ -702,10 +680,10 @@ pub fn execute_call<S: State, H: Host<S>>(
     let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
     let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
     let value = stack.pop().map_err(EvmError::from)?;
-    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let in_size = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     if is_warm {
         *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
@@ -771,10 +749,10 @@ pub fn execute_callcode<S: State, H: Host<S>>(
     let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
     let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
     let value = stack.pop().map_err(EvmError::from)?;
-    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let in_size = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     if is_warm {
         *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
@@ -837,10 +815,10 @@ pub fn execute_delegatecall<S: State, H: Host<S>>(
     // Stack (top to bottom): gas, to, in_offset, in_size, out_offset, out_size
     let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
     let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
-    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let in_size = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     if is_warm {
         *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
@@ -895,10 +873,10 @@ pub fn execute_staticcall<S: State, H: Host<S>>(
     // Stack (top to bottom): gas, to, in_offset, in_size, out_offset, out_size
     let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
     let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
-    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
-    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let in_size = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_offset = stack.pop().map_err(EvmError::from)?.as_usize();
+    let out_size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     if is_warm {
         *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);

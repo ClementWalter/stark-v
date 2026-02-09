@@ -233,7 +233,9 @@ pub fn execute_transaction<S: State + Clone>(
     // Step 3: Prepare execution state (value transfers must be revertible)
     let gas_available = gas_limit - intrinsic_gas;
 
-    // Clone state for execution (we'll get it back with modifications)
+    // Clone state for execution (we'll get it back with modifications).
+    // Keep a copy before value transfer for rollback on execution failure.
+    let pre_exec_state = state.clone();
     let mut exec_state = state.clone();
     apply_value_transfer(tx, &sender, &mut exec_state);
 
@@ -272,8 +274,14 @@ pub fn execute_transaction<S: State + Clone>(
         }
     };
 
-    // Update state with execution results (includes deployed contract code, state changes, etc.)
-    *state = returned_state;
+    // Update state with execution results.
+    // On failure, roll back to pre-execution state (before value transfer);
+    // on success, use the returned state from the EVM.
+    if success {
+        *state = returned_state;
+    } else {
+        *state = pre_exec_state;
+    }
 
     if success {
         apply_selfdestructs(state);
@@ -403,6 +411,26 @@ fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mu
     }
 }
 
+/// Extract access list from transaction (EIP-2930/EIP-1559)
+fn extract_access_list(tx: &Transaction) -> Vec<(Address, Vec<U256>)> {
+    let entries = match tx {
+        Transaction::Eip2930(tx) => &tx.access_list,
+        Transaction::Eip1559(tx) => &tx.access_list,
+        _ => return Vec::new(),
+    };
+    entries
+        .iter()
+        .map(|entry| {
+            let keys = entry
+                .storage_keys
+                .iter()
+                .map(|h| U256::from_be_bytes(*h.as_bytes()))
+                .collect();
+            (entry.address, keys)
+        })
+        .collect()
+}
+
 /// Executes a contract call transaction
 fn execute_call<S: State + Clone>(
     _tx: &Transaction,
@@ -420,6 +448,9 @@ fn execute_call<S: State + Clone>(
         return Ok((true, 0, 0, Vec::new(), Vec::new(), None, None, state));
     }
 
+    // Keep pre-execution state for rollback on failure
+    let pre_exec_state = state.clone();
+
     // Execute bytecode with recursive host for contract calls
     let call_ctx = CallContext {
         address: *_to,
@@ -433,34 +464,7 @@ fn execute_call<S: State + Clone>(
         .with_recent_block_hashes(contexts.block_hash_ctx.recent_block_hashes.clone())
         .with_tx_context(contexts.tx_ctx.clone());
 
-    // Extract access list (EIP-2930) for warm/cold tracking
-    let access_list: Vec<(Address, Vec<U256>)> = match _tx {
-        Transaction::Eip2930(tx) => tx
-            .access_list
-            .iter()
-            .map(|entry| {
-                let keys = entry
-                    .storage_keys
-                    .iter()
-                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
-                    .collect();
-                (entry.address, keys)
-            })
-            .collect(),
-        Transaction::Eip1559(tx) => tx
-            .access_list
-            .iter()
-            .map(|entry| {
-                let keys = entry
-                    .storage_keys
-                    .iter()
-                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
-                    .collect();
-                (entry.address, keys)
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
+    let access_list = extract_access_list(_tx);
 
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &code,
@@ -484,7 +488,21 @@ fn execute_call<S: State + Clone>(
             exec_result.gas_trace,
             returned_state,
         )),
-        Err(err) => Err(ExecutionError::ExecutionFailed(err)),
+        Err(_) => {
+            // EVM execution failed (OOG, InvalidJump, etc.)
+            // Per the Ethereum spec, exceptional halts consume all gas
+            // and roll back state, but the transaction is still included.
+            Ok((
+                false,
+                gas_available,
+                0,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                pre_exec_state,
+            ))
+        }
     }
 }
 
@@ -499,6 +517,9 @@ fn execute_create<S: State + Clone>(
     // Compute contract address
     let nonce = state.get_nonce(sender);
     let contract_address = compute_create_address(sender, nonce.saturating_sub(U256::ONE));
+
+    // Keep pre-execution state for rollback on failure
+    let pre_exec_state = state.clone();
 
     // Execute init code
     let init_code = tx.data().to_vec();
@@ -516,34 +537,7 @@ fn execute_create<S: State + Clone>(
         .with_recent_block_hashes(contexts.block_hash_ctx.recent_block_hashes.clone())
         .with_tx_context(contexts.tx_ctx.clone());
 
-    // Extract access list (EIP-2930) for warm/cold tracking
-    let access_list: Vec<(Address, Vec<U256>)> = match tx {
-        Transaction::Eip2930(tx_data) => tx_data
-            .access_list
-            .iter()
-            .map(|entry| {
-                let keys = entry
-                    .storage_keys
-                    .iter()
-                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
-                    .collect();
-                (entry.address, keys)
-            })
-            .collect(),
-        Transaction::Eip1559(tx_data) => tx_data
-            .access_list
-            .iter()
-            .map(|entry| {
-                let keys = entry
-                    .storage_keys
-                    .iter()
-                    .map(|h| U256::from_be_bytes(*h.as_bytes()))
-                    .collect();
-                (entry.address, keys)
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
+    let access_list = extract_access_list(tx);
 
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &init_code,
@@ -590,7 +584,21 @@ fn execute_create<S: State + Clone>(
                 returned_state,
             ))
         }
-        Err(err) => Err(ExecutionError::ExecutionFailed(err)),
+        Err(_) => {
+            // EVM execution failed (OOG, InvalidJump, etc.)
+            // Per the Ethereum spec, exceptional halts consume all gas
+            // and roll back state, but the transaction is still included.
+            Ok((
+                false,
+                gas_available,
+                0,
+                Vec::new(),
+                Vec::new(),
+                Some(contract_address),
+                None,
+                pre_exec_state,
+            ))
+        }
     }
 }
 

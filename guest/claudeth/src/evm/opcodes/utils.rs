@@ -58,13 +58,18 @@ pub fn read_memory_bytes(
     offset: usize,
     size: usize,
 ) -> Result<Vec<u8>, EvmError> {
-    let mut out = Vec::with_capacity(size);
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+    // After gas charging, size should be reasonable. Cap capacity as defense-in-depth.
+    let mut out = Vec::with_capacity(size.min(32 * 1024 * 1024));
     for i in 0..size {
-        let byte = if offset + i < memory.msize() {
+        let pos = offset.checked_add(i).ok_or(EvmError::OutOfGas)?;
+        let byte = if pos < memory.msize() {
             let value = memory
-                .mload((offset + i) & !31)
+                .mload(pos & !31)
                 .map_err(EvmError::MemoryError)?;
-            let byte_offset = (offset + i) % 32;
+            let byte_offset = pos % 32;
             value.to_be_bytes()[byte_offset]
         } else {
             0
