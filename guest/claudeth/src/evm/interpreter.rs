@@ -785,12 +785,21 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     return Err(EvmError::OutOfGas);
                 }
 
-                // Mark storage as accessed (EIP-2929)
-                self.access_storage(&address, &key);
+                // Check if warm BEFORE marking as accessed (EIP-2929)
+                let is_warm = self.access_storage(&address, &key);
 
-                // Charge dynamic gas (already accounts for warm/cold via sstore_gas_cost)
+                // Charge dynamic gas (SET/RESET/CLEAR/NOOP)
                 let sstore_gas = sstore_gas_cost(current_value, new_value);
                 self.consume_gas(sstore_gas)?;
+
+                // Charge EIP-2929 warm/cold access cost
+                // Base cost charged: GAS_SLOAD_COLD (2100)
+                // If warm, should charge: GAS_SLOAD_WARM (100)
+                // Refund difference: 2100 - 100 = 2000
+                self.consume_gas(2100)?; // Always charge cold cost
+                if is_warm {
+                    self.gas_remaining += 2000; // Refund difference for warm
+                }
 
                 // EIP-3529: Only refund when clearing storage (non-zero -> zero)
                 // Refund: 4800 gas when setting storage to zero from non-zero
@@ -1700,6 +1709,30 @@ mod tests {
         assert!(result.success);
         // Gas: PUSH20 (3) + BALANCE cold (2600) + PUSH20 (3) + BALANCE warm (100)
         assert_eq!(result.gas_used, 2706);
+    }
+
+    #[test]
+    fn test_sstore_cold_warm_gas() {
+        // Test SSTORE cold then warm access gas costs (EIP-2929)
+        // PUSH1 1 PUSH1 0 SSTORE  (cold)
+        // PUSH1 2 PUSH1 0 SSTORE  (warm - same key)
+        // STOP
+        let code = vec![
+            0x60, 0x01, // PUSH1 1 (value)
+            0x60, 0x00, // PUSH1 0 (key)
+            0x55,       // SSTORE (cold: 20000 + 2100 = 22100)
+            0x60, 0x02, // PUSH1 2 (value)
+            0x60, 0x00, // PUSH1 0 (key)
+            0x55,       // SSTORE (warm: 20000 + 100 = 20100)
+            0x00,       // STOP
+        ];
+
+        let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
+        assert!(result.success);
+        // Gas: PUSH1(3) + PUSH1(3) + SSTORE cold SET(20000+2100=22100)
+        //      PUSH1(3) + PUSH1(3) + SSTORE warm RESET(5000+100=5100) + STOP(0)
+        // Total: 3 + 3 + 22100 + 3 + 3 + 5100 + 0 = 27212
+        assert_eq!(result.gas_used, 27212);
     }
 
     // =============================================================================
