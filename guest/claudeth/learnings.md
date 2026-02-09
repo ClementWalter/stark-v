@@ -78,6 +78,18 @@
 
 **Keep the implementation** - It's closer to correct behavior even if it doesn't fix the current bug. We can refine the touch tracking logic later to be more precise about what "touched" means per EIP-161.
 
+### Summary
+
+**Session Goal**: Fix state root mismatches by implementing EIP-161 account deletion
+**Result**: Implementation complete, tests still fail, need different approach
+**Commit**: feat(state): Implement EIP-161 empty account deletion tracking (82e12f61)
+
+**Next recommended steps**:
+1. Add detailed state debugging to see what accounts we're including in the trie
+2. Compare our state with a reference implementation (Geth/Reth) for same test
+3. Focus on simpler tests (shanghaiExample - single CREATE tx)
+4. OR switch to gas mismatch debugging (may be easier to fix)
+
 ## Session 72: Implement EIP-161 Contract Nonce (2026-02-09)
 
 **Status**: Completed - EIP-161 compliant but doesn't fix state root mismatches yet
