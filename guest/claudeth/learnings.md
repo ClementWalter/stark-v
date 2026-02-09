@@ -1,5 +1,57 @@
 # Claudeth Development Learnings
 
+## Session 66: Investigate tloadDoesNotPersistCrossTxn Gas Overcharge (2026-02-09)
+
+**Status**: In Progress - deep investigation into +2100 gas overcharge
+
+### What Was Investigated
+1. ✅ Confirmed TLOAD/TSTORE charge 100 gas each via `opcode_gas_cost()` (already working)
+2. ✅ Verified SSTORE charges SET (20000) + COLD (2100) = 22100 for Tx 0
+3. ✅ Verified SSTORE charges CLEAR (5000) + COLD (2100) = 7100 for Tx 1
+4. ✅ Confirmed Tx 1 gets 4800 gas refund for clearing storage (EIP-3529)
+5. ✅ Analyzed gas traces with evm-trace feature
+
+### Key Findings
+
+**Actual gas breakdown (from traces):**
+- Tx 0: 21064 intrinsic + 22357 execution = 43421 total
+  - TSTORE: 100 gas
+  - TLOAD: 100 gas
+  - SSTORE slot 0 (zero→0x5a): 22100 gas (20000 SET + 2100 COLD)
+- Tx 1: 21064 intrinsic + 7282 execution - 4800 refund = 23546 total
+  - TLOAD: 100 gas
+  - SSTORE slot 1 (0xffff→zero): 7100 gas (5000 CLEAR + 2100 COLD)
+  - Refund: 4800 gas (EIP-3529 for clearing storage)
+- **Total computed: 66967 gas**
+- **Total expected: 64867 gas**
+- **Overcharge: +2100 gas (exactly one EIP-2929 COLD access cost)**
+
+**Root cause hypothesis:**
+The overcharge of exactly 2100 gas suggests ONE of the following:
+1. SSTORE in Tx 0 shouldn't charge EIP-2929 cold cost with SET operation
+2. There's an EIP nuance where the 20000 SET cost already includes the 2100 access cost
+3. Reference implementation (Geth) has a different gas schedule post-Berlin
+
+**Current implementation (seems spec-compliant):**
+- SSTORE cold: (SET/RESET/CLEAR) + 2100
+- SSTORE warm: (SET/RESET/CLEAR) + 100
+- This matches EIP-2929 specification as written
+
+### DO's ✅
+1. **Use gas tracing (--features evm-trace)** to get exact per-opcode gas costs
+2. **Calculate refunds separately** from charges to understand net gas usage
+3. **Cross-reference with Geth source** when EIP specs are ambiguous
+
+### DON'Ts ❌
+1. **Don't assume TLOAD/TSTORE are free** - they cost 100 gas each (same as warm SLOAD)
+2. **Don't double-charge gas** - `opcode_gas_cost()` already charges base cost
+3. **Don't overlook refunds** - EIP-3529 refunds affect net gas totals
+
+### Next Steps
+1. ⏭️ Compare our SSTORE implementation line-by-line with Geth's statedb.go
+2. ⏭️ Check if Berlin/London transition changed how SET cost interacts with EIP-2929
+3. ⏭️ Test hypothesis: try removing 2100 charge from SSTORE SET and rerun tests
+
 ## Session 65: Wire Recent BLOCKHASH Inputs (2026-02-09)
 
 **Status**: Completed - recent hashes accepted in guest input and wired into STF execution
