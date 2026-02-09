@@ -14,6 +14,8 @@
 #[cfg(not(target_arch = "riscv32"))]
 use std::vec::Vec;
 
+use crate::types::{Address, U256};
+
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
 
@@ -37,6 +39,28 @@ pub struct GasTraceEntry {
     pub gas_after: u64,
     /// Cumulative gas used from start
     pub cumulative_gas: u64,
+    /// Optional storage write details (SSTORE)
+    pub storage_write: Option<StorageWrite>,
+}
+
+/// Input event for recording a gas trace entry
+#[derive(Debug, Clone)]
+pub struct GasTraceEvent {
+    pub pc: usize,
+    pub opcode: u8,
+    pub name: &'static str,
+    pub gas_before: u64,
+    pub gas_cost: u64,
+    pub gas_after: u64,
+    pub storage_write: Option<StorageWrite>,
+}
+
+/// Storage write details captured during SSTORE
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageWrite {
+    pub address: Address,
+    pub key: U256,
+    pub value: U256,
 }
 
 /// Captured gas trace for a full execution
@@ -72,7 +96,7 @@ impl GasTrace {
 
         for entry in &self.entries {
             output.push_str(&format!(
-                "{:06x} {:12} {:10} {:10} {:10} {:12}\n",
+                "{:06x} {:12} {:10} {:10} {:10} {:12}",
                 entry.pc,
                 format!("{} (0x{:02x})", entry.name, entry.opcode),
                 entry.gas_before,
@@ -80,6 +104,13 @@ impl GasTrace {
                 entry.gas_after,
                 entry.cumulative_gas
             ));
+            if let Some(storage_write) = entry.storage_write.as_ref() {
+                output.push_str(&format!(
+                    " | SSTORE addr={} key={} value={}",
+                    storage_write.address, storage_write.key, storage_write.value
+                ));
+            }
+            output.push('\n');
         }
 
         output
@@ -111,24 +142,17 @@ impl GasTracer {
     }
 
     /// Record a gas trace entry
-    pub fn trace(
-        &mut self,
-        pc: usize,
-        opcode: u8,
-        name: &'static str,
-        gas_before: u64,
-        gas_cost: u64,
-        gas_after: u64,
-    ) {
-        let cumulative_gas = self.initial_gas - gas_after;
+    pub fn trace(&mut self, event: GasTraceEvent) {
+        let cumulative_gas = self.initial_gas - event.gas_after;
         self.entries.push(GasTraceEntry {
-            pc,
-            opcode,
-            name,
-            gas_before,
-            gas_cost,
-            gas_after,
+            pc: event.pc,
+            opcode: event.opcode,
+            name: event.name,
+            gas_before: event.gas_before,
+            gas_cost: event.gas_cost,
+            gas_after: event.gas_after,
             cumulative_gas,
+            storage_write: event.storage_write,
         });
     }
 
@@ -165,7 +189,7 @@ impl GasTracer {
 
         for entry in &self.entries {
             output.push_str(&format!(
-                "{:06x} {:12} {:10} {:10} {:10} {:12}\n",
+                "{:06x} {:12} {:10} {:10} {:10} {:12}",
                 entry.pc,
                 format!("{} (0x{:02x})", entry.name, entry.opcode),
                 entry.gas_before,
@@ -173,6 +197,13 @@ impl GasTracer {
                 entry.gas_after,
                 entry.cumulative_gas
             ));
+            if let Some(storage_write) = entry.storage_write.as_ref() {
+                output.push_str(&format!(
+                    " | SSTORE addr={} key={} value={}",
+                    storage_write.address, storage_write.key, storage_write.value
+                ));
+            }
+            output.push('\n');
         }
 
         output
@@ -358,10 +389,42 @@ mod tests {
         let mut tracer = GasTracer::new(1000);
 
         // Simulate a few opcode executions
-        tracer.trace(0, 0x60, "PUSH1", 1000, 3, 997);
-        tracer.trace(2, 0x60, "PUSH1", 997, 3, 994);
-        tracer.trace(4, 0x01, "ADD", 994, 3, 991);
-        tracer.trace(5, 0x00, "STOP", 991, 0, 991);
+        tracer.trace(GasTraceEvent {
+            pc: 0,
+            opcode: 0x60,
+            name: "PUSH1",
+            gas_before: 1000,
+            gas_cost: 3,
+            gas_after: 997,
+            storage_write: None,
+        });
+        tracer.trace(GasTraceEvent {
+            pc: 2,
+            opcode: 0x60,
+            name: "PUSH1",
+            gas_before: 997,
+            gas_cost: 3,
+            gas_after: 994,
+            storage_write: None,
+        });
+        tracer.trace(GasTraceEvent {
+            pc: 4,
+            opcode: 0x01,
+            name: "ADD",
+            gas_before: 994,
+            gas_cost: 3,
+            gas_after: 991,
+            storage_write: None,
+        });
+        tracer.trace(GasTraceEvent {
+            pc: 5,
+            opcode: 0x00,
+            name: "STOP",
+            gas_before: 991,
+            gas_cost: 0,
+            gas_after: 991,
+            storage_write: None,
+        });
 
         assert_eq!(tracer.entries().len(), 4);
         assert_eq!(tracer.total_gas_used(), 9);
@@ -392,8 +455,24 @@ mod tests {
     #[test]
     fn test_gas_tracer_format() {
         let mut tracer = GasTracer::new(100);
-        tracer.trace(0, 0x60, "PUSH1", 100, 3, 97);
-        tracer.trace(2, 0x01, "ADD", 97, 3, 94);
+        tracer.trace(GasTraceEvent {
+            pc: 0,
+            opcode: 0x60,
+            name: "PUSH1",
+            gas_before: 100,
+            gas_cost: 3,
+            gas_after: 97,
+            storage_write: None,
+        });
+        tracer.trace(GasTraceEvent {
+            pc: 2,
+            opcode: 0x01,
+            name: "ADD",
+            gas_before: 97,
+            gas_cost: 3,
+            gas_after: 94,
+            storage_write: None,
+        });
 
         let output = tracer.format();
         assert!(output.contains("Gas Trace"));

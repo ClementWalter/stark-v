@@ -71,4 +71,4 @@ pub use interpreter::{
     BlockContext, EvmError, ExecutionResult, LogEntry, TxContext, execute_bytecode,
     execute_bytecode_with_host,
 };
-pub use trace::{GasTrace, GasTraceEntry, GasTracer, opcode_name};
+pub use trace::{GasTrace, GasTraceEntry, GasTracer, StorageWrite, opcode_name};

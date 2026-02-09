@@ -39,7 +39,7 @@ use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
 #[cfg(feature = "evm-trace")]
-use crate::evm::trace::{GasTracer, opcode_name};
+use crate::evm::trace::{GasTraceEvent, GasTracer, StorageWrite, opcode_name};
 use crate::evm::{
     GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER, GAS_SSTORE_SENTRY,
     create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
@@ -220,6 +220,8 @@ pub struct Evm<S, H> {
     // Gas tracing (enabled with evm-trace feature)
     #[cfg(feature = "evm-trace")]
     tracer: Option<GasTracer>,
+    #[cfg(feature = "evm-trace")]
+    pending_storage_write: Option<StorageWrite>,
 }
 
 // =============================================================================
@@ -272,6 +274,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             accessed_storage: BTreeSet::new(),
             #[cfg(feature = "evm-trace")]
             tracer: None,
+            #[cfg(feature = "evm-trace")]
+            pending_storage_write: None,
         }
     }
 
@@ -842,6 +846,14 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 }
 
                 self.state.sstore(&address, &key, new_value);
+                #[cfg(feature = "evm-trace")]
+                {
+                    self.pending_storage_write = Some(StorageWrite {
+                        address,
+                        key,
+                        value: new_value,
+                    });
+                }
             }
             0x56 => {
                 // JUMP
@@ -1346,14 +1358,15 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             let gas_after = self.gas_remaining;
             let gas_cost = gas_before.saturating_sub(gas_after);
             if let Some(ref mut tracer) = self.tracer {
-                tracer.trace(
+                tracer.trace(GasTraceEvent {
                     pc,
                     opcode,
-                    opcode_name(opcode),
+                    name: opcode_name(opcode),
                     gas_before,
                     gas_cost,
                     gas_after,
-                );
+                    storage_write: self.pending_storage_write.take(),
+                });
             }
         }
 

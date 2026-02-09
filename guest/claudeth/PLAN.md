@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan (Reality-Based)
 
-Date: 2026-02-09 (Session 80)
+Date: 2026-02-09 (Session 83)
 
 ## Summary
 
@@ -10,7 +10,7 @@ interpreter, block processing with root validations, and a partial MPT.
 The largest gaps are EELS compliance, witness-based state reconstruction, and
 removing `k256`.
 
-## Verified Status (From Code Inspection + Test Runs)
+## Verified Status (From Code Inspection + Prior Test Runs)
 
 ### ✅ Implemented
 - EVM interpreter with full opcode coverage (incl. PUSH0, TLOAD/TSTORE, BLOBHASH)
@@ -27,8 +27,10 @@ removing `k256`.
 - Deterministic state root computation with sorted addresses (Session 73)
 - Delegatecall storage context regression test (Session 78)
 - EELS state trie leaf dump on state root/post-state mismatch (Session 80)
+- SSTORE tracing in gas traces when `evm-trace` is enabled (Session 83)
 
 ### ⚠️ EELS Test Status (20/20 failures - Session 80)
+Not re-run in this session.
 **Test Results (10 test files, 20 total test cases)**:
 - StateRootMismatch: 14 failures
 - GasUsedMismatch: 4 failures (2 under, 2 over)
@@ -75,6 +77,8 @@ roots are non-empty (not EMPTY_TRIE_ROOT). This suggests:
 - Dump state trie leaves (address, hashed key, account RLP, storage root) on
   StateRootMismatch and post-state mismatches in EELS runner to pinpoint the
   exact account/encoding divergence.
+- SSTORE trace entries embedded in gas traces (with address/key/value) when
+  `--features evm-trace` is enabled, so failures can surface actual write targets.
 
 **Hypothesis**: Storage writes are applied to the wrong address/context (delegatecall/callcode),
 or the expected fixture post-state is being compared against a different execution path.
@@ -93,7 +97,7 @@ Implement in-tree secp256k1 and remove external crypto dependency.
 
 ## Immediate Next Task
 
-**P3: Debug Storage Write Execution (CURRENT - Session 82)**
+**P3: Debug Storage Write Execution (NEXT - Session 84)**
 
 Analysis of tloadDoesNotPersistAcrossBlocks_Prague test reveals:
 - Address `0x0000f90827f1c53a10cb7a02335b175320002935` should have storage after block 0
@@ -108,6 +112,6 @@ Analysis of tloadDoesNotPersistAcrossBlocks_Prague test reveals:
 3. Is transaction execution even reaching SSTORE opcodes?
 
 **Next Steps**:
-1. Add execution tracing to see SSTORE opcodes and target addresses
+1. Run the failing EELS case with `--features evm-trace` and inspect SSTORE traces
 2. Trace the call chain: tx → 0xa000...000a → ??? → SSTORE to 0x0000f9...
 3. Verify CALL/DELEGATECALL context is correct (storage writes to caller vs callee)

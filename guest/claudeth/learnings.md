@@ -1,5 +1,24 @@
 # Claudeth Development Learnings
 
+## Session 83: SSTORE Trace in Gas Traces (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Added SSTORE write details (address/key/value) to gas trace entries under `evm-trace`
+2. ✅ Wired SSTORE tracing through the interpreter without affecting normal builds
+3. ⚠️ `prek run` still fails to create `/Users/clementwalter/Documents/starkware/stark-v/.git/index.lock` in this environment
+
+### DO's ✅
+1. **Attach write context to opcode traces** when debugging storage issues
+2. **Gate trace-only metadata behind `evm-trace`** to avoid runtime overhead in normal builds
+3. **Document `prek` permission failures** so they are not mistaken for lint errors
+
+### DON'Ts ❌
+1. **Don't add unconditional logging** inside opcode execution paths
+2. **Don't lose per-opcode context** when you need to trace storage writes
+3. **Don't assume `prek` can write to the parent repo** in this sandbox
+
 ## Session 82: Storage Root Investigation - Runtime Writes Missing (2026-02-09)
 
 **Status**: Investigation in progress
