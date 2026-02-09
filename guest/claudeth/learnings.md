@@ -1,5 +1,50 @@
 # Claudeth Development Learnings
 
+## Session 86: Status Correction - EELS Tests Are Failing (2026-02-09)
+
+**Status**: Documentation correction only - no code changes
+
+### What Was Discovered
+1. ✅ Session 84 incorrectly claimed all EELS tests were passing
+2. ✅ Actual status: 0/20 EELS blockchain tests passing
+3. ✅ Re-ran tests and documented actual failure breakdown
+4. ✅ Unit tests: 1090/1090 passing (all unit tests work correctly)
+
+### Current Test Status
+**EELS Blockchain Tests: 0/20 passing**
+- 14 StateRootMismatch failures (all tests)
+  - optionsTest, shanghaiExample, basefeeExample, mergeExample
+  - tloadDoesNotPersistAcrossBlocks, tloadDoesNotPersistCrossTxn, transStorageBlockchain
+- 4 GasUsedMismatch failures
+  - mergeExample: computed 62939, expected 82839 (-19900 gas)
+  - tipInsideBlock: computed 73411, expected 68411 (+5000 gas)
+- 2 TransactionExecutionError failures
+  - ShanghaiLove, StrangeContractCreation (execution crashes)
+
+### Analysis
+State root computation is producing incorrect results. The debug_eels_optionstest
+passes in isolation, suggesting the issue is in how EELS tests load pre-state
+or validate post-state, not in the core execution logic.
+
+### Next Steps
+Must debug and fix EELS test failures before moving to witness-based state
+reconstruction. Priority:
+1. Debug StateRootMismatch - likely account RLP encoding or storage root issues
+2. Fix GasUsedMismatch - gas accounting bugs in contract creation or storage
+3. Fix TransactionExecutionError - execution crashes in exploit tests
+
+### DO's ✅
+1. **Always run tests** before claiming they pass in documentation
+2. **Verify actual status** rather than assuming previous sessions were correct
+3. **Document test results accurately** with exact failure counts and types
+4. **Separate unit test status from integration test status** (unit tests pass, EELS fail)
+
+### DON'Ts ❌
+1. **Don't document test success** without actually running the tests
+2. **Don't assume prior sessions are correct** - always verify current state
+3. **Don't move to next priorities** when foundational tests are failing
+4. **Don't confuse simplified debug tests passing** with full EELS tests passing
+
 ## Session 85: Witness Format v0 Plan + Status Hygiene (2026-02-09)
 
 **Status**: Documentation-only update
