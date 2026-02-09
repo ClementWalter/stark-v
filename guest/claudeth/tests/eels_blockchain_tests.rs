@@ -8,7 +8,7 @@
 
 use claudeth::crypto::keccak256;
 use claudeth::evm::format_disassembly;
-use claudeth::state::{InMemoryState, State, Storage, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
+use claudeth::state::{Account, InMemoryState, State, Storage, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
 use claudeth::types::{Address, Bytes, Hash, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -602,6 +602,39 @@ fn dump_state_diff(
     }
 }
 
+fn dump_state_trie_leaves(state: &InMemoryState) {
+    let addresses = state.account_addresses();
+    if addresses.is_empty() {
+        eprintln!("  State trie leaves: <none>");
+        return;
+    }
+
+    eprintln!("  State trie leaves:");
+    for address in addresses {
+        let account = Account::new(
+            state.get_nonce(&address),
+            state.get_balance(&address),
+            state.storage_root(&address),
+            state.get_code_hash(&address),
+        );
+        if account.is_empty() {
+            continue;
+        }
+
+        let key = keccak256(address.as_bytes());
+        let rlp = account.encode_rlp();
+        eprintln!(
+            "    {address} key=0x{} nonce={} balance={} storage_root=0x{} code_hash=0x{} rlp=0x{}",
+            hex::encode(key.as_bytes()),
+            account.nonce,
+            account.balance,
+            hex::encode(account.storage_root.as_bytes()),
+            hex::encode(account.code_hash.as_bytes()),
+            hex::encode(rlp),
+        );
+    }
+}
+
 fn parse_u64(value: &str) -> Result<u64, String> {
     let u256_val = parse_u256(value)?;
     u64::try_from(u256_val).map_err(|_| format!("value {value} too large for u64"))
@@ -1142,6 +1175,7 @@ fn test_execute_all_blockchain_tests() {
                             claudeth::stf::BlockProcessingError::StateRootMismatch { .. }
                         ) {
                             dump_state_diff(&state, &test_case.pre, &test_case.post_state);
+                            dump_state_trie_leaves(&state);
                         }
 
                         if matches!(
@@ -1168,6 +1202,7 @@ fn test_execute_all_blockchain_tests() {
                     Err(e) => {
                         eprintln!("✗ {test_name}: Post-state mismatch: {e}");
                         dump_state_diff(&state, &test_case.pre, &test_case.post_state);
+                        dump_state_trie_leaves(&state);
                         #[cfg(feature = "evm-trace")]
                         {
                             for (block_idx, block_result) in block_results.iter().enumerate() {

@@ -26,6 +26,7 @@ removing `k256`.
 - Touch tracking toggle for pre-state loading (Session 74)
 - Deterministic state root computation with sorted addresses (Session 73)
 - Delegatecall storage context regression test (Session 78)
+- EELS state trie leaf dump on state root/post-state mismatch (Session 80)
 
 ### ⚠️ EELS Test Status (20/20 failures - Session 80)
 **Test Results (10 test files, 20 total test cases)**:
@@ -70,6 +71,11 @@ roots are non-empty (not EMPTY_TRIE_ROOT). This suggests:
 3. Trace storage writes per address during block 0 and compare to expected post-state
 4. Verify RLP encoding/decoding of storage values (only if values differ at same keys)
 
+**New tooling added**:
+- Dump state trie leaves (address, hashed key, account RLP, storage root) on
+  StateRootMismatch and post-state mismatches in EELS runner to pinpoint the
+  exact account/encoding divergence.
+
 **Hypothesis**: Storage writes are applied to the wrong address/context (delegatecall/callcode),
 or the expected fixture post-state is being compared against a different execution path.
 
@@ -87,21 +93,13 @@ Implement in-tree secp256k1 and remove external crypto dependency.
 
 ## Immediate Next Task
 
-**P3: Create Minimal Reproducible Test Case (CRITICAL)**
+**P3: Use EELS State Trie Leaf Dumps to Identify Divergence (CURRENT)**
 
-Since all unit tests pass but all EELS tests fail, we need to identify the exact divergence point:
+With state trie leaf dumps now available on mismatches, focus on one failing
+test (optionsTest_Prague) and compare:
+1. Our emitted account RLP + storage root for each address
+2. Expected account fields derived from fixture post-state
+3. Identify the first address whose account RLP differs
 
-1. Pick the simplest failing test (optionsTest_Prague)
-2. Create a standalone test that:
-   - Loads exact pre-state from fixture
-   - Executes the exact transaction
-   - Manually computes expected state root step-by-step
-   - Compares with our computed root at each step (account RLP, storage root, trie construction)
-3. Document EXACT point where our computation diverges from expected
-4. This will reveal if the issue is in:
-   - Account RLP encoding
-   - Storage root computation
-   - State trie key hashing
-   - Trie construction/root computation
-
-**Why this matters**: Without understanding the root cause, any fix could break working code.
+**Why this matters**: This narrows the mismatch to a single account/field before
+changing any core logic.

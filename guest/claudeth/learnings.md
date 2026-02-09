@@ -1,5 +1,26 @@
 # Claudeth Development Learnings
 
+## Session 81: EELS State Trie Leaf Dumps (2026-02-09)
+
+**Status**: Completed - added diagnostics only
+
+### What Was Accomplished
+1. ✅ Added state trie leaf dumps (address, hashed key, account RLP, storage root, code hash)
+   when EELS tests hit StateRootMismatch or post-state mismatches.
+
+### Why This Matters
+State root mismatches are opaque without seeing the exact account RLPs and
+hashed keys being inserted into the trie. Leaf dumps pinpoint the first account
+that diverges from expected, narrowing root-cause debugging to a single field.
+
+### DO's ✅
+1. **Dump state trie leaves** when roots mismatch to identify the exact account divergence
+2. **Compare account RLP fields** against fixture-derived values before changing core logic
+
+### DON'Ts ❌
+1. **Don't rely only on post-state diffs**; they miss encoding/root-level issues
+2. **Don't change state trie logic** without a concrete account-level mismatch
+
 ## Session 80: EELS Test Analysis and Storage Investigation (2026-02-09)
 
 **Status**: Investigation ongoing - no implementation changes
