@@ -15,16 +15,18 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 - Block processing with header validation and root checks
   (state, receipts, transactions, logs bloom)
 - Partial Merkle Patricia Trie for account/storage roots and proofs
-- EIP-4788 Beacon Block Root system call
-- EIP-4895 withdrawals
-- EIP-2935 Historical Block Hashes system call (Prague)
-- Block header support for Cancun fields (`blob_gas_used`, `excess_blob_gas`)
+- Block header type supports Shanghai/Cancun fields
+  (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
+  `parent_beacon_block_root`, `requests_hash`)
 
 **Known Gaps / Limitations**
 
+- EIP-4788 Beacon Block Root system call not implemented in block processing
+- EIP-4895 withdrawals are not applied in block processing
+- EIP-2935 Historical Block Hashes system call not implemented
+- Guest input decoding does not include withdrawals or recent block hashes
 - Witness-based state reconstruction is not implemented
 - `k256` is still used for secp256k1
-- EELS blockchain tests: 14/20 passing; 6 failures in CALL/CREATE execution
 - EELS blockchain tests require external fixtures and are ignored by default
 
 ## Testing

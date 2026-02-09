@@ -6,7 +6,6 @@ use claudeth::types::{Address, U256};
 #[test]
 fn test_storage_persists_after_sstore() {
     let mut state = InMemoryState::new();
-    state.set_touch_tracking(false);
 
     let addr = Address::from([0x0f; 20]);
 

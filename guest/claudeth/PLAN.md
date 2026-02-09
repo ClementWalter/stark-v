@@ -6,9 +6,9 @@ Date: 2026-02-09
 
 Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 `riscv32im-unknown-none-elf`. It includes a full EVM interpreter, block
-processing with header validations and root checks, and a partial MPT.
-Cancun-era header fields are supported and EIP-4788/EIP-4895/EIP-2935 logic
-is implemented.
+processing with header validations and root checks, and a partial MPT. The
+block header type includes Shanghai/Cancun fields, but block processing does
+not yet apply those fork-specific system calls.
 
 ## Verified Status (from code)
 
@@ -19,84 +19,51 @@ is implemented.
 - Transaction types: Legacy / EIP-2930 / EIP-1559
 - Block processing: header validation, tx execution, receipts, gas used,
   validation of receipts root, tx root, logs bloom, state root
-- PREVRANDAO (opcode 0x44) returns `mix_hash` post-merge, `difficulty` pre-merge
 - Partial MPT with proof support
-- EIP-4788 beacon root system call
-- EIP-4895 withdrawals
-- EIP-2935 historical block hashes system call (Prague)
-- Block header fields for Cancun (`blob_gas_used`, `excess_blob_gas`)
+- Block header type supports Shanghai/Cancun fields
+  (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
+  `parent_beacon_block_root`, `requests_hash`)
 - `no_std` riscv32 guest entry and bump allocator
-- EVM execution failures (OOG, InvalidJump, etc.) handled as failed
-  transactions (not block-level errors) per Ethereum spec
-- Memory expansion gas: uncapped quadratic formula, overflow-safe
 
 ### Known Gaps / Limitations
 
-- Header `requests_hash` (EIP-7685) is parsed but only used for Prague fork
-  detection
+- EIP-4788 beacon root system call not implemented
+- EIP-4895 withdrawals not applied in block processing
+- EIP-2935 historical block hashes system call not implemented
+- Guest input decoding does not include withdrawals or recent block hashes
 - Witness-based state reconstruction not implemented
 - `k256` dependency still required for secp256k1
 - EELS blockchain fixtures are external and ignored by default
-- Guest input does not decode withdrawals
-- EIP-4844 blob transactions (type 0x03) not supported
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-09): all 93 unit, integration,
-  and doc tests pass.
-- EELS blockchain tests: **236/882 passing** (all 216 test files, no take limit)
-  - 638 GasUsedMismatch (gas calculation issues)
-  - 4 GasLimitExceeded
-  - 2 StateRootMismatch
-  - 2 unsupported tx type 0x03
+- `cargo test -p claudeth --release` (2026-02-09): pass
+- `cargo clippy -p claudeth -- -D warnings` (2026-02-09): pass
 
 ## Plan
 
-### P0: Fix Gas Calculation — GasUsedMismatch (638 failures)
+### Completed This Iteration
 
-The majority of remaining EELS failures are gas mismatches. Two patterns:
+- Aligned README/PLAN/learnings with the current implementation.
+- Updated storage persistence test to match the `InMemoryState` API.
 
-1. **computed == gas_limit** (most common): EVM execution is failing
-   (returning OOG/error) on transactions that should succeed. This
-   consumes all gas via the exceptional-halt handler.
-   - Root cause likely in: opcode gas costs, CALL/CREATE gas forwarding
-     (EIP-150 63/64 rule), access list warm/cold accounting, or
-     SSTORE gas (EIP-2200/3529).
+### P0: Implement EIP-4895 withdrawals
 
-2. **computed < expected**: EVM execution succeeds but uses less gas
-   than expected.
-   - Root cause likely in: missing gas charges for specific opcodes,
-     incorrect warm/cold access tracking, or missing EIP-2935 gas.
+- Add withdrawals application after transactions in `process_block`.
+- Validate withdrawals root against the header.
+- Extend guest input decoding to accept withdrawals list when
+  `withdrawals_root` is present.
 
-**Next steps:**
-- Pick one specific failing test with simple bytecode (e.g., from
-  bcBlockGasLimitTest or bcExploitTest)
-- Trace per-opcode gas with `--features evm-trace`
-- Compare against reference EELS execution
-- Fix the specific gas miscalculation
+### P1: Implement EIP-4788 beacon root system call
 
-### P1: Fix GasLimitExceeded (4 failures)
+### P2: Implement EIP-2935 historical block hashes system call
 
-Block gas limit exceeded check may be too strict or cumulative gas
-tracking may have a bug.
-
-### P2: Fix StateRootMismatch (2 failures)
-
-State trie root computation differs from expected after execution.
-
-### P3: Add EIP-4844 blob transaction support
-
-Type 0x03 transactions need parsing and execution support.
+### P3: Add EIP-4844 blob transaction support (type 0x03)
 
 ### P4: Witness-Based State Reconstruction
 
-Define witness schema and build parser for `no_std` guest.
-
 ### P5: Remove `k256`
-
-Replace secp256k1 dependency with in-tree implementation.
 
 ## Immediate Next Task
 
-Pick one GasUsedMismatch test with simple bytecode, enable evm-trace,
-and debug the specific gas calculation error.
+Implement EIP-4895 withdrawals in block processing and guest input decoding.

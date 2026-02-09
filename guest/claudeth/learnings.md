@@ -1,92 +1,42 @@
 # Claudeth Development Learnings
 
-## EVM Execution Error Handling (Critical)
+Date: 2026-02-09
 
-- **EVM execution failures (OOG, InvalidJump, Revert, etc.) are NOT
-  transaction-level failures.** They should produce a failed receipt
-  (status=false) with all gas consumed (for exceptional halts), state
-  rolled back to pre-execution snapshot, and fees still paid.
-- Previously, `execute_call`/`execute_create` returned `Err` on EVM
-  errors, which propagated up as `TransactionExecutionError` and
-  blocked block processing. Fixed by catching `Err` and returning
-  `Ok((false, gas_available, ...))`.
-- On failure, state must roll back to BEFORE value transfer, not just
-  before EVM execution. The value transfer is part of the execution
-  frame and must be reverted.
+## Consensus-Critical Execution
 
-## Memory Expansion Gas (Critical)
+- EVM exceptional halts (OOG, InvalidJump, etc.) must be handled as **transaction-level failures** with all gas consumed and state reverted for that transaction, not as block-level errors.
+- Reverts are not exceptional halts. Preserve remaining gas per EVM rules and roll back state changes for that call frame.
 
-- The EVM memory expansion gas formula is `words^2 / 512 + 3 * words`.
-  This MUST NOT be capped. The quadratic growth naturally causes OOG
-  for large memory requests.
-- Previously had `MAX_MEMORY_WORDS` and `MAX_MEMORY_COST` caps that
-  undercharged gas for large memory expansions, causing incorrect
-  gas accounting and panics from trying to allocate huge vectors.
-- `offset + size` calculations MUST use `saturating_add` to prevent
-  usize overflow.
+## Gas Accounting
 
-## U256 to usize Conversion (Critical)
+- Memory expansion gas is quadratic and must not be capped. Let the formula drive OOG.
+- Always use `saturating_add` for offset+size to avoid overflow on large inputs.
 
-- `U256::as_usize()` MUST saturate at `usize::MAX` when upper limbs
-  are non-zero. Previously truncated to lowest 64-bit limb, causing
-  huge U256 stack values to produce small usizes that bypassed gas
-  checks.
-- The old `u256_to_usize` helper in environment.rs had the same bug
-  on 64-bit platforms. Replaced with `as_usize()`.
+## Guest Input Decoding
 
-## EELS Test Notes
+- Current guest input is an RLP list of 5 items only: block header, parent header, chain ID, transactions list, and state snapshot entries.
+- There is no support for withdrawals or recent block hashes in the guest input path yet.
 
-- All 216 test files (882 test cases) are now tested (removed `take(10)`
-  limit). Result: 236/882 passing.
-- Main failure category: GasUsedMismatch (638). Two patterns:
-  1. `computed == gas_limit`: Transaction fails when it should succeed
-     (OOG/error → all gas consumed via exceptional-halt handler)
-  2. `computed < expected`: Transaction succeeds with less gas than
-     expected (missing gas charges)
-- EIP-4844 blob transactions (type 0x03) not supported (2 test failures).
-- `GasLimitExceeded` (4 failures) and `StateRootMismatch` (2 failures)
-  are secondary issues.
+## Pre-commit Hygiene
 
-## Memory Safety
+- The no-orphan Rust files hook will fail if any `.rs` file under `src/` is not reachable from a crate root via `mod` declarations. If a module is unused and incomplete, delete it rather than partially wiring it in.
 
-- `Vec::with_capacity(size)` panics on capacity overflow. After fixing
-  gas calculations to OOG on huge sizes, this shouldn't happen, but
-  added defense-in-depth cap in `read_memory_bytes` and
-  `Memory::ensure_capacity`.
+## Testing Reality Check
 
-## Grounded Facts (from code)
+- Do not quote EELS test counts unless you have run the ignored tests in the current workspace.
 
-- Guest input is an RLP list: block header, parent header, chain ID,
-  transactions, state snapshot entries, and optional recent block
-  hashes. Withdrawals are not decoded on the guest input path yet.
-- Cancun header fields (`blob_gas_used`, `excess_blob_gas`) are parsed
-  and hashed.
-- EIP-4788 (beacon root system call), EIP-4895 (withdrawals), and
-  EIP-2935 (historical block hashes system call) are implemented in
-  block processing.
-- Post-merge PREVRANDAO behavior is handled by setting
-  `BlockContext.difficulty` to `mix_hash` when header `difficulty == 0`.
-- Partial MPT computes roots and proofs; `EMPTY_TRIE_ROOT` is used for
-  empty tries.
-
-## Do / Don't (Always)
+## Do / Don't (Next Iteration)
 
 **Do**
 
 - Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
-- Keep state root computation deterministic (sort addresses before trie
-  insert).
-- Use `saturating_add` for all EVM offset+size calculations.
-- Handle EVM errors as failed transactions, not block-level failures.
-- Run `prek run` and fix hook failures.
-- Always run tests with `--release`.
-- Always use `-p claudeth` to scope cargo commands.
+- Keep state root computation deterministic (stable address ordering before trie insertion).
+- Run `cargo test -p claudeth --release` and `cargo clippy -p claudeth -- -D warnings`.
+- Run `uv run scripts/check_no_orphan_rust_files.py` when the pre-commit hook cannot run directly.
 
 **Don't**
 
-- Cap memory expansion gas — let the quadratic formula do its job.
-- Truncate U256 to usize without checking upper limbs.
-- Treat EVM `Revert` as an exceptional halt (gas handling differs).
-- Assume EELS results without rerunning tests.
-- Rely on `HashMap` iteration order in consensus-critical paths.
-- Update lint rules to hide errors.
+- Cap memory expansion gas.
+- Treat EVM reverts as exceptional halts.
+- Leave unused `.rs` files under `src/` (pre-commit will fail).
+- Quote EELS test counts without rerunning.
