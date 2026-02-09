@@ -1,5 +1,73 @@
 # Claudeth Development Learnings
 
+## Session 28: Phase D - EELS Compliance Testing Started (2026-02-09)
+
+**Status**: Phase D Task D1 IN PROGRESS - Fetching and analyzing test vectors
+
+### What Was Accomplished
+1. ✅ Created `scripts/fetch_eels_tests.py` to clone ethereum/tests repo
+2. ✅ Successfully cloned ethereum/tests with 347 blockchain tests
+3. ✅ Analyzed test JSON structure (BlockchainTest format)
+4. ✅ Updated PLAN.md with Phase D task breakdown
+5. ✅ Added tests/eels/ to .gitignore
+
+### EELS Test Structure Understanding
+
+**BlockchainTest JSON format**:
+```json
+{
+  "TESTNAME_FORK": {
+    "_info": { /* metadata about test generation */ },
+    "blocks": [
+      {
+        "blockHeader": { /* all header fields */ },
+        "transactions": [ /* transaction objects */ ],
+        "uncleHeaders": [],
+        "withdrawals": [],
+        "rlp": "0x..." /* RLP-encoded block */
+      }
+    ],
+    "config": {
+      "chainid": "0x01",
+      "network": "Cancun"
+    },
+    "genesisBlockHeader": { /* parent block */ },
+    "genesisRLP": "0x...",
+    "lastblockhash": "0x...",
+    "postState": { /* expected state after execution */ },
+    "pre": { /* initial state */ },
+    "sealEngine": "NoProof"
+  }
+}
+```
+
+### Test Categories Available
+- **BlockchainTests**: 347 tests (full block processing)
+- **GeneralStateTests**: 0 in current clone (may need different path)
+
+### DO's ✅
+1. **Use shallow git clone (--depth=1)** for ethereum/tests to save time/space
+2. **Focus on BlockchainTests first** - most relevant for claudeth's block processing
+3. **Parse `pre` and `postState` fields** to set up and validate test execution
+4. **Filter by fork** - focus on Cancun/Prague (post-merge) tests
+5. **Test with sealEngine: NoProof** - skip PoW validation for faster execution
+
+### DON'Ts ❌
+1. **Don't try to download from GitHub releases** - assets are not published, clone the repo
+2. **Don't include tests/eels/ in git** - it's a large external repository
+3. **Don't assume all test formats are the same** - BlockchainTests vs StateTests differ
+
+### Next Steps for Task D1
+1. Build Rust JSON parsing for BlockchainTest format
+2. Create test harness to deserialize tests
+3. Map JSON fields to claudeth types (BlockHeader, Transaction, etc.)
+4. Implement test runner infrastructure
+
+### Sources
+- [Ethereum execution-spec-tests](https://github.com/ethereum/execution-spec-tests)
+- [Ethereum tests repository](https://github.com/ethereum/tests)
+- [Blockchain Tests Documentation](https://ethereum-tests.readthedocs.io/en/v6.0.0-beta.1/test_types/blockchain_tests.html)
+
 ## Session 27: Remove rand from Tests (2026-02-09)
 
 **Status**: Phase E Task E0 COMPLETE
