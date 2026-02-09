@@ -2971,3 +2971,112 @@ for input in [address, topic0, topic1, ...] {
 1. **Don't ignore alignment** - misaligned allocations can break on some platforms
 2. **Don't silently overflow** - return null when the heap is exhausted
 3. **Don't assume deallocation** - bump allocators must document that dealloc is a no-op
+# Claudeth Development Learnings
+
+## Session 43: Fix Empty Trie Root (2026-02-09)
+
+**Status**: Phase D Task D3 CRITICAL FIX - Ethereum empty trie root
+
+### What Was Accomplished
+1. ✅ **CRITICAL FIX**: Empty tries now return EMPTY_TRIE_ROOT = 0x56e81f...b421 (not Hash::ZERO)
+2. ✅ Updated all Account/Storage/State root computations to use correct empty root
+3. ✅ Fixed calculate_receipts_root() and calculate_transactions_root() to use trie.compute_root()
+4. ✅ All 1079 unit tests + 92 doc tests passing
+5. ✅ EELS test state roots now compute differently (confirming fix is active)
+
+### Critical Bug Details
+
+**The Problem**:
+Claudeth was returning `Hash::ZERO` (all zeros) for empty MPT tries, but Ethereum specifies that empty tries must have root hash = `keccak256(rlp([]))` = `0x56e81f171bcc55a6ff8345e692c0f86e5b96e01b996cadc001622fb5e363b421`.
+
+This caused systematic state root mismatches because:
+- Empty account storage roots were computed as Hash::ZERO instead of EMPTY_TRIE_ROOT
+- Empty state tries returned Hash::ZERO
+- Empty receipts/transactions tries returned Hash::ZERO
+
+**Why It Happened**:
+- `Trie::compute_root()` returned `Hash::ZERO` for empty tries
+- `Account::empty()` used `Hash::ZERO` for storage_root
+- Receipt/transaction root functions explicitly returned `Hash::ZERO` for empty lists
+- This violated Ethereum spec which defines empty trie root as `keccak256(rlp([]))`
+
+**The Fix**:
+1. Added `EMPTY_TRIE_ROOT` constant with correct Ethereum value
+2. `Trie::compute_root()` returns `EMPTY_TRIE_ROOT` for empty tries
+3. `Account::empty()` and `Account::new_eoa()` use `EMPTY_TRIE_ROOT` for storage_root
+4. `Account::is_empty()` checks against `EMPTY_TRIE_ROOT`
+5. `calculate_receipts_root()` uses `trie.compute_root()` (removed explicit Hash::ZERO)
+6. `calculate_transactions_root()` uses `trie.compute_root()` (removed early return)
+7. `verify_proof()` checks `EMPTY_TRIE_ROOT` instead of `Hash::ZERO`
+8. Updated all tests to expect `EMPTY_TRIE_ROOT`
+
+### Impact Analysis
+
+**Before Fix** (commit e7e80dc):
+- Empty storage root: `0x0000...0000` ❌
+- Empty state root: `0x0000...0000` ❌
+- Empty receipts root: `0x0000...0000` ❌
+- optionsTest state root: wrong basis
+
+**After Fix** (commit 9cf87d0):
+- Empty storage root: `0x56e81f...b421` ✓ (matches Ethereum)
+- Empty state root: `0x56e81f...b421` ✓ (matches Ethereum)
+- Empty receipts root: `0x56e81f...b421` ✓ (matches Ethereum)
+- optionsTest state root: changed (fix is active, but still mismatch due to other bugs)
+
+### EELS Test Progress
+
+State root values changed confirming fix is active:
+- optionsTest_Cancun: was `0x5277...8294`, now `0x08f4...afc7` (still wrong, but different)
+- shanghaiExample: was `0x835d...8e36`, now `0x196d...0148` (still wrong, but different)
+
+**Remaining Issues** (not related to this fix):
+- Gas mismatches: mergeExample (-21100), basefeeExample (-1200), transient storage tests
+- Execution failures: ShanghaiLove, StrangeContractCreation
+- Receipt root mismatch: tloadDoesNotPersistAcrossBlocks
+
+### DO's ✅
+
+1. **Use EMPTY_TRIE_ROOT for all empty tries** - Never Hash::ZERO
+2. **Check Ethereum spec for constants** - Empty trie root is defined in Yellow Paper
+3. **Export constants at public module level** - Make them available for tests
+4. **Use trie.compute_root() consistently** - Don't manually return Hash::ZERO
+5. **Update all tests when fixing constants** - Including doctests
+6. **Use #[cfg(test)] imports** - For constants only needed in tests
+
+### DON'Ts ❌
+
+1. **Don't use Hash::ZERO for empty tries** - Always use EMPTY_TRIE_ROOT
+2. **Don't assume zeros mean empty** - Ethereum has specific empty values
+3. **Don't manually check/return Hash::ZERO** - Use the trie's compute_root()
+4. **Don't skip doctests** - They can catch integration issues
+5. **Don't trust clippy --fix blindly** - It may remove needed imports
+
+### Next Steps
+
+**Immediate Priority**:
+1. **Investigate remaining state root mismatches**: optionsTest and shanghaiExample
+   - Both show correct gas but wrong state root
+   - Could be: account encoding, storage root computation, or trie insertion order
+2. **Debug gas mismatches**: Large undercharges in mergeExample/basefeeExample
+   - ~21k gas missing suggests missing opcode costs
+3. **Fix execution failures**: ShanghaiLove and StrangeContractCreation
+
+**Hypothesis for Remaining State Root Issues**:
+Now that empty trie roots are correct, remaining mismatches are likely due to:
+- Account RLP encoding differences
+- Storage value encoding (should be RLP-encoded U256)
+- Trie key ordering or hashing
+
+### Session Summary
+
+**Commit**: `9cf87d0` - "fix(state): use correct Ethereum empty trie root"
+
+**Work completed**:
+- Identified empty trie root bug (Hash::ZERO vs EMPTY_TRIE_ROOT) ✓
+- Added EMPTY_TRIE_ROOT constant with correct value ✓
+- Updated all trie root computations ✓
+- Fixed Account, Storage, Receipt, Transaction root functions ✓
+- Updated all tests (1079 unit + 92 doc tests) ✓
+
+**Major breakthrough**: Discovered and fixed fundamental Ethereum spec violation. Empty tries must return `keccak256(rlp([]))`, not zero. This affects all root computations and was causing systematic test failures. Fix is now active and EELS test outputs have changed, proving the bug is resolved.

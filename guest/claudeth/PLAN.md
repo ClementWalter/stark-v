@@ -247,11 +247,12 @@ Goal: finalize per-transaction correctness before block processing.
 11. ✅ Added unit test verifying warm BALANCE refund behavior (Session 39)
 12. ✅ **CRITICAL FIX**: Charge EIP-2929 warm/cold gas for SSTORE (Session 40)
 13. ✅ **FIXED**: Charge EIP-3860 initcode gas for CREATE transactions (Session 41)
-14. ⚠️ **PENDING RE-VERIFY**: optionsTest + shanghaiExample state root mismatches (likely fixed by storage-key hashing; rerun EELS)
-15. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
-16. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
-17. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-18. ✅ **FIXED**: Storage trie now hashes keys with Keccak-256 (Ethereum-compliant storage MPT)
+14. ✅ **FIXED**: Storage trie now hashes keys with Keccak-256 (Ethereum-compliant storage MPT) (Session 42)
+15. ✅ **CRITICAL FIX**: Empty tries now return EMPTY_TRIE_ROOT = keccak256(rlp([])) not Hash::ZERO (Session 43)
+16. ⚠️ **REMAINING**: optionsTest + shanghaiExample state root mismatches (changed after fix #15, needs investigation)
+17. ⚠️ **REMAINING**: mergeExample, basefeeExample gas mismatches (~21k undercharge)
+18. ⚠️ **REMAINING**: Transient storage tests gas/receipt mismatches
+19. ⚠️ **REMAINING**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 
