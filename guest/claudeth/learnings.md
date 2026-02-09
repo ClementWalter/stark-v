@@ -1,5 +1,32 @@
 # Claudeth Development Learnings
 
+## Session 79: Delegatecall Storage Context Regression Test (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Added a regression test ensuring DELEGATECALL writes to caller storage
+2. ✅ Confirmed the storage context is correct when enough gas is forwarded
+3. ✅ Documented prek run failure mode in this environment
+
+### Key Findings
+
+**Delegatecall gas forwarding in tests**:
+- Initial failure was due to forwarding only 0xFF gas, which is insufficient for SSTORE
+- Increasing forwarded gas to 50,000 made the test pass
+
+**prek in sandbox**:
+- `prek run` fails to create `.git/index.lock` in the parent repo due to permissions
+- Using `--log-file` and `PREK_HOME` avoids log file issues but not the git lock issue
+
+### DO's ✅
+1. **Forward enough gas** in DELEGATECALL tests to cover SSTORE costs
+2. **Use `PREK_HOME` and `--log-file`** to keep prek logs inside the sandbox
+
+### DON'Ts ❌
+1. **Don't use tiny gas limits** in call/delegatecall tests if you expect storage writes
+2. **Don't ignore prek failures**; document permission constraints explicitly
+
 ## Session 78: EELS Test Re-baseline + Root Cause Analysis (2026-02-09)
 
 **Status**: Completed - test categorization done, root causes require investigation

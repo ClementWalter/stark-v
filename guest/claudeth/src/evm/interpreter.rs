@@ -1541,6 +1541,7 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 mod tests {
     use super::*;
     use crate::evm::host::{CallResult, CreateResult};
+    use crate::evm::RecursiveHost;
     use crate::state::InMemoryState;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -2717,6 +2718,66 @@ mod tests {
         assert_eq!(recorded.caller, Address::new([0x22; 20]));
         assert_eq!(recorded.value, U256::from_u64(77));
         assert_eq!(recorded.code_address, to);
+    }
+
+    #[test]
+    fn test_delegatecall_writes_to_caller_storage() {
+        let caller = Address::new([0x11; 20]);
+        let callee = Address::new([0x22; 20]);
+        let sender = Address::new([0x33; 20]);
+
+        let callee_code = vec![
+            0x60, 0xAA, // PUSH1 0xAA (value)
+            0x60, 0x01, // PUSH1 0x01 (key)
+            0x55, // SSTORE
+            0x00, // STOP
+        ];
+
+        let mut caller_code = vec![
+            0x60, 0x00, // PUSH1 0x00 (out_size)
+            0x60, 0x00, // PUSH1 0x00 (out_offset)
+            0x60, 0x00, // PUSH1 0x00 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x73, // PUSH20
+        ];
+        caller_code.extend_from_slice(&callee.to_bytes());
+        caller_code.extend_from_slice(&[
+            0x61, 0xC3, 0x50, // PUSH2 0xC350 (gas = 50000)
+            0xF4, // DELEGATECALL
+            0x00, // STOP
+        ]);
+
+        let mut state = InMemoryState::new();
+        state.set_code(&callee, callee_code);
+
+        let call_ctx = CallContext {
+            address: caller,
+            caller: sender,
+            call_value: U256::ZERO,
+            call_data: Vec::new(),
+        };
+
+        let host = RecursiveHost::new();
+        let (result, final_state) = execute_bytecode_with_host_and_contexts(
+            &caller_code,
+            100_000,
+            state,
+            host,
+            BlockContext::default(),
+            TxContext::default(),
+            call_ctx,
+        )
+        .unwrap();
+
+        assert!(result.success);
+        assert_eq!(
+            final_state.sload(&caller, &U256::from(1u64)),
+            U256::from(0xAAu64)
+        );
+        assert_eq!(
+            final_state.sload(&callee, &U256::from(1u64)),
+            U256::ZERO
+        );
     }
 
     #[test]

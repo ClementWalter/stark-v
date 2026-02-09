@@ -25,6 +25,7 @@ removing `k256`.
 - DELEGATECALL value transfer fix (Session 76)
 - Touch tracking toggle for pre-state loading (Session 74)
 - Deterministic state root computation with sorted addresses (Session 73)
+- Delegatecall storage context regression test (Session 78)
 
 ### ⚠️ EELS Test Status (18/20 failures)
 **Test Results (10 test files, 18 total test cases)**:
@@ -64,12 +65,13 @@ roots are non-empty (not EMPTY_TRIE_ROOT). This suggests:
 - But retrieval or encoding is incorrect
 
 **Investigation needed**:
-1. Verify Storage::set() correctly hashes keys with keccak256(key.to_be_bytes())
-2. Verify Storage::get() uses identical key hashing
-3. Check if pre-state storage is being loaded correctly
-4. Verify RLP encoding/decoding of storage values
+1. Verify delegatecall/CALLCODE storage context with real fixture data (optionsTest)
+2. Confirm pre-state storage is loaded correctly for all addresses in fixture
+3. Trace storage writes per address during block 0 and compare to expected post-state
+4. Verify RLP encoding/decoding of storage values (only if values differ at same keys)
 
-**Hypothesis**: Storage key hashing or RLP encoding mismatch between write and read paths.
+**Hypothesis**: Storage writes are applied to the wrong address/context (delegatecall/callcode),
+or the expected fixture post-state is being compared against a different execution path.
 
 ### P4: Fix Gas Metering Discrepancies
 After fixing storage, address the 4 GasUsedMismatch failures (19900 gas delta).
@@ -85,12 +87,11 @@ Implement in-tree secp256k1 and remove external crypto dependency.
 
 ## Immediate Next Task
 
-**P3: Debug Storage Persistence - Verify key hashing and RLP encoding**
+**P3: Debug Storage Persistence - Trace storage writes vs expected**
 
-Create a unit test that:
-1. Sets storage value via sstore()
-2. Immediately reads it back via sload()
-3. Verifies the value matches
-4. Checks that storage root is updated correctly
-5. Rebuilds state trie and verifies storage root in account
-
+Trace block 0 for optionsTest (or another failing fixture):
+1. Load full pre-state (all accounts) from the fixture
+2. Execute block 0 with tracing enabled
+3. Record per-address storage writes (address, key, value)
+4. Compare against expected post-state storage map
+5. Identify whether writes land on wrong address (delegatecall/context) or wrong key/value
