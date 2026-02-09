@@ -194,6 +194,27 @@ Goal: finalize per-transaction correctness before block processing.
   - TODO: Implement post-state validation
   - TODO: Implement root validation (state, receipts, transactions, logs bloom)
 
+### Task D2.4: Post-State Validation (✅ COMPLETE)
+**Goal**: Compare final `InMemoryState` against `postState` for each test case.
+
+**Subtasks**:
+1. Validate account balances, nonces, and code bytes
+2. Validate storage key/value pairs (including keys removed to zero)
+3. Treat accounts missing from `postState` as empty (balance/nonce/code/storage = zero)
+4. Fail tests on first mismatch with a clear error message
+
+**Verification**: EELS tests fail when the computed post-state differs from the fixture
+
+### Task D2.5: Root Validation + Parent Hash Fix (UP NEXT)
+**Goal**: Ensure roots and parent hash validation match EELS fixtures.
+
+**Subtasks**:
+1. Validate `state_root`, `receipts_root`, `transactions_root`, `logs_bloom` (already computed)
+2. Fix EELS RLP encoding to remove the parent hash mismatch workaround
+3. Enable strict assertion of EELS failures (no silent skipping)
+
+**Verification**: EELS tests pass with all validations enabled
+
 ### Task D3: Fix Spec Mismatches
 **Goal**: Achieve 100% pass rate on EELS test suite
 

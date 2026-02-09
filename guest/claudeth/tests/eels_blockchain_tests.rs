@@ -252,6 +252,107 @@ fn apply_pre_state(state: &mut InMemoryState, pre: &HashMap<String, TestAccount>
     Ok(())
 }
 
+fn validate_account_state(
+    state: &InMemoryState,
+    address_str: &str,
+    expected: &TestAccount,
+) -> Result<(), String> {
+    let address = parse_address(address_str)?;
+    let expected_balance = parse_u256(&expected.balance)?;
+    let expected_nonce = parse_u256(&expected.nonce)?;
+    let expected_code = parse_bytes(&expected.code)?;
+
+    let actual_balance = state.get_balance(&address);
+    if actual_balance != expected_balance {
+        return Err(format!(
+            "balance mismatch for {address_str}: expected {expected_balance}, got {actual_balance}"
+        ));
+    }
+
+    let actual_nonce = state.get_nonce(&address);
+    if actual_nonce != expected_nonce {
+        return Err(format!(
+            "nonce mismatch for {address_str}: expected {expected_nonce}, got {actual_nonce}"
+        ));
+    }
+
+    let actual_code = state.get_code(&address);
+    if actual_code != expected_code.as_ref() {
+        return Err(format!(
+            "code mismatch for {address_str}: expected {} bytes, got {} bytes",
+            expected_code.len(),
+            actual_code.len()
+        ));
+    }
+
+    for (key_str, value_str) in expected.storage.iter() {
+        let key = parse_u256(key_str)?;
+        let expected_value = parse_u256(value_str)?;
+        let actual_value = state.sload(&address, &key);
+        if actual_value != expected_value {
+            return Err(format!(
+                "storage mismatch for {address_str} at {key_str}: expected {expected_value}, got {actual_value}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_post_state(
+    state: &InMemoryState,
+    pre: &HashMap<String, TestAccount>,
+    post: &HashMap<String, TestAccount>,
+) -> Result<(), String> {
+    for (address_str, expected) in post {
+        validate_account_state(state, address_str, expected)?;
+
+        if let Some(pre_account) = pre.get(address_str) {
+            for key_str in pre_account.storage.keys() {
+                if !expected.storage.contains_key(key_str) {
+                    let key = parse_u256(key_str)?;
+                    let actual_value = state.sload(&parse_address(address_str)?, &key);
+                    if actual_value != U256::ZERO {
+                        return Err(format!(
+                            "storage mismatch for {address_str} at {key_str}: expected 0, got {actual_value}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    for (address_str, pre_account) in pre {
+        if post.contains_key(address_str) {
+            continue;
+        }
+
+        let address = parse_address(address_str)?;
+        let actual_balance = state.get_balance(&address);
+        let actual_nonce = state.get_nonce(&address);
+        let actual_code = state.get_code(&address);
+
+        if actual_balance != U256::ZERO || actual_nonce != U256::ZERO || !actual_code.is_empty() {
+            return Err(format!(
+                "account {address_str} expected empty but got balance {actual_balance}, nonce {actual_nonce}, code {} bytes",
+                actual_code.len()
+            ));
+        }
+
+        for key_str in pre_account.storage.keys() {
+            let key = parse_u256(key_str)?;
+            let actual_value = state.sload(&address, &key);
+            if actual_value != U256::ZERO {
+                return Err(format!(
+                    "storage mismatch for {address_str} at {key_str}: expected 0, got {actual_value}"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn parse_u64(value: &str) -> Result<u64, String> {
     let u256_val = parse_u256(value)?;
     u64::try_from(u256_val).map_err(|_| format!("value {value} too large for u64"))
@@ -731,9 +832,16 @@ fn test_execute_all_blockchain_tests() {
                 eprintln!("✗ {test_name}: {failure_reason}");
                 failed += 1;
             } else {
-                // TODO: Validate final state against postState
-                println!("✓ {test_name}");
-                passed += 1;
+                match validate_post_state(&state, &test_case.pre, &test_case.post_state) {
+                    Ok(()) => {
+                        println!("✓ {test_name}");
+                        passed += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("✗ {test_name}: Post-state mismatch: {e}");
+                        failed += 1;
+                    }
+                }
             }
         }
     }

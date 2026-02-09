@@ -1,5 +1,26 @@
 # Claudeth Development Learnings
 
+## Session 31: Phase D Task D2.4 - Post-State Validation (2026-02-09)
+
+**Status**: Phase D Task D2.4 COMPLETE ✅
+
+### What Was Accomplished
+1. ✅ Implemented post-state validation against EELS `postState`
+2. ✅ Validated balances, nonces, code bytes, and storage values
+3. ✅ Treated accounts missing from `postState` as empty (zero balance/nonce/code/storage)
+4. ✅ Ran `cargo test -p claudeth --release` successfully
+5. ✅ Ran `prek run --all-files` with `HOME` redirected to workspace
+
+### DO's ✅
+1. **Validate post-state explicitly** - compare balances, nonces, code, and storage to EELS `postState`
+2. **Check removed storage keys** - keys present in `pre` but absent in `postState` should be zero
+3. **Redirect `HOME` for `prek`** - `HOME=./.home` avoids sandbox cache permission errors
+
+### DON'Ts ❌
+1. **Don't assume EELS tests validate by default** - add explicit assertions for post-state
+2. **Don't leave post-state TODOs** - they hide real mismatches
+3. **Don't run `prek` without fixing cache location** - it writes to `~/.cache/prek` by default
+
 ## Session 30: Phase D Tasks D2.2 & D2.3 - EELS Type Converters & Test Execution (2026-02-09)
 
 **Status**: Phase D Tasks D2.2 & D2.3 COMPLETE ✅
