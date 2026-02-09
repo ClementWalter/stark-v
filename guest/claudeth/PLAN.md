@@ -172,24 +172,28 @@ Gas Trace (initial: 340474, used: 22130)
 ```
 
 **Next: Use Traces for Systematic Debugging**:
-1. ✅ **DONE**: Warm created address for EIP-2929 in CREATE/CREATE2
+1. ✅ **DONE**: Warm created address for EIP-2929 in CREATE/CREATE2 (Session 59)
    - Added `access_address()` on computed CREATE/CREATE2 address in `interpreter.rs`
    - Keeps the created address warm for subsequent accesses in the same transaction
    - **RESULT**: No change in test results - still -19900 gas undercharge in mergeExample
    - **ANALYSIS**: The warming was correct but doesn't explain the missing 19900 gas
-2. ⏭️ Analyze tipInsideBlock (+9200 gas): 3 transactions with different patterns
-3. ⏭️ Analyze transient storage tests (+2100-4200 gas): TLOAD/TSTORE costs likely wrong
+2. 🔍 **IN PROGRESS**: Analyze tipInsideBlock (+9200 gas) (Session 60)
+   - 3 transactions calling contracts with COINBASE/BALANCE/NUMBER/SSTORE
+   - Identified anomaly: Tx 0 has 16200 intrinsic gas instead of 21000 (4800 less)
+   - Total overcharge: +9200 gas (68411 expected, 77611 computed)
+   - **HYPOTHESIS**: First transaction intrinsic gas calculation error OR coinbase warm/cold logic
+   - **NEXT**: Investigate intrinsic gas calculation and coinbase address warming rules
+3. ⏭️ Analyze transient storage tests (+2100 gas): May be related to intrinsic gas or other costs
 4. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail to execute
 5. ⏭️ Debug state root mismatches (8 tests): correct gas but wrong final state
    - optionsTest, shanghaiExample, basefeeExample, tloadDoesNotPersistAcrossBlocks
    - Likely issue with account/storage state computation or MPT
 
-**Current Failures** (Session 47 analysis - still 0/20 passing):
-- State root mismatches: 4 tests (correct gas, wrong final state)
-- Large gas undercharges: 4 tests (mergeExample -21100, basefeeExample -1200)
-- Gas overcharges: 6 tests (tipInsideBlock +9200, transient storage +2100-4200)
-- Receipt root mismatches: 2 tests (likely symptom of gas overcharges)
-- Execution failures: 4 tests (contracts fail to execute)
+**Current Failures** (Session 59 actual results - still 0/20 passing):
+- State root mismatches: 8 tests (optionsTest x2, shanghaiExample x2, basefeeExample x2, tloadDoesNotPersistAcrossBlocks x2)
+- Gas undercharges: 2 tests (mergeExample x2: -19900 gas)
+- Gas overcharges: 6 tests (tipInsideBlock x2: +9200 gas, tloadDoesNotPersistCrossTxn x2: +2100 gas)
+- Execution failures: 4 tests (ShanghaiLove x2, StrangeContractCreation x2)
 
 **Debugging Strategy**:
 1. Start with smallest gas discrepancies (easier to isolate root cause)

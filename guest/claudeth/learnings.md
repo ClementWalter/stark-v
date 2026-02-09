@@ -1,5 +1,58 @@
 # Claudeth Development Learnings
 
+## Session 60: Investigate tipInsideBlock Gas Overcharge (2026-02-09)
+
+**Status**: Investigation started - ROOT CAUSE NOT YET FOUND
+
+### Analysis Performed
+1. ✅ Examined tipInsideBlock test structure: 3 transactions calling contracts with COINBASE/BALANCE/NUMBER/SSTORE
+2. ✅ Verified contract bytecode: 0x4131435500 = COINBASE BALANCE NUMBER SSTORE STOP
+3. ✅ Analyzed gas breakdown:
+   - Expected total: 68411 gas
+   - Computed total: 77611 gas
+   - Overcharge: +9200 gas
+
+### Key Observations
+**Gas breakdown for 3 transactions:**
+- Tx 0 (to 0xcccc): 25904 gas (16200 intrinsic + 9704 execution)
+- Tx 1 (to 0xaaaa): 21003 gas (21000 intrinsic + 3 execution)
+- Tx 2 (to 0xdddd): 30704 gas (21000 intrinsic + 9704 execution)
+
+**Anomaly**: Tx 0 shows 16200 intrinsic gas instead of 21000 (4800 gas less)
+- All transactions have empty data, zero value, no access list
+- Should all have 21000 intrinsic gas
+- Tx 0 and Tx 2 call identical contracts but have different intrinsic costs
+
+**Execution gas appears correct:**
+- COINBASE: 2 gas
+- BALANCE: 2600 gas (cold access per EIP-2929)
+- NUMBER: 2 gas
+- SSTORE: 7100 gas (setting non-zero slot)
+- Total: 9704 gas per execution
+
+### Hypothesis
+The 9200 gas overcharge may be related to:
+1. Incorrect intrinsic gas calculation for first transaction in block
+2. Missing gas refund or discount for some transaction type
+3. EIP-specific gas rules not yet implemented
+4. BALANCE opcode may need different warm/cold logic for coinbase address
+
+### Next Steps
+1. ⏭️ Investigate why Tx 0 has 16200 intrinsic instead of 21000
+2. ⏭️ Check if coinbase address should be pre-warmed
+3. ⏭️ Review EIP-2929 rules for BALANCE of coinbase
+4. ⏭️ Compare with reference implementation (Geth/Erigon) for this specific test
+
+### DO's ✅
+1. **Analyze per-transaction gas breakdown** to identify where discrepancies occur
+2. **Look for patterns across similar transactions** to spot anomalies
+3. **Disassemble contract bytecode** to understand what operations are being tested
+
+### DON'Ts ❌
+1. **Don't assume all transactions in a block have the same intrinsic gas** - check each individually
+2. **Don't spend too long on one test without concrete progress** - document findings and move on
+3. **Don't ignore anomalies** - the 4800 gas difference in Tx 0 intrinsic cost is significant
+
 ## Session 59: Warm CREATE/CREATE2 Addresses (2026-02-09)
 
 **Status**: Completed - EIP-2929 warm tracking for CREATE/CREATE2 (NO TEST IMPACT)
