@@ -32,15 +32,20 @@
 
 ### Root Causes Identified
 
-**RC1: Missing EIP-3860 Init Code Gas Cost**
-- EIP-3860 charges 2 gas per byte of init code for CREATE/CREATE2
-- We are NOT charging this cost
-- Evidence: 19900 gas delta = 9950 bytes × 2 gas/byte
-- Fix: Add `init_code.len() * 2` gas charge in CREATE/CREATE2 execution
+**RC1: Gas Metering Issues (TBD)**
+- mergeExample: expected 82839, got 62939 (missing 19900 gas)
+- tipInsideBlock: expected 68411, got 73411 (extra 5000 gas)
+- Contradictory: one test under, one over - suggests multiple issues
+- ✅ VERIFIED: EIP-3860 IS implemented correctly (gas.rs:391, interpreter.rs:978,1221)
+- ✅ VERIFIED: GAS_INIT_CODE_WORD = 2 (correct per EIP-3860)
+- ✅ VERIFIED: init_code_gas_cost() computes 2 gas per word correctly
+- Issue is NOT missing EIP-3860
+- Need deeper investigation: transaction intrinsic gas? access lists? refunds?
 
 **RC2: Storage Root Computation Issue (TBD)**
 - Storage writes persist to tries (roots are non-empty)
 - But computed storage roots don't match expected
+- Consistent root 0x2f1228... for 0x000f3... across 10 tests suggests pre-state storage
 - Possible causes:
   1. Storage key hashing mismatch (different keccak256 of keys?)
   2. Storage value RLP encoding mismatch
@@ -48,7 +53,7 @@
   4. Pre-state storage not being properly cleared/merged
 
 ### Next Steps
-1. **Fix EIP-3860**: Add init code gas cost (2 gas/byte) to CREATE/CREATE2
+1. **Debug gas metering**: Investigate transaction intrinsic gas, access list costs, refunds
 2. **Debug storage roots**: Create test that loads pre-state storage, executes transaction, verifies storage root
 3. **Verify account RLP encoding**: Ensure storage_root field is correctly serialized
 4. **Check storage key hashing**: Verify keccak256(key) is consistent between pre-state load and runtime execution
