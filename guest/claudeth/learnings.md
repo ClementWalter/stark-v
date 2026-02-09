@@ -17,9 +17,32 @@
 1. **Don't assume parent hash is enough for all BLOCKHASH use cases**; contracts can read any of the last 256 blocks.
 2. **Don't mutate shared host state between recursive calls**; clone recent hashes into child hosts.
 
+## Session 58: Continue mergeExample Gas Investigation (2026-02-09)
+
+**Status**: IN PROGRESS - Deep investigation of -19900 gas undercharge
+
+### Investigation Progress
+1. ✅ Verified intrinsic gas calculation is correct (21000 + 32000 = 53000 for CREATE tx)
+2. ✅ Confirmed access list warming happens correctly (lines 1462-1464 + 1483-1485 in interpreter.rs)
+3. ✅ Verified created contract address is pre-warmed via `call_ctx.address` (line 1453)
+4. ✅ Confirmed gas constants match spec (GAS_TRANSACTION_CREATE = 53000)
+5. ⏭️ **NEXT**: Need to check if intrinsic CREATE cost should include additional EIP-2929 charges
+
+### Analysis of 19900 Gas
+- Not a simple 2600 cold address access
+- Close to 20000 (within 100) → could be SSTORE-related or multiple accesses
+- 19900 / 2100 ≈ 9.48 → almost 10 cold SLOAD operations
+- But access list only has 2 storage keys, not 10
+
+### Current Hypothesis
+The missing ~20000 gas may be related to how CREATE interacts with EIP-2929 when an access list is present. Need to research if:
+1. Created contract address needs additional cold access charge beyond warming
+2. Init code execution incurs extra gas for contract creation context
+3. There's an EIP-specific gas charge we're missing for CREATE + access list combo
+
 ## Session 56: Debug mergeExample Gas Undercharge (2026-02-09)
 
-**Status**: IN PROGRESS - Investigating -19900 gas undercharge in CREATE with access list
+**Status**: COMPLETED - Initial analysis and gas breakdown verification
 
 ### Current Analysis
 **Test**: mergeExample - CREATE transaction with EIP-1559 + access list

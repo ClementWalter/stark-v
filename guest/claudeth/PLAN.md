@@ -172,8 +172,10 @@ Gas Trace (initial: 340474, used: 22130)
 1. 🔍 **IN PROGRESS**: Analyze mergeExample (-19900 gas) - CREATE with access list undercharge
    - Verified our gas calculation (62939) matches implementation exactly
    - Expected gas is 82839, difference is exactly 19900
-   - Likely missing CREATE-specific gas cost post-EIP-2929
-   - Need to research Geth/spec for CREATE + access list + EIP-2929 interaction
+   - **LIKELY ROOT CAUSE**: Missing EIP-2929 cold access charge for created contract address
+   - CREATE opcode (line 961-994 in interpreter.rs) doesn't call `access_address()` for target
+   - CALL opcode does charge EIP-2929 (lines 1008-1011) with warm/cold tracking
+   - **FIX**: Add `access_address()` call for computed contract address in CREATE/CREATE2
 2. ⏭️ Analyze tipInsideBlock (+9200 gas): 3 transactions with different patterns
 3. ⏭️ Analyze transient storage tests (+2100-4200 gas): TLOAD/TSTORE costs likely wrong
 4. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail to execute
