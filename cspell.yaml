@@ -1,56 +1,99 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
+  - abababababababababababababababab
+  - abcdez
   - addi
+  - addmod
   - addrs
-  - ADDSUB
+  - addsub
   - allocvec
   - andi
   - andn
   - auipc
+  - basefee
+  - beac
   - bgeu
   - bitmask
   - bitmaski
+  - blobbasefee
+  - blobhash
+  - blockhash
   - bltu
   - bytemuck
+  - callcode
+  - calldatacopy
+  - calldataload
+  - calldatasize
+  - callvalue
   - cfgs
-  - Circom
+  - chainid
+  - chainname
+  - checkmarks
+  - checksummed
+  - checksumming
+  - circom
   - claudeth
-  - clément
+  - clementwalter
   - clippy
+  - 'clément'
+  - codecopy
+  - codedeposit
+  - codesize
+  - coeff
   - condvar
   - csrrw
+  - delegatecall
+  - delegatecalls
+  - discardable
   - divu
   - doctest
+  - doctests
   - doubleword
   - dtolnay
   - ebreak
   - ecall
   - ehdr
   - eprintln
+  - erigon
+  - ethash
   - evals
+  - extcode
+  - extcodecopy
+  - extcodehash
+  - fastish
   - filesz
   - fondeur
+  - footgun
   - funct
+  - fusaka
   - futex
+  - getrandom
   - globl
-  - Groth
+  - groth
   - halfword
   - hashbrown
   - idents
   - ilog2
   - immediates
+  - initcode
+  - initialisation
   - inplace
   - insn
   - intermed
+  - iszero
   - itertools
   - jalr
   - jemalloc
   - jemallocator
+  - jumpdest
+  - jumpdests
+  - jumpi
   - kakarot
   - keccak
-  - Keccak
-  - Kitem
+  - keepends
+  - kitem
+  - lastblockhash
   - littleriscv
   - loadb
   - loadbu
@@ -60,88 +103,128 @@ words:
   - logup
   - madv
   - madvise
+  - mcopy
   - memsz
-  - MEPC
+  - mepc
   - merkle
   - mersenne
   - metavar
   - mimalloc
   - mispredictions
+  - mload
   - mmap
   - mmio
+  - modexp
   - movsign
-  - Movsign
   - mret
-  - MRET
-  - MTVEC
+  - msize
+  - mstore
+  - mtvec
   - muldiv
   - mulh
   - mulhsu
   - mulhu
   - muli
+  - mulmod
   - mult
   - mults
   - nocapture
   - nomem
+  - nonzeros
   - norelax
   - noreturn
   - nostack
   - objdump
+  - ommers
   - openvm
+  - optionstest
   - pairable
+  - parseable
   - popcount
+  - precharge
   - precomputation
+  - prehash
+  - prek
+  - prevrandao
   - println
+  - pycache
   - readelf
+  - recid
   - regs
   - remu
   - repr
+  - returndata
+  - returndatacopy
+  - returndatasize
+  - ripemd
   - risc0
   - riscv
   - rodata
+  - roundtrips
   - rustc
   - rustflags
   - rustup
   - rzup
+  - sandboxed
   - sdiv
   - secp
+  - selfbalance
+  - selfdestruct
+  - selfdestructs
   - serde
   - shamir
   - shamt
+  - signextend
   - slli
+  - sload
   - slti
   - sltiu
   - sltu
   - sltui
+  - smod
   - smul
   - srai
   - srli
+  - sstore
+  - sstores
   - starknet
   - starkv
+  - starkware
+  - statedb
+  - staticcall
+  - staticlib
   - storeb
   - storeh
   - storew
   - strtab
   - stwo
   - subi
-  - Swatinem
+  - swatinem
   - syms
   - syscalls
+  - testname
   - thiserror
   - tikv
+  - tload
   - trac
   - transpiling
+  - tstore
   - ttext
   - underflowed
   - unimp
+  - uninlined
   - usize
   - vaddr
+  - venv
   - virt
-  - Virt
+  - vitalik
   - vm
+  - walkdir
   - worktree
   - worktrees
   - writeback
-  - XLEN
+  - xdeadbeefu
+  - xffu
+  - xlen
   - xori
   - zkvm

@@ -17,13 +17,19 @@ extern crate alloc;
 
 #[cfg(not(target_arch = "riscv32"))]
 use std::collections::HashSet;
+#[cfg(not(target_arch = "riscv32"))]
+use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
 use alloc::collections::BTreeSet as HashSet;
+#[cfg(target_arch = "riscv32")]
+use alloc::vec::Vec;
 
+use crate::evm::error::EvmError;
+use crate::evm::{GAS_SLOAD_COLD, GAS_SLOAD_WARM, GAS_SSTORE_SENTRY, sstore_gas_cost};
 use crate::evm::{Memory, MemoryError, Stack, StackError};
-use crate::state::Storage;
-use crate::types::U256;
+use crate::state::{State, Storage};
+use crate::types::{Address, U256};
 
 // =============================================================================
 // Helper Functions
@@ -76,6 +82,8 @@ pub enum OpcodeError {
     InvalidProgramCounter,
     /// Invalid offset or size
     InvalidOffset,
+    /// Invalid PUSH (not enough bytes in code)
+    InvalidPush,
     /// Operation not implemented yet
     NotImplemented,
 }
@@ -186,12 +194,7 @@ pub fn pop(stack: &mut Stack) -> Result<(), OpcodeError> {
 /// * `bytecode` - The contract bytecode
 /// * `pc` - Current program counter (pointing to the PUSH opcode)
 /// * `n` - Number of bytes to push (1-32)
-pub fn push_n(
-    stack: &mut Stack,
-    bytecode: &[u8],
-    pc: usize,
-    n: usize,
-) -> Result<(), OpcodeError> {
+pub fn push_n(stack: &mut Stack, bytecode: &[u8], pc: usize, n: usize) -> Result<(), OpcodeError> {
     if n == 0 || n > 32 {
         return Err(OpcodeError::InvalidProgramCounter);
     }
@@ -208,6 +211,35 @@ pub fn push_n(
         }
     }
     stack.push(value)?;
+    Ok(())
+}
+
+/// PUSH with strict bounds: returns InvalidPush if not enough bytes (pc+1+n > bytecode.len()).
+pub fn push_n_strict(
+    stack: &mut Stack,
+    bytecode: &[u8],
+    pc: usize,
+    n: usize,
+) -> Result<(), OpcodeError> {
+    if n == 0 || n > 32 {
+        return Err(OpcodeError::InvalidProgramCounter);
+    }
+    let start = pc + 1;
+    let end = start + n;
+    if end > bytecode.len() {
+        return Err(OpcodeError::InvalidPush);
+    }
+    let mut value = U256::ZERO;
+    for i in 0..n {
+        value = (value << 8) | U256::from(bytecode[start + i] as u64);
+    }
+    stack.push(value)?;
+    Ok(())
+}
+
+/// PUSH0 (0x5F) - Push constant 0 onto the stack.
+pub fn push0(stack: &mut Stack) -> Result<(), OpcodeError> {
+    stack.push(U256::ZERO)?;
     Ok(())
 }
 
@@ -298,6 +330,40 @@ pub fn jumpi(
     }
 }
 
+/// JUMP (0x56) using a bitmap of valid JUMPDEST positions (O(1) check).
+pub fn jump_bitmap(
+    stack: &mut Stack,
+    bytecode: &[u8],
+    jumpdests: &[bool],
+) -> Result<usize, OpcodeError> {
+    let dest = stack.pop()?;
+    let dest_usize = u256_to_usize(&dest);
+    if dest_usize >= bytecode.len() || dest_usize >= jumpdests.len() || !jumpdests[dest_usize] {
+        return Err(OpcodeError::InvalidJumpDestination);
+    }
+    Ok(dest_usize)
+}
+
+/// JUMPI (0x57) using a bitmap of valid JUMPDEST positions.
+pub fn jumpi_bitmap(
+    stack: &mut Stack,
+    bytecode: &[u8],
+    jumpdests: &[bool],
+    current_pc: usize,
+) -> Result<usize, OpcodeError> {
+    let dest = stack.pop()?;
+    let condition = stack.pop()?;
+    if condition != U256::ZERO {
+        let dest_usize = u256_to_usize(&dest);
+        if dest_usize >= bytecode.len() || dest_usize >= jumpdests.len() || !jumpdests[dest_usize] {
+            return Err(OpcodeError::InvalidJumpDestination);
+        }
+        Ok(dest_usize)
+    } else {
+        Ok(current_pc + 1)
+    }
+}
+
 /// PC (0x58) - Get the value of the program counter
 ///
 /// Pushes the current program counter value onto the stack.
@@ -354,6 +420,107 @@ pub fn analyze_jumpdests(bytecode: &[u8]) -> HashSet<usize> {
     }
 
     jumpdests
+}
+
+/// Analyzes bytecode to produce a bitmap: jumpdests[i] is true iff position i is a valid JUMPDEST.
+pub fn analyze_jumpdests_bitmap(bytecode: &[u8]) -> Vec<bool> {
+    let mut jumpdests = vec![false; bytecode.len()];
+    let mut pc = 0;
+    while pc < bytecode.len() {
+        let opcode = bytecode[pc];
+        if opcode == 0x5B {
+            jumpdests[pc] = true;
+            pc += 1;
+        } else if (0x60..=0x7F).contains(&opcode) {
+            let push_size = (opcode - 0x5F) as usize;
+            pc += 1 + push_size;
+        } else {
+            pc += 1;
+        }
+    }
+    jumpdests
+}
+
+/// MCOPY (0x5E) - Copy memory region (dest, src, size).
+pub fn mcopy(stack: &mut Stack, memory: &mut Memory) -> Result<(), OpcodeError> {
+    let dest = u256_to_usize(&stack.pop()?);
+    let src = u256_to_usize(&stack.pop()?);
+    let size = u256_to_usize(&stack.pop()?);
+    memory.copy(dest, src, size).map_err(OpcodeError::Memory)?;
+    Ok(())
+}
+
+// =============================================================================
+// Storage opcodes with EIP-2929 / EIP-3529 (State trait)
+// =============================================================================
+
+/// SLOAD (0x54) with EIP-2929 warm/cold. Caller must charge base gas (GAS_SLOAD_COLD) first.
+pub fn sload_eip2929<S: State>(
+    stack: &mut Stack,
+    state: &S,
+    address: Address,
+    is_warm: bool,
+    gas_remaining: &mut u64,
+) -> Result<(), EvmError> {
+    let key = stack.pop().map_err(EvmError::from)?;
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(GAS_SLOAD_COLD - GAS_SLOAD_WARM);
+    }
+    let value = state.sload(&address, &key);
+    stack.push(value).map_err(EvmError::from)?;
+    Ok(())
+}
+
+/// SSTORE (0x55) with EIP-2929 and EIP-3529. Caller must charge base gas (0) first; this charges dynamic + access.
+pub fn sstore_eip2929<S: State>(
+    stack: &mut Stack,
+    state: &mut S,
+    address: Address,
+    is_warm: bool,
+    gas_remaining: &mut u64,
+    gas_refund: &mut u64,
+) -> Result<(), EvmError> {
+    let key = stack.pop().map_err(EvmError::from)?;
+    let new_value = stack.pop().map_err(EvmError::from)?;
+    let current_value = state.sload(&address, &key);
+
+    if *gas_remaining <= GAS_SSTORE_SENTRY {
+        return Err(EvmError::OutOfGas);
+    }
+
+    let sstore_gas = sstore_gas_cost(current_value, new_value);
+    super::utils::consume_gas(gas_remaining, sstore_gas)?;
+    super::utils::consume_gas(gas_remaining, 2100)?;
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2000);
+    }
+
+    if !current_value.is_zero() && new_value.is_zero() {
+        *gas_refund += 4800;
+    }
+
+    state.sstore(&address, &key, new_value);
+    Ok(())
+}
+
+/// TLOAD (0x5C) - Load from transient storage.
+pub fn tload<S: State>(stack: &mut Stack, state: &S, address: Address) -> Result<(), EvmError> {
+    let key = stack.pop().map_err(EvmError::from)?;
+    let value = state.tload(&address, &key);
+    stack.push(value).map_err(EvmError::from)?;
+    Ok(())
+}
+
+/// TSTORE (0x5D) - Store to transient storage.
+pub fn tstore<S: State>(
+    stack: &mut Stack,
+    state: &mut S,
+    address: Address,
+) -> Result<(), EvmError> {
+    let key = stack.pop().map_err(EvmError::from)?;
+    let value = stack.pop().map_err(EvmError::from)?;
+    state.tstore(&address, &key, value);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -537,7 +704,10 @@ mod tests {
     fn test_pop_empty_stack() {
         let mut stack = Stack::new();
         let result = pop(&mut stack);
-        assert!(matches!(result, Err(OpcodeError::Stack(StackError::Underflow))));
+        assert!(matches!(
+            result,
+            Err(OpcodeError::Stack(StackError::Underflow))
+        ));
     }
 
     #[test]

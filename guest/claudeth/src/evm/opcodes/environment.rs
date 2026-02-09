@@ -15,11 +15,15 @@ use std::vec::Vec;
 use alloc::vec::Vec;
 
 use crate::crypto::keccak::keccak256;
+use crate::evm::error::EvmError;
+use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host};
+use crate::evm::{GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER};
 use crate::evm::{Memory, Stack};
-use crate::types::{Address, U256};
+use crate::state::State;
+use crate::types::{Address, Hash, U256};
 
-// Re-use OpcodeError from control module to avoid duplication
 use super::control::OpcodeError;
+use super::utils;
 
 // =============================================================================
 // Context Structures
@@ -159,12 +163,14 @@ fn u256_to_usize(value: &U256) -> usize {
 // Block Information Opcodes
 // =============================================================================
 
-/// BLOCKHASH (0x40) - Get hash of one of the 256 most recent complete blocks
-pub fn blockhash(stack: &mut Stack, _block_ctx: &BlockContext) -> Result<(), OpcodeError> {
-    let _block_number = stack.pop()?;
-    // For now, return zero hash (stub implementation)
-    // In production, this should look up the actual block hash
-    stack.push(U256::ZERO)?;
+/// BLOCKHASH (0x40) - Get hash of one of the 256 most recent complete blocks (uses Host).
+pub fn blockhash_with_host<S: State, H: Host<S>>(
+    stack: &mut Stack,
+    host: &H,
+) -> Result<(), OpcodeError> {
+    let number = stack.pop()?;
+    let hash = host.blockhash(&number).unwrap_or(Hash::ZERO);
+    stack.push(utils::hash_to_u256(&hash))?;
     Ok(())
 }
 
@@ -284,7 +290,9 @@ pub fn calldatacopy(
         return Ok(());
     }
 
-    let dest_end = dest_offset.checked_add(size).ok_or(OpcodeError::InvalidOffset)?;
+    let dest_end = dest_offset
+        .checked_add(size)
+        .ok_or(OpcodeError::InvalidOffset)?;
     memory.expand(dest_end)?;
 
     for i in 0..size {
@@ -319,7 +327,9 @@ pub fn codecopy(
         return Ok(());
     }
 
-    let dest_end = dest_offset.checked_add(size).ok_or(OpcodeError::InvalidOffset)?;
+    let dest_end = dest_offset
+        .checked_add(size)
+        .ok_or(OpcodeError::InvalidOffset)?;
     memory.expand(dest_end)?;
 
     for i in 0..size {
@@ -335,7 +345,10 @@ pub fn codecopy(
 }
 
 /// RETURNDATASIZE (0x3D) - Get size of output data from the previous call
-pub fn returndatasize(stack: &mut Stack, contract_ctx: &ContractContext) -> Result<(), OpcodeError> {
+pub fn returndatasize(
+    stack: &mut Stack,
+    contract_ctx: &ContractContext,
+) -> Result<(), OpcodeError> {
     stack.push(U256::from_u64(contract_ctx.return_data.len() as u64))?;
     Ok(())
 }
@@ -360,7 +373,9 @@ pub fn returndatacopy(
         return Err(OpcodeError::InvalidOffset);
     }
 
-    let dest_end = dest_offset.checked_add(size).ok_or(OpcodeError::InvalidOffset)?;
+    let dest_end = dest_offset
+        .checked_add(size)
+        .ok_or(OpcodeError::InvalidOffset)?;
     memory.expand(dest_end)?;
 
     for i in 0..size {
@@ -371,60 +386,123 @@ pub fn returndatacopy(
 }
 
 // =============================================================================
-// External Account Opcodes (Stubs)
+// External Account Opcodes (State + EIP-2929 warm/cold)
 // =============================================================================
 
-/// BALANCE (0x31) - Get balance of the given account
-pub fn balance(stack: &mut Stack) -> Result<(), OpcodeError> {
-    let _address = stack.pop()?;
-    // Stub: return zero balance
-    stack.push(U256::ZERO)?;
+/// BALANCE (0x31) - Get balance of the given account. Caller charges base gas (GAS_BALANCE_COLD) first.
+pub fn balance<S: State>(
+    stack: &mut Stack,
+    state: &S,
+    is_warm: bool,
+    gas_remaining: &mut u64,
+) -> Result<(), EvmError> {
+    let address = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100); // GAS_BALANCE_COLD - GAS_BALANCE_WARM
+    }
+    let b = state.get_balance(&address);
+    stack.push(b).map_err(EvmError::from)?;
     Ok(())
 }
 
-/// EXTCODESIZE (0x3B) - Get size of an account's code
-pub fn extcodesize(stack: &mut Stack) -> Result<(), OpcodeError> {
-    let _address = stack.pop()?;
-    // Stub: return zero (no code)
-    stack.push(U256::ZERO)?;
+/// EXTCODESIZE (0x3B) - Get size of an account's code. Caller charges base gas first.
+pub fn extcodesize<S: State>(
+    stack: &mut Stack,
+    state: &S,
+    is_warm: bool,
+    gas_remaining: &mut u64,
+) -> Result<(), EvmError> {
+    let address = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+    let len = state.get_code(&address).len();
+    stack
+        .push(U256::from_u64(len as u64))
+        .map_err(EvmError::from)?;
     Ok(())
 }
 
-/// EXTCODECOPY (0x3C) - Copy an account's code to memory
-pub fn extcodecopy(stack: &mut Stack, memory: &mut Memory) -> Result<(), OpcodeError> {
-    let _address = stack.pop()?;
-    let dest_offset = u256_to_usize(&stack.pop()?);
-    let _offset = stack.pop()?;
-    let size = u256_to_usize(&stack.pop()?);
+/// EXTCODECOPY (0x3C) - Copy an account's code to memory. Caller charges base + memory + copy gas first.
+pub fn extcodecopy<S: State>(
+    stack: &mut Stack,
+    state: &S,
+    memory: &mut Memory,
+    is_warm: bool,
+    gas_remaining: &mut u64,
+) -> Result<(), EvmError> {
+    let address = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+    let dest_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let code_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
 
     if size == 0 {
         return Ok(());
     }
 
-    // Stub: expand memory and fill with zeros (no code)
-    let dest_end = dest_offset.checked_add(size).ok_or(OpcodeError::InvalidOffset)?;
-    memory.expand(dest_end)?;
-
+    let code = state.get_code(&address);
     for i in 0..size {
-        memory.mstore8(dest_offset + i, 0)?;
+        let byte = if code_offset + i < code.len() {
+            code[code_offset + i]
+        } else {
+            0
+        };
+        memory
+            .mstore8(dest_offset + i, byte)
+            .map_err(EvmError::from)?;
     }
-
     Ok(())
 }
 
-/// EXTCODEHASH (0x3F) - Get hash of an account's code
-pub fn extcodehash(stack: &mut Stack) -> Result<(), OpcodeError> {
-    let _address = stack.pop()?;
-    // Stub: return empty code hash (keccak256 of empty bytes)
-    let empty_hash = keccak256(&[]);
-    stack.push(U256::from_be_bytes(*empty_hash.as_bytes()))?;
+/// EXTCODEHASH (0x3F) - Get hash of an account's code. Caller charges base gas first.
+pub fn extcodehash<S: State>(
+    stack: &mut Stack,
+    state: &S,
+    is_warm: bool,
+    gas_remaining: &mut u64,
+) -> Result<(), EvmError> {
+    let address = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+    let code_hash = state.get_code_hash(&address);
+    stack
+        .push(utils::hash_to_u256(&code_hash))
+        .map_err(EvmError::from)?;
     Ok(())
 }
 
 /// SELFBALANCE (0x47) - Get balance of currently executing account
-pub fn selfbalance(stack: &mut Stack) -> Result<(), OpcodeError> {
-    // Stub: return zero balance
-    stack.push(U256::ZERO)?;
+pub fn selfbalance<S: State>(
+    stack: &mut Stack,
+    state: &S,
+    address: Address,
+) -> Result<(), EvmError> {
+    let b = state.get_balance(&address);
+    stack.push(b).map_err(EvmError::from)?;
+    Ok(())
+}
+
+/// BLOBHASH (0x49) - Get hash of blob at index (uses Host).
+pub fn blobhash_with_host<S: State, H: Host<S>>(
+    stack: &mut Stack,
+    host: &H,
+) -> Result<(), OpcodeError> {
+    let index = stack.pop()?;
+    let hash = host.blobhash(&index).unwrap_or(Hash::ZERO);
+    stack.push(utils::hash_to_u256(&hash))?;
+    Ok(())
+}
+
+/// BLOBBASEFEE (0x4A) - Get blob base fee (uses Host).
+pub fn blobbasefee_with_host<S: State, H: Host<S>>(
+    stack: &mut Stack,
+    host: &H,
+) -> Result<(), OpcodeError> {
+    stack.push(host.blobbasefee())?;
     Ok(())
 }
 
@@ -509,37 +587,366 @@ pub fn revert(stack: &mut Stack, memory: &mut Memory) -> Result<Vec<u8>, OpcodeE
 }
 
 // =============================================================================
-// Complex Opcodes (Stubs for now)
+// Call/Create context (minimal set for system opcodes)
 // =============================================================================
 
-/// CREATE (0xF0) - Create a new account with associated code
-pub fn create(_stack: &mut Stack, _memory: &mut Memory) -> Result<(), OpcodeError> {
-    Err(OpcodeError::NotImplemented)
+/// Minimal call context for CALL/CREATE/DELEGATECALL/STATICCALL.
+#[derive(Debug, Clone)]
+pub struct CallEnv {
+    pub self_address: Address,
+    pub caller: Address,
+    pub call_value: U256,
 }
 
-/// CREATE2 (0xF5) - Create a new account with associated code at a deterministic address
-pub fn create2(_stack: &mut Stack, _memory: &mut Memory) -> Result<(), OpcodeError> {
-    Err(OpcodeError::NotImplemented)
+// =============================================================================
+// Complex Opcodes (CREATE, CALL, etc.) – require State + Host
+// =============================================================================
+
+/// CREATE (0xF0). Caller must charge base gas and memory expansion + init code gas first.
+pub fn execute_create<S: State, H: Host<S>>(
+    state: &mut S,
+    host: &mut H,
+    stack: &mut Stack,
+    memory: &mut Memory,
+    call_env: &CallEnv,
+    gas_remaining: &mut u64,
+    return_data: &mut Vec<u8>,
+) -> Result<(), EvmError> {
+    let value = stack.pop().map_err(EvmError::from)?;
+    let offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+
+    let init_code = utils::read_memory_bytes(memory, offset, size)?;
+    let max_gas = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
+
+    let msg = CreateMessage {
+        gas: max_gas,
+        caller: call_env.self_address,
+        value,
+        init_code,
+        salt: None,
+    };
+    let result = host.create(state, msg);
+    if result.gas_used > max_gas {
+        return Err(EvmError::OutOfGas);
+    }
+    utils::consume_gas(gas_remaining, result.gas_used)?;
+    *return_data = result.return_data;
+
+    if result.success {
+        let addr = result.address.unwrap_or(Address::ZERO);
+        stack
+            .push(utils::address_to_u256(&addr))
+            .map_err(EvmError::from)?;
+    } else {
+        stack.push(U256::ZERO).map_err(EvmError::from)?;
+    }
+    Ok(())
 }
 
-/// CALL (0xF1) - Message-call into an account
-pub fn call(_stack: &mut Stack, _memory: &mut Memory) -> Result<(), OpcodeError> {
-    Err(OpcodeError::NotImplemented)
+/// CREATE2 (0xF5). Caller must charge base gas, memory expansion, init code gas, and hash cost first.
+pub fn execute_create2<S: State, H: Host<S>>(
+    state: &mut S,
+    host: &mut H,
+    stack: &mut Stack,
+    memory: &mut Memory,
+    call_env: &CallEnv,
+    gas_remaining: &mut u64,
+    return_data: &mut Vec<u8>,
+) -> Result<(), EvmError> {
+    let value = stack.pop().map_err(EvmError::from)?;
+    let offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let salt = stack.pop().map_err(EvmError::from)?;
+
+    let init_code = utils::read_memory_bytes(memory, offset, size)?;
+    let max_gas = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
+
+    let msg = CreateMessage {
+        gas: max_gas,
+        caller: call_env.self_address,
+        value,
+        init_code,
+        salt: Some(salt),
+    };
+    let result = host.create(state, msg);
+    if result.gas_used > max_gas {
+        return Err(EvmError::OutOfGas);
+    }
+    utils::consume_gas(gas_remaining, result.gas_used)?;
+    *return_data = result.return_data;
+
+    if result.success {
+        let addr = result.address.unwrap_or(Address::ZERO);
+        stack
+            .push(utils::address_to_u256(&addr))
+            .map_err(EvmError::from)?;
+    } else {
+        stack.push(U256::ZERO).map_err(EvmError::from)?;
+    }
+    Ok(())
 }
 
-/// STATICCALL (0xFA) - Static message-call into an account
-pub fn staticcall(_stack: &mut Stack, _memory: &mut Memory) -> Result<(), OpcodeError> {
-    Err(OpcodeError::NotImplemented)
+/// CALL (0xF1). Caller must charge base gas, memory expansion, value transfer, and new-account cost.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_call<S: State, H: Host<S>>(
+    state: &mut S,
+    host: &mut H,
+    stack: &mut Stack,
+    memory: &mut Memory,
+    call_env: &CallEnv,
+    gas_remaining: &mut u64,
+    return_data: &mut Vec<u8>,
+    is_warm: bool,
+) -> Result<(), EvmError> {
+    let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
+    let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    let value = stack.pop().map_err(EvmError::from)?;
+    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+
+    let input = utils::read_memory_bytes(memory, in_offset, in_size)?;
+    let is_value_transfer = !value.is_zero();
+    if is_value_transfer {
+        utils::consume_gas(gas_remaining, GAS_CALL_VALUE_TRANSFER)?;
+        if !state.account_exists(&to) {
+            utils::consume_gas(gas_remaining, GAS_CALL_NEW_ACCOUNT)?;
+        }
+    }
+
+    let mut gas_to_forward = gas_requested;
+    let max_forward = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
+    if gas_to_forward > max_forward {
+        gas_to_forward = max_forward;
+    }
+    if is_value_transfer {
+        gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+    }
+
+    let msg = CallMessage {
+        kind: CallKind::Call,
+        gas: gas_to_forward,
+        address: to,
+        caller: call_env.self_address,
+        value,
+        code_address: to,
+        input,
+        is_static: false,
+    };
+    let result = host.call(state, msg);
+    if result.gas_used > gas_to_forward {
+        return Err(EvmError::OutOfGas);
+    }
+    utils::consume_gas(gas_remaining, result.gas_used)?;
+    *return_data = result.return_data.clone();
+    utils::write_memory_bytes(memory, out_offset, &result.return_data, out_size)?;
+    stack
+        .push(if result.success {
+            U256::ONE
+        } else {
+            U256::ZERO
+        })
+        .map_err(EvmError::from)?;
+    Ok(())
 }
 
-/// DELEGATECALL (0xF4) - Message-call into this account with alternative account's code
-pub fn delegatecall(_stack: &mut Stack, _memory: &mut Memory) -> Result<(), OpcodeError> {
-    Err(OpcodeError::NotImplemented)
+/// CALLCODE (0xF2).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_callcode<S: State, H: Host<S>>(
+    state: &mut S,
+    host: &mut H,
+    stack: &mut Stack,
+    memory: &mut Memory,
+    call_env: &CallEnv,
+    gas_remaining: &mut u64,
+    return_data: &mut Vec<u8>,
+    is_warm: bool,
+) -> Result<(), EvmError> {
+    let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
+    let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    let value = stack.pop().map_err(EvmError::from)?;
+    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+
+    let input = utils::read_memory_bytes(memory, in_offset, in_size)?;
+    let is_value_transfer = !value.is_zero();
+    if is_value_transfer {
+        utils::consume_gas(gas_remaining, GAS_CALL_VALUE_TRANSFER)?;
+    }
+
+    let mut gas_to_forward = gas_requested;
+    let max_forward = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
+    if gas_to_forward > max_forward {
+        gas_to_forward = max_forward;
+    }
+    if is_value_transfer {
+        gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+    }
+
+    let msg = CallMessage {
+        kind: CallKind::CallCode,
+        gas: gas_to_forward,
+        address: call_env.self_address,
+        caller: call_env.self_address,
+        value,
+        code_address: to,
+        input,
+        is_static: false,
+    };
+    let result = host.call(state, msg);
+    if result.gas_used > gas_to_forward {
+        return Err(EvmError::OutOfGas);
+    }
+    utils::consume_gas(gas_remaining, result.gas_used)?;
+    *return_data = result.return_data.clone();
+    utils::write_memory_bytes(memory, out_offset, &result.return_data, out_size)?;
+    stack
+        .push(if result.success {
+            U256::ONE
+        } else {
+            U256::ZERO
+        })
+        .map_err(EvmError::from)?;
+    Ok(())
 }
 
-/// SELFDESTRUCT (0xFF) - Halt execution and register account for later deletion
-pub fn selfdestruct(_stack: &mut Stack) -> Result<(), OpcodeError> {
-    Err(OpcodeError::NotImplemented)
+/// DELEGATECALL (0xF4).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_delegatecall<S: State, H: Host<S>>(
+    state: &mut S,
+    host: &mut H,
+    stack: &mut Stack,
+    memory: &mut Memory,
+    call_env: &CallEnv,
+    gas_remaining: &mut u64,
+    return_data: &mut Vec<u8>,
+    is_warm: bool,
+) -> Result<(), EvmError> {
+    // Stack (top to bottom): gas, to, in_offset, in_size, out_offset, out_size
+    let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
+    let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+
+    let input = utils::read_memory_bytes(memory, in_offset, in_size)?;
+    let mut gas_to_forward = gas_requested;
+    let max_forward = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
+    if gas_to_forward > max_forward {
+        gas_to_forward = max_forward;
+    }
+
+    let msg = CallMessage {
+        kind: CallKind::DelegateCall,
+        gas: gas_to_forward,
+        address: call_env.self_address,
+        caller: call_env.caller,
+        value: call_env.call_value,
+        code_address: to,
+        input,
+        is_static: false,
+    };
+    let result = host.call(state, msg);
+    if result.gas_used > gas_to_forward {
+        return Err(EvmError::OutOfGas);
+    }
+    utils::consume_gas(gas_remaining, result.gas_used)?;
+    *return_data = result.return_data.clone();
+    utils::write_memory_bytes(memory, out_offset, &result.return_data, out_size)?;
+    stack
+        .push(if result.success {
+            U256::ONE
+        } else {
+            U256::ZERO
+        })
+        .map_err(EvmError::from)?;
+    Ok(())
+}
+
+/// STATICCALL (0xFA).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_staticcall<S: State, H: Host<S>>(
+    state: &mut S,
+    host: &mut H,
+    stack: &mut Stack,
+    memory: &mut Memory,
+    call_env: &CallEnv,
+    gas_remaining: &mut u64,
+    return_data: &mut Vec<u8>,
+    is_warm: bool,
+) -> Result<(), EvmError> {
+    // Stack (top to bottom): gas, to, in_offset, in_size, out_offset, out_size
+    let gas_requested = stack.pop().map_err(EvmError::from)?.as_u64();
+    let to = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    let in_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let in_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_offset = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+    let out_size = u256_to_usize(&stack.pop().map_err(EvmError::from)?);
+
+    if is_warm {
+        *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
+    }
+
+    let input = utils::read_memory_bytes(memory, in_offset, in_size)?;
+    let mut gas_to_forward = gas_requested;
+    let max_forward = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
+    if gas_to_forward > max_forward {
+        gas_to_forward = max_forward;
+    }
+
+    let msg = CallMessage {
+        kind: CallKind::StaticCall,
+        gas: gas_to_forward,
+        address: to,
+        caller: call_env.self_address,
+        value: U256::ZERO,
+        code_address: to,
+        input,
+        is_static: true,
+    };
+    let result = host.call(state, msg);
+    if result.gas_used > gas_to_forward {
+        return Err(EvmError::OutOfGas);
+    }
+    utils::consume_gas(gas_remaining, result.gas_used)?;
+    *return_data = result.return_data.clone();
+    utils::write_memory_bytes(memory, out_offset, &result.return_data, out_size)?;
+    stack
+        .push(if result.success {
+            U256::ONE
+        } else {
+            U256::ZERO
+        })
+        .map_err(EvmError::from)?;
+    Ok(())
+}
+
+/// SELFDESTRUCT (0xFF).
+pub fn execute_selfdestruct<S: State>(
+    state: &mut S,
+    stack: &mut Stack,
+    self_address: Address,
+) -> Result<(), EvmError> {
+    let beneficiary = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
+    state.selfdestruct(&self_address, &beneficiary);
+    Ok(())
 }
 
 // =============================================================================
@@ -654,13 +1061,16 @@ mod tests {
 
     #[test]
     fn test_blockhash() {
+        use crate::evm::host::NullHost;
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
-        let block_ctx = create_block_context();
+        let host = NullHost;
 
         stack.push(U256::from_u64(999)).unwrap();
-        blockhash(&mut stack, &block_ctx).unwrap();
+        blockhash_with_host::<InMemoryState, _>(&mut stack, &host).unwrap();
 
-        // Stub returns zero
+        // NullHost returns None -> zero hash
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
 
@@ -926,50 +1336,74 @@ mod tests {
 
     #[test]
     fn test_balance() {
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
+        let state = InMemoryState::new();
+        let mut gas = 10_000u64;
 
-        stack.push(address_to_u256(&Address::from([0x12; 20]))).unwrap();
-        balance(&mut stack).unwrap();
+        stack
+            .push(address_to_u256(&Address::from([0x12; 20])))
+            .unwrap();
+        balance::<InMemoryState>(&mut stack, &state, false, &mut gas).unwrap();
 
-        // Stub returns zero
+        // Empty state returns zero
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
 
     #[test]
     fn test_extcodesize() {
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
+        let state = InMemoryState::new();
+        let mut gas = 10_000u64;
 
-        stack.push(address_to_u256(&Address::from([0x12; 20]))).unwrap();
-        extcodesize(&mut stack).unwrap();
+        stack
+            .push(address_to_u256(&Address::from([0x12; 20])))
+            .unwrap();
+        extcodesize::<InMemoryState>(&mut stack, &state, false, &mut gas).unwrap();
 
-        // Stub returns zero
+        // No code returns zero
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
 
     #[test]
     fn test_extcodecopy() {
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
         let mut memory = Memory::new();
+        let state = InMemoryState::new();
+        let mut gas = 10_000u64;
 
         stack.push(U256::from_u64(10)).unwrap(); // size
         stack.push(U256::ZERO).unwrap(); // offset
         stack.push(U256::ZERO).unwrap(); // dest_offset
-        stack.push(address_to_u256(&Address::from([0x12; 20]))).unwrap(); // address
-        extcodecopy(&mut stack, &mut memory).unwrap();
+        stack
+            .push(address_to_u256(&Address::from([0x12; 20])))
+            .unwrap(); // address
+        extcodecopy::<InMemoryState>(&mut stack, &state, &mut memory, false, &mut gas).unwrap();
 
-        // Stub fills with zeros
+        // No code fills with zeros
         let result = memory.mload(0).unwrap();
         assert_eq!(result, U256::ZERO);
     }
 
     #[test]
     fn test_extcodehash() {
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
+        let state = InMemoryState::new();
+        let mut gas = 10_000u64;
 
-        stack.push(address_to_u256(&Address::from([0x12; 20]))).unwrap();
-        extcodehash(&mut stack).unwrap();
+        stack
+            .push(address_to_u256(&Address::from([0x12; 20])))
+            .unwrap();
+        extcodehash::<InMemoryState>(&mut stack, &state, false, &mut gas).unwrap();
 
-        // Stub returns hash of empty bytes
+        // Empty account returns EMPTY_CODE_HASH (keccak256 of empty)
         let empty_hash = keccak256(&[]);
         let mut bytes = [0u8; 32];
         bytes.copy_from_slice(empty_hash.as_bytes());
@@ -978,11 +1412,15 @@ mod tests {
 
     #[test]
     fn test_selfbalance() {
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
+        let state = InMemoryState::new();
+        let addr = Address::from([0x42; 20]);
 
-        selfbalance(&mut stack).unwrap();
+        selfbalance::<InMemoryState>(&mut stack, &state, addr).unwrap();
 
-        // Stub returns zero
+        // Empty state returns zero
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
 
@@ -1087,60 +1525,54 @@ mod tests {
     }
 
     // =============================================================================
-    // Complex Opcode Tests (Stubs)
+    // Complex Opcode Tests (execute_* with NullHost / InMemoryState)
     // =============================================================================
 
     #[test]
-    fn test_create_not_implemented() {
+    fn test_execute_create_with_null_host() {
+        use crate::evm::host::NullHost;
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
         let mut memory = Memory::new();
+        let mut state = InMemoryState::new();
+        let mut host = NullHost;
+        let mut gas = 100_000u64;
+        let mut return_data = Vec::new();
+        let call_env = CallEnv {
+            self_address: Address::from([0xAA; 20]),
+            caller: Address::from([0xBB; 20]),
+            call_value: U256::ZERO,
+        };
 
-        let result = create(&mut stack, &mut memory);
-        assert_eq!(result, Err(OpcodeError::NotImplemented));
+        stack.push(U256::from_u64(0)).unwrap(); // size
+        stack.push(U256::from_u64(0)).unwrap(); // offset
+        stack.push(U256::ZERO).unwrap(); // value
+        execute_create::<InMemoryState, _>(
+            &mut state,
+            &mut host,
+            &mut stack,
+            &mut memory,
+            &call_env,
+            &mut gas,
+            &mut return_data,
+        )
+        .unwrap();
+        // NullHost returns failure -> 0 on stack
+        assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
 
     #[test]
-    fn test_create2_not_implemented() {
+    fn test_execute_selfdestruct() {
+        use crate::state::InMemoryState;
+
         let mut stack = Stack::new();
-        let mut memory = Memory::new();
+        let mut state = InMemoryState::new();
+        let self_addr = Address::from([0xAA; 20]);
+        let beneficiary = Address::from([0xBB; 20]);
 
-        let result = create2(&mut stack, &mut memory);
-        assert_eq!(result, Err(OpcodeError::NotImplemented));
-    }
-
-    #[test]
-    fn test_call_not_implemented() {
-        let mut stack = Stack::new();
-        let mut memory = Memory::new();
-
-        let result = call(&mut stack, &mut memory);
-        assert_eq!(result, Err(OpcodeError::NotImplemented));
-    }
-
-    #[test]
-    fn test_staticcall_not_implemented() {
-        let mut stack = Stack::new();
-        let mut memory = Memory::new();
-
-        let result = staticcall(&mut stack, &mut memory);
-        assert_eq!(result, Err(OpcodeError::NotImplemented));
-    }
-
-    #[test]
-    fn test_delegatecall_not_implemented() {
-        let mut stack = Stack::new();
-        let mut memory = Memory::new();
-
-        let result = delegatecall(&mut stack, &mut memory);
-        assert_eq!(result, Err(OpcodeError::NotImplemented));
-    }
-
-    #[test]
-    fn test_selfdestruct_not_implemented() {
-        let mut stack = Stack::new();
-
-        let result = selfdestruct(&mut stack);
-        assert_eq!(result, Err(OpcodeError::NotImplemented));
+        stack.push(utils::address_to_u256(&beneficiary)).unwrap();
+        execute_selfdestruct::<InMemoryState>(&mut state, &mut stack, self_addr).unwrap();
     }
 
     // =============================================================================

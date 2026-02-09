@@ -30,7 +30,6 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -38,46 +37,8 @@ import typer  # pyright: ignore[reportMissingImports]
 
 DEFAULT_ITERATIONS = 50
 DEFAULT_NO_CHANGE_EXIT_AFTER = 10
-DEFAULT_PROMPT_FILE = "PROMPT.md"
+PROMPT_FILE = "PROMPT.md"
 
-
-def _repo_dir() -> Path:
-    # `ralph.py` lives in the repo root; anchor git commands here (not the caller's CWD).
-    return Path(__file__).resolve().parent
-
-
-def _resolve_prompt_file(prompt_file: Path, cwd: Path) -> Path:
-    if prompt_file.is_absolute():
-        return prompt_file
-    return cwd / prompt_file
-
-
-def _load_prompt(prompt: Optional[str], prompt_file: Path, cwd: Path) -> str:
-    if prompt is not None:
-        if not prompt.strip():
-            typer.echo("PROMPT argument cannot be empty.", err=True)
-            raise typer.Exit(code=2)
-        return prompt
-
-    path = _resolve_prompt_file(prompt_file, cwd)
-    try:
-        contents = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        typer.echo(
-            f"Prompt file not found: {path}\n"
-            "Create PROMPT.md in the repo root, or pass a PROMPT argument.",
-            err=True,
-        )
-        raise typer.Exit(code=2) from None
-    except OSError as e:
-        typer.echo(f"Failed to read prompt file {path}: {e}", err=True)
-        raise typer.Exit(code=2) from None
-
-    if not contents.strip():
-        typer.echo(f"Prompt file {path} is empty.", err=True)
-        raise typer.Exit(code=2)
-
-    return contents
 
 
 def _git_bytes(cwd: Path, *args: str) -> bytes:
@@ -174,10 +135,6 @@ def _git_state_fingerprint(cwd: Path) -> str:
 
 
 def cli(
-    prompt: Optional[str] = typer.Argument(
-        None,
-        help=f"Prompt to pass to Claude. If omitted, reads {DEFAULT_PROMPT_FILE}.",
-    ),
     iterations: int = typer.Option(
         DEFAULT_ITERATIONS,
         "--iterations",
@@ -209,7 +166,7 @@ def cli(
     """
 
     cwd = Path(__file__).resolve().parent
-    resolved_prompt = _load_prompt(prompt, Path(DEFAULT_PROMPT_FILE), cwd)
+    resolved_prompt = (cwd / PROMPT_FILE).read_text(encoding="utf-8")
     previous_head = _head_sha(cwd) if no_change_exit_after else None
     previous_fingerprint = _git_state_fingerprint(cwd) if no_change_exit_after else ""
     no_change_streak = 0

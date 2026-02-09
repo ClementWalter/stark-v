@@ -8,6 +8,7 @@
 //! - Interpreter: Bytecode execution engine
 
 pub mod disassembler;
+pub mod error;
 pub mod gas;
 pub mod host;
 pub mod interpreter;
