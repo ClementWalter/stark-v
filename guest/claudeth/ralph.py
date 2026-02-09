@@ -166,7 +166,6 @@ def cli(
     """
 
     cwd = Path(__file__).resolve().parent
-    resolved_prompt = (cwd / PROMPT_FILE).read_text(encoding="utf-8")
     previous_head = _head_sha(cwd) if no_change_exit_after else None
     previous_fingerprint = _git_state_fingerprint(cwd) if no_change_exit_after else ""
     no_change_streak = 0
@@ -175,6 +174,7 @@ def cli(
         for i in range(1, iterations + 1):
             typer.echo(f"Iteration {i} of {iterations}", err=True)
             try:
+                resolved_prompt = (cwd / PROMPT_FILE).read_text(encoding="utf-8")
                 typer.echo(f"Running Claude with prompt: {resolved_prompt}", err=True)
                 completed = subprocess.run(
                     ["claude", "--dangerously-skip-permissions", "-p", resolved_prompt,  "--output-format", "stream-json", "--verbose"],

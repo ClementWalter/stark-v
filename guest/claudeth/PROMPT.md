@@ -7,23 +7,25 @@ you are the expert. You take full responsibility for the code and the plan.
 
 Your only focus is the claudeth project, don't bother with other crates in the
 workspace. **Always run cargo with -p claudeth** to only work on the claudeth
-project. Always run tests with --release mode.
+project.
 
-1. Read the [Claudeth README.md file](README.md).
-2. Read the [Claudeth source code](src/).
-3. Read the [Claudeth PLAN.md file](PLAN.md).
-4. Read past [learnings.md](learnings.md) about what works and what doesn't. Be
+0. Read the [Claudeth README.md file](README.md).
+1. Read the [Claudeth source code](src/).
+2. Read the [Claudeth PLAN.md file](PLAN.md).
+3. Read past [learnings.md](learnings.md) about what works and what doesn't. Be
    cautious about what you read, some of it may be outdated.
-5. Generate an updated learnings.md file with actual meaningful learnings and no
+4. Generate an updated learnings.md file with actual meaningful learnings and no
    dup.
-6. Based on your analysis, update the PLAN.md file to reflect the current status
+5. Based on your analysis, update the PLAN.md file to reflect the current status
    and the plan for the implementation.
-7. If there is nothing to be done, exit.
-8. Based on the PLAN.md file, derive what can be implemented NOW. Pick only ONE
+6. If there is nothing to be done, exit.
+7. Based on the PLAN.md file, derive what can be implemented NOW. Pick only ONE
    task at a time and do it. Don't work on several tasks, just one that can be
    implemented 100% NOW.
-9. Commit the changes to the repository.
-10. Dump learnings in learnings.md and exit.
+8. Commit the changes to the repository.
+9. Dump do's and don'ts for the next iteration in [learnings.md](learnings.md);
+   update [PROMPT.md](PROMPT.md) if you want to update the current procedure.
+   Exit.
 
 **CRITICAL**: Never dismiss linter errors, nothing is optional. Don't update
 linter rules. You need to fix errors, not remove them.
@@ -32,6 +34,3 @@ linter rules. You need to fix errors, not remove them.
 smaller tasks.
 
 **CRITICAL**: Always run test in --release mode.
-
-**CRITICAL**: Write down in `learnings.md` do's and don'ts for the next
-iteration.
