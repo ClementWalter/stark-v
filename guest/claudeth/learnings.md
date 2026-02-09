@@ -1,5 +1,45 @@
 # Claudeth Development Learnings
 
+## Session 75: Root Cause Investigation - Storage Persistence (2026-02-09)
+
+**Status**: Investigation in progress
+
+### What Was Investigated
+1. ✅ Analyzed EELS test failures - all show storage keys have zero values instead of expected values
+2. ✅ Traced storage write path: SSTORE → state.sstore() → InMemoryState.sstore() → Storage.set()
+3. ✅ Verified simple storage persistence works in debug test (debug_eels_optionstest.rs)
+4. ✅ Identified discrepancy: debug test checks storage at called address (0xb94f...), EELS expects storage at different address (0x000f3...)
+
+### Key Findings
+
+**Storage persistence works for simple cases**:
+- Debug test shows SSTORE correctly persists values
+- Storage at key 0x01 = 1 after calling contract with code `0x60016000355500`
+- Nonce increment works (nonce = 1 after transaction)
+
+**EELS optionsTest is more complex**:
+- Transaction calls `0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b`
+- Expected storage changes are at `0x000f3df6d732807ef1319fb7b8bb8522d0beac02` (different address!)
+- This indicates DELEGATECALL or contract proxy pattern
+- The actual test fixture has 3 addresses in pre-state, but debug test only uses 2
+
+**Next steps**:
+1. Load FULL pre-state from actual test fixture (all 3 addresses with correct code)
+2. Execute and observe which contracts call each other
+3. Verify DELEGATECALL implementation correctly writes to caller's storage
+4. Check if RecursiveHost properly handles DELEGATECALL storage context
+
+### DO's ✅
+1. **Test with actual fixture data** - simplified tests can miss complex interactions
+2. **Check all pre-state addresses** - contract interactions may involve multiple addresses
+3. **Trace execution flow** - understand which contracts call which
+4. **Verify DELEGATECALL semantics** - storage writes should use caller's address
+
+### DON'Ts ❌
+1. **Don't assume simple CALL when DELEGATECALL might be involved**
+2. **Don't simplify test cases too much** - may lose the bug
+3. **Don't check storage at wrong address** - verify which address should have storage changes
+
 ## Session 74: Pre-State Touch Tracking + State Diff Dumping (2026-02-09)
 
 **Status**: Completed
