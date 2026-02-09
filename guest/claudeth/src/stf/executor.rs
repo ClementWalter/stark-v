@@ -251,12 +251,20 @@ pub fn execute_transaction<S: State + Clone>(
         Err(err) => {
             state.clear_transient_storage();
             state.clear_selfdestructs();
+            state.clear_created_accounts();
             return Err(err);
         }
     };
 
     // Update state with execution results (includes deployed contract code, state changes, etc.)
     *state = returned_state;
+
+    if success {
+        apply_selfdestructs(state);
+    } else {
+        state.clear_selfdestructs();
+        state.clear_created_accounts();
+    }
 
     // Step 4: Post-execution gas refund and finalization
     let total_gas_used = intrinsic_gas + gas_used_execution;
@@ -283,6 +291,7 @@ pub fn execute_transaction<S: State + Clone>(
 
     state.clear_transient_storage();
     state.clear_selfdestructs();
+    state.clear_created_accounts();
 
     Ok(TransactionExecutionResult {
         sender,
@@ -307,16 +316,44 @@ struct ExecutionContexts<'a> {
     tx_ctx: &'a TxContext,
 }
 
-fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mut S) {
-    let value = tx.value();
-    if value == U256::ZERO {
-        return;
+fn apply_selfdestructs<S: State>(state: &mut S) {
+    let mut processed = Vec::new();
+    let selfdestructs = state.get_selfdestructs().to_vec();
+    for (address, beneficiary) in selfdestructs {
+        if processed.contains(&address) {
+            continue;
+        }
+        processed.push(address);
+
+        let balance = state.get_balance(&address);
+        if balance != U256::ZERO {
+            state.set_balance(&address, U256::ZERO);
+            let beneficiary_balance = state.get_balance(&beneficiary);
+            state.set_balance(
+                &beneficiary,
+                beneficiary_balance.saturating_add(balance),
+            );
+        }
+
+        if state.was_created(&address) {
+            state.clear_account(&address);
+        }
     }
 
-    let sender_balance = state.get_balance(sender);
-    state.set_balance(sender, sender_balance.saturating_sub(value));
+    state.clear_selfdestructs();
+    state.clear_created_accounts();
+}
 
+fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mut S) {
+    let value = tx.value();
     if let Some(to) = tx.to() {
+        if value == U256::ZERO {
+            return;
+        }
+
+        let sender_balance = state.get_balance(sender);
+        state.set_balance(sender, sender_balance.saturating_sub(value));
+
         let recipient_balance = state.get_balance(&to);
         state.set_balance(&to, recipient_balance.saturating_add(value));
     } else {
@@ -324,11 +361,17 @@ fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mu
         // Contract address uses the sender's pre-increment nonce.
         let nonce = state.get_nonce(sender).saturating_sub(U256::ONE);
         let contract_address = compute_create_address(sender, nonce);
-        let contract_balance = state.get_balance(&contract_address);
-        state.set_balance(&contract_address, contract_balance.saturating_add(value));
+
+        if value != U256::ZERO {
+            let sender_balance = state.get_balance(sender);
+            state.set_balance(sender, sender_balance.saturating_sub(value));
+            let contract_balance = state.get_balance(&contract_address);
+            state.set_balance(&contract_address, contract_balance.saturating_add(value));
+        }
 
         // EIP-161: Set nonce to 1 for newly created contracts
         state.set_nonce(&contract_address, U256::ONE);
+        state.mark_created(&contract_address);
     }
 }
 
@@ -631,6 +674,51 @@ mod tests {
         // Different nonce should produce different address
         let address2 = compute_create_address(&sender, U256::ZERO);
         assert_ne!(address, address2);
+    }
+
+    #[test]
+    fn test_apply_selfdestruct_non_created_preserves_code_and_storage() {
+        let mut state = InMemoryState::new();
+        let address = Address::from([0x11; 20]);
+        let beneficiary = Address::from([0x22; 20]);
+
+        state.set_balance(&address, U256::from(10u64));
+        state.set_code(&address, vec![0x01, 0x02]);
+        state.sstore(&address, &U256::from(1u64), U256::from(2u64));
+        state.selfdestruct(&address, &beneficiary);
+
+        apply_selfdestructs(&mut state);
+
+        assert_eq!(state.get_balance(&address), U256::ZERO);
+        assert_eq!(state.get_balance(&beneficiary), U256::from(10u64));
+        assert!(!state.get_code(&address).is_empty());
+        assert_eq!(
+            state.sload(&address, &U256::from(1u64)),
+            U256::from(2u64)
+        );
+        assert!(state.account_exists(&address));
+    }
+
+    #[test]
+    fn test_apply_selfdestruct_created_clears_account() {
+        let mut state = InMemoryState::new();
+        let address = Address::from([0x33; 20]);
+        let beneficiary = Address::from([0x44; 20]);
+
+        state.set_balance(&address, U256::from(7u64));
+        state.set_code(&address, vec![0x99]);
+        state.sstore(&address, &U256::from(9u64), U256::from(10u64));
+        state.mark_created(&address);
+        state.selfdestruct(&address, &beneficiary);
+
+        apply_selfdestructs(&mut state);
+
+        assert_eq!(state.get_balance(&address), U256::ZERO);
+        assert_eq!(state.get_balance(&beneficiary), U256::from(7u64));
+        assert!(state.get_code(&address).is_empty());
+        assert_eq!(state.sload(&address, &U256::from(9u64)), U256::ZERO);
+        assert!(!state.account_exists(&address));
+        assert!(!state.was_created(&address));
     }
 
     #[test]

@@ -392,6 +392,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     // Deploy the contract code
                     let mut final_state = evm.into_state();
                     final_state.set_code(&contract_address, exec_result.return_data.clone());
+                    final_state.mark_created(&contract_address);
                     *state = final_state;
                     CreateResult {
                         success: true,

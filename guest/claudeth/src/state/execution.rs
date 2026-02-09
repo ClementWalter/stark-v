@@ -79,6 +79,18 @@ pub trait State {
     /// Clears self-destruct list (called at transaction end)
     fn clear_selfdestructs(&mut self);
 
+    /// Marks an account as created during the current transaction
+    fn mark_created(&mut self, address: &Address);
+
+    /// Returns true if the account was created during the current transaction
+    fn was_created(&self, address: &Address) -> bool;
+
+    /// Clears the list of accounts created during the current transaction
+    fn clear_created_accounts(&mut self);
+
+    /// Clears an account from the state (code, storage, and account data)
+    fn clear_account(&mut self, address: &Address);
+
     /// Computes the current state root
     fn compute_state_root(&self) -> Hash;
 }
@@ -99,6 +111,8 @@ pub struct InMemoryState {
     transient_storage: HashMap<(Address, U256), U256>,
     /// Self-destructed accounts and their beneficiaries
     selfdestructs: Vec<(Address, Address)>,
+    /// Accounts created during the current transaction (EIP-6780 tracking)
+    created_accounts: Vec<Address>,
 }
 
 impl InMemoryState {
@@ -110,6 +124,7 @@ impl InMemoryState {
             storage: HashMap::new(),
             transient_storage: HashMap::new(),
             selfdestructs: Vec::new(),
+            created_accounts: Vec::new(),
         }
     }
 
@@ -319,6 +334,26 @@ impl State for InMemoryState {
 
     fn clear_selfdestructs(&mut self) {
         self.selfdestructs.clear();
+    }
+
+    fn mark_created(&mut self, address: &Address) {
+        if !self.created_accounts.contains(address) {
+            self.created_accounts.push(*address);
+        }
+    }
+
+    fn was_created(&self, address: &Address) -> bool {
+        self.created_accounts.contains(address)
+    }
+
+    fn clear_created_accounts(&mut self) {
+        self.created_accounts.clear();
+    }
+
+    fn clear_account(&mut self, address: &Address) {
+        self.accounts.remove(address);
+        self.code.remove(address);
+        self.storage.remove(address);
     }
 
     fn compute_state_root(&self) -> Hash {

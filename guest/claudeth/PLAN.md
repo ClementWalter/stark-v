@@ -186,16 +186,30 @@ with EIP-1559 accounting and should improve gas mismatch cases.
 - Set nonce=1 in `apply_value_transfer` (CREATE transactions)
 **Impact**: No change in test results - state roots still mismatch (other issues remain)
 
+### Task N13: Apply EIP-6780 SELFDESTRUCT Semantics ✅
+**Result**: SELFDESTRUCT effects are now applied at tx end with post-Shanghai semantics.
+**Changes**:
+- Track accounts created during the current transaction
+- Apply SELFDESTRUCT by transferring balance to beneficiary
+- Delete accounts only when created in the same transaction (EIP-6780)
+- Clear created-account tracking after each transaction
+**Impact**: Not yet re-baselined against EELS (run needed)
+
 ---
 
 ## Immediate Next Task (Execute Next)
 
-**Phase D: Debug Remaining Gas Mismatches**
+**Phase D: Re-baseline EELS After EIP-6780 SELFDESTRUCT**
 
-**Current Status** (Session 68):
-- Gas overcharges in transient storage tests: **FIXED** ✅
-- Remaining gas issues: tipInsideBlock (+5000), mergeExample (-19900)
-- Many tests now have correct gas but wrong state roots (progress!)
+**Goal**:
+- Re-run EELS tests to see if state root mismatches or execution failures change
+- Re-categorize failures with fresh gas traces if needed
+
+**Last Known Status** (Session 72):
+- State root mismatches: 12 tests
+- Gas undercharges: 2 tests (mergeExample -19900)
+- Gas overcharges: 2 tests (tipInsideBlock +5000)
+- Execution failures: 4 tests (ShanghaiLove, StrangeContractCreation)
 
 ### Task D2.6: Fix EELS Header Defaults + Remove Parent Hash Workaround ✅
 **Result**:

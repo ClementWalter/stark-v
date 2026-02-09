@@ -4441,3 +4441,24 @@ if gas_remaining >= code_deposit_cost {
 3. **Don't ignore receipt root mismatches** - May indicate RLP encoding issues
 4. **Don't rush to fix everything** - Focus on one category at a time
 5. **Don't forget to commit incrementally** - Small, focused commits are better
+
+## Session 73: Apply EIP-6780 SELFDESTRUCT Semantics (2026-02-09)
+
+**Status**: Completed
+
+### What Was Accomplished
+1. ✅ Applied SELFDESTRUCT effects at transaction end (balance transfer + optional deletion)
+2. ✅ Tracked accounts created during the current transaction to implement EIP-6780 deletion rules
+3. ✅ Ensured CREATE transactions mark created accounts even with zero value transfers
+4. ✅ Added unit tests for created vs non-created SELFDESTRUCT outcomes
+
+### DO's ✅
+1. **Apply SELFDESTRUCT at tx finalization** and clear the recorded list after processing
+2. **Track accounts created during the current transaction** so EIP-6780 deletion semantics are correct
+3. **Mark created contracts even when value is zero** (CREATE with zero value still creates)
+4. **Clear created-account tracking per transaction** to avoid cross-tx leakage
+
+### DON'Ts ❌
+1. **Don't delete non-created accounts post-Shanghai**; only transfer balance per EIP-6780
+2. **Don't skip marking created accounts** for CREATE/CREATE2 paths
+3. **Don't leave SELFDESTRUCT effects un-applied**; state roots will drift
