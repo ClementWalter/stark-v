@@ -182,12 +182,14 @@ Gas Trace (initial: 340474, used: 22130)
    - Keeps the created address warm for subsequent accesses in the same transaction
    - **RESULT**: No change in test results - still -19900 gas undercharge in mergeExample
    - **ANALYSIS**: The warming was correct but doesn't explain the missing 19900 gas
-2. 🔍 **IN PROGRESS**: Analyze tipInsideBlock (+9200 gas) (Session 60)
+2. 🔍 **IN PROGRESS**: Analyze tipInsideBlock (+9200 gas) (Sessions 60, 62)
    - 3 transactions calling contracts with COINBASE/BALANCE/NUMBER/SSTORE
-   - Identified anomaly: Tx 0 has 16200 intrinsic gas instead of 21000 (4800 less)
-   - Total overcharge: +9200 gas (68411 expected, 77611 computed)
-   - **HYPOTHESIS**: First transaction intrinsic gas calculation error OR coinbase warm/cold logic
-   - **NEXT**: Investigate intrinsic gas calculation and coinbase address warming rules
+   - Total overcharge: +9200 gas (68411 expected, 77611 computed ≈ +3066 per tx)
+   - **VERIFIED**: EIP-2929 warm/cold logic is correct, access lists cleared per-transaction
+   - **VERIFIED**: Coinbase is correctly COLD on first access in each transaction
+   - **VERIFIED**: Intrinsic gas calculation is correct (21000 for simple calls)
+   - **HYPOTHESIS**: SSTORE gas costs may be incorrect for modifying existing storage
+   - **NEXT**: Enable gas tracing to see exact SSTORE costs, verify against EIP-2200/2929/3529
 3. ⏭️ Analyze transient storage tests (+2100 gas): May be related to intrinsic gas or other costs
 4. ⏭️ Debug execution failures (ShanghaiLove, StrangeContractCreation): contracts fail to execute
 5. ⏭️ Debug state root mismatches (8 tests): correct gas but wrong final state

@@ -1,5 +1,52 @@
 # Claudeth Development Learnings
 
+## Session 62: Investigate EIP-2929 Per-Transaction Access Lists (2026-02-09)
+
+**Status**: Analysis in progress - discovered potential EIP-2929 scope issue
+
+### Investigation Summary
+Investigated tipInsideBlock gas overcharge (+9200 gas across 3 transactions). Initial hypothesis was incorrect warm/cold access cost tracking.
+
+### Key Findings
+1. ✅ **EIP-2929 implementation is correct** for per-opcode gas charging:
+   - Charges 2600 gas (cold) from gas table upfront
+   - If warm, adds 2500 back to gas_remaining (effectively charges 100)
+   - This bypasses refund caps but that's correct - warm/cold costs are discounts, not refunds
+
+2. ✅ **EIP-2929 access lists ARE correctly cleared between transactions**:
+   - accessed_addresses and accessed_storage are created fresh for each transaction
+   - Each transaction creates a new Evm instance via execute_call/execute_create
+   - Coinbase is correctly COLD (2600 gas) on first BALANCE in each transaction
+   - This implementation is correct per EIP-2929 spec
+
+3. ⚠️ **Coinbase is NOT pre-warmed** (this is correct per EIP-2929):
+   - Only tx.origin, tx.to, precompiles, and access list addresses are pre-warmed
+   - Coinbase BALANCE should be COLD (2600) on first access in each transaction
+
+4. ❓ **Root cause still unknown**: We're OVERCHARGING by +9200 gas (≈3066 per tx)
+   - EIP-2929 implementation is correct, not the cause
+   - All 3 transactions execute same bytecode (COINBASE BALANCE NUMBER SSTORE STOP)
+   - Overcharge is consistent across transactions
+   - Need to investigate: SSTORE costs, intrinsic gas, other opcode costs
+
+### Next Steps
+1. ⏭️ Enable gas tracing for tipInsideBlock to see exact per-opcode costs
+2. ⏭️ Investigate SSTORE gas costs - test modifies storage (slot 0x02 from 0x01 to block.number)
+3. ⏭️ Check SSTORE original value tracking - is it using pre-transaction value correctly?
+4. ⏭️ Verify SSTORE gas formula matches EIP-2200/EIP-2929/EIP-3529
+5. ⏭️ Compare our SSTORE gas with reference implementation (Geth) for same state transition
+
+### DO's ✅
+1. **Clear accessed_addresses and accessed_storage at the start of each transaction** per EIP-2929
+2. **Distinguish between refunds (SSTORE clearing storage) and discounts (warm access costs)**
+3. **Verify gas paradoxes** - if theory predicts undercharge but tests show overcharge, theory is wrong
+
+### DON'Ts ❌
+1. **Don't assume access lists persist across transactions** - verified they're correctly cleared
+2. **Don't pre-warm coinbase address** - only origin, to, precompiles, and access list
+3. **Don't confuse warm/cold discounts with refunds** - discounts adjust gas_remaining, refunds cap at 1/5
+4. **Don't jump to conclusions without verifying** - my initial "access list persistence" hypothesis was wrong
+
 ## Session 61: Burn Base Fee, Pay Coinbase Tip Only (2026-02-09)
 
 **Status**: Completed - EIP-1559 coinbase payout fixed
