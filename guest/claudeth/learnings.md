@@ -1,5 +1,73 @@
 # Claudeth Development Learnings
 
+## Session 26: Rust 2024 Edition Compliance + README Accuracy (2026-02-09)
+
+**Status**: Phase C Task C1 maintenance + Documentation accuracy
+
+### What Was Accomplished
+1. ✅ Fixed Rust 2024 edition unsafe blocks in zkvm_io module
+2. ✅ Updated `no_mangle` attribute to use `unsafe(no_mangle)` syntax
+3. ✅ Updated README to accurately reflect current implementation status
+4. ✅ All 1168 tests passing, zero clippy warnings
+5. ✅ riscv32 compilation verified working
+
+### Notes
+- Rust 2024 edition requires unsafe blocks even inside unsafe functions
+- `no_mangle` attribute now requires `unsafe(no_mangle)` wrapper
+- README previously made aspirational claims - now accurately documents status
+
+### DO's ✅
+1. **Keep README accurate** - Document what IS implemented, not what you hope to implement
+2. **Mark in-progress features clearly** - Use ⚠️ for pending work
+3. **Test after unsafe changes** - Always verify both native and riscv32 targets
+4. **Add SAFETY comments** - Explain why unsafe blocks are safe
+5. **Update documentation when reality changes** - Don't let docs drift from code
+
+### DON'Ts ❌
+1. **Don't make unverified claims** - "100% EELS compliant" requires actual testing
+2. **Don't claim features not implemented** - "dependency free" when using k256 is misleading
+3. **Don't use old unsafe patterns** - Rust 2024 edition has stricter requirements
+4. **Don't skip target verification** - Check both x86_64 and riscv32 after changes
+
+### Key Patterns for Rust 2024 Edition
+
+**Unsafe functions with unsafe operations**:
+```rust
+pub unsafe fn read_all_input() -> Vec<u8> {
+    // SAFETY: Caller ensures __input_start and __input_end are valid memory regions
+    unsafe {
+        let start = core::ptr::addr_of!(__input_start) as usize;
+        // ... unsafe operations inside unsafe block
+    }
+}
+```
+
+**Unsafe no_mangle attribute**:
+```rust
+#[unsafe(no_mangle)]
+pub extern "C" fn __zkvm_start() -> ! {
+    // entry point
+}
+```
+
+### Session 26 Result
+**Phase C Task C1: ✅ MAINTAINED** - Rust 2024 compliance:
+- Fixed 4 unsafe block warnings ✅
+- Fixed no_mangle attribute error ✅
+- All tests passing ✅
+- riscv32 compilation working ✅
+
+**Documentation: ✅ ACCURATE** - README now reflects reality:
+- Documents production-ready features ✅
+- Marks in-progress work clearly ✅
+- Removes unverified claims ✅
+
+### Next Session Should
+Since Task C2 (witness-based reconstruction) requires design work and isn't fully specified, next session should either:
+1. Design and implement witness-based state reconstruction (requires MPT proof format design)
+2. Integrate EELS test vectors (Phase D)
+3. Begin dependency elimination (Phase E - high risk, large scope)
+
 ## Session 25: Guest Entry Point + State Snapshot I/O (2026-02-09)
 
 **Status**: Phase C Task C1 COMPLETE - Guest entry now wired with RLP I/O

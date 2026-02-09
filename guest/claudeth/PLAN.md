@@ -133,7 +133,64 @@ Goal: finalize per-transaction correctness before block processing.
 - Wire block processing to guest program
 - Fix Rust 2024 edition unsafe blocks and no_mangle attribute requirements
 
-### Task C2: Witness-based State Reconstruction (NEXT)
-- Define proof-based input format using Partial MPT proofs
-- Rebuild minimal account/storage state from proofs
-- Validate reconstructed state root against header
+### Task C2: Witness-based State Reconstruction (BLOCKED - NEEDS DESIGN)
+- **Status**: Requires design work before implementation
+- **Blockers**:
+  1. Need to define proof format (account proofs + storage proofs)
+  2. Need host tooling to generate proofs (chicken-and-egg: must pre-execute to know access list)
+  3. Need to decide on proof structure (separate vs. combined, ordering, etc.)
+- **Tasks when unblocked**:
+  - Define proof-based input format using Partial MPT proofs
+  - Add proof deserialization to main.rs
+  - Rebuild minimal account/storage state from proofs
+  - Validate reconstructed state root against header
+
+### Phase C Status: PAUSED - C2 needs design before implementation
+
+**Current State**:
+- Guest program works with full state snapshots ✅
+- MPT proof generation/verification implemented ✅
+- Witness-based reconstruction not yet designed ⚠️
+
+**README now accurately reflects implementation status** ✅
+
+---
+
+## Available Next Tasks
+
+With Phase C blocked on design work, the following tasks are available:
+
+### Option 1: Phase D - EELS Compliance Testing
+**Concrete and verifiable** - Download EELS test vectors and run them:
+- Fetch EELS test vectors from ethereum/execution-spec-tests
+- Build test harness to parse and execute test vectors
+- Run tests and fix any spec mismatches
+- Achieve 100% pass rate on relevant test suites
+
+**Risk**: May discover spec gaps that require significant implementation work
+
+### Option 2: Phase E - Dependency Elimination
+**High risk but well-defined** - Replace external crypto dependencies:
+- Implement secp256k1 point operations (add, double, multiply)
+- Implement ECDSA signature verification
+- Implement public key recovery
+- Replace k256 dependency
+- Remove rand from tests with deterministic vectors
+
+**Risk**: Cryptographic implementation errors could introduce vulnerabilities
+
+### Option 3: Unblock Task C2 - Design Witness Format
+**Requires architectural decisions** - Define proof-based input:
+- Design MPT proof format for accounts and storage
+- Define input structure (proofs + transactions + headers)
+- Document assumptions (who generates proofs, access list discovery)
+- Implement proof deserialization and state reconstruction
+
+**Risk**: Design decisions may need iteration/refinement
+
+### Recommendation
+**Start with Phase D (EELS testing)** - It's concrete, verifiable, and will:
+1. Validate correctness of current implementation
+2. Reveal any spec gaps
+3. Provide regression suite for future changes
+4. Build confidence before tackling crypto or witness design
