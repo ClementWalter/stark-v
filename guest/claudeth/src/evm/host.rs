@@ -363,6 +363,10 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             create_state.set_balance(&contract_address, contract_balance.saturating_add(msg.value));
         }
 
+        // EIP-161: Set nonce to 1 for newly created contracts
+        // This must happen before executing the init code
+        create_state.set_nonce(&contract_address, U256::ONE);
+
         // Build call context for the constructor
         use crate::evm::interpreter::{CallContext, Evm, EvmError};
 

@@ -326,6 +326,9 @@ fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mu
         let contract_address = compute_create_address(sender, nonce);
         let contract_balance = state.get_balance(&contract_address);
         state.set_balance(&contract_address, contract_balance.saturating_add(value));
+
+        // EIP-161: Set nonce to 1 for newly created contracts
+        state.set_nonce(&contract_address, U256::ONE);
     }
 }
 

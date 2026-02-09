@@ -34,6 +34,9 @@ pub trait State {
     /// Gets the nonce of an account
     fn get_nonce(&self, address: &Address) -> U256;
 
+    /// Sets the nonce of an account
+    fn set_nonce(&mut self, address: &Address, nonce: U256);
+
     /// Increments the nonce of an account by 1
     fn increment_nonce(&mut self, address: &Address);
 
@@ -153,22 +156,6 @@ impl InMemoryState {
     pub fn clear_selfdestructs(&mut self) {
         self.selfdestructs.clear();
     }
-
-    /// Sets the nonce of an account directly.
-    ///
-    /// This is intended for initializing state snapshots in guest entry points.
-    pub fn set_nonce(&mut self, address: &Address, nonce: U256) {
-        self.ensure_account(address);
-        #[cfg(not(target_arch = "riscv32"))]
-        if let Some(account) = self.accounts.get_mut(address) {
-            account.nonce = nonce;
-        }
-
-        #[cfg(target_arch = "riscv32")]
-        if let Some(account) = self.accounts.get_mut(address) {
-            account.nonce = nonce;
-        }
-    }
 }
 
 impl Default for InMemoryState {
@@ -197,6 +184,19 @@ impl State for InMemoryState {
 
     fn get_nonce(&self, address: &Address) -> U256 {
         self.get_account(address).nonce
+    }
+
+    fn set_nonce(&mut self, address: &Address, nonce: U256) {
+        self.ensure_account(address);
+        #[cfg(not(target_arch = "riscv32"))]
+        if let Some(account) = self.accounts.get_mut(address) {
+            account.nonce = nonce;
+        }
+
+        #[cfg(target_arch = "riscv32")]
+        if let Some(account) = self.accounts.get_mut(address) {
+            account.nonce = nonce;
+        }
     }
 
     fn increment_nonce(&mut self, address: &Address) {
