@@ -842,7 +842,15 @@ fn test_execute_all_blockchain_tests() {
                 };
 
                 // Execute block
-                match process_block(&block_header, &parent_header, &transactions, &mut state, chain_id) {
+                let withdrawals = vec![];
+                match process_block(
+                    &block_header,
+                    &parent_header,
+                    &transactions,
+                    &withdrawals,
+                    &mut state,
+                    chain_id,
+                ) {
                     Ok(result) => {
                         parent_header = block_header;
                         block_results.push(result);

@@ -25,7 +25,7 @@ use crate::stf::{
     calculate_receipts_root_with_types, execute_transaction, Bloom, ExecutionError,
     TransactionExecutionResult, TransactionReceipt,
 };
-use crate::types::{BlockHeader, Hash, Transaction, U256};
+use crate::types::{BlockHeader, Hash, Transaction, U256, Withdrawal};
 
 #[cfg(test)]
 use crate::state::EMPTY_TRIE_ROOT;
@@ -114,6 +114,22 @@ pub enum BlockProcessingError {
         /// Partial transaction results (for debugging)
         transaction_results: Vec<TransactionExecutionResult>,
     },
+    /// Withdrawals were provided but the header has no withdrawals root
+    UnexpectedWithdrawals {
+        /// Number of withdrawals provided
+        count: usize,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
+    },
+    /// Computed withdrawals root doesn't match header
+    WithdrawalsRootMismatch {
+        /// Expected withdrawals root from header
+        expected: Hash,
+        /// Computed withdrawals root
+        computed: Hash,
+        /// Partial transaction results (for debugging)
+        transaction_results: Vec<TransactionExecutionResult>,
+    },
 }
 
 impl From<ExecutionError> for BlockProcessingError {
@@ -187,6 +203,25 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
     state.compute_state_root()
 }
 
+/// Computes the withdrawals root from a list of withdrawals.
+fn calculate_withdrawals_root(withdrawals: &[Withdrawal]) -> Hash {
+    let mut trie = Trie::new();
+    for (index, withdrawal) in withdrawals.iter().enumerate() {
+        let key = encode_u256(&U256::from(index as u64));
+        let value = withdrawal.encode_rlp();
+        trie.insert(&key, value);
+    }
+    trie.compute_root()
+}
+
+/// Applies withdrawals to the state (credits balances).
+fn apply_withdrawals<S: State>(state: &mut S, withdrawals: &[Withdrawal]) {
+    for withdrawal in withdrawals {
+        let balance = state.get_balance(&withdrawal.address);
+        state.set_balance(&withdrawal.address, balance + withdrawal.amount_wei());
+    }
+}
+
 // =============================================================================
 // Block Processor
 // =============================================================================
@@ -199,6 +234,7 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 /// * `transactions` - The transactions in the block
 /// * `state` - The current state (will be mutated)
 /// * `chain_id` - The expected chain ID
+/// * `withdrawals` - The withdrawals in the block
 ///
 /// # Returns
 /// The block processing result with gas used, receipts, and roots
@@ -246,16 +282,19 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 /// block.parent_hash = parent.compute_hash();
 ///
 /// let transactions = vec![];
+/// let withdrawals = vec![];
 /// let mut state = InMemoryState::new();
 ///
 /// // Process empty block (should succeed)
-/// let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+/// let result =
+///     process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
 /// assert!(result.is_ok());
 /// ```
 pub fn process_block<S: State + Clone>(
     block: &BlockHeader,
     parent: &BlockHeader,
     transactions: &[Transaction],
+    withdrawals: &[Withdrawal],
     state: &mut S,
     chain_id: U256,
 ) -> Result<BlockProcessingResult, BlockProcessingError> {
@@ -314,7 +353,16 @@ pub fn process_block<S: State + Clone>(
         transaction_results.push(exec_result);
     }
 
-    // Step 4: Compute roots and bloom
+    if block.withdrawals_root.is_none() && !withdrawals.is_empty() {
+        return Err(BlockProcessingError::UnexpectedWithdrawals {
+            count: withdrawals.len(),
+            transaction_results: transaction_results.clone(),
+        });
+    }
+
+    // Step 4: Apply withdrawals and compute roots and bloom
+    apply_withdrawals(state, withdrawals);
+
     let transactions_refs: Vec<&Transaction> = transactions.iter().collect();
     let receipts_root = calculate_receipts_root_with_types(&receipts, &transactions_refs);
     let transactions_root = calculate_transactions_root(transactions);
@@ -358,6 +406,18 @@ pub fn process_block<S: State + Clone>(
         });
     }
 
+    // Validate withdrawals root
+    if let Some(expected_withdrawals_root) = block.withdrawals_root {
+        let computed_withdrawals_root = calculate_withdrawals_root(withdrawals);
+        if computed_withdrawals_root != expected_withdrawals_root {
+            return Err(BlockProcessingError::WithdrawalsRootMismatch {
+                expected: expected_withdrawals_root,
+                computed: computed_withdrawals_root,
+                transaction_results: transaction_results.clone(),
+            });
+        }
+    }
+
     // Validate state root
     if state_root != block.state_root {
         return Err(BlockProcessingError::StateRootMismatch {
@@ -384,7 +444,7 @@ pub fn process_block<S: State + Clone>(
 mod tests {
     use super::*;
     use crate::state::InMemoryState;
-    use crate::types::{Address, Bytes, Hash, EMPTY_OMMERS_HASH};
+    use crate::types::{Address, Bytes, Hash, Withdrawal, EMPTY_OMMERS_HASH};
 
     fn create_test_parent() -> BlockHeader {
         BlockHeader {
@@ -424,9 +484,11 @@ mod tests {
         let parent = create_test_parent();
         let block = create_test_block(&parent);
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         if let Err(ref e) = result {
             eprintln!("Error processing empty block: {e:?}");
         }
@@ -444,9 +506,11 @@ mod tests {
         let mut block = create_test_block(&parent);
         block.parent_hash = Hash::ZERO; // Wrong parent hash
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -459,9 +523,11 @@ mod tests {
         let mut block = create_test_block(&parent);
         block.number = parent.number + 2; // Wrong number (should be parent + 1)
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -474,9 +540,11 @@ mod tests {
         let mut block = create_test_block(&parent);
         block.timestamp = parent.timestamp; // Invalid: must be > parent timestamp
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -490,9 +558,11 @@ mod tests {
         // Gas limit increase > parent/1024
         block.gas_limit = parent.gas_limit + (parent.gas_limit / 1024) + 1;
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -506,9 +576,11 @@ mod tests {
         // Gas limit decrease > parent/1024
         block.gas_limit = parent.gas_limit - (parent.gas_limit / 1024) - 1;
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -521,9 +593,11 @@ mod tests {
         let mut block = create_test_block(&parent);
         block.gas_used = 1000; // Should be 0 for empty block
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::GasUsedMismatch { .. })
@@ -537,6 +611,7 @@ mod tests {
 
         // First compute the correct receipts root for an empty block
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
         let correct_root = calculate_receipts_root_with_types(&[], &[]);
 
@@ -548,7 +623,8 @@ mod tests {
             Hash::ZERO
         };
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         // We expect this to fail since we set an incorrect receipts root
         assert!(matches!(
             result,
@@ -564,18 +640,22 @@ mod tests {
         let mut block = create_test_block(&parent);
         block.gas_limit = parent.gas_limit + (parent.gas_limit / 1024);
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(result.is_ok());
 
         // Test maximum valid decrease
         let mut block = create_test_block(&parent);
         block.gas_limit = parent.gas_limit - (parent.gas_limit / 1024);
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(result.is_ok());
     }
 
@@ -588,9 +668,11 @@ mod tests {
         block.transactions_root = Hash::from([1u8; 32]);
 
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::TransactionsRootMismatch { .. })
@@ -606,13 +688,92 @@ mod tests {
         block.logs_bloom = [1u8; 256];
 
         let transactions = vec![];
+        let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result = process_block(&block, &parent, &transactions, &mut state, U256::ONE);
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
         assert!(matches!(
             result,
             Err(BlockProcessingError::LogsBloomMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn test_process_block_unexpected_withdrawals() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        block.withdrawals_root = None;
+        let transactions = vec![];
+        let withdrawals = vec![Withdrawal {
+            index: 0,
+            validator_index: 1,
+            address: Address::from([0x10; 20]),
+            amount_gwei: 1,
+        }];
+        let mut state = InMemoryState::new();
+
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+        assert!(matches!(
+            result,
+            Err(BlockProcessingError::UnexpectedWithdrawals { .. })
+        ));
+    }
+
+    #[test]
+    fn test_process_block_withdrawals_root_mismatch() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+        block.withdrawals_root = Some(Hash::from([0x99; 32]));
+
+        let transactions = vec![];
+        let withdrawals = vec![Withdrawal {
+            index: 0,
+            validator_index: 1,
+            address: Address::from([0x10; 20]),
+            amount_gwei: 1,
+        }];
+        let mut state = InMemoryState::new();
+
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE);
+        assert!(matches!(
+            result,
+            Err(BlockProcessingError::WithdrawalsRootMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_process_block_withdrawals_applied() {
+        let parent = create_test_parent();
+        let mut block = create_test_block(&parent);
+
+        let transactions = vec![];
+        let withdrawals = vec![Withdrawal {
+            index: 0,
+            validator_index: 1,
+            address: Address::from([0x10; 20]),
+            amount_gwei: 2,
+        }];
+
+        let mut expected_state = InMemoryState::new();
+        let amount_wei = withdrawals[0].amount_wei();
+        expected_state.set_balance(&withdrawals[0].address, amount_wei);
+
+        block.withdrawals_root = Some(calculate_withdrawals_root(&withdrawals));
+        block.state_root = expected_state.compute_state_root();
+
+        let mut state = InMemoryState::new();
+        let result =
+            process_block(&block, &parent, &transactions, &withdrawals, &mut state, U256::ONE)
+                .expect("process block");
+
+        assert_eq!(result.state_root, expected_state.compute_state_root());
+        assert_eq!(
+            state.get_balance(&withdrawals[0].address),
+            withdrawals[0].amount_wei()
+        );
     }
 
     #[test]

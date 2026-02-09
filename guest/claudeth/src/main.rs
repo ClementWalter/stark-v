@@ -16,7 +16,7 @@ use claudeth::crypto::rlp;
 use claudeth::crypto::rlp::RlpError;
 use claudeth::state::{InMemoryState, State};
 use claudeth::stf::{process_block, BlockProcessingError, ExecutionError};
-use claudeth::types::{Address, BlockHeader, Hash, Transaction, U256};
+use claudeth::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
 
 const ERROR_INVALID_HEADER: u64 = 1;
 const ERROR_TX_EXECUTION: u64 = 2;
@@ -26,6 +26,8 @@ const ERROR_STATE_ROOT_MISMATCH: u64 = 5;
 const ERROR_GAS_USED_MISMATCH: u64 = 6;
 const ERROR_TRANSACTIONS_ROOT_MISMATCH: u64 = 7;
 const ERROR_LOGS_BLOOM_MISMATCH: u64 = 8;
+const ERROR_UNEXPECTED_WITHDRAWALS: u64 = 9;
+const ERROR_WITHDRAWALS_ROOT_MISMATCH: u64 = 10;
 const ERROR_RLP_DECODE: u64 = 100;
 const ERROR_INVALID_INPUT: u64 = 101;
 
@@ -35,7 +37,8 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //   parent_header_rlp,
 //   chain_id_u256,
 //   transactions_rlp_list,
-//   state_entries_rlp_list
+//   state_entries_rlp_list,
+//   withdrawals_rlp_list (optional, required if withdrawals_root is present)
 // ])
 //
 // State entry format (RLP list):
@@ -43,6 +46,9 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //
 // Storage entry format (RLP list):
 // [key_u256, value_u256]
+//
+// Withdrawal format (RLP list):
+// [index_u64, validator_index_u64, address, amount_gwei_u64]
 //
 // Output format:
 // RLP([
@@ -95,7 +101,7 @@ fn process_input(input: &[u8]) -> Vec<u8> {
 
 fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResult, GuestError> {
     let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
-    if !rest.is_empty() || items.len() != 5 {
+    if !rest.is_empty() || !(items.len() == 5 || items.len() == 6) {
         return Err(GuestError::InvalidInput);
     }
 
@@ -105,11 +111,31 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
 
     let transactions = decode_transactions(&items[3])?;
     let state_entries = decode_state_entries(&items[4])?;
+    let withdrawals = if items.len() == 6 {
+        decode_withdrawals(&items[5])?
+    } else {
+        Vec::new()
+    };
+
+    if block.withdrawals_root.is_some() && items.len() != 6 {
+        return Err(GuestError::InvalidInput);
+    }
+
+    if block.withdrawals_root.is_none() && !withdrawals.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
 
     let mut state = InMemoryState::new();
     apply_state_entries(&mut state, &state_entries);
 
-    process_block(&block, &parent, &transactions, &mut state, chain_id)
+    process_block(
+        &block,
+        &parent,
+        &transactions,
+        &withdrawals,
+        &mut state,
+        chain_id,
+    )
         .map_err(GuestError::Block)
 }
 
@@ -175,6 +201,20 @@ fn decode_storage_entries(input: &[u8]) -> Result<Vec<(U256, U256)>, GuestError>
     }
 
     Ok(entries)
+}
+
+fn decode_withdrawals(input: &[u8]) -> Result<Vec<Withdrawal>, GuestError> {
+    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let mut withdrawals = Vec::with_capacity(items.len());
+    for item in items {
+        let withdrawal = Withdrawal::decode_rlp(&item).map_err(GuestError::Rlp)?;
+        withdrawals.push(withdrawal);
+    }
+    Ok(withdrawals)
 }
 
 fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
@@ -251,6 +291,14 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
                 rlp::encode_bytes(expected.as_ref()),
                 rlp::encode_bytes(computed.as_ref()),
             ]),
+        ),
+        BlockProcessingError::UnexpectedWithdrawals { count, .. } => (
+            ERROR_UNEXPECTED_WITHDRAWALS,
+            rlp::encode_list(&[encode_u64(count as u64)]),
+        ),
+        BlockProcessingError::WithdrawalsRootMismatch { expected, computed, .. } => (
+            ERROR_WITHDRAWALS_ROOT_MISMATCH,
+            rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
     }
 }

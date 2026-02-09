@@ -13,6 +13,7 @@ pub mod bytes;
 pub mod hash;
 pub mod transaction;
 pub mod uint;
+pub mod withdrawal;
 
 pub use address::Address;
 pub use block::{BlockHeader, EMPTY_OMMERS_HASH, ValidationError};
@@ -22,3 +23,4 @@ pub use transaction::{
     AccessListEntry, Eip1559Transaction, Eip2930Transaction, LegacyTransaction, Transaction,
 };
 pub use uint::{U256, U512};
+pub use withdrawal::Withdrawal;

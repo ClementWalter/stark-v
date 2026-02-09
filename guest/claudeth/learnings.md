@@ -51,3 +51,15 @@ Date: 2026-02-09
 - Leave unused `.rs` files under `src/` (pre-commit will fail).
 - Quote EELS test counts without rerunning.
 - Re-export types from modules that don't define them (e.g. `StorageWrite` was re-exported from `trace` but didn't exist there).
+
+## Update (2026-02-09)
+
+**Do**
+
+- Apply withdrawals after transaction execution and before computing state root.
+- Validate withdrawals root when `withdrawals_root` is present in the header.
+- Require the guest input withdrawals list only when the header includes `withdrawals_root`.
+
+**Don't**
+
+- Accept non-empty withdrawals lists for headers without `withdrawals_root`.
