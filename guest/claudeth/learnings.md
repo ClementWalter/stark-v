@@ -1,5 +1,23 @@
 # Claudeth Development Learnings
 
+## Session 37: Charge SSTORE Dynamic Gas (2026-02-09)
+
+**Status**: Phase D Task D3 IN PROGRESS (gas accounting fixes)
+
+### What Was Accomplished
+1. ✅ Implemented dynamic SSTORE gas charging (SET/RESET/CLEAR/NOOP)
+2. ✅ Added SSTORE sentry gas check (EIP-2200) to prevent low-gas execution
+3. ✅ Added gas unit tests for SSTORE cost calculation
+
+### DO's ✅
+1. **Charge dynamic gas for SSTORE** - opcode base gas is zero by design
+2. **Enforce the SSTORE sentry check** - fail if gas remaining is at/below 2300
+3. **Add explicit gas tests** when introducing new gas helpers
+
+### DON'Ts ❌
+1. **Don't rely on opcode base gas** for dynamic-cost opcodes like SSTORE
+2. **Don't skip sentry checks** - they affect execution correctness under low gas
+
 ## Session 36: Debug EELS State Persistence Issue (2026-02-09)
 
 **Status**: Phase D Task D3 IN PROGRESS (investigating paradoxical test behavior)

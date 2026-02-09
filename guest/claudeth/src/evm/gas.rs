@@ -11,6 +11,8 @@
 //! - **Storage operations**: Complex costs with warm/cold access tracking
 //! - **Call operations**: Gas forwarding and account creation costs
 
+use crate::types::U256;
+
 // =============================================================================
 // Gas Cost Constants
 // =============================================================================
@@ -194,6 +196,29 @@ pub const GAS_MSIZE: u64 = GAS_QUICK_STEP;
 
 /// Gas cost for GAS opcode
 pub const GAS_GAS: u64 = GAS_QUICK_STEP;
+
+// =============================================================================
+// Storage Gas Calculations
+// =============================================================================
+
+/// Calculate the dynamic gas cost for SSTORE based on current and new values.
+///
+/// This implements the simplified EIP-2200 rules without original-value tracking:
+/// - NOOP if value unchanged
+/// - SET when current is zero and new is non-zero
+/// - CLEAR when current is non-zero and new is zero
+/// - RESET for all other changes
+pub fn sstore_gas_cost(current_value: U256, new_value: U256) -> u64 {
+    if current_value == new_value {
+        GAS_SSTORE_NOOP
+    } else if current_value.is_zero() && !new_value.is_zero() {
+        GAS_SSTORE_SET
+    } else if !current_value.is_zero() && new_value.is_zero() {
+        GAS_SSTORE_CLEAR
+    } else {
+        GAS_SSTORE_RESET
+    }
+}
 
 // Stack operations
 /// Gas cost for POP opcode
@@ -1031,6 +1056,17 @@ mod tests {
         assert_eq!(opcode_gas_cost(0x48), 2);   // BASEFEE
         assert_eq!(opcode_gas_cost(0x49), 3);   // BLOBHASH
         assert_eq!(opcode_gas_cost(0x4A), 2);   // BLOBBASEFEE
+    }
+
+    #[test]
+    fn test_sstore_gas_costs() {
+        assert_eq!(sstore_gas_cost(U256::ZERO, U256::ZERO), GAS_SSTORE_NOOP);
+        assert_eq!(sstore_gas_cost(U256::ZERO, U256::ONE), GAS_SSTORE_SET);
+        assert_eq!(sstore_gas_cost(U256::ONE, U256::ZERO), GAS_SSTORE_CLEAR);
+        assert_eq!(
+            sstore_gas_cost(U256::from_u64(2), U256::from_u64(3)),
+            GAS_SSTORE_RESET
+        );
     }
 
     #[test]

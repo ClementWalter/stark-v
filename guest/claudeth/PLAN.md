@@ -31,8 +31,8 @@ This plan reflects **verified code presence** (from `src/`) and enumerates the *
 ### ⚠️ Known Gaps vs README Requirements
 1. **Dependency-free**: `k256` is still used for secp256k1 (`Cargo.toml`).
 2. **Witness-based state reconstruction**: Partial MPT exists, but no guest I/O to derive minimal state from proofs.
-3. **EELS compliance**: no EELS test vector integration or runner.
-4. **EVM context wiring**: block/tx/call contexts were not propagated into EVM execution, so environment opcodes use defaults.
+3. **EELS compliance**: Test runner exists but execution mismatches remain (0/20 passing in current sample).
+4. **Gas metering accuracy**: SSTORE dynamic gas was missing and warm/cold access tracking is not implemented; BLOCKHASH always returns zero due to missing block hash history.
 
 ---
 
@@ -233,10 +233,11 @@ Goal: finalize per-transaction correctness before block processing.
 6. ✅ Fixed CREATE value transfer to contract address before init execution (Session 35)
 7. ✅ **ROOT CAUSE FOUND**: Parent hash validation was aborting ALL block execution (Session 36)
 8. ✅ **FIXED**: Override parent_hash to allow execution (Session 36)
-9. ⚠️ **NEW ISSUE**: Gas usage consistently lower than expected (missing EIP gas costs?)
-10. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
-11. TODO: Investigate gas accounting discrepancies (warm/cold storage, EIP-2929, EIP-2930)
-12. TODO: Debug why exploit test transactions are failing
+9. ✅ **FIXED**: Charge SSTORE dynamic gas + sentry check (Session 37)
+10. ⚠️ **NEW ISSUE**: Gas usage still lower than expected (missing warm/cold access tracking?)
+11. ⚠️ **NEW ISSUE**: Some transactions failing execution (ShanghaiLove, StrangeContractCreation)
+12. TODO: Implement warm/cold access tracking (EIP-2929) for storage/account ops
+13. TODO: Debug why exploit test transactions are failing
 
 **Verification**: All EELS tests passing (currently 0/20, but NOW EXECUTING!)
 

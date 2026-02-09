@@ -31,7 +31,8 @@ use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
 use crate::evm::{
     create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
-    GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
+    sstore_gas_cost, GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
+    GAS_SSTORE_SENTRY,
 };
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -704,6 +705,13 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
                 // Get current value to determine refund (EIP-3529)
                 let current_value = self.state.sload(&self.call_ctx.address, &key);
+
+                if self.gas_remaining <= GAS_SSTORE_SENTRY {
+                    return Err(EvmError::OutOfGas);
+                }
+
+                let sstore_gas = sstore_gas_cost(current_value, new_value);
+                self.consume_gas(sstore_gas)?;
 
                 // EIP-3529: Only refund when clearing storage (non-zero -> zero)
                 // Refund: 4800 gas when setting storage to zero from non-zero
