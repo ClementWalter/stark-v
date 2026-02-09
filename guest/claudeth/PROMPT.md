@@ -14,14 +14,16 @@ project. Always run tests with --release mode.
 3. Read the [Claudeth PLAN.md file](PLAN.md).
 4. Read past [learnings.md](learnings.md) about what works and what doesn't. Be
    cautious about what you read, some of it may be outdated.
-5. Based on your analysis, update the PLAN.md file to reflect the current status
+5. Generate an updated learnings.md file with actual meaningful learnings and no
+   dup.
+6. Based on your analysis, update the PLAN.md file to reflect the current status
    and the plan for the implementation.
-6. If there is nothing to be done, exit.
-7. Based on the PLAN.md file, derive what can be implemented in parallel NOW.
+7. If there is nothing to be done, exit.
+8. Based on the PLAN.md file, derive what can be implemented in parallel NOW.
    Pick only ONE task at a time and do it. Don't work on several tasks, just one
    that can be implemented 100% NOW.
-8. Commit the changes to the repository.
-9. Dump learnings in learnings.md and exit.
+9. Commit the changes to the repository.
+10. Dump learnings in learnings.md and exit.
 
 **CRITICAL**: Never dismiss linter errors, nothing is optional. Don't update
 linter rules. You need to fix errors, not remove them.
