@@ -12,9 +12,11 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::{vec, vec::Vec};
 
-use claudeth::crypto::rlp;
+use claudeth::crypto::{keccak256, rlp};
 use claudeth::crypto::rlp::RlpError;
-use claudeth::state::{InMemoryState, State};
+use claudeth::state::{
+    Account, InMemoryState, Proof, State, EMPTY_CODE_HASH, verify_proof,
+};
 use claudeth::stf::{process_block, BlockProcessingError, ExecutionError};
 use claudeth::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
 
@@ -39,7 +41,7 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //   parent_header_rlp,
 //   chain_id_u256,
 //   transactions_rlp_list,
-//   state_entries_rlp_list,
+//   state_entries_rlp_list or witness_rlp_list (WITNESS v1),
 //   block_hashes_rlp_list (optional),
 //   withdrawals_rlp_list (optional, required if withdrawals_root is present)
 // ])
@@ -49,6 +51,8 @@ const ERROR_INVALID_INPUT: u64 = 101;
 //
 // Storage entry format (RLP list):
 // [key_u256, value_u256]
+//
+// Witness format: see WITNESS.md (WitnessV1)
 //
 // Withdrawal format (RLP list):
 // [index_u64, validator_index_u64, address, amount_gwei_u64]
@@ -70,6 +74,33 @@ struct StateEntry {
     balance: U256,
     code: Vec<u8>,
     storage: Vec<(U256, U256)>,
+}
+
+#[derive(Debug)]
+struct WitnessState {
+    state_root: Hash,
+    accounts: Vec<WitnessAccount>,
+}
+
+#[derive(Debug)]
+struct WitnessAccount {
+    address: Address,
+    account_proof: Proof,
+    account_rlp: Vec<u8>,
+    code: Vec<u8>,
+    storage_entries: Vec<WitnessStorageEntry>,
+}
+
+#[derive(Debug)]
+struct WitnessStorageEntry {
+    key: U256,
+    value: U256,
+    proof: Proof,
+}
+
+enum StateSource {
+    Entries(Vec<StateEntry>),
+    Witness(WitnessState),
 }
 
 #[cfg(target_arch = "riscv32")]
@@ -113,7 +144,7 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
     let (chain_id, _) = rlp::decode_u256(&items[2]).map_err(GuestError::Rlp)?;
 
     let transactions = decode_transactions(&items[3])?;
-    let state_entries = decode_state_entries(&items[4])?;
+    let state_source = decode_state_source(&items[4])?;
     let (block_hashes, withdrawals, has_withdrawals_list) = match items.len() {
         5 => (Vec::new(), Vec::new(), false),
         6 => {
@@ -135,7 +166,10 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
     validate_block_hashes(&block, &parent, &block_hashes)?;
 
     let mut state = InMemoryState::new();
-    apply_state_entries(&mut state, &state_entries);
+    match state_source {
+        StateSource::Entries(entries) => apply_state_entries(&mut state, &entries),
+        StateSource::Witness(witness) => apply_witness_state(&mut state, witness)?,
+    }
 
     process_block(
         &block,
@@ -162,15 +196,27 @@ fn decode_transactions(input: &[u8]) -> Result<Vec<Transaction>, GuestError> {
     Ok(transactions)
 }
 
-fn decode_state_entries(input: &[u8]) -> Result<Vec<StateEntry>, GuestError> {
+fn decode_state_source(input: &[u8]) -> Result<StateSource, GuestError> {
     let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
     if !rest.is_empty() {
         return Err(GuestError::InvalidInput);
     }
 
+    if items.len() == 3
+        && let Ok((version, rest_version)) = rlp::decode_u64(&items[0])
+        && rest_version.is_empty()
+    {
+        let witness = decode_witness_items(version, &items)?;
+        return Ok(StateSource::Witness(witness));
+    }
+
+    Ok(StateSource::Entries(decode_state_entries_items(&items)?))
+}
+
+fn decode_state_entries_items(items: &[Vec<u8>]) -> Result<Vec<StateEntry>, GuestError> {
     let mut entries = Vec::with_capacity(items.len());
     for item in items {
-        let (fields, rest) = rlp::decode_list(&item).map_err(GuestError::Rlp)?;
+        let (fields, rest) = rlp::decode_list(item).map_err(GuestError::Rlp)?;
         if !rest.is_empty() || fields.len() != 5 {
             return Err(GuestError::InvalidInput);
         }
@@ -191,6 +237,116 @@ fn decode_state_entries(input: &[u8]) -> Result<Vec<StateEntry>, GuestError> {
     }
 
     Ok(entries)
+}
+
+fn decode_witness_items(version: u64, items: &[Vec<u8>]) -> Result<WitnessState, GuestError> {
+    if items.len() != 3 {
+        return Err(GuestError::InvalidInput);
+    }
+
+    if version != 1 {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let (state_root, rest) = rlp::decode_hash(&items[1]).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let accounts = decode_witness_accounts(&items[2])?;
+    Ok(WitnessState { state_root, accounts })
+}
+
+fn decode_witness_accounts(input: &[u8]) -> Result<Vec<WitnessAccount>, GuestError> {
+    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let mut accounts = Vec::with_capacity(items.len());
+    for item in items {
+        let (fields, rest) = rlp::decode_list(&item).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() || fields.len() != 5 {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let (address, rest) = rlp::decode_address(&fields[0]).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let account_proof = decode_witness_proof_nodes(&fields[1])?;
+        let (account_rlp, rest) = rlp::decode_bytes(&fields[2]).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let (code, rest) = rlp::decode_bytes(&fields[3]).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let storage_entries = decode_witness_storage_entries(&fields[4])?;
+
+        accounts.push(WitnessAccount {
+            address,
+            account_proof,
+            account_rlp,
+            code,
+            storage_entries,
+        });
+    }
+
+    Ok(accounts)
+}
+
+fn decode_witness_storage_entries(input: &[u8]) -> Result<Vec<WitnessStorageEntry>, GuestError> {
+    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let mut entries = Vec::with_capacity(items.len());
+    for item in items {
+        let (fields, rest) = rlp::decode_list(&item).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() || fields.len() != 3 {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let (key, rest) = rlp::decode_u256(&fields[0]).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let (value, rest) = rlp::decode_u256(&fields[1]).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let proof = decode_witness_proof_nodes(&fields[2])?;
+
+        entries.push(WitnessStorageEntry { key, value, proof });
+    }
+
+    Ok(entries)
+}
+
+fn decode_witness_proof_nodes(input: &[u8]) -> Result<Proof, GuestError> {
+    let (items, rest) = rlp::decode_list(input).map_err(GuestError::Rlp)?;
+    if !rest.is_empty() {
+        return Err(GuestError::InvalidInput);
+    }
+
+    let mut nodes = Vec::with_capacity(items.len());
+    for item in items {
+        let (node, rest) = rlp::decode_bytes(&item).map_err(GuestError::Rlp)?;
+        if !rest.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+        nodes.push(node);
+    }
+
+    Ok(Proof::from_nodes(nodes))
 }
 
 fn decode_storage_entries(input: &[u8]) -> Result<Vec<(U256, U256)>, GuestError> {
@@ -254,6 +410,113 @@ fn apply_state_entries(state: &mut InMemoryState, entries: &[StateEntry]) {
             state.sstore(&entry.address, key, *value);
         }
     }
+}
+
+fn apply_witness_state(state: &mut InMemoryState, witness: WitnessState) -> Result<(), GuestError> {
+    validate_witness_account_order(&witness.accounts)?;
+
+    for account in witness.accounts {
+        let account_key = keccak256(account.address.as_bytes());
+
+        if account.account_rlp.is_empty() {
+            if !account.code.is_empty() || !account.storage_entries.is_empty() {
+                return Err(GuestError::InvalidInput);
+            }
+
+            if !verify_proof(
+                witness.state_root,
+                account_key.as_bytes(),
+                None,
+                &account.account_proof,
+            ) {
+                return Err(GuestError::InvalidInput);
+            }
+            continue;
+        }
+
+        if !verify_proof(
+            witness.state_root,
+            account_key.as_bytes(),
+            Some(&account.account_rlp),
+            &account.account_proof,
+        ) {
+            return Err(GuestError::InvalidInput);
+        }
+
+        let decoded_account =
+            Account::decode_rlp(&account.account_rlp).map_err(GuestError::Rlp)?;
+        let computed_code_hash = if account.code.is_empty() {
+            EMPTY_CODE_HASH
+        } else {
+            keccak256(&account.code)
+        };
+
+        if computed_code_hash != decoded_account.code_hash {
+            return Err(GuestError::InvalidInput);
+        }
+
+        if decoded_account.code_hash == EMPTY_CODE_HASH && !account.code.is_empty() {
+            return Err(GuestError::InvalidInput);
+        }
+
+        validate_witness_storage_order(&account.storage_entries)?;
+        for entry in &account.storage_entries {
+            let storage_key = keccak256(&entry.key.to_be_bytes());
+            let expected_value = if entry.value.is_zero() {
+                None
+            } else {
+                Some(rlp::encode_u256(&entry.value))
+            };
+
+            let expected_value_ref = expected_value.as_deref();
+            if !verify_proof(
+                decoded_account.storage_root,
+                storage_key.as_bytes(),
+                expected_value_ref,
+                &entry.proof,
+            ) {
+                return Err(GuestError::InvalidInput);
+            }
+        }
+
+        state.set_balance(&account.address, decoded_account.balance);
+        state.set_nonce(&account.address, decoded_account.nonce);
+        state.set_code(&account.address, account.code.clone());
+
+        for entry in &account.storage_entries {
+            if !entry.value.is_zero() {
+                state.sstore(&account.address, &entry.key, entry.value);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_witness_account_order(accounts: &[WitnessAccount]) -> Result<(), GuestError> {
+    let mut last: Option<Address> = None;
+    for account in accounts {
+        if let Some(prev) = last
+            && account.address <= prev
+        {
+            return Err(GuestError::InvalidInput);
+        }
+        last = Some(account.address);
+    }
+    Ok(())
+}
+
+fn validate_witness_storage_order(entries: &[WitnessStorageEntry]) -> Result<(), GuestError> {
+    let mut last: Option<U256> = None;
+    for entry in entries {
+        if let Some(prev) = last
+            && entry.key <= prev
+        {
+            return Err(GuestError::InvalidInput);
+        }
+        last = Some(entry.key);
+    }
+    Ok(())
 }
 
 fn validate_withdrawals_presence(
@@ -422,6 +685,7 @@ fn error_kind(err: RlpError) -> u64 {
     }
 }
 
+#[derive(Debug)]
 enum GuestError {
     Block(BlockProcessingError),
     Rlp(RlpError),
@@ -432,6 +696,7 @@ enum GuestError {
 mod tests {
     use super::*;
     use claudeth::types::Hash;
+    use claudeth::state::{Storage, Trie};
 
     #[test]
     fn test_withdrawals_presence_allows_empty_list() {
@@ -516,6 +781,166 @@ mod tests {
 
         let result = validate_block_hashes(&header, &parent, &hashes);
         assert!(result.is_ok());
+    }
+
+    fn encode_proof_nodes(proof: &Proof) -> Vec<u8> {
+        let nodes: Vec<Vec<u8>> = proof
+            .nodes
+            .iter()
+            .map(|node| rlp::encode_bytes(node))
+            .collect();
+        rlp::encode_list(&nodes)
+    }
+
+    fn build_single_account_witness() -> (Vec<u8>, Address, Account, Vec<u8>, U256, U256) {
+        let address = Address::from([0x10; 20]);
+        let nonce = U256::from(1u64);
+        let balance = U256::from(1000u64);
+        let code = vec![0x60, 0x00, 0x56];
+
+        let mut storage = Storage::new();
+        let slot = U256::from(1u64);
+        let value = U256::from(2u64);
+        storage.set(&slot, value);
+        let storage_root = storage.compute_root();
+
+        let code_hash = keccak256(&code);
+        let account = Account::new_contract(nonce, balance, storage_root, code_hash);
+        let account_rlp = account.encode_rlp();
+
+        let mut state_trie = Trie::new();
+        let account_key = keccak256(address.as_bytes());
+        state_trie.insert(account_key.as_bytes(), account_rlp.clone());
+        let state_root = state_trie.compute_root();
+
+        let account_proof = state_trie.generate_proof(account_key.as_bytes()).unwrap();
+        let storage_proof = storage.generate_proof(&slot).unwrap();
+
+        let witness_account = rlp::encode_list(&[
+            rlp::encode_address(&address),
+            encode_proof_nodes(&account_proof),
+            rlp::encode_bytes(&account_rlp),
+            rlp::encode_bytes(&code),
+            rlp::encode_list(&[rlp::encode_list(&[
+                rlp::encode_u256(&slot),
+                rlp::encode_u256(&value),
+                encode_proof_nodes(&storage_proof),
+            ])]),
+        ]);
+
+        let witness = rlp::encode_list(&[
+            rlp::encode_u64(1),
+            rlp::encode_hash(&state_root),
+            rlp::encode_list(&[witness_account]),
+        ]);
+
+        (witness, address, account, code, slot, value)
+    }
+
+    #[test]
+    fn test_witness_decode_and_apply() {
+        let (witness, address, account, code, slot, value) = build_single_account_witness();
+        let state_source = decode_state_source(&witness).expect("decode witness");
+        let mut state = InMemoryState::new();
+
+        match state_source {
+            StateSource::Witness(witness) => {
+                apply_witness_state(&mut state, witness).expect("apply witness");
+            }
+            StateSource::Entries(_) => panic!("expected witness state"),
+        }
+
+        assert_eq!(state.get_balance(&address), account.balance);
+        assert_eq!(state.get_nonce(&address), account.nonce);
+        assert_eq!(state.get_code(&address), code.as_slice());
+        assert_eq!(state.sload(&address, &slot), value);
+    }
+
+    #[test]
+    fn test_witness_rejects_code_hash_mismatch() {
+        let (mut witness, _address, _account, _code, _slot, _value) =
+            build_single_account_witness();
+
+        let (items, rest) = rlp::decode_list(&witness).expect("decode witness list");
+        assert!(rest.is_empty());
+        let (accounts, rest) = rlp::decode_list(&items[2]).expect("decode accounts list");
+        assert!(rest.is_empty());
+        let (fields, rest) = rlp::decode_list(&accounts[0]).expect("decode account");
+        assert!(rest.is_empty());
+
+        let mut mutated_fields = fields.clone();
+        mutated_fields[3] = rlp::encode_bytes(&[0x01, 0x02, 0x03]);
+
+        let mutated_account = rlp::encode_list(&mutated_fields);
+        let mutated_accounts = rlp::encode_list(&[mutated_account]);
+        let mutated_witness = rlp::encode_list(&[
+            items[0].clone(),
+            items[1].clone(),
+            mutated_accounts,
+        ]);
+        witness = mutated_witness;
+
+        let state_source = decode_state_source(&witness).expect("decode witness");
+        let mut state = InMemoryState::new();
+        let result = match state_source {
+            StateSource::Witness(witness) => apply_witness_state(&mut state, witness),
+            StateSource::Entries(_) => Ok(()),
+        };
+
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
+    }
+
+    #[test]
+    fn test_witness_requires_sorted_accounts() {
+        let address1 = Address::from([0x01; 20]);
+        let address2 = Address::from([0x02; 20]);
+
+        let account1 = Account::new_eoa(U256::from(1u64), U256::from(10u64));
+        let account2 = Account::new_eoa(U256::from(2u64), U256::from(20u64));
+
+        let account1_rlp = account1.encode_rlp();
+        let account2_rlp = account2.encode_rlp();
+
+        let mut state_trie = Trie::new();
+        let key1 = keccak256(address1.as_bytes());
+        let key2 = keccak256(address2.as_bytes());
+        state_trie.insert(key1.as_bytes(), account1_rlp.clone());
+        state_trie.insert(key2.as_bytes(), account2_rlp.clone());
+        let state_root = state_trie.compute_root();
+
+        let proof1 = state_trie.generate_proof(key1.as_bytes()).unwrap();
+        let proof2 = state_trie.generate_proof(key2.as_bytes()).unwrap();
+
+        let witness_account2 = rlp::encode_list(&[
+            rlp::encode_address(&address2),
+            encode_proof_nodes(&proof2),
+            rlp::encode_bytes(&account2_rlp),
+            rlp::encode_bytes(&[]),
+            rlp::encode_list(&[]),
+        ]);
+
+        let witness_account1 = rlp::encode_list(&[
+            rlp::encode_address(&address1),
+            encode_proof_nodes(&proof1),
+            rlp::encode_bytes(&account1_rlp),
+            rlp::encode_bytes(&[]),
+            rlp::encode_list(&[]),
+        ]);
+
+        let witness = rlp::encode_list(&[
+            rlp::encode_u64(1),
+            rlp::encode_hash(&state_root),
+            rlp::encode_list(&[witness_account2, witness_account1]),
+        ]);
+
+        let state_source = decode_state_source(&witness).expect("decode witness");
+        let mut state = InMemoryState::new();
+        let result = match state_source {
+            StateSource::Witness(witness) => apply_witness_state(&mut state, witness),
+            StateSource::Entries(_) => Ok(()),
+        };
+
+        assert!(matches!(result, Err(GuestError::InvalidInput)));
     }
 }
 

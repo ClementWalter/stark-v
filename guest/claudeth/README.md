@@ -20,6 +20,7 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 - EIP-2935 historical block hashes system call during block processing
 - Guest input decoding supports optional recent block hashes for BLOCKHASH
 - Partial Merkle Patricia Trie for account/storage roots and proofs
+- Witness-based state reconstruction from WITNESS v1 (account/storage proofs)
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
   `parent_beacon_block_root`)
@@ -27,7 +28,6 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 
 **Known Gaps / Limitations**
 
-- Witness-based state reconstruction is not implemented
 - `k256` is still used for secp256k1
 - EELS blockchain tests require external fixtures and are ignored by default
 
