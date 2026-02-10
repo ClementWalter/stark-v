@@ -46,8 +46,12 @@ Date: 2026-02-10
 - Pre-transaction system calls: EIP-4788 beacon root and EIP-2935 history
   storage; fixed gas limit, no block gas accounting, no-op if target has no
   code.
+- System-call state changes clear original-storage tracking on success to avoid
+  contaminating per-transaction SSTORE accounting.
 - Post-execution checks: receipts root, transactions root, logs bloom,
   withdrawals root (if present), state root, gas used, and blob gas used.
+- Withdrawals list must be empty when `withdrawals_root` is `None`; otherwise
+  block processing fails fast before root checks.
 
 ## Guest Input & WITNESS v1
 
@@ -67,7 +71,7 @@ Date: 2026-02-10
   strictly increasing by slot.
 - Account trie keys are `keccak256(address)`; storage trie keys are
   `keccak256(U256 slot)`.
-- Empty `account_rlp` requires an exclusion proof and empty `code` +
+- Empty `account_rlp` requires an exclusion proof plus empty `code` and
   `storage_entries`.
 - `code_hash` must match `keccak256(code_bytes)`; empty code requires the empty
   code hash.

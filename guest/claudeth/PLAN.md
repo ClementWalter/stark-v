@@ -50,7 +50,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ### Now
 
-- No immediate implementation work identified.
+- No immediate implementation work identified. Core STF, transaction types,
+  block validation, and witness handling match README claims.
 
 ### Done
 
