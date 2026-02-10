@@ -7,11 +7,19 @@ Date: 2026-02-10
 - Exceptional halts (OOG, invalid opcode/jump) consume all remaining gas and revert the current call frame.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and only reverts the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
-- Transactions must originate from EOAs; sender accounts with code are invalid.
 - SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; reset created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas.
 - EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2.
 - EIP-3541 rejects contract code starting with 0xEF, consuming all remaining gas on failure.
+
+## Transaction Validation
+
+- Transactions must originate from EOAs; sender accounts with code are invalid.
+- Legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
+- Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (plus blob fee cap for type `0x03`).
+- Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
+- Blob tx validation: non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
+- Blob data fee is charged upfront and burned (not credited to coinbase).
 
 ## Block Processing And Header Rules
 
@@ -36,24 +44,10 @@ Date: 2026-02-10
 - `code_hash` must match `keccak256(code_bytes)`; empty code requires the empty code hash.
 - Storage proofs use `rlp::encode_u256(value)` for inclusion; zero values require exclusion proofs.
 
-## Guest Output And Errors
+## Receipts, Logs, And Trie Behavior
 
-- Guest output is a 6-item RLP list: status, gas used, receipts root, state root, error code, error data.
-- Invalid inputs (bad RLP, malformed lists, or inconsistent optional fields) return `status=0` with `ERROR_INVALID_INPUT` or `ERROR_RLP_DECODE`.
-- Block processing failures return a specific error code plus a small RLP payload carrying detail values (for example, expected vs computed roots).
-
-## Transactions, Fees, And Blobs
-
-- Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
-- Legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
-- Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (plus blob fee cap for type `0x03`).
-- Blob tx validation: non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
-- Blob data fee is charged upfront and burned (not credited to coinbase).
 - Receipt roots use typed receipt envelopes (EIP-2718): `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`.
 - Receipt decoding accepts typed envelopes for `0x01..0x03` and rejects unknown prefixes; legacy receipts are plain RLP lists.
-
-## Logs, Bloom, And Trie Behavior
-
 - Logs bloom uses execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
@@ -83,7 +77,6 @@ Date: 2026-02-10
 - Read the relevant `execution-specs` implementation before changing consensus-critical logic.
 - Update `PLAN.md` and `learnings.md` when behavior changes.
 - Update `PLAN.md` test status after running `cargo test -p claudeth --release` and `prek run`.
-- Run `cargo test -p claudeth --release` even if `prek run` skips checks.
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
 
