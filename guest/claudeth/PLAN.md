@@ -5,66 +5,35 @@ Date: 2026-02-10
 ## Summary
 
 Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
-`riscv32im-unknown-none-elf`. It includes a full EVM interpreter, block
-processing with header validations and root checks, a partial MPT (with
-inclusion/exclusion proof verification), and EIP-4895 withdrawals application.
-Block processing applies EIP-4788 (beacon root) and EIP-2935 (history storage)
-system calls before transaction execution. The block header type includes
-Shanghai/Cancun fields. The secp256k1 module has in-tree field and affine point
-arithmetic plus ECDSA verify/recover, and tests use fixed signature vectors.
+`riscv32im-unknown-none-elf`. It implements a full EVM interpreter, block
+processing with header validation and root checks, partial MPT proofs, and
+witness-based state reconstruction (WITNESS v1). Cancun blob transactions
+(type 0x03) and post-Shanghai fields are supported.
 
 ## Verified Status (from code)
 
 ### Implemented
 
-- EVM interpreter with full opcode coverage, including `BLOBHASH`,
-  `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`.
-- `BLOBBASEFEE` uses the execution-specs Taylor expansion formula when
-  `excess_blob_gas` is present.
-- Transaction types: Legacy / EIP-2930 / EIP-1559 / EIP-4844 blob (type 0x03).
-- Block processing: parent header validation, tx execution, receipts, gas used,
-  validation of receipts root, tx root, logs bloom, state root.
-- Header validation includes base fee per gas and excess blob gas against
-  parent.
+- EVM interpreter with full opcode coverage, including Cancun opcodes
+  (`BLOBHASH`, `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`).
+- Transaction validation and execution for Legacy, EIP-2930, EIP-1559, and
+  EIP-4844 blob transactions.
+- EIP-4844 blob tx encoding/decoding, signing hash, blob fee validation, and
+  blob gas accounting.
+- Block processing with parent header validation, receipts/tx/state root checks,
+  logs bloom validation, gas used checks, and blob gas used checks.
 - EIP-4895 withdrawals application and withdrawals root validation.
-- EIP-4788 beacon root system call during block processing.
-- EIP-2935 historical block hashes system call during block processing.
-- Partial MPT with inclusion/exclusion proof verification (RLP node proofs).
-- Block header type supports Shanghai/Cancun fields
-  (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
-  `parent_beacon_block_root`).
-- Guest input decoding supports optional recent block hashes for BLOCKHASH.
-- Guest input decoding accepts withdrawals list when `withdrawals_root` is
-  present (empty list allowed).
-- Guest input validates recent block hashes length ≤ min(block number, 256)
-  and requires the last hash to match the parent hash when provided.
-- Block processing tests cover empty withdrawals list with withdrawals root
-  set.
-- Witness RLP decoding with account/storage proof validation builds the initial
-  `State` from `WITNESS.md`.
-- `TxContext` carries blob versioned hashes; `RecursiveHost::blobhash` reads
-  from `TxContext`.
-- Blob transactions populate `TxContext.blob_versioned_hashes`.
-- Blob data fee charged from sender and block blob gas used tracked/validated.
-- Base fee validation enforced for legacy/EIP-2930 (`gas_price >= base_fee`)
-  and EIP-1559/EIP-4844 (`max_fee_per_gas >= base_fee`).
-- Logs bloom bit ordering matches execution-specs (reversed 11-bit index,
-  MSB-first within bytes).
-- EIP-2 signature bounds enforced (`r/s` range, low-`s`, and `v/y_parity`).
-- `no_std` riscv32 guest entry and bump allocator.
-- Deterministic state root computation by sorting account addresses before trie
-  insertion.
-- Witness format v1 draft defined in `WITNESS.md`.
-- In-tree secp256k1 finite-field helpers: modular add/sub/mul/pow/inv with
-  curve constants (p, n, b).
-- In-tree affine secp256k1 point arithmetic (on-curve, add/double, scalar
-  multiply) with test vectors.
-- In-tree ECDSA verify/recover using affine point ops and execution-specs
-  recovery rules (x-coordinate validity check, y parity, infinity handling).
+- EIP-4788 beacon root system call and EIP-2935 history storage system call.
+- Guest input decoding supports optional recent block hashes for BLOCKHASH and
+  withdrawals list when `withdrawals_root` is present.
+- Partial MPT implementation with inclusion/exclusion proof verification.
+- Witness-based state reconstruction from WITNESS v1 (account/storage proofs).
+- In-tree secp256k1 field/point arithmetic and ECDSA verify/recover; tests use
+  fixed signature vectors.
 
 ### Known Gaps / Limitations
 
-- No in-tree signing yet; tests use fixed signature vectors.
+- No in-tree signer yet; tests rely on fixed signature vectors.
 - EELS blockchain fixtures are external and ignored by default.
 
 ## Testing Status
@@ -76,22 +45,17 @@ arithmetic plus ECDSA verify/recover, and tests use fixed signature vectors.
 
 ### P1: Witness-Based State Reconstruction
 
-- Implemented: witness RLP decoding alongside existing `state_entries` input.
-- Implemented: account/storage proof verification and code hash validation.
-- Implemented: witness parsing tests for valid/invalid cases.
+- Done: witness RLP decoding alongside `state_entries` input.
+- Done: account/storage proof verification and code hash validation.
+- Done: witness parsing tests for valid/invalid cases.
 
-### P2: Remove `k256`
+### P2: In-Tree secp256k1 (Remove k256)
 
-- P2.1: Replace k256-based signing in tests with fixed secp256k1 vectors and
-  ensure verification/recovery uses prehashed message inputs. (done)
-- P2.2: Add in-tree finite-field helpers (mod add/sub/mul/pow/inv) plus curve
-  constants for secp256k1. (done)
-- P2.3: Implement affine point arithmetic (on-curve check, add, double,
-  scalar mul) over the secp256k1 field. (done)
-- P2.4: Implement ECDSA verify/recover using in-tree field/point ops and
-  execution-specs recovery rules (including x-coordinate validity check). (done)
-- P2.5: Remove `k256` dependency and update crypto module wiring/tests. (done)
+- Done: replace k256-based signing in tests with fixed vectors.
+- Done: in-tree finite-field helpers and curve constants.
+- Done: affine point arithmetic and ECDSA verify/recover.
+- Done: remove k256 dependency.
 
 ## Immediate Next Task
 
-No immediate task queued; next work should come from new gaps or test failures.
+No immediate task queued; next work should come from new gaps or failing tests.
