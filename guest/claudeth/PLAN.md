@@ -28,6 +28,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - EIP-4788 beacon root system call and EIP-2935 history storage system call.
 - Guest input decoding supports optional recent block hashes for BLOCKHASH and
   withdrawals list when `withdrawals_root` is present.
+- Receipt decoding supports EIP-2718 typed envelopes for `0x01..0x03`.
 - Partial MPT implementation with inclusion/exclusion proof verification.
 - Witness-based state reconstruction from WITNESS v1 (account/storage proofs).
 - In-tree secp256k1 field/point arithmetic and ECDSA verify/recover.
@@ -66,6 +67,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Deterministic in-tree signer used by signature-related tests.
 - Apply EIP-6780 SELFDESTRUCT rules: transfer balance immediately, delete only
   if created in the same transaction, and clear created-account tracking per tx.
+- Accept and decode typed receipt envelopes for `0x01..0x03`, rejecting
+  unsupported prefixes.
 
 ### Backlog (Not Scheduled)
 

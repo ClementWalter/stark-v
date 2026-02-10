@@ -565,6 +565,34 @@ impl TransactionReceipt {
             logs_bloom,
         })
     }
+
+    /// Decodes a receipt that may be wrapped with an EIP-2718 type prefix.
+    ///
+    /// Typed receipts are encoded as `type || RLP(receipt)`, where type is:
+    /// - 0x01 for EIP-2930
+    /// - 0x02 for EIP-1559
+    /// - 0x03 for EIP-4844
+    ///
+    /// Legacy receipts are just RLP-encoded receipt lists (no prefix).
+    ///
+    /// Returns the decoded receipt and an optional type byte (None for legacy).
+    pub fn decode_with_type(data: &[u8]) -> Result<(Self, Option<u8>), RlpError> {
+        if data.is_empty() {
+            return Err(RlpError::UnexpectedEnd);
+        }
+
+        match data[0] {
+            0x01..=0x03 => {
+                let receipt = Self::decode_rlp(&data[1..])?;
+                Ok((receipt, Some(data[0])))
+            }
+            0xc0..=0xff => {
+                let receipt = Self::decode_rlp(data)?;
+                Ok((receipt, None))
+            }
+            _ => Err(RlpError::InvalidEncoding),
+        }
+    }
 }
 
 // =============================================================================
@@ -954,6 +982,35 @@ mod tests {
         let receipt = TransactionReceipt::new(true, U256::from(21000u64), vec![]);
         assert_eq!(receipt.logs.len(), 0);
         assert_eq!(receipt.logs_bloom, Bloom::new());
+    }
+
+    #[test]
+    fn test_decode_with_type_legacy() {
+        let receipt = TransactionReceipt::new(true, U256::from(21000u64), vec![]);
+        let encoded = receipt.encode_rlp();
+        let (decoded, tx_type) = TransactionReceipt::decode_with_type(&encoded).unwrap();
+        assert_eq!(decoded, receipt);
+        assert_eq!(tx_type, None);
+    }
+
+    #[test]
+    fn test_decode_with_type_typed() {
+        let receipt = TransactionReceipt::new(true, U256::from(21000u64), vec![]);
+        let mut encoded = vec![0x02];
+        encoded.extend(receipt.encode_rlp());
+
+        let (decoded, tx_type) = TransactionReceipt::decode_with_type(&encoded).unwrap();
+        assert_eq!(decoded, receipt);
+        assert_eq!(tx_type, Some(0x02));
+    }
+
+    #[test]
+    fn test_decode_with_type_rejects_unknown_prefix() {
+        let receipt = TransactionReceipt::new(true, U256::from(21000u64), vec![]);
+        let mut encoded = vec![0x04];
+        encoded.extend(receipt.encode_rlp());
+        let result = TransactionReceipt::decode_with_type(&encoded);
+        assert_eq!(result, Err(RlpError::InvalidEncoding));
     }
 
     #[test]

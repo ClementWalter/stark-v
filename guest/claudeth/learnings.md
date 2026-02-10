@@ -6,11 +6,11 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid opcode/jump) revert the current transaction and consume all remaining gas.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and only reverts the current call frame.
-- Gas refunds are capped at 1/5 of gas used (EIP-3529); refunds are applied after execution.
+- Gas refunds are capped at 1/5 of gas used (EIP-3529) and are applied after execution.
 
 ## Block Processing Order
 
-- Validate child header against parent before any state transitions.
+- Validate the child header against its parent before any state transitions.
 - Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution.
 - Post-execution checks: receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, blob gas used.
 
@@ -18,7 +18,8 @@ Date: 2026-02-10
 
 - Post-merge headers enforce `difficulty == 0`, `mix_hash == 0`, `nonce == 0`, and `ommers_hash == EMPTY_OMMERS_HASH`.
 - `extra_data.len() <= 32` and `gas_used <= gas_limit`.
-- Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together.
+- Base fee for child headers must match the EIP-1559 formula from the parent header.
+- Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
 
 ## Guest Input and WITNESS v1
@@ -26,7 +27,7 @@ Date: 2026-02-10
 - Input RLP list has 5–7 items: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; empty list is valid.
 - Recent block hashes are capped at 256 and must end with `parent.compute_hash()`. Genesis (`block.number == 0`) rejects any list.
-- Witness accounts are sorted by ascending address with no duplicates; storage entries sorted by slot.
+- Witness accounts are sorted by ascending address with no duplicates; storage entries are sorted by slot.
 - Account trie keys are `keccak256(address)`; storage trie keys are `keccak256(U256 slot)`.
 - Empty `account_rlp` requires exclusion proof and empty `code` + `storage_entries`.
 - `code_hash` must match `keccak256(code_bytes)`; empty code requires the empty code hash.
@@ -43,9 +44,14 @@ Date: 2026-02-10
 - `TxContext` carries `blob_versioned_hashes`; `BLOBHASH` returns zero for out-of-range indices.
 - `execute_transaction` must call `validate_blob_structure` directly because block processing does not use `validate_transaction`.
 
+## Receipts and Logs
+
+- Receipt roots use typed receipt envelopes for EIP-2718: `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`.
+- Receipt decoding must accept typed envelopes for `0x01..0x03` and reject unknown prefixes; legacy receipts are plain RLP lists.
+- Logs bloom follows execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
+
 ## EVM Semantics and State Roots
 
-- Logs bloom follows execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - Contract creation rejects code starting with `0xEF` (EIP-3541) and consumes all remaining gas.
 - Contract creation charges code-deposit gas (200 per byte) and rejects code larger than 24KB (EIP-170), consuming all remaining gas.
 - SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if the contract was created in the same transaction, otherwise keep code/storage.
@@ -85,6 +91,7 @@ Date: 2026-02-10
 - Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
 - Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
 - Use the in-tree deterministic signer in tests; derive expected sender from the secret key.
+- Accept typed receipt envelopes for `0x01..0x03` and reject unknown receipt prefixes.
 
 **Don't**
 - Treat EVM `REVERT` as exceptional.
