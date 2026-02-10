@@ -14,7 +14,7 @@ Date: 2026-02-10
 
 ## Transaction Validation
 
-- Transactions must originate from EOAs; sender accounts with code are invalid.
+- Transactions must originate from EOAs; sender accounts with code are invalid before execution.
 - Legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
 - Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (plus blob fee cap for type `0x03`).
 - Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
@@ -29,7 +29,7 @@ Date: 2026-02-10
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
-- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution.
+- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution. They run with a fixed gas limit, do not count against the block gas limit, and no-op if the target contract has no code.
 - Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Guest Input And WITNESS v1
@@ -38,7 +38,7 @@ Date: 2026-02-10
 - Witness input is detected by a top-level list of 3 items where the first is a u64 version (currently `1`).
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; empty list is valid.
 - Recent block hashes are capped at 256 and must end with `parent.compute_hash()`. Genesis (`block.number == 0`) rejects any list.
-- Witness accounts are sorted by ascending address; storage entries are sorted by slot.
+- Witness accounts are strictly increasing by address; storage entries are strictly increasing by slot.
 - Account trie keys are `keccak256(address)`; storage trie keys are `keccak256(U256 slot)`.
 - Empty `account_rlp` requires an exclusion proof and empty `code` + `storage_entries`.
 - `code_hash` must match `keccak256(code_bytes)`; empty code requires the empty code hash.
