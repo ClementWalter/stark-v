@@ -15,7 +15,9 @@ use alloc::vec::Vec;
 
 use crate::crypto::secp256k1::recover_address;
 use crate::crypto::secp256k1_math::secp256k1_n;
+use crate::crypto::{ripemd160, sha256};
 use crate::evm::gas::{GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD};
+use crate::evm::gas::{GAS_RIPEMD160_BASE, GAS_RIPEMD160_WORD, GAS_SHA256_BASE, GAS_SHA256_WORD};
 use crate::types::{Address, Hash, U256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +30,8 @@ pub fn execute_precompile(address: &Address, input: &[u8]) -> Option<PrecompileR
     let id = precompile_id(address)?;
     match id {
         1 => Some(ecrecover_precompile(input)),
+        2 => Some(sha256_precompile(input)),
+        3 => Some(ripemd160_precompile(input)),
         4 => Some(identity_precompile(input)),
         _ => None,
     }
@@ -51,6 +55,29 @@ fn identity_precompile(input: &[u8]) -> PrecompileResult {
     PrecompileResult {
         output: input.to_vec(),
         gas_used: GAS_IDENTITY_BASE + GAS_IDENTITY_WORD * word_count,
+    }
+}
+
+fn sha256_precompile(input: &[u8]) -> PrecompileResult {
+    // Precompile gas depends on input length, so we round up to 32-byte words.
+    let word_count = (input.len() as u64).div_ceil(32);
+    let digest = sha256(input);
+    PrecompileResult {
+        output: digest.to_vec(),
+        gas_used: GAS_SHA256_BASE + GAS_SHA256_WORD * word_count,
+    }
+}
+
+fn ripemd160_precompile(input: &[u8]) -> PrecompileResult {
+    // Precompile gas depends on input length, so we round up to 32-byte words.
+    let word_count = (input.len() as u64).div_ceil(32);
+    let digest = ripemd160(input);
+    let mut output = vec![0u8; 32];
+    // RIPEMD-160 returns 20 bytes, so we left-pad to 32 bytes to match EVM output rules.
+    output[12..].copy_from_slice(&digest);
+    PrecompileResult {
+        output,
+        gas_used: GAS_RIPEMD160_BASE + GAS_RIPEMD160_WORD * word_count,
     }
 }
 
@@ -143,6 +170,34 @@ mod tests {
         let result = execute_precompile(&addr, &input).expect("precompile result");
         assert!(result.output.is_empty());
         assert_eq!(result.gas_used, GAS_ECRECOVER);
+    }
+
+    #[test]
+    fn test_sha256_precompile_output_and_gas() {
+        let input = b"abc".to_vec();
+        let addr = precompile_address(2);
+        let result = execute_precompile(&addr, &input).expect("precompile result");
+        let expected = vec![
+            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d,
+            0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10,
+            0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
+        ];
+        assert_eq!(result.output, expected);
+        assert_eq!(result.gas_used, GAS_SHA256_BASE + GAS_SHA256_WORD);
+    }
+
+    #[test]
+    fn test_ripemd160_precompile_output_and_gas() {
+        let input = b"abc".to_vec();
+        let addr = precompile_address(3);
+        let result = execute_precompile(&addr, &input).expect("precompile result");
+        let expected = vec![
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8e,
+            0xb2, 0x08, 0xf7, 0xe0, 0x5d, 0x98, 0x7a, 0x9b, 0x04, 0x4a, 0x8e, 0x98, 0xc6,
+            0xb0, 0x87, 0xf1, 0x5a, 0x0b, 0xfc,
+        ];
+        assert_eq!(result.output, expected);
+        assert_eq!(result.gas_used, GAS_RIPEMD160_BASE + GAS_RIPEMD160_WORD);
     }
 
     fn precompile_address(id: u8) -> Address {

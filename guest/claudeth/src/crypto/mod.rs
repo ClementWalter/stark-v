@@ -6,6 +6,8 @@
 //! - RLP encoding/decoding
 
 pub mod keccak;
+pub mod ripemd160;
+pub mod sha256;
 pub mod rlp;
 pub mod secp256k1;
 pub(crate) mod secp256k1_math;
@@ -13,6 +15,10 @@ pub mod secp256k1_point;
 
 // Re-export Keccak-256 function
 pub use keccak::keccak256;
+
+// Re-export SHA-256 and RIPEMD-160 functions
+pub use ripemd160::ripemd160;
+pub use sha256::sha256;
 
 // Re-export secp256k1 functions
 pub use secp256k1::{
