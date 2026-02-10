@@ -95,7 +95,7 @@ struct TestBlock {
     uncle_headers: Vec<Value>,
     /// Withdrawals (post-Shanghai)
     #[serde(default)]
-    withdrawals: Vec<Value>,
+    withdrawals: Vec<TestWithdrawal>,
     /// RLP-encoded block
     rlp: String,
     /// Block number
@@ -169,6 +169,15 @@ struct TestTransaction {
 struct AccessListEntry {
     address: String,
     storage_keys: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TestWithdrawal {
+    index: String,
+    validator_index: String,
+    address: String,
+    amount: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -556,6 +565,19 @@ fn convert_test_transaction(
     Ok(tx)
 }
 
+fn convert_test_withdrawal(
+    test_withdrawal: &TestWithdrawal,
+) -> Result<claudeth::types::Withdrawal, String> {
+    // Fixture withdrawals encode numeric fields as hex strings; parsing here keeps
+    // process_block input aligned with execution-spec body semantics.
+    Ok(claudeth::types::Withdrawal {
+        index: parse_u64(&test_withdrawal.index)?,
+        validator_index: parse_u64(&test_withdrawal.validator_index)?,
+        address: parse_address(&test_withdrawal.address)?,
+        amount_gwei: parse_u64(&test_withdrawal.amount)?,
+    })
+}
+
 fn convert_test_block_header(
     test_header: &TestBlockHeader,
 ) -> Result<claudeth::types::BlockHeader, String> {
@@ -687,6 +709,7 @@ fn test_can_parse_blockchain_tests() {
     let mut pre_state_parsed = false;
     let mut block_header_converted = false;
     let mut transaction_converted = false;
+    let mut withdrawal_converted = false;
 
     // Parse every discovered file so this test actually tracks fixture-shape drift.
     for test_path in &tests {
@@ -719,6 +742,15 @@ fn test_can_parse_blockchain_tests() {
                             .unwrap_or_else(|err| panic!("failed to convert transaction: {err}"));
                         transaction_converted = true;
                     }
+
+                    if !withdrawal_converted
+                        && let Some(block) = test.blocks.first()
+                        && !block.withdrawals.is_empty()
+                    {
+                        convert_test_withdrawal(&block.withdrawals[0])
+                            .unwrap_or_else(|err| panic!("failed to convert withdrawal: {err}"));
+                        withdrawal_converted = true;
+                    }
                 }
 
                 parsed += test_cases.len();
@@ -749,6 +781,52 @@ fn test_can_parse_blockchain_tests() {
         transaction_converted,
         "Should convert at least one transaction"
     );
+}
+
+#[test]
+fn test_convert_test_withdrawal_parses_hex_fields() {
+    let test_withdrawal = TestWithdrawal {
+        index: "0x00".to_string(),
+        validator_index: "0x01".to_string(),
+        address: "0xc94f5374fce5edbc8e2a8697c15331677e6ebf0b".to_string(),
+        amount: "0x2710".to_string(),
+    };
+
+    let converted = convert_test_withdrawal(&test_withdrawal).expect("convert withdrawal");
+
+    assert_eq!(converted.index, 0);
+    assert_eq!(converted.validator_index, 1);
+    assert_eq!(converted.amount_gwei, 10_000);
+    assert_eq!(
+        converted.address,
+        parse_address("0xc94f5374fce5edbc8e2a8697c15331677e6ebf0b").unwrap()
+    );
+}
+
+#[test]
+fn test_convert_test_withdrawal_rejects_invalid_address() {
+    let test_withdrawal = TestWithdrawal {
+        index: "0x00".to_string(),
+        validator_index: "0x01".to_string(),
+        address: "0x1234".to_string(),
+        amount: "0x01".to_string(),
+    };
+
+    let err = convert_test_withdrawal(&test_withdrawal).unwrap_err();
+    assert!(err.contains("invalid address"));
+}
+
+#[test]
+fn test_convert_test_withdrawal_rejects_amount_over_u64() {
+    let test_withdrawal = TestWithdrawal {
+        index: "0x00".to_string(),
+        validator_index: "0x01".to_string(),
+        address: "0xc94f5374fce5edbc8e2a8697c15331677e6ebf0b".to_string(),
+        amount: "0x10000000000000000".to_string(),
+    };
+
+    let err = convert_test_withdrawal(&test_withdrawal).unwrap_err();
+    assert!(err.contains("too large for u64"));
 }
 
 #[test]
@@ -874,8 +952,29 @@ fn test_execute_all_blockchain_tests() {
                     }
                 };
 
-                // Execute block
-                let withdrawals = vec![];
+                // Execute block with fixture withdrawals so withdrawals_root checks
+                // are evaluated against the same body the fixture encodes.
+                let withdrawals: Vec<claudeth::types::Withdrawal> = match test_block
+                    .withdrawals
+                    .iter()
+                    .enumerate()
+                    .map(|(wd_idx, wd)| {
+                        convert_test_withdrawal(wd).map_err(|e| {
+                            format!(
+                                "Block {block_idx}, withdrawal {wd_idx}: Failed to convert withdrawal: {e}"
+                            )
+                        })
+                    })
+                    .collect()
+                {
+                    Ok(withdrawals) => withdrawals,
+                    Err(e) => {
+                        failure_reason = e;
+                        test_failed = true;
+                        break;
+                    }
+                };
+
                 match process_block(
                     &block_header,
                     &parent_header,
@@ -889,7 +988,10 @@ fn test_execute_all_blockchain_tests() {
                         if expects_exception {
                             failure_reason = format!(
                                 "Block {block_idx}: Expected exception `{}` but execution succeeded",
-                                test_block.expect_exception.as_deref().unwrap_or("<missing>")
+                                test_block
+                                    .expect_exception
+                                    .as_deref()
+                                    .unwrap_or("<missing>")
                             );
                             test_failed = true;
                             break;

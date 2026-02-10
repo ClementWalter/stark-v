@@ -1,15 +1,15 @@
 ## Do
-- Do treat the block header `mix_hash` field as `prev_randao` post-merge; keep `difficulty == 0`, `nonce == 0`, and empty ommers checks, but allow non-zero mix hash.
-- Do validate consensus rules against `execution-specs` source files before locking invariants into `BlockHeader::validate_post_merge_fields`.
-- Do run `cargo test -p claudeth --release` and `prek run --all-files` before claiming a task is complete.
-- Do use ignored EELS blockchain runs to find the highest-leverage failure class; fix the dominant gate first.
-- Do keep precompile failures mapped to sub-call failure semantics (CALL/STATICCALL fail without halting caller execution).
-- Do keep `0x08` pairing input strict (192-byte tuples), including canonical G2 decoding order and curve checks.
+- Do treat post-merge `mix_hash` as `prev_randao`: enforce `difficulty == 0`, `nonce == 0`, and empty ommers hash, but allow non-zero mix hash.
+- Do parse and pass fixture withdrawals into `process_block`; using `vec![]` for every block invalidates Shanghai/Cancun body validation.
+- Do validate consensus constants (especially trie roots) against execution-spec vectors before trusting internal constants.
+- Do run `cargo test -p claudeth --release` and `prek run --all-files` before finalizing changes.
+- Do use ignored EELS blockchain execution as a diagnostic signal to identify the current highest-frequency failure class.
+- Do keep precompile failures mapped to EVM sub-call failure semantics (CALL/STATICCALL fail without halting caller execution).
 
 ## Don't
-- Don't enforce `mix_hash == 0` on post-merge headers; this rejects valid Cancun/Prague fixtures before execution.
-- Don't trust a passing unit-test suite alone as evidence of execution-spec compatibility when blockchain integration remains ignored.
-- Don't keep workaround logic (like parent-hash rewriting) in a harness you use to claim conformance.
-- Don't claim full execution-spec compatibility while dominant fixture classes still fail (currently withdrawals-root mismatch after header fix).
-- Don't start `0x0a` point-evaluation implementation without an execution-spec-aligned KZG verification path.
-- Don't conflate reserved/future precompile behavior with generic empty-account call semantics without fork-aware rules.
+- Don't enforce `mix_hash == 0` post-merge; that rejects valid Cancun/Prague fixtures at header validation.
+- Don't leave fixture harness shortcuts (like hardcoded empty withdrawals) in place when evaluating execution-spec conformance.
+- Don't assume internal trie constants are correct without cross-checking the canonical Ethereum values.
+- Don't rely on unit-test green status alone as proof of execution-spec compatibility while blockchain integration remains ignored.
+- Don't keep parent-hash rewrite workarounds in the long-term conformance path.
+- Don't start `0x0a` point-evaluation implementation without a spec-aligned KZG verification path.

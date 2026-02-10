@@ -4,134 +4,136 @@ Last reviewed: 2026-02-10
 
 ## Ground Truth Snapshot
 
-- `cargo test -p claudeth --release` passes locally.
-- `tests/eels_blockchain_tests.rs::test_execute_all_blockchain_tests` is still `#[ignore]` and still contains non-conformance workarounds:
-  - parent hash is overwritten before execution;
-  - final `failed/errors` assertions are commented out.
-- A full ignored-run baseline (before this turn's fix) reported:
-  - `Total: 1142`, `Passed: 82`, `Failed: 1060`, `Errors: 0`.
-  - dominant failure reason then: `InvalidHeader("mix hash must be zero in post-merge blocks")`.
-- After the first fix in this turn, sampled ignored-run failures shifted to deeper execution mismatches, dominated by `WithdrawalsRootMismatch`, confirming the previous header gate was incorrect and is now removed.
+- `README.md` promises:
+  - full compatibility with Ethereum execution-spec tests;
+  - tests run on native and RV32 targets;
+  - no external dependencies.
+- The EELS blockchain execution harness remains `#[ignore]` and still contains the parent-hash rewrite workaround.
+- `Cargo.toml` still includes `serde`, so the "no dependencies" claim is currently inaccurate.
 - Precompile status in `src/evm/precompiles.rs`:
   - implemented: `0x01..0x07`, `0x09`;
-  - partially implemented: `0x08` (strict decoding + curve checks + infinity-identity success; non-trivial pairing arithmetic still missing);
-  - not implemented: `0x0a` (`POINT_EVALUATION`) remains a deterministic failure path.
-- README contract is still not satisfied by enforceable checks:
-  - execution-spec compatibility is not enforced by passing blockchain suite assertions;
-  - native/RV32 parity is not enforced by an automated gate in this crate;
-  - README says "no dependencies" but crate depends on `serde`.
+  - partial: `0x08` (non-trivial pairing arithmetic still missing);
+  - missing: `0x0a` point evaluation.
+- Post-fix ignored-run sampling confirms a protocol constant mismatch:
+  - expected empty trie root from fixtures: `0x56e81f17...5b48e01b...`;
+  - computed in claudeth: `0x56e81f17...5b96e01b...`.
+  This affects withdrawals and receipts root checks even for empty lists.
 
 ## Completed This Turn
 
-- Fixed post-merge header validation in `src/types/block.rs`:
-  - removed the incorrect `mix_hash == 0` requirement;
-  - retained required checks for `difficulty == 0`, `nonce == 0`, and empty ommers hash.
-- Updated block header docs/tests to match execution-spec semantics where the legacy mix-hash slot carries `prev_randao` post-merge.
-- Revalidated targeted tests for the updated behavior in release mode.
+### Task 1 (DONE): Wire Fixture Withdrawals Into Blockchain Execution
+
+Why:
+- The harness previously passed `withdrawals = vec![]` for every block, making Shanghai/Cancun withdrawals validation structurally wrong.
+
+What:
+- Added strict fixture withdrawal conversion and passed real fixture withdrawals to `process_block`.
+
+How:
+- Replaced `TestBlock.withdrawals` from `Vec<Value>` to `Vec<TestWithdrawal>`.
+- Added `convert_test_withdrawal` (strict hex/decimal numeric parsing via existing parsers).
+- Wired converted withdrawals into execution with block/withdrawal-index error context.
+- Added conversion regression tests for success, invalid address, and out-of-range amount.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST, DONE): Align Post-Merge Header Validation with PrevRandao Semantics
+### Task 2 (P0, FIRST): Fix Empty Trie Root Constant and Add Spec Vectors
 
 Why:
-- Execution-spec Cancun/Prague header validation does not require post-merge `mix_hash` to be zero; enforcing it rejects valid fixtures at the header gate.
+- A wrong empty trie root constant causes deterministic root mismatches (`withdrawals_root`, `receipts_root`) on empty tries.
 
 What:
-- Remove non-zero mix-hash rejection from post-merge validation while keeping other consensus-constant checks.
+- Correct the empty trie root constant and lock it with spec-vector tests.
 
 How:
-- Follow `execution-specs/src/ethereum/forks/cancun/fork.py::validate_header` behavior:
-  - keep checks for zero `difficulty`, zero `nonce`, and empty ommers hash;
-  - do not enforce `prev_randao/mix_hash` equality to zero.
+- Align `EMPTY_TRIE_ROOT` with execution-spec / Ethereum canonical value.
+- Add tests for empty trie root and known withdrawals-root vectors from `execution-specs`.
+- Re-run ignored blockchain execution sample to verify failure class shifts.
 
-### Task 2 (P0): Fix Withdrawals Root Computation/Validation Mismatch
+### Task 3 (P0): Remove Parent-Hash Rewrite Workaround and Execute Canonical Header Validation
 
 Why:
-- After Task 1, the dominant failing reason in ignored blockchain runs is `WithdrawalsRootMismatch`, which now blocks broad fixture execution.
+- Rewriting parent hash bypasses core header validation and blocks conformance claims.
 
 What:
-- Make computed withdrawals root exactly match execution-spec trie rules and fixture expectations.
+- Stop mutating fixture headers and validate against true parent linkage.
 
 How:
-- Diff `calculate_withdrawals_root` path against execution-spec (`fork.py` + trie encoding behavior).
-- Verify withdrawal RLP payload and trie key encoding (`rlp(index)` as trie key) end-to-end.
-- Add focused regression tests for:
-  - empty withdrawals list root;
-  - single withdrawal root;
-  - multi-withdrawal order sensitivity.
+- Remove `block_header.parent_hash = parent_header.compute_hash()` workaround.
+- Keep expected-invalid fixture handling (`expectException`) intact.
+- Add regression checks for parent-hash mismatch behavior.
 
-### Task 3 (P0): Remove Blockchain Harness Workarounds and Enforce Assertions
+### Task 4 (P0): Enforce EELS Blockchain Assertions (Unignore + Hard Fail)
 
 Why:
-- Compatibility claims are not meaningful while the integration harness is ignored and mutates header linkage.
+- Compatibility cannot be claimed while the main blockchain suite is ignored and soft-failing.
 
 What:
-- Convert EELS blockchain execution into an enforceable correctness gate.
+- Promote blockchain execution to a strict correctness gate.
 
 How:
-- Remove parent-hash overwrite workaround.
-- Keep diagnostics, but hard-fail on `failed != 0` or `errors != 0` once functional blockers are resolved.
-- Keep parser coverage broad for valid + invalid suites.
+- Unignore when P0 functional blockers are resolved.
+- Restore strict final assertions on `failed` and `errors`.
+- Keep detailed diagnostics for triage.
 
-### Task 4 (P0): Complete ALT_BN128 Pairing for Non-Trivial Inputs (`0x08`)
+### Task 5 (P0): Complete ALT_BN128 Pairing (`0x08`) for Non-Trivial Inputs
 
 Why:
-- EIP-197 requires full pairing product evaluation; current behavior fails all non-trivial tuples.
+- EIP-197 requires full pairing-product evaluation; current behavior rejects non-trivial valid inputs.
 
 What:
-- Implement non-trivial pairing arithmetic and canonical `1`/`0` output behavior.
+- Implement full non-trivial pairing arithmetic with spec-conformant outputs.
 
 How:
-- Mirror execution-spec subgroup and pairing-product semantics.
-- Add field-extension arithmetic needed for Miller loop/final exponentiation.
-- Add vectors for success/failure and malformed/subgroup-invalid inputs.
+- Port execution-spec semantics for Miller loop + final exponentiation.
+- Keep strict decoding/subgroup checks.
+- Add vectors for valid tuples and malformed/subgroup-invalid cases.
 
-### Task 5 (P0): Implement POINT_EVALUATION Precompile (`0x0a`)
+### Task 6 (P0): Implement Point Evaluation Precompile (`0x0a`)
 
 Why:
-- Cancun/4844 compatibility requires this precompile; reserved-fail cannot satisfy conformance.
+- Cancun compatibility requires EIP-4844 point-evaluation behavior.
 
 What:
-- Implement strict calldata checks, fixed gas, KZG proof verification, and canonical output words.
+- Implement calldata validation, fixed gas behavior, KZG verification, and canonical output.
 
 How:
-- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py`.
-- Match versioned hash derivation and proof verification semantics.
-- Add success/failure vectors from execution-spec fixtures.
+- Mirror execution-spec Cancun point-evaluation logic.
+- Add vectors for success, invalid proofs, and malformed input.
 
-### Task 6 (P0): Add Fork-Aware Rule Gating Across Execution Paths
+### Task 7 (P0): Introduce Fork-Aware Rule Gating Across STF/EVM Paths
 
 Why:
-- Fixtures span multiple protocol eras; always-on modern rules cause deterministic mismatches.
+- Fixtures span multiple eras; always-on modern rules create deterministic false failures.
 
 What:
-- Thread explicit fork metadata/rules into validation and EVM execution.
+- Thread explicit fork capability context into header/tx validation and execution behavior.
 
 How:
-- Propagate fixture/network fork context into block and transaction execution.
-- Gate precompile availability and fork-specific transaction/block checks.
-- Add regression tests spanning at least two fork boundaries.
+- Define fork flags used by validation and precompile availability checks.
+- Feed fixture network metadata into execution context.
+- Add cross-fork regression tests around Shanghai/Cancun boundaries.
 
-### Task 7 (P1): Add Native vs RV32im Deterministic Parity Gate
+### Task 8 (P1): Add Native vs RV32 Automated Parity Gate
 
 Why:
-- README claims cross-target coverage; this is not currently enforced.
+- README says tests are run on both targets, but no automated parity gate enforces this.
 
 What:
-- Add a reproducible native-vs-runner parity check over curated fixtures.
+- Add reproducible native-vs-runner parity checks over curated fixtures.
 
 How:
-- Add a `uv run` Python script (PEP 723 metadata) to execute both targets and diff outputs.
-- Integrate script into the local quality workflow.
+- Add a `uv run` Python driver (PEP 723 metadata) to execute both targets and diff outputs.
+- Integrate into local and CI quality workflow.
 
-### Task 8 (P1): Align README Claims with Verifiable Guarantees
+### Task 9 (P1): Align README Claims With Verifiable Reality
 
 Why:
-- Project claims must be true and enforceable via code/tests.
+- Public guarantees must match test-enforced behavior.
 
 What:
-- Reconcile README with verified behavior after functional parity tasks are complete.
+- Update README and/or implementation so every claim is true and measurable.
 
 How:
-- Either implement missing guarantees or narrow statements to what CI/test gates actually prove.
-- Resolve dependency claim mismatch (`serde` vs "no dependencies") explicitly.
+- Resolve dependency claim mismatch (`serde` vs "no dependencies").
+- Document exact EELS and cross-target coverage actually enforced by tests.
