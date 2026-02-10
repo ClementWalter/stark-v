@@ -37,7 +37,7 @@ How:
 Why:
 - BN254 and BLAKE2F coverage is required by many execution fixtures.
 What:
-- Implement `ECADD`, `ECMUL`, `ECPAIRING`, `BLAKE2F` with exact input validation and output conventions.
+- Implement BN254 add/mul/pairing precompiles and `BLAKE2F` with exact input validation and output conventions.
 How:
 - Mirror execution-specs implementations and add deterministic vector tests.
 - Add call-level OOG and malformed-input behavior tests.

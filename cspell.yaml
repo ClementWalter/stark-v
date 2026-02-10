@@ -34,9 +34,9 @@ words:
   - checksumming
   - circom
   - claudeth
+  - clément
   - clementwalter
   - clippy
-  - 'clément'
   - codecopy
   - codedeposit
   - codesize
@@ -52,10 +52,7 @@ words:
   - doubleword
   - dtolnay
   - ebreak
-  - ecadd
   - ecall
-  - ecmul
-  - ecpairing
   - ehdr
   - eprintln
   - erigon
