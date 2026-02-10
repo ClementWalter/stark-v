@@ -36,6 +36,7 @@ Date: 2026-02-10
 ## Guest Input And WITNESS v1
 
 - Input RLP list has 5-7 items and must fully consume the input bytes: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
+- When 6 items are provided, the last item is interpreted as `withdrawals` only if `withdrawals_root` is present; otherwise it is `block_hashes`.
 - Witness input is detected by a top-level list of 3 items where the first is a u64 version (currently `1`).
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; an empty list is valid.
 - Recent block hashes are limited to `min(block.number, 256)`, must end with `parent.compute_hash()`, and genesis (`block.number == 0`) rejects any list.

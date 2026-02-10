@@ -9,6 +9,7 @@ Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 (type `0x03`) and post-Shanghai fields are supported.
+README alignment revalidated against code on 2026-02-10.
 
 ## Verified Status (from code, reviewed 2026-02-10)
 
