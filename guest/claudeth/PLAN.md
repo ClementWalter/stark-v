@@ -43,13 +43,19 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass (1 ignored EELS test)
-- `prek run` (2026-02-10): pass (no eligible files)
+- `cargo test -p claudeth --release` (2026-02-10): pass (1 ignored EELS test).
+- `prek run` (2026-02-10): pass (no eligible files).
 
 ## Plan
 
+### Now
+
+- No immediate implementation work identified.
+
 ### Done
 
+- Use in-tree Keccak-256 for EIP-55 checksum generation.
+- Correct EIP-55 checksum example casing in tests.
 - WITNESS v1 decoding and proof validation integrated into guest input.
 - Blob tx validation, blob fee charging, and blob gas accounting.
 - EIP-6780 SELFDESTRUCT, EIP-3541, EIP-3860, EIP-170 enforcement.
@@ -66,4 +72,4 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Immediate Next Task
 
-None. README and code align; backlog items only.
+None.

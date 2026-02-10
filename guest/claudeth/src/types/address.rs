@@ -18,6 +18,7 @@ use core::hash::{Hash, Hasher};
 use core::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use crate::crypto::keccak256;
 
 /// A 20-byte Ethereum address.
 ///
@@ -138,7 +139,8 @@ impl Address {
         let hex = hex_encode(&self.0);
 
         // Compute Keccak-256 of the hex string
-        keccak256(hex.as_bytes())
+        let hash = keccak256(hex.as_bytes());
+        *hash.as_bytes()
     }
 
     /// Formats the address with EIP-55 mixed-case checksumming.
@@ -320,32 +322,6 @@ fn hex_encode(bytes: &[u8]) -> String {
     result
 }
 
-/// Simple Keccak-256 implementation.
-///
-/// Note: This is a minimal implementation for checksumming.
-/// For production use, consider using a dedicated crypto library.
-fn keccak256(data: &[u8]) -> [u8; 32] {
-    // For now, we use a placeholder that uses a simple hash
-    // In production, this should be replaced with a proper Keccak-256 implementation
-    let mut hash = [0u8; 32];
-
-    // Simple deterministic hash for checksumming
-    // This is NOT cryptographically secure but works for EIP-55
-    for (i, &byte) in data.iter().enumerate() {
-        hash[i % 32] ^= byte.wrapping_add(i as u8);
-        hash[(i + 1) % 32] = hash[(i + 1) % 32].wrapping_add(hash[i % 32]);
-    }
-
-    // Mix the hash
-    for _ in 0..4 {
-        for i in 0..32 {
-            hash[i] = hash[i].wrapping_add(hash[(i + 7) % 32]);
-            hash[i] = hash[i].rotate_left(3);
-        }
-    }
-
-    hash
-}
 
 // =============================================================================
 // Tests
@@ -699,7 +675,7 @@ mod tests {
     #[test]
     fn test_known_address_parsing() {
         let addresses = [
-            "0x5aAeb6053f3E94C9b9A09f33669435E7Ef1BeAed",
+            "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
             "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
             "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
             "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
@@ -708,6 +684,21 @@ mod tests {
         for addr_str in &addresses {
             let addr = Address::from_str(addr_str);
             assert!(addr.is_ok(), "Failed to parse {addr_str}");
+        }
+    }
+
+    #[test]
+    fn test_eip55_checksum_examples() {
+        let addresses = [
+            "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+            "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+            "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+            "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+        ];
+
+        for addr_str in &addresses {
+            let addr = Address::from_str(addr_str).expect("parse checksummed address");
+            assert_eq!(addr.to_checksum_string(), *addr_str);
         }
     }
 
