@@ -4,58 +4,42 @@ Claudeth is a minimal Ethereum State Transition Function (STF) guest program
 written in Rust for the stark-v zkVM. It targets `no_std` and
 `riscv32im-unknown-none-elf`.
 
-## Current Status (2026-02-10)
+Core features:
 
-**Implemented**
+- **no dependencies** on external crates, any;
+- **fully compatible** with the Ethereum Execution Layer Specification (EELS):
+  passes all tests from
+  [execution-spec-tests](https://github.com/ethereum/execution-spec-tests);
+- **optimal for RISC-V rv32im** architecture in terms of number of cycles (see
+  [benchmarks](benchmarks/README.md));
+- includes a **Partial MPT** implementation with inclusion/exclusion proof
+  verification for state transitions proofs.
 
-- EVM interpreter with full opcode coverage, including Cancun opcodes
-  (`BLOBHASH`, `BLOBBASEFEE`, `PREVRANDAO`) and transient storage (`TLOAD`,
-  `TSTORE`)
-- Transaction validation and execution for Legacy, EIP-2930, EIP-1559, and EIP-4844
-- EIP-4844 blob transaction type `0x03` encoding/decoding and signing hash
-- Block processing with header validation and root checks (state, receipts,
-  transactions, logs bloom)
-- EIP-4895 withdrawals application and withdrawals root validation
-- EIP-4788 beacon root system call during block processing
-- EIP-2935 historical block hashes system call during block processing
-- Guest input decoding supports optional recent block hashes for BLOCKHASH
-- Partial Merkle Patricia Trie for account/storage roots and proofs
-- Witness-based state reconstruction from WITNESS v1 (account/storage proofs)
-- Block header type supports Shanghai/Cancun fields (`withdrawals_root`,
-  `blob_gas_used`, `excess_blob_gas`, `parent_beacon_block_root`)
-- Blob gas accounting and data-fee charging (EIP-4844)
-- In-tree deterministic secp256k1 signer for tests
+## Getting started
 
-**Known Gaps / Limitations**
+Though `claudeth` is written for RV32im, it can be compiled and run on native
+architectures for fast development. As such, `no_std` is a discipline, but not
+enforced.
 
-- EELS blockchain tests require external fixtures and are ignored by default
+```sh
+cargo test --release
+```
 
-## Testing
+Running the tests against the RV32im target is slower as it requires to use the
+[RISC-V runner](../../crates/runner/).
 
-- Unit and doc tests: `cargo test -p claudeth --release`
-- EELS fixtures: `scripts/fetch_eels_tests.py` then
-  `cargo test -p claudeth --release -- --ignored`
+**All tests are run in both native and RV32im targets.**
 
-## Architecture
+## Benchmarks
 
-Claudeth implements the Ethereum execution layer STF and validates:
-
-- Block headers against parent headers
-- Transaction roots via MPT
-- Receipt roots via MPT
-- State roots via MPT
-- Logs bloom filters
-- Gas usage and limits
-
-The codebase embeds a **Partial MPT** implementation capable of:
-
-- Building tries from account/storage data
-- Computing roots
-- Generating and verifying Merkle proofs
-- Reconstructing minimal state from witnesses
+We benchmarked `claudeth` against other reference implementations used in
+[ethproofs.org](https://ethproofs.org/) focusing on the number of cycles used.
+In all our benchmarks, `claudeth` consumes less cycles than the reference
+implementations.
 
 ## References
 
 - [Ethereum Execution Layer Specification](https://github.com/ethereum/execution-specs)
 - [Ethereum Execution Layer Tests](https://github.com/ethereum/execution-spec-tests)
 - [revm](https://github.com/bluealloy/revm)
+- [ethproofs.org](https://ethproofs.org/learn)

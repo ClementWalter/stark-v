@@ -34,9 +34,9 @@ words:
   - checksumming
   - circom
   - claudeth
+  - clément
   - clementwalter
   - clippy
-  - 'clément'
   - codecopy
   - codedeposit
   - codesize
@@ -57,6 +57,7 @@ words:
   - eprintln
   - erigon
   - ethash
+  - ethproofs
   - evals
   - extcode
   - extcodecopy
@@ -69,6 +70,7 @@ words:
   - fusaka
   - futex
   - getrandom
+  - gitwildmatch
   - globl
   - groth
   - halfword
