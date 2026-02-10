@@ -81,6 +81,7 @@ Date: 2026-02-10
 - Update `PLAN.md` test status after running `cargo test -p claudeth --release` and `prek run`.
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
+- Run `prek run` even when it reports no files to check.
 
 **Don't**
 - Skip or disable pre-commit hooks.
