@@ -52,6 +52,12 @@ pub trait State {
     /// Stores a value to permanent storage (SSTORE)
     fn sstore(&mut self, address: &Address, key: &U256, value: U256);
 
+    /// Loads the original storage value for EIP-2200 gas accounting.
+    ///
+    /// Implementations should capture the current value the first time a slot
+    /// is written in a transaction, and return that original value thereafter.
+    fn sload_original(&mut self, address: &Address, key: &U256) -> U256;
+
     /// Loads a value from transient storage (TLOAD - EIP-1153)
     fn tload(&self, address: &Address, key: &U256) -> U256;
 
@@ -75,6 +81,9 @@ pub trait State {
 
     /// Clears self-destruct list (called at transaction end)
     fn clear_selfdestructs(&mut self);
+
+    /// Clears original storage tracking (called at transaction end).
+    fn clear_original_storage(&mut self);
 
     /// Marks an account as created in the current transaction.
     fn mark_account_created(&mut self, address: &Address);
@@ -106,6 +115,8 @@ pub struct InMemoryState {
     storage: HashMap<Address, Storage>,
     /// Transient storage (EIP-1153) - cleared after transaction
     transient_storage: HashMap<(Address, U256), U256>,
+    /// Original storage values captured on first write in a transaction (EIP-2200)
+    original_storage: OriginalStorage,
     /// Self-destructed accounts and their beneficiaries
     selfdestructs: Vec<(Address, Address)>,
     /// Accounts created in the current transaction (EIP-6780)
@@ -118,6 +129,12 @@ type CreatedAccounts = HashSet<Address>;
 #[cfg(target_arch = "riscv32")]
 type CreatedAccounts = BTreeSet<Address>;
 
+#[cfg(not(target_arch = "riscv32"))]
+type OriginalStorage = HashMap<(Address, U256), U256>;
+
+#[cfg(target_arch = "riscv32")]
+type OriginalStorage = HashMap<(Address, U256), U256>;
+
 impl InMemoryState {
     /// Creates a new empty in-memory state
     pub fn new() -> Self {
@@ -126,6 +143,7 @@ impl InMemoryState {
             code: HashMap::new(),
             storage: HashMap::new(),
             transient_storage: HashMap::new(),
+            original_storage: OriginalStorage::new(),
             selfdestructs: Vec::new(),
             created_accounts: CreatedAccounts::new(),
         }
@@ -300,6 +318,16 @@ impl State for InMemoryState {
         }
     }
 
+    fn sload_original(&mut self, address: &Address, key: &U256) -> U256 {
+        if let Some(value) = self.original_storage.get(&(*address, *key)) {
+            return *value;
+        }
+
+        let current = self.sload(address, key);
+        self.original_storage.insert((*address, *key), current);
+        current
+    }
+
     fn tload(&self, address: &Address, key: &U256) -> U256 {
         #[cfg(not(target_arch = "riscv32"))]
         return *self.transient_storage.get(&(*address, *key)).unwrap_or(&U256::ZERO);
@@ -340,6 +368,10 @@ impl State for InMemoryState {
 
     fn clear_selfdestructs(&mut self) {
         self.selfdestructs.clear();
+    }
+
+    fn clear_original_storage(&mut self) {
+        self.original_storage.clear();
     }
 
     fn mark_account_created(&mut self, address: &Address) {
@@ -630,6 +662,21 @@ mod tests {
 
         state.sstore(&addr, &key, U256::ZERO);
         assert_eq!(state.sload(&addr, &key), U256::ZERO);
+    }
+
+    #[test]
+    fn test_sload_original_tracks_first_write() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x01; 20]);
+        let key = U256::from(1u64);
+
+        assert_eq!(state.sload_original(&addr, &key), U256::ZERO);
+
+        state.sstore(&addr, &key, U256::from(5u64));
+        assert_eq!(state.sload_original(&addr, &key), U256::ZERO);
+
+        state.clear_original_storage();
+        assert_eq!(state.sload_original(&addr, &key), U256::from(5u64));
     }
 
     #[test]

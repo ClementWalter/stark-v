@@ -808,8 +808,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let new_value = self.stack.pop()?;
                 let address = self.call_ctx.address;
 
-                // Get current value to determine refund (EIP-3529)
+                // Get current and original values for EIP-2200 accounting
                 let current_value = self.state.sload(&address, &key);
+                let original_value = self.state.sload_original(&address, &key);
 
                 // Check sentry gas before any operation
                 if self.gas_remaining <= GAS_SSTORE_SENTRY {
@@ -819,23 +820,21 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 // Check if warm BEFORE marking as accessed (EIP-2929)
                 let is_warm = self.access_storage(&address, &key);
 
-                // Charge dynamic gas (SET/RESET/CLEAR/NOOP)
-                let sstore_gas = sstore_gas_cost(current_value, new_value);
-                self.consume_gas(sstore_gas)?;
-
-                // Charge EIP-2929 warm/cold access cost
-                // Base cost charged: GAS_SLOAD_COLD (2100)
-                // If warm, should charge: GAS_SLOAD_WARM (100)
-                // Refund difference: 2100 - 100 = 2000
-                self.consume_gas(2100)?; // Always charge cold cost
-                if is_warm {
-                    self.gas_remaining += 2000; // Refund difference for warm
-                }
-
-                // EIP-3529: Only refund when clearing storage (non-zero -> zero)
-                // Refund: 4800 gas when setting storage to zero from non-zero
-                if !current_value.is_zero() && new_value.is_zero() {
-                    self.gas_refund += 4800;
+                let sstore_gas = sstore_gas_cost(
+                    original_value,
+                    current_value,
+                    new_value,
+                    !is_warm,
+                );
+                self.consume_gas(sstore_gas.cost)?;
+                if sstore_gas.refund_delta >= 0 {
+                    self.gas_refund = self.gas_refund.saturating_add(
+                        sstore_gas.refund_delta as u64,
+                    );
+                } else {
+                    self.gas_refund = self.gas_refund.saturating_sub(
+                        (-sstore_gas.refund_delta) as u64,
+                    );
                 }
 
                 self.state.sstore(&address, &key, new_value);
@@ -1838,9 +1837,9 @@ mod tests {
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Gas: PUSH1(3) + PUSH1(3) + SSTORE cold SET(20000+2100=22100)
-        //      PUSH1(3) + PUSH1(3) + SSTORE warm RESET(5000+100=5100) + STOP(0)
-        // Total: 3 + 3 + 22100 + 3 + 3 + 5100 + 0 = 27212
-        assert_eq!(result.gas_used, 27212);
+        //      PUSH1(3) + PUSH1(3) + SSTORE warm (original!=current) = 100 + STOP(0)
+        // Total: 3 + 3 + 22100 + 3 + 3 + 100 + 0 = 22212
+        assert_eq!(result.gas_used, 22212);
     }
 
     // =============================================================================

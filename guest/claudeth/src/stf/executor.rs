@@ -266,6 +266,7 @@ pub fn execute_transaction<S: State + Clone>(
             state.clear_transient_storage();
             state.clear_selfdestructs();
             state.clear_created_accounts();
+            state.clear_original_storage();
             return Err(err);
         }
     };
@@ -307,6 +308,7 @@ pub fn execute_transaction<S: State + Clone>(
     state.clear_transient_storage();
     state.clear_selfdestructs();
     state.clear_created_accounts();
+    state.clear_original_storage();
 
     Ok(TransactionExecutionResult {
         sender,
@@ -1366,7 +1368,7 @@ mod tests {
 
     #[test]
     fn test_gas_refund_sstore_clearing_storage() {
-        // Test that SSTORE clearing storage (non-zero -> zero) gives 4800 gas refund
+        // Test that SSTORE restoring original value gives an EIP-2200 refund
         // Bytecode: PUSH1 0x42 PUSH1 0x01 SSTORE PUSH1 0x00 PUSH1 0x01 SSTORE STOP
         let code = vec![
             0x60, 0x42, // PUSH1 0x42 (value)
@@ -1374,7 +1376,7 @@ mod tests {
             0x55,       // SSTORE (set storage[1] = 0x42)
             0x60, 0x00, // PUSH1 0x00 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55,       // SSTORE (set storage[1] = 0, should refund 4800 gas)
+            0x55,       // SSTORE (set storage[1] = 0, restore original)
             0x00,       // STOP
         ];
 
@@ -1412,7 +1414,7 @@ mod tests {
             .unwrap();
 
         assert!(success);
-        assert_eq!(gas_refund, 4800); // EIP-3529 refund for clearing storage
+        assert_eq!(gas_refund, 19_900); // EIP-2200 refund for restoring original value
     }
 
     #[test]
@@ -1466,12 +1468,12 @@ mod tests {
     #[test]
     fn test_gas_refund_capped_at_one_fifth() {
         // Test that refund is capped at 1/5 of gas used
-        // Bytecode that sets and clears 2 storage slots (2 * 4800 = 9600 gas refund potential)
+        // Bytecode that sets and clears 2 storage slots (2 * 19_900 refund potential)
         let code = vec![
             0x60, 0x42, 0x60, 0x01, 0x55, // Set slot 1 = 0x42
-            0x60, 0x00, 0x60, 0x01, 0x55, // Clear slot 1 (+4800 refund)
+            0x60, 0x00, 0x60, 0x01, 0x55, // Clear slot 1 (+19_900 refund)
             0x60, 0x42, 0x60, 0x02, 0x55, // Set slot 2 = 0x42
-            0x60, 0x00, 0x60, 0x02, 0x55, // Clear slot 2 (+4800 refund)
+            0x60, 0x00, 0x60, 0x02, 0x55, // Clear slot 2 (+19_900 refund)
             0x00,                         // STOP
         ];
 
@@ -1509,7 +1511,7 @@ mod tests {
             .unwrap();
 
         assert!(success);
-        assert_eq!(gas_refund, 9600); // Raw refund = 2 * 4800
+        assert_eq!(gas_refund, 39_800); // Raw refund = 2 * 19_900
 
         // In the actual execute_transaction function, this would be capped at gas_used / 5
         let max_refund = gas_used / 5;

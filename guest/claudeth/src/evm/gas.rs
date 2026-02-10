@@ -171,6 +171,9 @@ pub const GAS_SSTORE_RESET: u64 = 5000;
 /// Gas cost for SSTORE when clearing a value (to zero)
 pub const GAS_SSTORE_CLEAR: u64 = 5000;
 
+/// Gas refund for clearing storage (EIP-3529)
+pub const GAS_STORAGE_CLEAR_REFUND: u64 = 4800;
+
 /// Sentry gas reserved for SSTORE (EIP-2200)
 pub const GAS_SSTORE_SENTRY: u64 = 2300;
 
@@ -207,23 +210,64 @@ pub const GAS_GAS: u64 = GAS_QUICK_STEP;
 // Storage Gas Calculations
 // =============================================================================
 
-/// Calculate the dynamic gas cost for SSTORE based on current and new values.
+/// Result of EIP-2200 SSTORE gas accounting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SstoreGas {
+    pub cost: u64,
+    pub refund_delta: i64,
+}
+
+/// Calculate the dynamic gas cost and refund delta for SSTORE (EIP-2200 + EIP-2929 + EIP-3529).
 ///
-/// This implements the simplified EIP-2200 rules without original-value tracking:
-/// - NOOP if value unchanged
-/// - SET when current is zero and new is non-zero
-/// - CLEAR when current is non-zero and new is zero
-/// - RESET for all other changes
-pub fn sstore_gas_cost(current_value: U256, new_value: U256) -> u64 {
-    if current_value == new_value {
-        GAS_SSTORE_NOOP
-    } else if current_value.is_zero() && !new_value.is_zero() {
-        GAS_SSTORE_SET
-    } else if !current_value.is_zero() && new_value.is_zero() {
-        GAS_SSTORE_CLEAR
-    } else {
-        GAS_SSTORE_RESET
+/// This mirrors the execution-specs storage rules:
+/// - Uses original value (transaction-start) vs current value to decide cost/refund.
+/// - Charges cold access cost when the slot is first accessed in the transaction.
+/// - Uses warm access cost for subsequent accesses.
+pub fn sstore_gas_cost(
+    original_value: U256,
+    current_value: U256,
+    new_value: U256,
+    is_cold: bool,
+) -> SstoreGas {
+    let mut cost = 0u64;
+    let mut refund_delta: i64 = 0;
+
+    if is_cold {
+        cost = cost.saturating_add(GAS_SLOAD_COLD);
     }
+
+    if original_value == current_value && current_value != new_value {
+        if original_value.is_zero() {
+            cost = cost.saturating_add(GAS_SSTORE_SET);
+        } else {
+            cost = cost.saturating_add(GAS_SSTORE_RESET.saturating_sub(GAS_SLOAD_COLD));
+        }
+    } else {
+        cost = cost.saturating_add(GAS_SLOAD_WARM);
+    }
+
+    if current_value != new_value {
+        if !original_value.is_zero() && !current_value.is_zero() && new_value.is_zero() {
+            refund_delta += GAS_STORAGE_CLEAR_REFUND as i64;
+        }
+
+        if !original_value.is_zero() && current_value.is_zero() {
+            refund_delta -= GAS_STORAGE_CLEAR_REFUND as i64;
+        }
+
+        if original_value == new_value {
+            if original_value.is_zero() {
+                refund_delta += (GAS_SSTORE_SET - GAS_SLOAD_WARM) as i64;
+            } else {
+                let delta = GAS_SSTORE_RESET
+                    .saturating_sub(GAS_SLOAD_COLD)
+                    .saturating_sub(GAS_SLOAD_WARM);
+                refund_delta += delta as i64;
+            }
+        }
+    }
+
+    SstoreGas { cost, refund_delta }
 }
 
 // Stack operations
@@ -1097,13 +1141,21 @@ mod tests {
 
     #[test]
     fn test_sstore_gas_costs() {
-        assert_eq!(sstore_gas_cost(U256::ZERO, U256::ZERO), GAS_SSTORE_NOOP);
-        assert_eq!(sstore_gas_cost(U256::ZERO, U256::ONE), GAS_SSTORE_SET);
-        assert_eq!(sstore_gas_cost(U256::ONE, U256::ZERO), GAS_SSTORE_CLEAR);
-        assert_eq!(
-            sstore_gas_cost(U256::from_u64(2), U256::from_u64(3)),
-            GAS_SSTORE_RESET
-        );
+        let noop = sstore_gas_cost(U256::ZERO, U256::ZERO, U256::ZERO, false);
+        assert_eq!(noop.cost, GAS_SLOAD_WARM);
+        assert_eq!(noop.refund_delta, 0);
+
+        let set_cold = sstore_gas_cost(U256::ZERO, U256::ZERO, U256::ONE, true);
+        assert_eq!(set_cold.cost, GAS_SLOAD_COLD + GAS_SSTORE_SET);
+        assert_eq!(set_cold.refund_delta, 0);
+
+        let update_warm = sstore_gas_cost(U256::ZERO, U256::ONE, U256::from_u64(2), false);
+        assert_eq!(update_warm.cost, GAS_SLOAD_WARM);
+        assert_eq!(update_warm.refund_delta, 0);
+
+        let restore_original = sstore_gas_cost(U256::ZERO, U256::ONE, U256::ZERO, false);
+        assert_eq!(restore_original.cost, GAS_SLOAD_WARM);
+        assert_eq!(restore_original.refund_delta, (GAS_SSTORE_SET - GAS_SLOAD_WARM) as i64);
     }
 
     #[test]

@@ -322,6 +322,7 @@ fn apply_beacon_root_system_call<S: State + Clone>(
         && result.success
     {
         *state = evm.into_state();
+        state.clear_original_storage();
     }
 }
 
@@ -383,6 +384,7 @@ fn apply_history_storage_system_call<S: State + Clone>(
         && result.success
     {
         *state = evm.into_state();
+        state.clear_original_storage();
     }
 }
 

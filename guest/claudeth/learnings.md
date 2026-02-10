@@ -6,13 +6,14 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and state changes apply only on success.
 - `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
-- Gas refunds only come from storage clears (4800 per clear) and are capped at 1/5 of gas used (EIP-3529).
+- SSTORE gas and refunds follow EIP-2200 + EIP-2929 + EIP-3529 using original vs current values; warm/cold access is charged, and refunds include clear refund and restore-to-original adjustments.
+- Original storage values are tracked per transaction and must be cleared at transaction boundaries and after pre-block system calls.
+- Gas refunds are capped at 1/5 of gas used (EIP-3529).
 - SELFDESTRUCT (EIP-6780): transfer balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns `0` after charging initcode gas and memory expansion.
 - EIP-170 max code size and code-deposit gas apply to CREATE/CREATE2; oversized code consumes all remaining gas in the create call.
 - EIP-3541 rejects contract code starting with `0xEF` for tx creation and CREATE/CREATE2, consuming all remaining gas on failure.
-- Coinbase receives only the priority fee; base fee is burned for post-London transactions.
-- Blob data fee is charged upfront and burned (not credited to coinbase).
+- Coinbase receives only the priority fee; base fee and blob data fee are burned.
 
 ## Transaction Validation
 
@@ -90,6 +91,7 @@ Date: 2026-02-10
 - Interpret 6-item guest input lists based on `withdrawals_root` presence.
 - Treat EVM exceptional halts as failed executions, not block-stopping errors.
 - Pay coinbase only the priority fee; burn the base fee portion.
+- Clear original storage tracking at transaction boundaries and after system calls.
 
 **Don't**
 

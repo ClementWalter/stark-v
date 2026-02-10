@@ -48,6 +48,8 @@ against code on 2026-02-10; no functional gaps found.
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
 - Pay coinbase only the priority fee (effective gas price minus base fee),
   burning the base fee portion.
+- EIP-2200 SSTORE gas/refund accounting with original-value tracking and EIP-3529
+  refund adjustments, with per-transaction original storage clearing.
 
 ### Known Gaps / Limitations
 
@@ -88,6 +90,8 @@ against code on 2026-02-10; no functional gaps found.
 - Accept and decode typed receipt envelopes for `0x01..0x03`, rejecting
   unsupported prefixes.
 - Reject transactions whose sender account has code (EOA-only requirement).
+- Implement EIP-2200 SSTORE gas/refund logic with original-value tracking and
+  clear original storage at transaction and system-call boundaries.
 
 ### Backlog (Not Scheduled)
 

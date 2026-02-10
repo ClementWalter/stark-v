@@ -483,20 +483,23 @@ pub fn sstore_eip2929<S: State>(
     let key = stack.pop().map_err(EvmError::from)?;
     let new_value = stack.pop().map_err(EvmError::from)?;
     let current_value = state.sload(&address, &key);
+    let original_value = state.sload_original(&address, &key);
 
     if *gas_remaining <= GAS_SSTORE_SENTRY {
         return Err(EvmError::OutOfGas);
     }
 
-    let sstore_gas = sstore_gas_cost(current_value, new_value);
-    super::utils::consume_gas(gas_remaining, sstore_gas)?;
-    super::utils::consume_gas(gas_remaining, 2100)?;
-    if is_warm {
-        *gas_remaining = (*gas_remaining).saturating_add(2000);
-    }
-
-    if !current_value.is_zero() && new_value.is_zero() {
-        *gas_refund += 4800;
+    let sstore_gas = sstore_gas_cost(
+        original_value,
+        current_value,
+        new_value,
+        !is_warm,
+    );
+    super::utils::consume_gas(gas_remaining, sstore_gas.cost)?;
+    if sstore_gas.refund_delta >= 0 {
+        *gas_refund = (*gas_refund).saturating_add(sstore_gas.refund_delta as u64);
+    } else {
+        *gas_refund = (*gas_refund).saturating_sub((-sstore_gas.refund_delta) as u64);
     }
 
     state.sstore(&address, &key, new_value);
