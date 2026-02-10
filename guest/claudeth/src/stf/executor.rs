@@ -34,8 +34,9 @@ use crate::evm::interpreter::{
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
-    blob_data_fee, calculate_intrinsic_gas, validate_balance, validate_blob_fee,
-    validate_chain_id, validate_gas, validate_nonce, validate_signature, ValidationError,
+    blob_data_fee, calculate_intrinsic_gas, validate_balance, validate_base_fee,
+    validate_blob_fee, validate_chain_id, validate_gas, validate_nonce, validate_signature,
+    ValidationError,
 };
 use crate::types::{Address, Hash, Transaction, U256};
 
@@ -162,6 +163,7 @@ pub fn execute_transaction<S: State + Clone>(
     validate_chain_id(tx, exec_ctx.chain_id)?;
     validate_nonce(tx, state.get_nonce(&sender))?;
     validate_gas(tx, exec_ctx.block_gas_limit)?;
+    validate_base_fee(tx, exec_ctx.block_ctx.base_fee)?;
     validate_blob_fee(tx, exec_ctx.block_ctx.excess_blob_gas)?;
 
     let intrinsic_gas = calculate_intrinsic_gas(tx).as_u64();

@@ -1,6 +1,6 @@
 # Claudeth Implementation Plan
 
-Date: 2026-02-09
+Date: 2026-02-10
 
 ## Summary
 
@@ -40,6 +40,8 @@ EIP-2935 historical block hashes system calls.
   from `TxContext`
 - Blob transactions populate `TxContext.blob_versioned_hashes`
 - Blob data fee charged from sender and block blob gas used tracked/validated
+- Base fee validation enforced for legacy/EIP-2930 (`gas_price >= base_fee`) and
+  EIP-1559/EIP-4844 (`max_fee_per_gas >= base_fee`)
 - `no_std` riscv32 guest entry and bump allocator
 - Deterministic state root computation by sorting account addresses before trie
   insertion
@@ -52,8 +54,8 @@ EIP-2935 historical block hashes system calls.
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-09): pass
-- `prek run` (2026-02-09): pass (no files to check)
+- `cargo test -p claudeth --release` (2026-02-10): pass
+- `prek run` (2026-02-10): pass (no files to check)
 
 ## Plan
 

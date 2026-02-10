@@ -1,6 +1,6 @@
 # Claudeth Development Learnings
 
-Date: 2026-02-09
+Date: 2026-02-10
 
 ## Consensus-Critical Behavior
 
@@ -46,6 +46,8 @@ Date: 2026-02-09
 - `Transaction::effective_gas_price` is
   min(`max_fee_per_gas`, `base_fee + max_priority_fee_per_gas`) for EIP-1559
   and blob txs.
+- Enforce base fee caps: legacy/EIP-2930 require `gas_price >= base_fee`,
+  EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee`.
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
   blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - Blob transactions require a 20-byte `to` address (no contract creation).
@@ -96,6 +98,7 @@ Date: 2026-02-09
   as the trie key.
 - Enforce recent block hashes list length ≤ min(block number, 256) and require
   the last hash to match the parent hash when provided.
+- Validate base fee caps per transaction type before charging balance.
 
 **Don't**
 

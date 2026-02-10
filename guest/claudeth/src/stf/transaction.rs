@@ -4,6 +4,7 @@
 //! - Signature verification and sender recovery
 //! - Nonce validation
 //! - Gas limit and intrinsic gas validation
+//! - Base fee validation
 //! - Balance validation
 //! - Chain ID validation
 //!
@@ -368,6 +369,32 @@ pub fn validate_gas(tx: &Transaction, block_gas_limit: U256) -> Result<(), Valid
     Ok(())
 }
 
+/// Validates that the transaction fee caps meet the current base fee.
+///
+/// - Legacy/EIP-2930: `gas_price >= base_fee`
+/// - EIP-1559/EIP-4844: `max_fee_per_gas >= base_fee`
+pub fn validate_base_fee(tx: &Transaction, base_fee: U256) -> Result<(), ValidationError> {
+    if base_fee == U256::ZERO {
+        return Ok(());
+    }
+
+    match tx {
+        Transaction::Legacy(tx) if tx.gas_price < base_fee => {
+            Err(ValidationError::GasPriceTooLow)
+        }
+        Transaction::Eip2930(tx) if tx.gas_price < base_fee => {
+            Err(ValidationError::GasPriceTooLow)
+        }
+        Transaction::Eip1559(tx) if tx.max_fee_per_gas < base_fee => {
+            Err(ValidationError::MaxFeePerGasTooLow)
+        }
+        Transaction::Blob(tx) if tx.max_fee_per_gas < base_fee => {
+            Err(ValidationError::MaxFeePerGasTooLow)
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Calculates the intrinsic gas cost for a transaction.
 ///
 /// The intrinsic gas is the minimum gas required to execute a transaction:
@@ -640,10 +667,13 @@ pub fn validate_transaction(
     // 3. Validate gas parameters
     validate_gas(tx, block_gas_limit)?;
 
-    // 4. Validate balance
+    // 4. Validate base fee constraints
+    validate_base_fee(tx, base_fee)?;
+
+    // 5. Validate balance
     validate_balance(tx, account_balance, base_fee)?;
 
-    // 5. Validate chain ID
+    // 6. Validate chain ID
     validate_chain_id(tx, chain_id)?;
 
     Ok(sender)
@@ -957,6 +987,55 @@ mod tests {
 
         let result = validate_gas(&tx, U256::from(30_000_000u64));
         assert_eq!(result, Err(ValidationError::MaxPriorityFeePerGasTooHigh));
+    }
+
+    #[test]
+    fn test_validate_base_fee_legacy_rejects_low_gas_price() {
+        let mut tx = LegacyTransaction {
+            nonce: U256::from(0u64),
+            gas_price: U256::from(9u64),
+            gas_limit: U256::from(21_000u64),
+            to: Some(Address::from([0x11; 20])),
+            value: U256::ZERO,
+            data: Bytes::new(),
+            v: U256::from(27u64),
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+
+        let base_fee = U256::from(10u64);
+        let result = validate_base_fee(&Transaction::Legacy(tx.clone()), base_fee);
+        assert_eq!(result, Err(ValidationError::GasPriceTooLow));
+
+        tx.gas_price = U256::from(10u64);
+        let result_ok = validate_base_fee(&Transaction::Legacy(tx), base_fee);
+        assert!(result_ok.is_ok());
+    }
+
+    #[test]
+    fn test_validate_base_fee_eip1559_rejects_low_max_fee() {
+        let mut tx = Eip1559Transaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(1u64),
+            max_fee_per_gas: U256::from(9u64),
+            gas_limit: U256::from(21_000u64),
+            to: Some(Address::from([0x22; 20])),
+            value: U256::ZERO,
+            data: Bytes::new(),
+            access_list: vec![],
+            v: U256::ZERO,
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+
+        let base_fee = U256::from(10u64);
+        let result = validate_base_fee(&Transaction::Eip1559(tx.clone()), base_fee);
+        assert_eq!(result, Err(ValidationError::MaxFeePerGasTooLow));
+
+        tx.max_fee_per_gas = U256::from(10u64);
+        let result_ok = validate_base_fee(&Transaction::Eip1559(tx), base_fee);
+        assert!(result_ok.is_ok());
     }
 
     #[test]

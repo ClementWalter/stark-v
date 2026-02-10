@@ -17,6 +17,6 @@ pub use receipt::{
     calculate_receipts_root, calculate_receipts_root_with_types, Bloom, Log, TransactionReceipt,
 };
 pub use transaction::{
-    calculate_intrinsic_gas, validate_balance, validate_chain_id, validate_gas, validate_nonce,
-    validate_signature, validate_transaction, ValidationError,
+    calculate_intrinsic_gas, validate_balance, validate_base_fee, validate_chain_id,
+    validate_gas, validate_nonce, validate_signature, validate_transaction, ValidationError,
 };
