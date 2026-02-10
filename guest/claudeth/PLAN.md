@@ -34,6 +34,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   deterministic signer for tests.
 - SSTORE gas/refund accounting (EIP-2200 + EIP-2929 + EIP-3529) with original
   storage tracking cleared at tx and system-call boundaries.
+- Transient storage (EIP-1153) with per-transaction clearing.
 - Coinbase receives only the priority fee; base fee and blob data fee are burned.
 
 ### Known Gaps / Limitations
@@ -42,7 +43,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass (1 ignored: EELS blockchain tests)
+- `cargo test -p claudeth --release` (2026-02-10): pass
 - `prek run` (2026-02-10): pass (no eligible files)
 
 ## Plan
@@ -56,6 +57,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   consume remaining gas without aborting block processing.
 - Receipt encoding/decoding with EIP-2718 typed envelopes.
 - SSTORE gas/refund accounting with original storage tracking.
+- Transient storage (EIP-1153) implementation and clearing.
 - Documentation refresh (PLAN/learnings aligned to code).
 
 ### Backlog (Not Scheduled)
