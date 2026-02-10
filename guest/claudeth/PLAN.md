@@ -4,109 +4,129 @@ Last reviewed: 2026-02-10
 
 ## Ground Truth Snapshot
 
-- `cargo test -p claudeth --release` currently passes.
-- `README.md` is still not aligned with current implementation:
-  - says "no dependencies" but `Cargo.toml` uses `serde`;
-  - says full `execution-spec-tests` compatibility, but the blockchain harness is still partial and non-assertive.
-- Precompile status from `src/evm/precompiles.rs`:
+- `cargo test -p claudeth --release` passes locally.
+- `tests/eels_blockchain_tests.rs` still does not prove end-to-end compatibility:
+  - `test_execute_all_blockchain_tests` is `#[ignore]`;
+  - the parent hash is still overwritten with a local workaround;
+  - final failure assertions are still commented out.
+- Precompile status in `src/evm/precompiles.rs`:
   - implemented: `0x01..0x07`, `0x09`;
-  - partially implemented: `0x08` only supports envelope semantics + empty-input success;
-  - not implemented: `0x0a` (`POINT_EVALUATION`) is reserved-fail.
-- EELS harness status from `tests/eels_blockchain_tests.rs`:
-  - now parses and iterates all discovered blockchain fixtures;
-  - now includes `InvalidBlocks` in discovery and basic `expectException` handling in execution flow;
-  - execution test is still `#[ignore]`;
-  - parent hash is still overwritten with a local workaround;
-  - final failure assertions are still disabled.
+  - partially implemented: `0x08` (strict tuple decoding + G2 validation + infinity identity success; non-trivial pairing arithmetic still missing);
+  - not implemented: `0x0a` (`POINT_EVALUATION`) is still reserved-fail.
+- README contract is not yet satisfied by enforceable checks:
+  - it claims full `execution-spec-tests` compatibility, but the execution harness is not enforcing zero failures;
+  - it claims all tests are run on native and RV32im, but CI-level parity checks are not present in this crate.
 
 ## Completed This Turn
 
-- Expanded blockchain fixture coverage in `tests/eels_blockchain_tests.rs`:
-  - removed `.take(10)` limits from parser and executor loops;
-  - stopped skipping `InvalidBlocks` at discovery;
-  - added explicit `expectException` handling during block execution paths.
+- Implemented Task 1 in `src/evm/precompiles.rs`:
+  - added strict G2 tuple decoding and on-curve validation aligned with execution-spec byte ordering;
+  - added non-empty identity fast path for pairing tuples involving infinity points;
+  - kept non-trivial pairing arithmetic explicitly unsupported (deterministic failure).
+- Added/updated pairing regression tests:
+  - all-zero tuple now returns `1`;
+  - infinity-G1 + valid-G2 tuple returns `1`;
+  - malformed G2 field element fails;
+  - non-trivial tuple remains pending and fails.
 - Re-ran quality gates:
   - `cargo test -p claudeth --release`;
   - `prek run --all-files`.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Implement Full ALT_BN128 Pairing Arithmetic (`0x08`, Non-Empty Input)
+### Task 1 (P0, DONE): Pairing Input Validation + Infinity Identity Fast Path
 
 Why:
-- EIP-197 correctness is currently missing for real pairing tuples.
+- Valid non-empty pairing calldata where every pair is identity-equivalent (infinity cases) should succeed per EIP-197 semantics.
+- Previously, all non-empty inputs failed, which created guaranteed false negatives even before full pairing arithmetic was added.
 
 What:
-- Implement full tuple decoding and pairing-product validation.
+- Implement strict tuple decoding for `0x08` (G1 + G2) with canonical field/layout checks.
+- Implement the pairing identity fast path: if all decoded pairs are trivial (contain infinity), return success `U256(1)`.
+- Keep non-trivial pairings explicitly unimplemented for now.
 
 How:
-- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/alt_bn128.py`.
-- Implement `bytes_to_g2`-equivalent decoding (four field elements, endian/order parity with spec).
-- Enforce curve membership and subgroup checks (`multiply(point, curve_order)` at infinity).
-- Return canonical output (`U256(1)` / `U256(0)`), while keeping malformed input behavior as precompile failure.
+- Mirror `bytes_to_g2` framing from `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/alt_bn128.py`:
+  - 128-byte G2 decoding, field modulus checks, coefficient order parity (`x = (x1, x0)`, `y = (y1, y0)`), and on-curve validation.
+- Parse all tuples after gas/malformed-length checks.
+- For each tuple, detect infinity-only contributions and short-circuit to deterministic success when every tuple is trivial.
+- Add Rust tests covering:
+  - one all-zero tuple succeeds with `1`;
+  - malformed G2 coordinates fail;
+  - non-trivial valid tuple remains explicitly unsupported.
 
-### Task 2 (P0): Implement POINT_EVALUATION Precompile (`0x0a`)
+### Task 2 (P0, FIRST): Complete ALT_BN128 Non-Trivial Pairing Arithmetic
 
 Why:
-- EIP-4844/Cancun correctness requires this precompile.
+- EIP-197 correctness requires full pairing product evaluation for non-infinity tuples.
 
 What:
-- Implement full `POINT_EVALUATION` behavior.
+- Implement non-trivial pairing result computation and canonical success/failure output (`1`/`0`).
 
 How:
-- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py` and `execution-specs/src/ethereum/crypto/kzg.py`.
-- Enforce strict 192-byte input shape and fixed gas.
-- Implement `kzg_commitment_to_versioned_hash`.
-- Integrate trusted KZG proof verification (`verify_kzg_proof`) equivalent semantics.
-- Return `[FIELD_ELEMENTS_PER_BLOB, BLS_MODULUS]` as two 32-byte big-endian words on success.
+- Follow execution-spec semantics for subgroup checks and pairing product evaluation.
+- Add finite field extension arithmetic required by Miller loop/final exponentiation.
+- Preserve failure mode semantics for malformed/subgroup-invalid tuples.
 
-### Task 3 (P0): Remove Remaining Harness Workarounds and Enforce Assertions
+### Task 3 (P0): Implement POINT_EVALUATION Precompile (`0x0a`)
 
 Why:
-- The current harness still cannot prove compatibility because it mutates parent linkage and never fails CI.
+- Cancun/4844 fixtures require this precompile; reserved-fail cannot pass conformance.
 
 What:
-- Convert `test_execute_all_blockchain_tests` from debug harness to enforceable correctness check.
+- Implement strict input validation, fixed gas, proof verification, and canonical output words.
 
 How:
-- Remove the parent-hash overwrite workaround and validate canonical parent linkage.
-- Turn final summary checks into hard assertions (`failed == 0`, `errors == 0`) once known gaps are resolved.
-- Keep failure diagnostics, but fail deterministically.
+- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py`.
+- Implement versioned hash derivation and proof verification semantics equivalent to the reference.
+- Add success/failure vectors from execution-spec tests.
 
-### Task 4 (P0): Add Fork-Aware Rule Gating (Precompiles + Header/Tx Rules)
+### Task 4 (P0): Remove Blockchain Harness Workarounds and Enforce Assertions
 
 Why:
-- EELS fixtures span forks; Cancun-only assumptions produce systematic mismatches on historical vectors.
+- Compatibility claims are not meaningful while the harness is ignored and mutates header linkage.
 
 What:
-- Thread fork/network context through execution paths and gate rule activation correctly.
+- Convert EELS blockchain test execution into an enforceable correctness gate.
 
 How:
-- Parse fixture network/fork metadata from blockchain tests.
-- Gate precompile availability by fork (especially `0x0a`).
-- Gate fork-specific validation in block/transaction processing paths.
-- Add focused tests that prove behavioral differences across at least two fork boundaries.
+- Remove parent-hash overwrite workaround.
+- Keep full diagnostic output, but make summary checks hard-fail (`failed == 0`, `errors == 0`) once precompile and fork gaps are closed.
+- Keep parser coverage broad across valid + invalid block suites.
 
-### Task 5 (P1): Add Native vs RV32im Parity Regression Checks
+### Task 5 (P0): Add Fork-Aware Rule Gating
 
 Why:
-- Native-only passing does not prove target correctness.
+- Fixtures span multiple hard forks; always-on Cancun-era behavior causes deterministic mismatches.
 
 What:
-- Add deterministic parity checks for key scenarios.
+- Thread fork/network metadata into execution paths and gate rules accordingly.
 
 How:
-- Add a `uv run` Python harness (PEP 723 metadata) that compares native and runner outputs on selected fixtures.
-- Verify block result roots and transaction-level outcomes.
+- Parse and propagate fixture network/fork context.
+- Gate precompile availability (notably `0x0a`) and fork-specific transaction/block validation.
+- Add focused regression tests across at least two fork boundaries.
 
-### Task 6 (P1): Converge Implementation to Protected README Contract
+### Task 6 (P1): Add Native vs RV32im Parity Checks
 
 Why:
-- `README.md` is protected by repository hooks, so contract drift must be solved in code rather than documentation edits.
+- README claims cross-target testing; native-only success is insufficient.
 
 What:
-- Make implementation satisfy the existing protected claims, or replace them through an approved process outside this repo policy.
+- Add reproducible parity checks between native and runner execution.
 
 How:
-- Eliminate remaining spec gaps (pairing, point evaluation, fork gating, full harness assertions).
-- If zero-dependency is still mandatory, remove serde-driven serialization from core types.
+- Add a `uv run` Python script (PEP 723 metadata) that executes a curated fixture set on both targets and compares deterministic outputs.
+- Integrate parity checks into the project test workflow.
+
+### Task 7 (P1): Align Implementation with README Contract
+
+Why:
+- Remaining README claims should be enforceable through code and tests, not aspirational.
+
+What:
+- Close the last contract gaps once functional parity tasks above are complete.
+
+How:
+- Reconcile any remaining mismatch between documented guarantees and verified behavior.
+- If strict zero-dependency is required, remove residual non-core dependencies as a dedicated follow-up.

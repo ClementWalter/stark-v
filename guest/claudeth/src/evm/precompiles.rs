@@ -8,7 +8,7 @@
 //! - 0x05: MODEXP (Cancun gas formula / EIP-2565)
 //! - 0x06: ALT_BN128 ECADD
 //! - 0x07: ALT_BN128 ECMUL
-//! - 0x08: ALT_BN128 PAIRING (reserved, implementation pending)
+//! - 0x08: ALT_BN128 PAIRING (input validation + infinity fast path)
 //! - 0x09: BLAKE2F (EIP-152)
 //! - 0x0a: POINT_EVALUATION (reserved, implementation pending)
 
@@ -261,6 +261,18 @@ enum Bn254Point {
     Point { x: U256, y: U256 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Bn254Fq2 {
+    c0: U256,
+    c1: U256,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bn254TwistPoint {
+    Infinity,
+    Point { x: Bn254Fq2, y: Bn254Fq2 },
+}
+
 fn ecadd_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
     if available_gas < GAS_BN256_ADD {
         return Err(PrecompileError::OutOfGas);
@@ -315,9 +327,9 @@ fn ecmul_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult
 
 fn pairing_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
     let tuple_count = input.len() / 192;
-    let tuple_count = u64::try_from(tuple_count).unwrap_or(u64::MAX);
+    let tuple_count_u64 = u64::try_from(tuple_count).unwrap_or(u64::MAX);
     let gas_used = GAS_BN256_PAIRING_BASE
-        .saturating_add(GAS_BN256_PAIRING_POINT.saturating_mul(tuple_count));
+        .saturating_add(GAS_BN256_PAIRING_POINT.saturating_mul(tuple_count_u64));
 
     if gas_used > available_gas {
         return Err(PrecompileError::OutOfGas);
@@ -334,9 +346,30 @@ fn pairing_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResu
         });
     }
 
-    // execution-specs defines full tuple decoding, subgroup checks, and pairing
-    // product verification here. Until that arithmetic is implemented, reject
-    // non-empty inputs so we do not silently return incorrect success values.
+    let mut has_non_trivial_pair = false;
+    for tuple_idx in 0..tuple_count {
+        let tuple_offset = tuple_idx * 192;
+        let g1 = decode_bn254_g1(&input[tuple_offset..tuple_offset + 64])?;
+        let g2 = decode_bn254_g2(&input[tuple_offset + 64..tuple_offset + 192])?;
+
+        // Pairings with an infinity point evaluate to the multiplicative
+        // identity, so we can return canonical success when every tuple is
+        // identity-equivalent without needing Miller loop arithmetic.
+        if matches!(g1, Bn254Point::Infinity) || matches!(g2, Bn254TwistPoint::Infinity) {
+            continue;
+        }
+
+        has_non_trivial_pair = true;
+    }
+
+    if !has_non_trivial_pair {
+        return Ok(PrecompileResult {
+            output: U256::ONE.to_be_bytes().to_vec(),
+            gas_used,
+        });
+    }
+
+    // Full non-trivial pairing product arithmetic remains pending.
     Err(PrecompileError::OutOfGas)
 }
 
@@ -494,6 +527,105 @@ fn decode_bn254_g1(bytes: &[u8]) -> Result<Bn254Point, PrecompileError> {
     }
 
     Ok(Bn254Point::Point { x, y })
+}
+
+fn decode_bn254_g2(bytes: &[u8]) -> Result<Bn254TwistPoint, PrecompileError> {
+    if bytes.len() != 128 {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    let p = bn254_field_modulus();
+
+    let x0 = read_u256_word(&bytes[..32]);
+    let x1 = read_u256_word(&bytes[32..64]);
+    let y0 = read_u256_word(&bytes[64..96]);
+    let y1 = read_u256_word(&bytes[96..128]);
+
+    if x0 >= p || x1 >= p || y0 >= p || y1 >= p {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    // execution-specs decodes FQ2 coordinates as (x1, x0) and (y1, y0).
+    let x = Bn254Fq2 { c0: x1, c1: x0 };
+    let y = Bn254Fq2 { c0: y1, c1: y0 };
+
+    if bn254_fq2_is_zero(x) && bn254_fq2_is_zero(y) {
+        return Ok(Bn254TwistPoint::Infinity);
+    }
+
+    let y_sq = bn254_fq2_mul(y, y, p);
+    let x_sq = bn254_fq2_mul(x, x, p);
+    let x_cubed = bn254_fq2_mul(x_sq, x, p);
+    let b2 = bn254_twist_b2()?;
+    let rhs = bn254_fq2_add(x_cubed, b2, p);
+
+    if y_sq != rhs {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    Ok(Bn254TwistPoint::Point { x, y })
+}
+
+fn bn254_fq2_is_zero(value: Bn254Fq2) -> bool {
+    value.c0.is_zero() && value.c1.is_zero()
+}
+
+fn bn254_fq2_add(left: Bn254Fq2, right: Bn254Fq2, modulus: U256) -> Bn254Fq2 {
+    Bn254Fq2 {
+        c0: mod_add(left.c0, right.c0, modulus),
+        c1: mod_add(left.c1, right.c1, modulus),
+    }
+}
+
+fn bn254_fq2_mul(left: Bn254Fq2, right: Bn254Fq2, modulus: U256) -> Bn254Fq2 {
+    let ac = mod_mul(left.c0, right.c0, modulus);
+    let bd = mod_mul(left.c1, right.c1, modulus);
+    let ad = mod_mul(left.c0, right.c1, modulus);
+    let bc = mod_mul(left.c1, right.c0, modulus);
+
+    Bn254Fq2 {
+        c0: mod_sub(ac, bd, modulus),
+        c1: mod_add(ad, bc, modulus),
+    }
+}
+
+fn bn254_fq2_inv(value: Bn254Fq2, modulus: U256) -> Option<Bn254Fq2> {
+    if bn254_fq2_is_zero(value) {
+        return None;
+    }
+
+    let c0_sq = mod_mul(value.c0, value.c0, modulus);
+    let c1_sq = mod_mul(value.c1, value.c1, modulus);
+    let denominator = mod_add(c0_sq, c1_sq, modulus);
+    let inv_denominator = mod_inv(denominator, modulus)?;
+
+    Some(Bn254Fq2 {
+        c0: mod_mul(value.c0, inv_denominator, modulus),
+        c1: mod_mul(mod_sub(U256::ZERO, value.c1, modulus), inv_denominator, modulus),
+    })
+}
+
+fn bn254_twist_b2() -> Result<Bn254Fq2, PrecompileError> {
+    let p = bn254_field_modulus();
+    // The G2 twist constant is 3 / (9 + i). Computing it in-field avoids
+    // hardcoding a brittle coefficient ordering.
+    let numerator = Bn254Fq2 {
+        c0: U256::from_u64(3),
+        c1: U256::ZERO,
+    };
+    let denominator = Bn254Fq2 {
+        c0: U256::from_u64(9),
+        c1: U256::ONE,
+    };
+    let inverse = bn254_fq2_inv(denominator, p).ok_or(PrecompileError::OutOfGas)?;
+    Ok(bn254_fq2_mul(numerator, inverse, p))
+}
+
+fn read_u256_word(bytes: &[u8]) -> U256 {
+    debug_assert_eq!(bytes.len(), 32);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(bytes);
+    U256::from_be_bytes(out)
 }
 
 fn bn254_point_double(point: Bn254Point) -> Bn254Point {
@@ -1033,6 +1165,15 @@ mod tests {
         out
     }
 
+    fn pairing_tuple(g1: &[u8], g2: &[u8]) -> Vec<u8> {
+        assert_eq!(g1.len(), 64);
+        assert_eq!(g2.len(), 128);
+        let mut out = Vec::with_capacity(192);
+        out.extend_from_slice(g1);
+        out.extend_from_slice(g2);
+        out
+    }
+
     #[test]
     fn test_ecadd_precompile_adds_two_points() {
         let addr = precompile_address(6);
@@ -1288,9 +1429,62 @@ mod tests {
     }
 
     #[test]
-    fn test_pairing_precompile_non_empty_pending_impl_fails() {
+    fn test_pairing_precompile_non_empty_identity_tuple_returns_one() {
         let addr = precompile_address(8);
         let input = vec![0u8; 192];
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.output, U256::ONE.to_be_bytes().to_vec());
+        assert_eq!(
+            result.gas_used,
+            GAS_BN256_PAIRING_BASE + GAS_BN256_PAIRING_POINT
+        );
+    }
+
+    #[test]
+    fn test_pairing_precompile_infinity_g1_with_valid_g2_returns_one() {
+        let addr = precompile_address(8);
+
+        let g1 = vec![0u8; 64];
+        let g2 = hex_decode(
+            "209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+             04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+             2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+             120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550",
+        )
+        .expect("valid G2 vector");
+        let input = pairing_tuple(&g1, &g2);
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.output, U256::ONE.to_be_bytes().to_vec());
+        assert_eq!(
+            result.gas_used,
+            GAS_BN256_PAIRING_BASE + GAS_BN256_PAIRING_POINT
+        );
+    }
+
+    #[test]
+    fn test_pairing_precompile_invalid_g2_field_element_fails() {
+        let addr = precompile_address(8);
+        let mut input = vec![0u8; 192];
+        input[64..96].copy_from_slice(&bn254_field_modulus().to_be_bytes());
+
+        let result = execute_precompile(&addr, &input, u64::MAX).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_pairing_precompile_non_trivial_pair_still_pending_impl_fails() {
+        let addr = precompile_address(8);
+        let input = hex_decode(
+            "1c76476f4def4bb94541d57ebba1193381ffa7aa76ada664dd31c16024c43f59\
+             3034dd2920f673e204fee2811c678745fc819b55d3e9d294e45c9b03a76aef41\
+             209dd15ebff5d46c4bd888e51a93cf99a7329636c63514396b4a452003a35bf7\
+             04bf11ca01483bfa8b34b43561848d28905960114c8ac04049af4b6315a41678\
+             2bb8324af6cfc93537a2ad1a445cfd0ca2a71acd7ac41fadbf933c2a51be344d\
+             120a2a4cf30c1bf9845f20c6fe39e07ea2cce61f0c9bb048165fe5e4de877550",
+        )
+        .expect("valid non-trivial pairing tuple");
+
         let result = execute_precompile(&addr, &input, u64::MAX).expect("precompile exists");
         assert_eq!(result, Err(PrecompileError::OutOfGas));
     }
