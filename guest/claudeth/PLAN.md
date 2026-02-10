@@ -11,6 +11,8 @@ inclusion/exclusion proof verification), and EIP-4895 withdrawals application.
 Block processing applies EIP-4788 (beacon root) and EIP-2935 (history storage)
 system calls before transaction execution. The block header type includes
 Shanghai/Cancun fields.
+The secp256k1 module still uses `k256`, but in-tree finite-field helpers now
+exist as a foundation for replacing it.
 
 ## Verified Status (from code)
 
@@ -54,6 +56,8 @@ Shanghai/Cancun fields.
 - Deterministic state root computation by sorting account addresses before trie
   insertion.
 - Witness format v1 draft defined in `WITNESS.md`.
+- In-tree secp256k1 finite-field helpers: modular add/sub/mul/pow/inv with
+  curve constants (p, n, b).
 
 ### Known Gaps / Limitations
 
@@ -77,11 +81,15 @@ Shanghai/Cancun fields.
 
 - P2.1: Replace k256-based signing in tests with fixed secp256k1 vectors and
   ensure verification/recovery uses prehashed message inputs. (done)
-- P2.2: Implement in-tree secp256k1 field + point arithmetic and ECDSA
-  verify/recover.
-- P2.3: Remove `k256` dependency from Cargo and tests.
+- P2.2: Add in-tree finite-field helpers (mod add/sub/mul/pow/inv) plus curve
+  constants for secp256k1. (done)
+- P2.3: Implement affine point arithmetic (on-curve check, add, double,
+  scalar mul) over the secp256k1 field.
+- P2.4: Implement ECDSA verify/recover using in-tree field/point ops and
+  execution-specs recovery rules (including x-coordinate validity check).
+- P2.5: Remove `k256` dependency and update crypto module wiring/tests.
 
 ## Immediate Next Task
 
-Implement in-tree secp256k1 field + point arithmetic and ECDSA
-verify/recover.
+Implement affine secp256k1 point arithmetic (on-curve check, add/double,
+scalar mul) with tests, using the in-tree field helpers.

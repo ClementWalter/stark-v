@@ -8,6 +8,7 @@
 pub mod keccak;
 pub mod rlp;
 pub mod secp256k1;
+pub(crate) mod secp256k1_math;
 
 // Re-export Keccak-256 function
 pub use keccak::keccak256;

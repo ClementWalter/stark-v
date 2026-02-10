@@ -6,7 +6,7 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid jump/opcode) revert only the current
   transaction and consume all remaining gas.
-- `REVERT` is non-exceptional: preserves remaining gas and only reverts the
+- `REVERT` is non-exceptional: it preserves remaining gas and only reverts the
   current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529); SSTORE clearing refund
   uses the 4800 gas value in `stf::executor`.
@@ -34,8 +34,6 @@ Date: 2026-02-10
 - Input is an RLP list of 5–7 items:
   `block_header`, `parent_header`, `chain_id`, `transactions`,
   `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
-- State entries are `[address, nonce, balance, code_bytes, storage_entries]`
-  with storage entries `[key_u256, value_u256]`.
 - `withdrawals` must be provided iff `withdrawals_root` is present in the
   header; empty list is valid.
 - Recent block hashes are capped at 256 entries, ordered oldest → newest; when
@@ -70,21 +68,30 @@ Date: 2026-02-10
   `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
 - Base fee caps: legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559 and
   EIP-4844 require `max_fee_per_gas >= base_fee`.
-- Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
-  blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
-- Blob txs require a 20-byte `to` address (no contract creation).
-- `TxContext` carries `blob_versioned_hashes`; `RecursiveHost::blobhash` reads
-  from it and returns zero for out-of-range indices.
-- Blob receipt encoding uses type prefix `0x03`.
 - Signature recovery enforces EIP-2 bounds: `0 < r < SECP256K1N`,
   `0 < s <= SECP256K1N/2`, and valid `v/y_parity` per tx type.
 - Signature verification is done over the prehashed message (Keccak-256), and
   tests use fixed vectors instead of k256 signing.
 
+## Blob Transaction Rules
+
+- Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
+  blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
+- Blob txs require a 20-byte `to` address (no contract creation).
+- `TxContext` carries `blob_versioned_hashes`; `RecursiveHost::blobhash` reads
+  from it and returns zero for out-of-range indices.
+- Blob data fee is charged from sender and burned (not credited to coinbase).
+- Blob receipt encoding uses type prefix `0x03`.
+
 ## Logs Bloom
 
 - Bloom bit ordering follows execution-specs: reverse the 11-bit index
   (`bit_index = 0x07FF - bit_to_set`) and set bits MSB-first within bytes.
+
+## secp256k1 In-Tree Work
+
+- secp256k1 constants are fixed (p, n, b), and modular helpers exist for
+  add/sub/mul/pow/inv as a foundation for removing `k256`.
 
 ## Pre-commit Hygiene
 
@@ -107,7 +114,8 @@ Date: 2026-02-10
 - Use execution-specs logs bloom bit ordering (reversed 11-bit index,
   MSB-first).
 - Enforce EIP-2 signature bounds and `v/y_parity` during sender recovery.
-- Keep secp256k1 tests on fixed vectors and verify against prehashed inputs.
+- Reuse in-tree secp256k1 modular helpers for point/ecdsa work to avoid new
+  dependencies.
 
 **Don't**
 
