@@ -66,7 +66,6 @@ Date: 2026-02-10
 ## Tooling And Process
 
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable.
-- Always run `cargo test -p claudeth --release` and `prek run` before committing.
 - `prek run` may skip checks when no files are eligible; the run is still required.
 - Do not add shell scripts (`.sh`); use `uv run` Python scripts with PEP 723 metadata.
 
@@ -82,7 +81,7 @@ Date: 2026-02-10
 - Update `PLAN.md` test status after running `cargo test -p claudeth --release` and `prek run`.
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
-- Run `prek run` even when it reports no files to check.
+- Run `cargo test -p claudeth --release` and `prek run` before committing.
 - Interpret 6-item guest input lists based on `withdrawals_root` presence.
 
 **Don't**
