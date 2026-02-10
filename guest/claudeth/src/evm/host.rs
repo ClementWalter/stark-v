@@ -9,7 +9,7 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::evm::gas::blob_gas_price;
+use crate::evm::gas::{blob_gas_price, code_deposit_cost, MAX_CODE_SIZE};
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
 
@@ -389,8 +389,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
         match result {
             Ok(exec_result) => {
-                if exec_result.success && !exec_result.return_data.is_empty() {
-                    if exec_result.return_data[0] == 0xEF {
+                if exec_result.success {
+                    if !exec_result.return_data.is_empty() && exec_result.return_data[0] == 0xEF {
                         // EIP-3541: reject code starting with 0xEF and consume all gas.
                         let _ = evm.into_state();
                         return CreateResult {
@@ -400,7 +400,33 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                             gas_used: msg.gas,
                         };
                     }
-                    // Deploy the contract code
+
+                    let code_size = exec_result.return_data.len();
+                    if code_size > MAX_CODE_SIZE {
+                        // EIP-170: reject oversized code and consume all gas.
+                        let _ = evm.into_state();
+                        return CreateResult {
+                            success: false,
+                            address: None,
+                            return_data: Vec::new(),
+                            gas_used: msg.gas,
+                        };
+                    }
+
+                    let code_deposit = code_deposit_cost(code_size);
+                    let gas_remaining = msg.gas.saturating_sub(exec_result.gas_used);
+                    if gas_remaining < code_deposit {
+                        // Out of gas during code deposit - consume all gas.
+                        let _ = evm.into_state();
+                        return CreateResult {
+                            success: false,
+                            address: None,
+                            return_data: Vec::new(),
+                            gas_used: msg.gas,
+                        };
+                    }
+
+                    // Deploy the contract code and commit state.
                     let mut final_state = evm.into_state();
                     final_state.set_code(&contract_address, exec_result.return_data.clone());
                     *state = final_state;
@@ -408,7 +434,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: true,
                         address: Some(contract_address),
                         return_data: exec_result.return_data,
-                        gas_used: exec_result.gas_used,
+                        gas_used: exec_result.gas_used.saturating_add(code_deposit),
                     }
                 } else {
                     // Discard failed create state
@@ -517,8 +543,23 @@ pub fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) 
 mod tests {
     use super::*;
     use crate::evm::interpreter::{BlockContext, TxContext};
+    use crate::evm::gas::MAX_CODE_SIZE;
     use crate::state::InMemoryState;
     use crate::types::{Address, U256};
+
+    fn init_code_returning(data_len: usize, fill: u8) -> Vec<u8> {
+        assert!(data_len <= u16::MAX as usize);
+        let len = data_len as u16;
+        let offset = 15u16;
+        let mut code = Vec::with_capacity(15 + data_len);
+        code.extend_from_slice(&[0x61, (len >> 8) as u8, (len & 0xff) as u8]);
+        code.extend_from_slice(&[0x61, (offset >> 8) as u8, (offset & 0xff) as u8]);
+        code.extend_from_slice(&[0x60, 0x00, 0x39]);
+        code.extend_from_slice(&[0x61, (len >> 8) as u8, (len & 0xff) as u8]);
+        code.extend_from_slice(&[0x60, 0x00, 0xF3]);
+        code.extend(std::iter::repeat(fill).take(data_len));
+        code
+    }
 
     #[test]
     fn test_recursive_host_blockhash_parent_only() {
@@ -623,6 +664,74 @@ mod tests {
         ];
 
         let gas = 100000;
+        let msg = CreateMessage {
+            gas,
+            caller,
+            value: U256::ZERO,
+            init_code,
+            salt: None,
+        };
+
+        let result = host.create(&mut state, msg);
+
+        assert!(!result.success);
+        assert_eq!(result.gas_used, gas);
+        assert!(result.return_data.is_empty());
+        assert!(result.address.is_none());
+
+        let expected_address = compute_create_address(&caller, U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
+    }
+
+    #[test]
+    fn test_recursive_host_create_rejects_oversize_code() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x01; 20]);
+        state.set_balance(&caller, U256::from_u64(1_000_000));
+        state.increment_nonce(&caller);
+
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let mut host = RecursiveHost::new()
+            .with_block_context(block_ctx)
+            .with_tx_context(tx_ctx);
+
+        let init_code = init_code_returning(MAX_CODE_SIZE + 1, 0x42);
+        let gas = 6_000_000;
+        let msg = CreateMessage {
+            gas,
+            caller,
+            value: U256::ZERO,
+            init_code,
+            salt: None,
+        };
+
+        let result = host.create(&mut state, msg);
+
+        assert!(!result.success);
+        assert_eq!(result.gas_used, gas);
+        assert!(result.return_data.is_empty());
+        assert!(result.address.is_none());
+
+        let expected_address = compute_create_address(&caller, U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
+    }
+
+    #[test]
+    fn test_recursive_host_create_oog_code_deposit() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x01; 20]);
+        state.set_balance(&caller, U256::from_u64(1_000_000));
+        state.increment_nonce(&caller);
+
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let mut host = RecursiveHost::new()
+            .with_block_context(block_ctx)
+            .with_tx_context(tx_ctx);
+
+        let init_code = init_code_returning(32, 0x11);
+        let gas = 2_000;
         let msg = CreateMessage {
             gas,
             caller,

@@ -4,7 +4,7 @@ Claudeth is a minimal Ethereum State Transition Function (STF) guest program
 written in Rust for the stark-v zkVM. It targets `no_std` and
 `riscv32im-unknown-none-elf`.
 
-## Current Status (2026-02-09)
+## Current Status (2026-02-10)
 
 **Implemented**
 
@@ -30,7 +30,6 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 
 - No in-tree signing yet; tests use fixed secp256k1 vectors (ECDSA verify/recover are in-tree)
 - EELS blockchain tests require external fixtures and are ignored by default
-- EIP-170 max code size and CREATE/CREATE2 code-deposit gas charging are not enforced yet
 
 ## Testing
 

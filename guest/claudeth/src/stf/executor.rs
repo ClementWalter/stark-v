@@ -527,10 +527,10 @@ fn execute_create<S: State + Clone>(
     match result {
         Ok((exec_result, mut returned_state)) => {
             let mut final_gas_used = exec_result.gas_used;
-            let mut success = exec_result.success;
+            let success = exec_result.success;
 
-            if exec_result.success && !exec_result.return_data.is_empty() {
-                if exec_result.return_data[0] == 0xEF {
+            if exec_result.success {
+                if !exec_result.return_data.is_empty() && exec_result.return_data[0] == 0xEF {
                     // EIP-3541: reject code starting with 0xEF and consume all remaining gas.
                     return Ok((
                         false,
@@ -543,20 +543,41 @@ fn execute_create<S: State + Clone>(
                         returned_state,
                     ));
                 }
-                // Calculate code deposit cost: 200 gas per byte (G_codedeposit)
-                use crate::evm::gas::GAS_CODE_DEPOSIT;
-                let code_size = exec_result.return_data.len() as u64;
-                let code_deposit_cost = code_size.saturating_mul(GAS_CODE_DEPOSIT);
 
-                // Check if we have enough gas remaining for code deposit
+                use crate::evm::gas::{code_deposit_cost, MAX_CODE_SIZE};
+                let code_size = exec_result.return_data.len();
+                if code_size > MAX_CODE_SIZE {
+                    // EIP-170: reject oversized code and consume all remaining gas.
+                    return Ok((
+                        false,
+                        gas_available,
+                        0,
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        exec_result.gas_trace,
+                        returned_state,
+                    ));
+                }
+
+                let code_deposit_cost = code_deposit_cost(code_size);
                 let gas_remaining = gas_available.saturating_sub(exec_result.gas_used);
                 if gas_remaining >= code_deposit_cost {
                     // Charge the code deposit gas and deploy the contract
                     final_gas_used = final_gas_used.saturating_add(code_deposit_cost);
                     returned_state.set_code(&contract_address, exec_result.return_data.clone());
                 } else {
-                    // Out of gas during code deposit - transaction fails
-                    success = false;
+                    // Out of gas during code deposit - consume all remaining gas
+                    return Ok((
+                        false,
+                        gas_available,
+                        0,
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        exec_result.gas_trace,
+                        returned_state,
+                    ));
                 }
             }
 
@@ -606,9 +627,24 @@ fn convert_logs(logs: Vec<LogEntry>) -> Vec<Log> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::evm::gas::MAX_CODE_SIZE;
     use crate::state::InMemoryState;
     use crate::types::transaction::{BlobTransaction, Eip1559Transaction, LegacyTransaction};
     use crate::types::{Bytes, Hash};
+
+    fn init_code_returning(data_len: usize, fill: u8) -> Vec<u8> {
+        assert!(data_len <= u16::MAX as usize);
+        let len = data_len as u16;
+        let offset = 15u16;
+        let mut code = Vec::with_capacity(15 + data_len);
+        code.extend_from_slice(&[0x61, (len >> 8) as u8, (len & 0xff) as u8]);
+        code.extend_from_slice(&[0x61, (offset >> 8) as u8, (offset & 0xff) as u8]);
+        code.extend_from_slice(&[0x60, 0x00, 0x39]);
+        code.extend_from_slice(&[0x61, (len >> 8) as u8, (len & 0xff) as u8]);
+        code.extend_from_slice(&[0x60, 0x00, 0xF3]);
+        code.extend(std::iter::repeat(fill).take(data_len));
+        code
+    }
 
     #[test]
     fn test_compute_create_address() {
@@ -1084,6 +1120,100 @@ mod tests {
         });
 
         let gas_available = 100000;
+        let result = execute_create(&tx, state, &sender, contexts, gas_available);
+
+        assert!(result.is_ok());
+        let (success, gas_used, gas_refund, return_data, logs, contract_address, _gas_trace, state) =
+            result.unwrap();
+
+        assert!(!success);
+        assert_eq!(gas_used, gas_available);
+        assert_eq!(gas_refund, 0);
+        assert!(return_data.is_empty());
+        assert!(logs.is_empty());
+        assert!(contract_address.is_none());
+
+        let expected_address = compute_create_address(&sender, U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
+    }
+
+    #[test]
+    fn test_execute_create_rejects_oversize_code() {
+        let mut state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            tx_ctx: &tx_ctx,
+        };
+
+        let sender = Address::from([0x01; 20]);
+        state.set_balance(&sender, U256::from_u64(1_000_000));
+        state.increment_nonce(&sender);
+
+        let init_code = init_code_returning(MAX_CODE_SIZE + 1, 0x42);
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(10_000_000),
+            to: None,
+            value: U256::ZERO,
+            data: Bytes::from(init_code),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let gas_available = 6_000_000;
+        let result = execute_create(&tx, state, &sender, contexts, gas_available);
+
+        assert!(result.is_ok());
+        let (success, gas_used, gas_refund, return_data, logs, contract_address, _gas_trace, state) =
+            result.unwrap();
+
+        assert!(!success);
+        assert_eq!(gas_used, gas_available);
+        assert_eq!(gas_refund, 0);
+        assert!(return_data.is_empty());
+        assert!(logs.is_empty());
+        assert!(contract_address.is_none());
+
+        let expected_address = compute_create_address(&sender, U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
+    }
+
+    #[test]
+    fn test_execute_create_oog_code_deposit() {
+        let mut state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            tx_ctx: &tx_ctx,
+        };
+
+        let sender = Address::from([0x01; 20]);
+        state.set_balance(&sender, U256::from_u64(1_000_000));
+        state.increment_nonce(&sender);
+
+        let init_code = init_code_returning(32, 0x11);
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(100_000),
+            to: None,
+            value: U256::ZERO,
+            data: Bytes::from(init_code),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let gas_available = 2_000;
         let result = execute_create(&tx, state, &sender, contexts, gas_available);
 
         assert!(result.is_ok());

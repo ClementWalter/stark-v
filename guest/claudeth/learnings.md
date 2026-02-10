@@ -47,6 +47,7 @@ Date: 2026-02-10
 
 - Logs bloom follows execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - Contract creation rejects code starting with `0xEF` (EIP-3541) and consumes all remaining gas.
+- Contract creation charges code-deposit gas (200 per byte) and rejects code larger than 24KB (EIP-170), consuming all remaining gas.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
 
@@ -64,7 +65,6 @@ Date: 2026-02-10
 
 ## Known Gaps Observed
 
-- EIP-170 max code size is not enforced; CREATE/CREATE2 also lack code-deposit gas charging.
 - No in-tree signer; tests use fixed secp256k1 vectors.
 - EELS blockchain fixtures are external and ignored by default.
 
@@ -76,6 +76,7 @@ Date: 2026-02-10
 - Validate base fee caps per tx type before charging balances.
 - Validate blob versioned hashes in `execute_transaction`, not just in standalone validation.
 - Enforce EIP-3860 initcode size limits in transaction validation and CREATE/CREATE2 handling.
+- Enforce EIP-170 max code size and charge code-deposit gas for CREATE/CREATE2.
 - Charge blob data fees upfront and burn them (not coinbase).
 - Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
 - Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
