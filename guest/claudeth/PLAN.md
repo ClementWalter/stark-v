@@ -56,8 +56,7 @@ against code on 2026-02-10; no functional gaps found.
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-10): pass.
-- `prek run` (2026-02-10): pass. (Hooks skipped due to no eligible files; run
-  still required.)
+- `prek run` (2026-02-10): pass (no eligible files).
 
 ## Plan
 

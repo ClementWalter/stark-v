@@ -6,7 +6,7 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and state changes apply only on success.
 - `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
-- Gas refunds come only from storage clears (4800 per clear) and are capped at 1/5 of gas used (EIP-3529).
+- Gas refunds only come from storage clears (4800 per clear) and are capped at 1/5 of gas used (EIP-3529).
 - SELFDESTRUCT (EIP-6780): transfer balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns `0` after charging initcode gas and memory expansion.
 - EIP-170 max code size and code-deposit gas apply to CREATE/CREATE2; oversized code consumes all remaining gas in the create call.
@@ -17,13 +17,13 @@ Date: 2026-02-10
 ## Transaction Validation
 
 - Transactions must originate from EOAs; sender accounts with code are rejected before execution.
-- Chain ID rules: legacy uses EIP-155 encoding in `v`, typed txs use explicit `chain_id`.
 - Nonce checks reject both too-low and too-high nonces.
 - Gas limit must cover intrinsic gas and must not exceed the block gas limit.
 - Legacy/EIP-2930 require `gas_price >= base_fee`.
 - EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
 - Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (plus blob fee cap for type `0x03`).
 - Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)` for EIP-1559/EIP-4844.
+- Chain ID rules: legacy uses EIP-155 encoding in `v`, typed txs use explicit `chain_id`.
 - Blob tx validation: non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee` (requires excess blob gas in block context).
 
 ## Block Processing And Header Rules
