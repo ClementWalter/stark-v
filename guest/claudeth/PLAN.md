@@ -52,6 +52,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Affine point arithmetic and ECDSA verify/recover.
 - Removed k256 dependency; tests use fixed signature vectors.
 - Executor validates blob versioned hashes (non-empty, count limit, version byte).
+- Enforced EIP-3860 initcode size limits for contract-creation transactions and
+  CREATE/CREATE2 (reject > 49,152 bytes) with tests.
 
 ### Backlog (Not Scheduled)
 

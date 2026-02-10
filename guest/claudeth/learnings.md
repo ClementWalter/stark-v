@@ -48,6 +48,8 @@ Date: 2026-02-10
 - Typed transactions accepted: `0x01`, `0x02`, `0x03`.
 - Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
 - Base fee caps: legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee`.
+- EIP-3860: contract creation transactions are invalid if initcode exceeds 49,152 bytes (fail validation, not execution).
+- EIP-3860: CREATE/CREATE2 with initcode > 49,152 bytes must fail (push 0) after charging memory + initcode gas, without running initcode.
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - Blob data fee is charged from the sender and burned (not credited to coinbase).
 - `TxContext` carries `blob_versioned_hashes`; `BLOBHASH` returns zero for out-of-range indices.
@@ -77,6 +79,7 @@ Date: 2026-02-10
 - Enforce witness ordering and proof validation for accounts and storage slots.
 - Validate base fee caps per tx type before charging balances.
 - Validate blob versioned hashes in `execute_transaction`, not just in standalone validation.
+- Enforce EIP-3860 initcode size limits in transaction validation and CREATE/CREATE2 handling.
 - Charge blob data fees upfront and burn them (not coinbase).
 - Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
 - Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
@@ -85,4 +88,5 @@ Date: 2026-02-10
 - Treat EVM `REVERT` as exceptional.
 - Accept recent block hash lists for genesis or lists without the parent hash last.
 - Skip blob field all-or-nothing checks or blob count/version validations.
+- Allow oversized initcode to execute via CREATE/CREATE2 or contract-creation transactions.
 - Ignore point-at-infinity or `y == 0` edge cases in secp256k1 arithmetic.

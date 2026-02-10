@@ -40,7 +40,7 @@ use crate::evm::trace::{opcode_name, GasTracer};
 use crate::evm::{
     create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
     sstore_gas_cost, GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
-    GAS_SSTORE_SENTRY,
+    GAS_SSTORE_SENTRY, MAX_INIT_CODE_SIZE,
 };
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -974,26 +974,31 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let init_code_cost = init_code_gas_cost(size);
                 self.consume_gas(init_code_cost)?;
 
-                let max_gas = self.gas_remaining - (self.gas_remaining / 64);
-                let msg = CreateMessage {
-                    gas: max_gas,
-                    caller: self.call_ctx.address,
-                    value,
-                    init_code,
-                    salt: None,
-                };
-                let result = self.host.create(&mut self.state, msg);
-                if result.gas_used > max_gas {
-                    return Err(EvmError::OutOfGas);
-                }
-                self.consume_gas(result.gas_used)?;
-                self.return_data = result.return_data.clone();
-
-                if result.success {
-                    let address = result.address.unwrap_or(Address::ZERO);
-                    self.stack.push(address_to_u256(&address))?;
-                } else {
+                if size > MAX_INIT_CODE_SIZE {
+                    self.return_data.clear();
                     self.stack.push(U256::ZERO)?;
+                } else {
+                    let max_gas = self.gas_remaining - (self.gas_remaining / 64);
+                    let msg = CreateMessage {
+                        gas: max_gas,
+                        caller: self.call_ctx.address,
+                        value,
+                        init_code,
+                        salt: None,
+                    };
+                    let result = self.host.create(&mut self.state, msg);
+                    if result.gas_used > max_gas {
+                        return Err(EvmError::OutOfGas);
+                    }
+                    self.consume_gas(result.gas_used)?;
+                    self.return_data = result.return_data.clone();
+
+                    if result.success {
+                        let address = result.address.unwrap_or(Address::ZERO);
+                        self.stack.push(address_to_u256(&address))?;
+                    } else {
+                        self.stack.push(U256::ZERO)?;
+                    }
                 }
             }
 
@@ -1200,26 +1205,31 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let hash_cost = create2_hash_cost(size);
                 self.consume_gas(init_code_cost + hash_cost)?;
 
-                let max_gas = self.gas_remaining - (self.gas_remaining / 64);
-                let msg = CreateMessage {
-                    gas: max_gas,
-                    caller: self.call_ctx.address,
-                    value,
-                    init_code,
-                    salt: Some(salt),
-                };
-                let result = self.host.create(&mut self.state, msg);
-                if result.gas_used > max_gas {
-                    return Err(EvmError::OutOfGas);
-                }
-                self.consume_gas(result.gas_used)?;
-                self.return_data = result.return_data.clone();
-
-                if result.success {
-                    let address = result.address.unwrap_or(Address::ZERO);
-                    self.stack.push(address_to_u256(&address))?;
-                } else {
+                if size > MAX_INIT_CODE_SIZE {
+                    self.return_data.clear();
                     self.stack.push(U256::ZERO)?;
+                } else {
+                    let max_gas = self.gas_remaining - (self.gas_remaining / 64);
+                    let msg = CreateMessage {
+                        gas: max_gas,
+                        caller: self.call_ctx.address,
+                        value,
+                        init_code,
+                        salt: Some(salt),
+                    };
+                    let result = self.host.create(&mut self.state, msg);
+                    if result.gas_used > max_gas {
+                        return Err(EvmError::OutOfGas);
+                    }
+                    self.consume_gas(result.gas_used)?;
+                    self.return_data = result.return_data.clone();
+
+                    if result.success {
+                        let address = result.address.unwrap_or(Address::ZERO);
+                        self.stack.push(address_to_u256(&address))?;
+                    } else {
+                        self.stack.push(U256::ZERO)?;
+                    }
                 }
             }
 
@@ -1502,6 +1512,7 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 mod tests {
     use super::*;
     use crate::evm::host::{CallResult, CreateResult};
+    use crate::evm::MAX_INIT_CODE_SIZE;
     use crate::state::InMemoryState;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -2630,6 +2641,27 @@ mod tests {
         let recorded = host.borrow().last_create.clone().unwrap();
         assert_eq!(recorded.salt, Some(U256::from_u64(0x1234)));
         assert_eq!(recorded.init_code, vec![0xAA]);
+    }
+
+    #[test]
+    fn test_create_rejects_oversized_initcode() {
+        let host = Rc::new(RefCell::new(TestHost::default()));
+        let size = (MAX_INIT_CODE_SIZE + 1) as u16;
+
+        let code = vec![
+            0x61, (size >> 8) as u8, size as u8, // PUSH2 size
+            0x60, 0x00, // PUSH1 0x00 (offset)
+            0x60, 0x00, // PUSH1 0x00 (value)
+            0xF0,       // CREATE
+            0x00,       // STOP
+        ];
+
+        let (result, _state) =
+            execute_bytecode_with_host(&code, 10_000_000, InMemoryState::new(), host.clone())
+                .unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
+        assert!(host.borrow().last_create.is_none());
     }
 
     #[test]

@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use crate::crypto::keccak::keccak256;
 use crate::evm::error::EvmError;
 use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host};
-use crate::evm::{GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER};
+use crate::evm::{GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER, MAX_INIT_CODE_SIZE};
 use crate::evm::{Memory, Stack};
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -603,6 +603,11 @@ pub fn execute_create<S: State, H: Host<S>>(
     let size = stack.pop().map_err(EvmError::from)?.as_usize();
 
     let init_code = utils::read_memory_bytes(memory, offset, size)?;
+    if size > MAX_INIT_CODE_SIZE {
+        return_data.clear();
+        stack.push(U256::ZERO).map_err(EvmError::from)?;
+        return Ok(());
+    }
     let max_gas = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
 
     let msg = CreateMessage {
@@ -646,6 +651,11 @@ pub fn execute_create2<S: State, H: Host<S>>(
     let salt = stack.pop().map_err(EvmError::from)?;
 
     let init_code = utils::read_memory_bytes(memory, offset, size)?;
+    if size > MAX_INIT_CODE_SIZE {
+        return_data.clear();
+        stack.push(U256::ZERO).map_err(EvmError::from)?;
+        return Ok(());
+    }
     let max_gas = (*gas_remaining).saturating_sub((*gas_remaining) / 64);
 
     let msg = CreateMessage {

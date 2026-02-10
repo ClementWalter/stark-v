@@ -16,6 +16,7 @@ extern crate alloc;
 use core::fmt;
 
 use crate::crypto::Secp256k1Error;
+use crate::evm::gas::MAX_INIT_CODE_SIZE;
 use crate::evm::gas::blob_gas_price;
 use crate::types::transaction::AccessListEntry;
 use crate::types::{Address, Transaction, U256};
@@ -57,6 +58,8 @@ pub enum ValidationError {
     MaxFeePerBlobGasTooLow,
     /// Blob fee validation requires excess blob gas to be present
     MissingBlobGasContext,
+    /// Initcode size exceeds the EIP-3860 limit
+    InitCodeSizeExceeded,
 }
 
 impl fmt::Display for ValidationError {
@@ -90,6 +93,9 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::MissingBlobGasContext => {
                 write!(f, "Missing blob gas context for blob transaction")
+            }
+            ValidationError::InitCodeSizeExceeded => {
+                write!(f, "Initcode size exceeds EIP-3860 limit")
             }
         }
     }
@@ -342,6 +348,10 @@ pub fn validate_nonce(tx: &Transaction, account_nonce: U256) -> Result<(), Valid
 pub fn validate_gas(tx: &Transaction, block_gas_limit: U256) -> Result<(), ValidationError> {
     let gas_limit = tx.gas_limit();
     let intrinsic_gas = calculate_intrinsic_gas(tx);
+
+    if tx.to().is_none() && tx.data().len() > MAX_INIT_CODE_SIZE {
+        return Err(ValidationError::InitCodeSizeExceeded);
+    }
 
     // Check gas limit >= intrinsic gas
     if gas_limit < intrinsic_gas {
@@ -690,6 +700,7 @@ mod tests {
         BlobTransaction, Eip1559Transaction, Eip2930Transaction, LegacyTransaction,
     };
     use crate::types::{Bytes, Hash};
+    use crate::evm::gas::MAX_INIT_CODE_SIZE;
 
     // Helper to create a valid signed transaction for testing
     fn create_signed_legacy_tx() -> (LegacyTransaction, Address) {
@@ -777,6 +788,25 @@ mod tests {
             r: U256::ZERO,
             s: U256::ZERO,
         }
+    }
+
+    #[test]
+    fn test_validate_gas_rejects_initcode_too_large() {
+        let data = vec![0u8; MAX_INIT_CODE_SIZE + 1];
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(1_000_000),
+            to: None,
+            value: U256::ZERO,
+            data: Bytes::from_slice(&data),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let result = validate_gas(&tx, U256::from_u64(30_000_000));
+        assert!(matches!(result, Err(ValidationError::InitCodeSizeExceeded)));
     }
 
     // =========================================================================
