@@ -5,12 +5,12 @@ Date: 2026-02-10
 ## Consensus-Critical Execution
 
 - Exceptional halts (OOG, invalid opcode/jump) consume all remaining gas and revert the current call frame.
-- `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and only reverts the current call frame.
+- `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
-- SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; reset created-account tracking per tx.
+- SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas.
 - EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2.
-- EIP-3541 rejects contract code starting with 0xEF, consuming all remaining gas on failure.
+- EIP-3541 rejects contract code starting with `0xEF`, consuming all remaining gas on failure.
 
 ## Transaction Validation
 
@@ -29,7 +29,7 @@ Date: 2026-02-10
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
-- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution. They run with a fixed gas limit, do not count against the block gas limit, and no-op if the target contract has no code.
+- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transactions. They run with a fixed gas limit, do not count against the block gas limit, and no-op if the target contract has no code.
 - Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Guest Input And WITNESS v1
@@ -46,8 +46,8 @@ Date: 2026-02-10
 
 ## Receipts, Logs, And Trie Behavior
 
-- Receipt roots use typed receipt envelopes (EIP-2718): `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`.
-- Receipt decoding accepts typed envelopes for `0x01..0x03` and rejects unknown prefixes; legacy receipts are plain RLP lists.
+- Receipt roots use typed receipt envelopes (EIP-2718): `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`. Legacy receipts are plain RLP lists.
+- Receipt decoding accepts typed envelopes for `0x01..0x03` and rejects unknown prefixes.
 - Logs bloom uses execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
