@@ -233,15 +233,15 @@ impl Bloom {
         let hash = keccak256(input);
         let hash_bytes = hash.as_bytes();
 
-        // Set 3 bits according to Ethereum Yellow Paper spec
+        // Set 3 bits according to the execution-specs bloom definition
         for i in 0..3 {
             let m = ((hash_bytes[2 * i] as u16) << 8) | (hash_bytes[2 * i + 1] as u16);
-            let bit_index = (m & 0x7FF) as usize; // 11 bits (0-2047)
-
+            let bit_to_set = (m & 0x07FF) as usize;
+            let bit_index = 0x07FF - bit_to_set;
             let byte_index = bit_index / 8;
             let bit_offset = bit_index % 8;
 
-            self.data[byte_index] |= 1 << bit_offset;
+            self.data[byte_index] |= 1 << (7 - bit_offset);
         }
     }
 
@@ -265,15 +265,15 @@ impl Bloom {
         let hash = keccak256(input);
         let hash_bytes = hash.as_bytes();
 
-        // Check all 3 bits
+        // Check all 3 bits using the execution-specs ordering
         for i in 0..3 {
             let m = ((hash_bytes[2 * i] as u16) << 8) | (hash_bytes[2 * i + 1] as u16);
-            let bit_index = (m & 0x7FF) as usize;
-
+            let bit_to_set = (m & 0x07FF) as usize;
+            let bit_index = 0x07FF - bit_to_set;
             let byte_index = bit_index / 8;
             let bit_offset = bit_index % 8;
 
-            if (self.data[byte_index] & (1 << bit_offset)) == 0 {
+            if (self.data[byte_index] & (1 << (7 - bit_offset))) == 0 {
                 return false;
             }
         }

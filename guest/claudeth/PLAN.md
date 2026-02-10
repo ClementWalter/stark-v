@@ -42,6 +42,8 @@ EIP-2935 historical block hashes system calls.
 - Blob data fee charged from sender and block blob gas used tracked/validated
 - Base fee validation enforced for legacy/EIP-2930 (`gas_price >= base_fee`) and
   EIP-1559/EIP-4844 (`max_fee_per_gas >= base_fee`)
+- Logs bloom bit ordering matches execution-specs (reversed 11-bit index,
+  MSB-first within bytes)
 - `no_std` riscv32 guest entry and bump allocator
 - Deterministic state root computation by sorting account addresses before trie
   insertion

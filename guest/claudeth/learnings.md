@@ -18,6 +18,8 @@ Date: 2026-02-10
   before executing transactions and before computing the state root.
 - Root checks are post-execution: receipts root, transactions root, logs bloom,
   withdrawals root (if present), state root, and gas-used vs header.
+- Logs bloom bit ordering must follow execution-specs: reverse the 11-bit index
+  (bit_index = 0x07FF - bit_to_set) and set bits MSB-first within each byte.
 
 ## Header Validation
 
@@ -99,6 +101,7 @@ Date: 2026-02-10
 - Enforce recent block hashes list length ≤ min(block number, 256) and require
   the last hash to match the parent hash when provided.
 - Validate base fee caps per transaction type before charging balance.
+- Use execution-specs logs bloom bit ordering (reversed 11-bit index, MSB-first).
 
 **Don't**
 
