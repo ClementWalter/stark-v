@@ -25,8 +25,7 @@ Date: 2026-02-10
 
 - Input RLP list has 5–7 items: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; empty list is valid.
-- Recent block hashes are capped at 256, ordered oldest → newest, and must end with `parent.compute_hash()`.
-- Genesis (`block.number == 0`) rejects any recent block hashes list.
+- Recent block hashes are capped at 256 and must end with `parent.compute_hash()`. Genesis (`block.number == 0`) rejects any list.
 - Witness accounts are sorted by ascending address with no duplicates; storage entries sorted by slot.
 - Account trie keys are `keccak256(address)`; storage trie keys are `keccak256(U256 slot)`.
 - Empty `account_rlp` requires exclusion proof and empty `code` + `storage_entries`.

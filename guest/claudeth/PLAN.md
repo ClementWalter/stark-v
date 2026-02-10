@@ -10,8 +10,6 @@ processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 (type 0x03) and post-Shanghai fields are supported.
 
-Status verified against current code and tests; no new gaps identified.
-
 ## Verified Status (from code)
 
 ### Implemented
@@ -41,22 +39,23 @@ Status verified against current code and tests; no new gaps identified.
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-10): pass.
-- `prek run` (2026-02-10): pass.
+- `prek run` (2026-02-10): pass (no applicable files).
 
 ## Plan
 
-### P1: Witness-Based State Reconstruction
+### Done
 
-- Done: witness RLP decoding alongside `state_entries` input.
-- Done: account/storage proof verification and code hash validation.
-- Done: witness parsing tests for valid/invalid cases.
+- Witness RLP decoding alongside `state_entries` input.
+- Account/storage proof verification and code hash validation.
+- Witness parsing tests for valid/invalid cases.
+- In-tree finite-field helpers and curve constants.
+- Affine point arithmetic and ECDSA verify/recover.
+- Removed k256 dependency; tests use fixed signature vectors.
 
-### P2: In-Tree secp256k1 (Remove k256)
+### Backlog (Not Scheduled)
 
-- Done: replace k256-based signing in tests with fixed vectors.
-- Done: in-tree finite-field helpers and curve constants.
-- Done: affine point arithmetic and ECDSA verify/recover.
-- Done: remove k256 dependency.
+- Add an in-tree signer for generating ECDSA signatures in tests.
+- Integrate EELS blockchain fixtures into CI (still optional by default).
 
 ## Immediate Next Task
 
