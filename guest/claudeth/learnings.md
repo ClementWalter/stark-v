@@ -4,24 +4,27 @@ Date: 2026-02-10
 
 ## Consensus-Critical Execution
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and revert only the current call frame; the transaction is still included with `success=false`, no logs, and full gas used.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and state changes are applied only on success.
 - `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
 - Coinbase receives only the priority fee; base fee is burned for post-London transactions.
 - SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
-- EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas.
-- EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2.
-- EIP-3541 rejects contract code starting with `0xEF`, consuming all remaining gas on failure.
+- EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns `0` after charging initcode gas and memory expansion.
+- EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2; oversized code consumes all remaining gas in the create call.
+- EIP-3541 rejects contract code starting with `0xEF` for tx creation and CREATE/CREATE2, consuming all remaining gas on failure.
+- Blob data fee is charged upfront and burned (not credited to coinbase).
 
 ## Transaction Validation
 
-- Transactions must originate from EOAs; sender accounts with code are invalid before execution.
+- Transactions must originate from EOAs; sender accounts with code are rejected before execution.
+- Chain ID rules: legacy uses EIP-155 encoding in `v`, typed txs use explicit `chain_id`.
+- Nonce checks reject both too-low and too-high nonces.
+- Gas limit must cover intrinsic gas and must not exceed the block gas limit.
 - Legacy/EIP-2930 require `gas_price >= base_fee`.
 - EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
 - Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (plus blob fee cap for type `0x03`).
-- Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
-- Blob tx validation: non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
-- Blob data fee is charged upfront and burned (not credited to coinbase).
+- Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)` for EIP-1559/EIP-4844.
+- Blob tx validation: non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee` (requires excess blob gas in block context).
 
 ## Block Processing And Header Rules
 
@@ -31,14 +34,14 @@ Date: 2026-02-10
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
-- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transactions. They run with a fixed gas limit, do not count against the block gas limit, and no-op if the target contract has no code.
+- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transactions; they run with a fixed gas limit, do not count against the block gas limit, and no-op if the target contract has no code.
 - Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Guest Input And WITNESS v1
 
 - Input RLP list has 5-7 items and must fully consume the input bytes: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - When 6 items are provided, the last item is interpreted as `withdrawals` only if `withdrawals_root` is present; otherwise it is `block_hashes`.
-- Witness input is detected by a top-level list of 3 items where the first is a u64 version (currently `1`).
+- Witness input is detected by a top-level list of 3 items where the first item decodes to a u64 version (currently `1`).
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; an empty list is valid.
 - Recent block hashes are limited to `min(block.number, 256)`, must end with `parent.compute_hash()`, and genesis (`block.number == 0`) rejects any list.
 - Witness accounts are strictly increasing by address; storage entries are strictly increasing by slot.
