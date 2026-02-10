@@ -5,40 +5,47 @@ Last reviewed: 2026-02-10
 ## Ground Truth Snapshot
 
 - `README.md` claims full execution-spec compatibility and says tests run on both native and RV32 targets.
-- The blockchain conformance harness still has non-authoritative behavior:
-  - `tests/eels_blockchain_tests.rs` keeps the full execution test `#[ignore]`.
-  - The harness rewrites each fixture `parentHash` (`block_header.parent_hash = parent_header.compute_hash()`), masking real header-linkage failures.
-  - The harness passes empty block-hash history (`&[]`) to `process_block`, so `BLOCKHASH` behavior cannot match fixtures that depend on history.
-- Root cause identified for parent-hash rewrite: Prague fixtures include `requestsHash` (EIP-7685), but `BlockHeader` currently omits this field from model/RLP/hash. That guarantees hash divergence for Prague+ headers.
-- Fixture conversion in `convert_test_transaction` still rejects type `0x03` blob transactions.
-- Precompile `0x0a` point evaluation is still unimplemented.
-- ALT_BN128 pairing (`0x08`) still rejects non-trivial valid tuples.
-- README "no dependencies" claim is not accurate (`serde` dependency is present in `Cargo.toml`).
+- The header-linkage blocker has been removed:
+  - Harness parent-hash rewrite is gone from `tests/eels_blockchain_tests.rs`.
+  - `BlockHeader` now models Prague `requests_hash` and includes it in RLP/hash ordering.
+  - Header RLP nonce encoding now matches execution-specs (`Bytes8`), fixing fixture hash parity.
+  - Cancun + Prague fixture-backed header hash tests are in place.
+- Remaining deterministic conformance blockers:
+  - `tests/eels_blockchain_tests.rs` full execution test is still `#[ignore]`.
+  - Fixture conversion still rejects tx type `0x03` blob transactions.
+  - Harness still passes empty block-hash history (`&[]`) into `process_block`.
+  - Precompile `0x0a` point evaluation remains unimplemented.
+  - ALT_BN128 pairing (`0x08`) still lacks full non-trivial pairing checks.
+- README "no dependencies" claim remains inaccurate (`serde` in `Cargo.toml`).
 
-## Completed Before This Turn
+## Completed This Turn
 
-- Empty trie root corrected to canonical value and protected by regression tests.
-- Withdrawals root computation anchored to a real Shanghai fixture vector.
+### Task 1 (DONE): Fix Prague Header Hash Parity and Remove Parent-Hash Rewrite
+
+Why:
+- Parent linkage is consensus-critical; rewriting fixture `parentHash` made conformance results non-authoritative.
+- Prague headers include `requestsHash`; omitting it caused deterministic hash divergence.
+
+What:
+- Added `requests_hash` support in block-header model/encoding/decoding/hashing.
+- Fixed nonce RLP encoding to `Bytes8` parity.
+- Removed harness parent-hash mutation.
+- Added fixture-backed Cancun/Prague hash regression tests.
+
+How:
+- Updated `src/types/block.rs`:
+  - new `requests_hash: Option<Hash>` field;
+  - RLP encode/decode support after `parent_beacon_block_root`;
+  - nonce encoded/decoded as 8-byte string per header schema.
+- Updated `tests/eels_blockchain_tests.rs`:
+  - parse `requestsHash` from fixtures;
+  - removed parent-hash workaround;
+  - added `test_fixture_header_hashes_match_for_cancun_and_prague_examples` and
+    `test_fixture_parent_hash_linkage_uses_real_header_hashes`.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix Prague Header Hash Parity and Remove Parent-Hash Rewrite
-
-Why:
-- Parent linkage is consensus-critical. Rewriting fixture `parentHash` hides header validation defects.
-- Prague headers add `requestsHash`; omitting it in header hashing causes deterministic parent-hash mismatches.
-
-What:
-- Add `requests_hash` support to `BlockHeader` and fixture conversion.
-- Remove harness parent-hash mutation and validate real fixture linkage.
-
-How:
-- Extend `src/types/block.rs` with optional `requests_hash` field and include it in RLP encode/decode/hash order after `parent_beacon_block_root` (per `execution-specs/src/ethereum/forks/prague/blocks.py`).
-- Parse `requestsHash` in `tests/eels_blockchain_tests.rs` conversion.
-- Remove workaround assignment in harness.
-- Add fixture-backed tests for Cancun and Prague genesis/block header hash parity to lock behavior.
-
-### Task 2 (P0): Add Blob Transaction Fixture Conversion (`0x03`)
+### Task 2 (P0, FIRST): Add Blob Transaction Fixture Conversion (`0x03`)
 
 Why:
 - Cancun/Prague fixtures contain blob transactions; rejecting them blocks conformance coverage.
@@ -47,7 +54,7 @@ What:
 - Convert fixture tx type `0x03` into `Transaction::Blob`.
 
 How:
-- Extend `convert_test_transaction` with strict parsing of blob fields.
+- Extend `convert_test_transaction` with strict parsing/validation of blob fields.
 - Add conversion tests for valid and malformed blob fixtures.
 
 ### Task 3 (P0): Provide Real Block Hash History to `process_block`
