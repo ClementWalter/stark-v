@@ -28,8 +28,9 @@ use crate::crypto::secp256k1_math::secp256k1_n;
 use crate::crypto::secp256k1_math::{mod_add, mod_inv, mod_mul, mod_sub};
 use crate::crypto::{ripemd160, sha256};
 use crate::evm::gas::{
-    GAS_BLAKE2F_ROUND, GAS_BN256_ADD, GAS_BN256_MUL, GAS_ECRECOVER, GAS_IDENTITY_BASE,
-    GAS_IDENTITY_WORD, GAS_MODEXP_BASE,
+    GAS_BLAKE2F_ROUND, GAS_BN256_ADD, GAS_BN256_MUL, GAS_BN256_PAIRING_BASE,
+    GAS_BN256_PAIRING_POINT, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD,
+    GAS_MODEXP_BASE,
 };
 use crate::evm::gas::{GAS_RIPEMD160_BASE, GAS_RIPEMD160_WORD, GAS_SHA256_BASE, GAS_SHA256_WORD};
 use crate::types::{Address, Hash, U256};
@@ -75,7 +76,7 @@ pub fn execute_precompile(
         5 => Some(modexp_precompile(input, available_gas)),
         6 => Some(ecadd_precompile(input, available_gas)),
         7 => Some(ecmul_precompile(input, available_gas)),
-        8 => Some(unimplemented_reserved_precompile()),
+        8 => Some(pairing_precompile(input, available_gas)),
         9 => Some(blake2f_precompile(input, available_gas)),
         10 => Some(unimplemented_reserved_precompile()),
         _ => None,
@@ -310,6 +311,33 @@ fn ecmul_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult
         output,
         gas_used: GAS_BN256_MUL,
     })
+}
+
+fn pairing_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+    let tuple_count = input.len() / 192;
+    let tuple_count = u64::try_from(tuple_count).unwrap_or(u64::MAX);
+    let gas_used = GAS_BN256_PAIRING_BASE
+        .saturating_add(GAS_BN256_PAIRING_POINT.saturating_mul(tuple_count));
+
+    if gas_used > available_gas {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    if !input.len().is_multiple_of(192) {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    if tuple_count == 0 {
+        return Ok(PrecompileResult {
+            output: U256::ONE.to_be_bytes().to_vec(),
+            gas_used,
+        });
+    }
+
+    // execution-specs defines full tuple decoding, subgroup checks, and pairing
+    // product verification here. Until that arithmetic is implemented, reject
+    // non-empty inputs so we do not silently return incorrect success values.
+    Err(PrecompileError::OutOfGas)
 }
 
 const BLAKE2B_IV: [u64; 8] = [
@@ -1236,9 +1264,34 @@ mod tests {
     }
 
     #[test]
-    fn test_pairing_address_is_reserved_precompile() {
+    fn test_pairing_precompile_empty_input_returns_one() {
         let addr = precompile_address(8);
-        let result = execute_precompile(&addr, &[], u64::MAX).expect("precompile exists");
+        let result = execute_precompile_ok(&addr, &[]);
+        assert_eq!(result.output, U256::ONE.to_be_bytes().to_vec());
+        assert_eq!(result.gas_used, GAS_BN256_PAIRING_BASE);
+    }
+
+    #[test]
+    fn test_pairing_precompile_malformed_input_fails() {
+        let addr = precompile_address(8);
+        let input = vec![0u8; 191];
+        let result = execute_precompile(&addr, &input, u64::MAX).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_pairing_precompile_oog_on_base_gas() {
+        let addr = precompile_address(8);
+        let result =
+            execute_precompile(&addr, &[], GAS_BN256_PAIRING_BASE - 1).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_pairing_precompile_non_empty_pending_impl_fails() {
+        let addr = precompile_address(8);
+        let input = vec![0u8; 192];
+        let result = execute_precompile(&addr, &input, u64::MAX).expect("precompile exists");
         assert_eq!(result, Err(PrecompileError::OutOfGas));
     }
 

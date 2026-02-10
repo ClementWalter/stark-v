@@ -584,6 +584,7 @@ pub fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::evm::gas::GAS_BN256_PAIRING_BASE;
     use crate::evm::gas::MAX_CODE_SIZE;
     use crate::evm::interpreter::{BlockContext, TxContext};
     use crate::state::InMemoryState;
@@ -732,10 +733,70 @@ mod tests {
     }
 
     #[test]
-    fn test_recursive_host_reserved_precompile_fails_and_keeps_balances() {
+    fn test_recursive_host_pairing_precompile_empty_input_succeeds_and_transfers_value() {
         let mut state = InMemoryState::new();
         let caller = Address::from([0x22; 20]);
         let precompile = precompile_address(8);
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&precompile, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::Call,
+            gas: 50_000,
+            address: precompile,
+            caller,
+            value: U256::from_u64(5),
+            code_address: precompile,
+            input: Vec::new(),
+            is_static: false,
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(result.success);
+        assert_eq!(result.return_data, U256::ONE.to_be_bytes().to_vec());
+        assert_eq!(result.gas_used, GAS_BN256_PAIRING_BASE);
+
+        // Successful precompile calls follow regular CALL value-transfer rules.
+        assert_eq!(state.get_balance(&caller), U256::from_u64(5));
+        assert_eq!(state.get_balance(&precompile), U256::from_u64(6));
+    }
+
+    #[test]
+    fn test_recursive_host_pairing_precompile_malformed_input_fails_and_keeps_balances() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x22; 20]);
+        let precompile = precompile_address(8);
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&precompile, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::Call,
+            gas: 50_000,
+            address: precompile,
+            caller,
+            value: U256::from_u64(5),
+            code_address: precompile,
+            input: vec![0u8; 191],
+            is_static: false,
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(!result.success);
+        assert!(result.return_data.is_empty());
+        assert_eq!(result.gas_used, 50_000);
+
+        // Failed sub-calls must not transfer value.
+        assert_eq!(state.get_balance(&caller), U256::from_u64(10));
+        assert_eq!(state.get_balance(&precompile), U256::from_u64(1));
+    }
+
+    #[test]
+    fn test_recursive_host_reserved_point_evaluation_precompile_fails_and_keeps_balances() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x22; 20]);
+        let precompile = precompile_address(10);
         state.set_balance(&caller, U256::from_u64(10));
         state.set_balance(&precompile, U256::from_u64(1));
 
