@@ -16,13 +16,13 @@ Date: 2026-02-10
 ## Block Processing And Header Rules
 
 - Validate the child header against its parent before any state transitions.
-- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution.
-- Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 - Post-merge header rules: `difficulty == 0`, `mix_hash == 0`, `nonce == 0`, and `ommers_hash == EMPTY_OMMERS_HASH`.
 - `extra_data.len() <= 32`, `gas_used <= gas_limit`, and gas limit delta bounded by parent/1024 with a minimum floor.
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
+- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution.
+- Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Guest Input And WITNESS v1
 
