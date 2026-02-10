@@ -36,7 +36,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - In-tree secp256k1 field/point arithmetic and ECDSA verify/recover.
 - Deterministic in-tree secp256k1 signer for tests.
 - EIP-3860 initcode size limits enforced for creation txs and CREATE/CREATE2.
-- EIP-170 max code size enforcement and code-deposit gas charging for CREATE/CREATE2.
+- EIP-170 max code size enforcement and code-deposit gas charging for
+  CREATE/CREATE2.
 - Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
   results and only apply execution state on success.
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
@@ -61,7 +62,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - In-tree finite-field helpers and curve constants.
 - Affine point arithmetic and ECDSA verify/recover.
 - Removed k256 dependency; tests now sign with in-tree code.
-- Executor validates blob versioned hashes (non-empty, count limit, version byte).
+- Executor validates blob versioned hashes (non-empty, count limit, version
+  byte).
 - Enforced EIP-3860 initcode size limits for contract-creation transactions and
   CREATE/CREATE2 (reject > 49,152 bytes) with tests.
 - Enforced EIP-170 max code size and code-deposit gas charging for CREATE/CREATE2
