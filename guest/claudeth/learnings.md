@@ -121,8 +121,8 @@ Date: 2026-02-10
   staging tight.
 - Do not add shell scripts (`.sh`); use `uv run` Python scripts with PEP 723
   metadata.
-- Keep documentation fork naming consistent with Cancun until a later fork is
-  implemented.
+- README claims must be re-verified against code; include EIP-4844 support when
+  blob transactions are implemented.
 
 ## Do / Don't (Next Iteration)
 

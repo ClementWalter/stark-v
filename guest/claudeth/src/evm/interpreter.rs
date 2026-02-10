@@ -1477,6 +1477,7 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 
     warm_addresses.push(tx_ctx.origin); // Sender
     warm_addresses.push(call_ctx.address); // Recipient/contract being called
+    warm_addresses.push(block_ctx.coinbase); // EIP-3651: Warm COINBASE
     // Precompile addresses (0x01-0x0a for Prague)
     for i in 1..=10 {
         let mut addr_bytes = [0u8; 20];
@@ -1816,6 +1817,51 @@ mod tests {
         assert!(result.success);
         // Gas: PUSH20 (3) + BALANCE cold (2600) + PUSH20 (3) + BALANCE warm (100)
         assert_eq!(result.gas_used, 2706);
+    }
+
+    #[test]
+    fn test_coinbase_balance_warm() {
+        let coinbase = Address::from([0x44; 20]);
+        let origin = Address::from([0x55; 20]);
+        let call_address = Address::from([0x66; 20]);
+
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        code.extend_from_slice(&coinbase.to_bytes());
+        code.push(0x31); // BALANCE (warm due to EIP-3651)
+        code.push(0x00); // STOP
+
+        let mut state = InMemoryState::new();
+        state.set_balance(&coinbase, U256::from_u64(1));
+
+        let mut block_ctx = BlockContext::default();
+        block_ctx.coinbase = coinbase;
+        let tx_ctx = TxContext {
+            origin,
+            gas_price: U256::ONE,
+            blob_versioned_hashes: Vec::new(),
+        };
+        let call_ctx = CallContext {
+            address: call_address,
+            caller: origin,
+            call_value: U256::ZERO,
+            call_data: Vec::new(),
+        };
+
+        let (result, _state) = execute_bytecode_with_host_and_contexts(
+            &code,
+            10_000,
+            state,
+            NullHost,
+            block_ctx,
+            tx_ctx,
+            call_ctx,
+        )
+        .unwrap();
+
+        assert!(result.success);
+        // Gas: PUSH20 (3) + BALANCE warm (100)
+        assert_eq!(result.gas_used, 103);
     }
 
     #[test]
