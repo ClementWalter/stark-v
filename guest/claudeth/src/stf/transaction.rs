@@ -696,6 +696,7 @@ pub fn validate_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::{address_from_secret_key, sign_recoverable};
     use crate::types::transaction::{
         BlobTransaction, Eip1559Transaction, Eip2930Transaction, LegacyTransaction,
     };
@@ -704,7 +705,8 @@ mod tests {
 
     // Helper to create a valid signed transaction for testing
     fn create_signed_legacy_tx() -> (LegacyTransaction, Address) {
-        let tx = LegacyTransaction {
+        let secret_key = U256::from_u64(1);
+        let mut tx = LegacyTransaction {
             nonce: U256::from(0u64),
             gas_price: U256::from(20_000_000_000u64),
             gas_limit: U256::from(21000u64),
@@ -712,32 +714,25 @@ mod tests {
             value: U256::from(1_000_000_000_000u64),
             data: Bytes::new(),
             v: U256::from(27u64),
-            r: U256::from_be_bytes([
-                0x4a, 0x3b, 0xe9, 0x13, 0x6f, 0x96, 0xe5, 0x83,
-                0x7f, 0xb2, 0x42, 0xfc, 0x11, 0xd8, 0x3f, 0xfb,
-                0x9f, 0x6e, 0x03, 0x38, 0xa9, 0xa3, 0x82, 0xd6,
-                0x2f, 0x79, 0xba, 0x6d, 0x3a, 0x36, 0x71, 0xaa,
-            ]),
-            s: U256::from_be_bytes([
-                0x20, 0x51, 0xd1, 0x61, 0x63, 0x0a, 0x34, 0x7f,
-                0xbd, 0x6c, 0x63, 0x96, 0xb6, 0xb6, 0xe4, 0x04,
-                0x38, 0xc7, 0xb6, 0xd8, 0x08, 0xf3, 0x34, 0x12,
-                0xb8, 0x67, 0x0a, 0x86, 0x8d, 0xdf, 0xa6, 0x95,
-            ]),
+            r: U256::ZERO,
+            s: U256::ZERO,
         };
 
-        // Compute expected address
-        let address = Address::from([
-            0x7e, 0x5f, 0x45, 0x52, 0x09, 0x1a, 0x69, 0x12,
-            0x5d, 0x5d, 0xfc, 0xb7, 0xb8, 0xc2, 0x65, 0x90,
-            0x29, 0x39, 0x5b, 0xdf,
-        ]);
+        let signing_hash = tx.signing_hash();
+        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key)
+            .expect("sign legacy transaction");
+        tx.r = r;
+        tx.s = s;
+        tx.v = U256::from_u64(27 + recid as u64);
+
+        let address = address_from_secret_key(secret_key).expect("address from secret");
 
         (tx, address)
     }
 
     fn create_signed_eip1559_tx() -> (Eip1559Transaction, Address) {
-        let tx = Eip1559Transaction {
+        let secret_key = U256::from_u64(1);
+        let mut tx = Eip1559Transaction {
             chain_id: U256::from(1u64),
             nonce: U256::from(0u64),
             max_priority_fee_per_gas: U256::from(2_000_000_000u64),
@@ -748,25 +743,18 @@ mod tests {
             data: Bytes::new(),
             access_list: vec![],
             v: U256::from(0u64),
-            r: U256::from_be_bytes([
-                0x88, 0x9f, 0x57, 0xc1, 0xb5, 0xae, 0x7a, 0x91,
-                0x39, 0x1b, 0xfc, 0x86, 0xe0, 0xf5, 0x17, 0xe7,
-                0x51, 0x45, 0x99, 0xc9, 0xdc, 0xff, 0x51, 0x75,
-                0xba, 0xa1, 0x9a, 0xf5, 0x6a, 0x6b, 0xfa, 0x0c,
-            ]),
-            s: U256::from_be_bytes([
-                0x24, 0xf6, 0x45, 0xb0, 0x19, 0xc2, 0xce, 0x60,
-                0xa9, 0xf6, 0x71, 0xf4, 0xa3, 0x95, 0xbe, 0xc9,
-                0x71, 0xea, 0x76, 0xbb, 0x53, 0x62, 0x35, 0xd7,
-                0xac, 0xe3, 0x7c, 0xf0, 0x4a, 0x56, 0x39, 0xc8,
-            ]),
+            r: U256::ZERO,
+            s: U256::ZERO,
         };
 
-        let address = Address::from([
-            0x2b, 0x5a, 0xd5, 0xc4, 0x79, 0x5c, 0x02, 0x65,
-            0x14, 0xf8, 0x31, 0x7c, 0x7a, 0x21, 0x5e, 0x21,
-            0x8d, 0xcc, 0xd6, 0xcf,
-        ]);
+        let signing_hash = tx.signing_hash();
+        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key)
+            .expect("sign eip1559 transaction");
+        tx.r = r;
+        tx.s = s;
+        tx.v = U256::from_u64(recid as u64);
+
+        let address = address_from_secret_key(secret_key).expect("address from secret");
 
         (tx, address)
     }

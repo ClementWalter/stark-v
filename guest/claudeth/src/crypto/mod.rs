@@ -15,7 +15,10 @@ pub mod secp256k1_point;
 pub use keccak::keccak256;
 
 // Re-export secp256k1 functions
-pub use secp256k1::{recover_address, recover_public_key, verify_signature, Secp256k1Error};
+pub use secp256k1::{
+    address_from_public_key, address_from_secret_key, public_key_from_secret, recover_address,
+    recover_public_key, sign_recoverable, verify_signature, Secp256k1Error,
+};
 
 // Re-export RLP functions
 pub use rlp::{

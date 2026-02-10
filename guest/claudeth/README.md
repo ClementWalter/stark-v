@@ -25,10 +25,10 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
   `parent_beacon_block_root`)
 - Blob gas accounting and data-fee charging (EIP-4844)
+- In-tree deterministic secp256k1 signer for tests
 
 **Known Gaps / Limitations**
 
-- No in-tree signing yet; tests use fixed secp256k1 vectors (ECDSA verify/recover are in-tree)
 - EELS blockchain tests require external fixtures and are ignored by default
 
 ## Testing

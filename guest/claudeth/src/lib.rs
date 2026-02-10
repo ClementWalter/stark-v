@@ -2,7 +2,7 @@
 //!
 //! This library implements the Ethereum protocol execution layer with minimal external dependencies,
 //! designed for efficient proof generation in zkVM environments. It relies on `serde` and keeps
-//! cryptography in-tree, with fixed signature vectors in tests.
+//! cryptography in-tree, with a deterministic in-tree signer for tests.
 //!
 //! ## Features
 //!

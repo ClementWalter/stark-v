@@ -28,6 +28,24 @@ pub enum Secp256k1Error {
     VerificationFailed,
 }
 
+fn deterministic_nonce(secret_key: U256, message_hash: &Hash, attempt: u64) -> U256 {
+    let mut data = [0u8; 76];
+    data[..4].copy_from_slice(b"SIG0");
+    data[4..36].copy_from_slice(&secret_key.to_be_bytes());
+    data[36..68].copy_from_slice(message_hash.as_bytes());
+    data[68..].copy_from_slice(&attempt.to_be_bytes());
+    let hash = keccak256(&data);
+    U256::from_be_bytes(*hash.as_bytes())
+}
+
+fn validate_secret_key(secret_key: U256) -> Result<(), Secp256k1Error> {
+    let n = secp256k1_n();
+    if secret_key.is_zero() || secret_key >= n {
+        return Err(Secp256k1Error::InvalidSignature);
+    }
+    Ok(())
+}
+
 fn parse_signature(signature: &[u8]) -> Result<(U256, U256), Secp256k1Error> {
     if signature.len() != 64 {
         return Err(Secp256k1Error::InvalidSignature);
@@ -69,6 +87,91 @@ fn parse_public_key(public_key: &[u8]) -> Result<AffinePoint, Secp256k1Error> {
     }
 
     Ok(point)
+}
+
+/// Derives the uncompressed public key (x||y) from a secp256k1 secret key.
+pub fn public_key_from_secret(secret_key: U256) -> Result<[u8; 64], Secp256k1Error> {
+    validate_secret_key(secret_key)?;
+    let g = AffinePoint::generator();
+    let point = scalar_mul(secret_key, g);
+    let AffinePoint::Point { x, y } = point else {
+        return Err(Secp256k1Error::InvalidSignature);
+    };
+
+    let mut public_key = [0u8; 64];
+    public_key[..32].copy_from_slice(&x.to_be_bytes());
+    public_key[32..].copy_from_slice(&y.to_be_bytes());
+    Ok(public_key)
+}
+
+/// Derives an Ethereum address from a 64-byte uncompressed public key.
+pub fn address_from_public_key(public_key: &[u8; 64]) -> Address {
+    let hash = keccak256(public_key);
+    let mut address_bytes = [0u8; 20];
+    address_bytes.copy_from_slice(&hash.as_bytes()[12..]);
+    Address::from(address_bytes)
+}
+
+/// Derives an Ethereum address directly from a secret key.
+pub fn address_from_secret_key(secret_key: U256) -> Result<Address, Secp256k1Error> {
+    let public_key = public_key_from_secret(secret_key)?;
+    Ok(address_from_public_key(&public_key))
+}
+
+/// Signs a message hash with a secp256k1 secret key, returning (r, s, recovery_id).
+///
+/// This uses a deterministic nonce derived from keccak256 for test determinism.
+pub fn sign_recoverable(
+    message_hash: &Hash,
+    secret_key: U256,
+) -> Result<(U256, U256, u8), Secp256k1Error> {
+    validate_secret_key(secret_key)?;
+    let n = secp256k1_n();
+    let n_half = n / U256::from_u64(2);
+    let z = U256::from_be_bytes(*message_hash.as_bytes());
+
+    for attempt in 0u64..1024 {
+        let mut k = deterministic_nonce(secret_key, message_hash, attempt) % n;
+        if k.is_zero() {
+            k = U256::ONE;
+        }
+
+        let r_point = scalar_mul(k, AffinePoint::generator());
+        let AffinePoint::Point { x, y } = r_point else {
+            continue;
+        };
+
+        if x >= n {
+            continue;
+        }
+        let mut recid = if (y & U256::ONE) == U256::ONE { 1u8 } else { 0u8 };
+
+        let r = x % n;
+        if r.is_zero() {
+            continue;
+        }
+
+        let k_inv = match mod_inv(k, n) {
+            Some(value) => value,
+            None => continue,
+        };
+
+        let rd = mod_mul(r, secret_key, n);
+        let sum = mod_add(z, rd, n);
+        let mut s = mod_mul(k_inv, sum, n);
+        if s.is_zero() {
+            continue;
+        }
+
+        if s > n_half {
+            s = mod_sub(U256::ZERO, s, n);
+            recid ^= 1;
+        }
+
+        return Ok((r, s, recid));
+    }
+
+    Err(Secp256k1Error::InvalidSignature)
 }
 
 fn sqrt_mod_p(value: U256) -> Option<U256> {

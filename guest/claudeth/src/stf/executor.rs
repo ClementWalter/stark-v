@@ -627,6 +627,7 @@ fn convert_logs(logs: Vec<LogEntry>) -> Vec<Log> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::{address_from_secret_key, sign_recoverable};
     use crate::evm::gas::MAX_CODE_SIZE;
     use crate::state::InMemoryState;
     use crate::types::transaction::{BlobTransaction, Eip1559Transaction, LegacyTransaction};
@@ -781,7 +782,8 @@ mod tests {
     }
 
     fn create_signed_blob_tx() -> (Transaction, Address) {
-        let tx = BlobTransaction {
+        let secret_key = U256::from_u64(1);
+        let mut tx = BlobTransaction {
             chain_id: U256::ONE,
             nonce: U256::ZERO,
             max_priority_fee_per_gas: U256::ZERO,
@@ -793,22 +795,19 @@ mod tests {
             access_list: Vec::new(),
             max_fee_per_blob_gas: U256::from_u64(1),
             blob_versioned_hashes: vec![Hash::from([0x01; 32])],
-            v: U256::from(0u64),
-            r: U256::from_be_bytes([
-                0x27, 0x33, 0xc6, 0x7e, 0x24, 0xaa, 0x3d, 0x66,
-                0x8c, 0xcf, 0x93, 0x1f, 0x51, 0x33, 0x86, 0x4b,
-                0xf8, 0xc1, 0x68, 0xd8, 0x94, 0xef, 0x49, 0x37,
-                0x3b, 0xdd, 0xb9, 0x38, 0x86, 0xe2, 0x90, 0xb2,
-            ]),
-            s: U256::from_be_bytes([
-                0x4c, 0xee, 0xce, 0x8a, 0x1c, 0xc1, 0x0e, 0xf3,
-                0xde, 0x14, 0x00, 0x02, 0x3b, 0xfa, 0x6f, 0x52,
-                0x29, 0x11, 0x86, 0xce, 0x08, 0xf9, 0x3d, 0xb8,
-                0x80, 0xd7, 0x0c, 0x53, 0x65, 0x6a, 0xa2, 0xac,
-            ]),
+            v: U256::ZERO,
+            r: U256::ZERO,
+            s: U256::ZERO,
         };
 
-        let sender = tx.recover_sender().expect("recover sender");
+        let signing_hash = tx.signing_hash();
+        let (r, s, recid) =
+            sign_recoverable(&signing_hash, secret_key).expect("sign blob transaction");
+        tx.r = r;
+        tx.s = s;
+        tx.v = U256::from_u64(recid as u64);
+
+        let sender = address_from_secret_key(secret_key).expect("address from secret");
         (Transaction::Blob(tx), sender)
     }
 

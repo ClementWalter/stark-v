@@ -28,14 +28,13 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   withdrawals list when `withdrawals_root` is present.
 - Partial MPT implementation with inclusion/exclusion proof verification.
 - Witness-based state reconstruction from WITNESS v1 (account/storage proofs).
-- In-tree secp256k1 field/point arithmetic and ECDSA verify/recover; tests use
-  fixed signature vectors.
+- In-tree secp256k1 field/point arithmetic and ECDSA verify/recover.
+- Deterministic in-tree secp256k1 signer for tests.
 - EIP-3860 initcode size limits enforced for creation txs and CREATE/CREATE2.
 - EIP-170 max code size enforcement and code-deposit gas charging for CREATE/CREATE2.
 
 ### Known Gaps / Limitations
 
-- No in-tree signer yet; tests rely on fixed signature vectors.
 - EELS blockchain fixtures are external and ignored by default.
 
 ## Testing Status
@@ -52,7 +51,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Witness parsing tests for valid/invalid cases.
 - In-tree finite-field helpers and curve constants.
 - Affine point arithmetic and ECDSA verify/recover.
-- Removed k256 dependency; tests use fixed signature vectors.
+- Removed k256 dependency; tests now sign with in-tree code.
 - Executor validates blob versioned hashes (non-empty, count limit, version byte).
 - Enforced EIP-3860 initcode size limits for contract-creation transactions and
   CREATE/CREATE2 (reject > 49,152 bytes) with tests.
@@ -62,12 +61,12 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   results and only apply execution state on success.
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
+- Deterministic in-tree signer used by signature-related tests.
 
 ### Backlog (Not Scheduled)
 
-- Add an in-tree signer for generating ECDSA signatures in tests.
 - Integrate EELS blockchain fixtures into CI (still optional by default).
 
 ## Immediate Next Task
 
-Add an in-tree signer for generating ECDSA signatures in tests.
+Integrate EELS blockchain fixtures into CI (still optional by default).

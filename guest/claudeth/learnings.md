@@ -57,6 +57,8 @@ Date: 2026-02-10
 - Affine point arithmetic handles infinity explicitly; doubling with `y == 0` yields infinity.
 - ECDSA recovery uses x = r (or r + n for high recid), quadratic-residue check, sqrt via `(p + 1) / 4`, and y-parity selection.
 - ECDSA verify uses `u1 = z*s^-1`, `u2 = r*s^-1`, then checks `x(u1G + u2Q)`.
+- Deterministic in-tree signing uses keccak256(secret_key || msg_hash || attempt) to pick a nonce and loops until `r,s` are valid.
+- For Ethereum transactions, keep `v` in `{27,28}` for legacy and `{0,1}` for typed txs; reject or retry if recovery id would require `x >= n`.
 
 ## Pre-commit Hygiene
 
@@ -65,7 +67,6 @@ Date: 2026-02-10
 
 ## Known Gaps Observed
 
-- No in-tree signer; tests use fixed secp256k1 vectors.
 - EELS blockchain fixtures are external and ignored by default.
 
 ## Do / Don't (Next Iteration)
@@ -80,6 +81,7 @@ Date: 2026-02-10
 - Charge blob data fees upfront and burn them (not coinbase).
 - Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
 - Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
+- Use the in-tree deterministic signer in tests; derive expected sender from the secret key.
 
 **Don't**
 - Treat EVM `REVERT` as exceptional.
