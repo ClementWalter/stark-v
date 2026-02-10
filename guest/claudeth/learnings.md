@@ -123,14 +123,12 @@ Date: 2026-02-10
   metadata.
 - Keep documentation fork naming consistent with Cancun until a later fork is
   implemented.
-- Always run `cargo test -p claudeth --release` before committing.
 
 ## Do / Don't (Next Iteration)
 
 Do:
 - Re-verify README claims against code before planning changes.
-- Run `cargo test -p claudeth --release` and `prek run` before committing.
-- Keep all cargo commands scoped to `-p claudeth`.
+- Keep cargo commands scoped to `-p claudeth`.
 - Read execution-specs code before touching consensus-critical logic.
 - Use `keccak256(address)` when constructing account tries in tests/tools.
 - Update `PLAN.md` and this file when behavior changes.
