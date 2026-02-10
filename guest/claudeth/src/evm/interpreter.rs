@@ -1500,7 +1500,29 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
         }
     }
 
-    let result = evm.run()?;
+    let result = match evm.run() {
+        Ok(result) => result,
+        Err(EvmError::Revert(data)) => ExecutionResult {
+            success: false,
+            gas_used: gas_limit.saturating_sub(evm.gas_remaining),
+            gas_refund: 0,
+            return_data: data,
+            logs: Vec::new(),
+            stack: evm.stack.clone(),
+            memory: evm.memory.clone(),
+            gas_trace: {
+                #[cfg(feature = "evm-trace")]
+                {
+                    evm.tracer.as_ref().map(|tracer| tracer.snapshot())
+                }
+                #[cfg(not(feature = "evm-trace"))]
+                {
+                    None
+                }
+            },
+        },
+        Err(err) => return Err(err),
+    };
     Ok((result, evm.state))
 }
 
@@ -1825,8 +1847,9 @@ mod tests {
     fn test_revert() {
         // PUSH1 0x00 PUSH1 0x00 REVERT
         let code = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
-        let result = execute_bytecode(&code, 1000, InMemoryState::new());
-        assert!(matches!(result, Err(EvmError::Revert(_))));
+        let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
+        assert!(!result.success);
+        assert_eq!(result.return_data.len(), 0);
     }
 
     // =============================================================================

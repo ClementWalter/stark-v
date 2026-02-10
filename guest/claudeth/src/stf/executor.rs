@@ -87,7 +87,7 @@ impl TransactionExecutionResult {
 pub enum ExecutionError {
     /// Transaction validation failed
     ValidationError(ValidationError),
-    /// Execution failed (reverted or out of gas)
+    /// Execution failed (out of gas or invalid execution error)
     ExecutionFailed,
 }
 
@@ -269,7 +269,9 @@ pub fn execute_transaction<S: State + Clone>(
     };
 
     // Update state with execution results (includes deployed contract code, state changes, etc.)
-    *state = returned_state;
+    if success {
+        *state = returned_state;
+    }
 
     // Step 4: Post-execution gas refund and finalization
     let total_gas_used = intrinsic_gas + gas_used_execution;

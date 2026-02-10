@@ -6,6 +6,7 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid jump/opcode) revert the current transaction and consume all remaining gas.
 - `REVERT` is non-exceptional: it preserves remaining gas and only reverts the current call frame.
+- REVERT paths must return `success=false`, clear logs/refunds, and avoid applying execution state changes; only pre-execution charges (nonce/gas) remain.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529); SSTORE clearing refund is 4800 gas in `stf::executor`.
 
 ## Block Processing Order

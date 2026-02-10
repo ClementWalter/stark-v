@@ -54,11 +54,15 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Executor validates blob versioned hashes (non-empty, count limit, version byte).
 - Enforced EIP-3860 initcode size limits for contract-creation transactions and
   CREATE/CREATE2 (reject > 49,152 bytes) with tests.
+- Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
+  results and only apply execution state on success.
 
 ### Backlog (Not Scheduled)
 
 - Add an in-tree signer for generating ECDSA signatures in tests.
 - Integrate EELS blockchain fixtures into CI (still optional by default).
+- Enforce EIP-170 max code size and EIP-3541 (0xEF prefix) for contract creation,
+  including code-deposit gas charging for CREATE/CREATE2 and creation txs.
 
 ## Immediate Next Task
 
