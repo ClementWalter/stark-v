@@ -36,6 +36,12 @@ Date: 2026-02-10
 - `code_hash` must match `keccak256(code_bytes)`; empty code requires the empty code hash.
 - Storage proofs use `rlp::encode_u256(value)` for inclusion; zero values require exclusion proofs.
 
+## Guest Output And Errors
+
+- Guest output is a 6-item RLP list: status, gas used, receipts root, state root, error code, error data.
+- Invalid inputs (bad RLP, malformed lists, or inconsistent optional fields) return `status=0` with `ERROR_INVALID_INPUT` or `ERROR_RLP_DECODE`.
+- Block processing failures return a specific error code plus a small RLP payload carrying detail values (for example, expected vs computed roots).
+
 ## Transactions, Fees, And Blobs
 
 - Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
@@ -77,6 +83,7 @@ Date: 2026-02-10
 - Read the relevant `execution-specs` implementation before changing consensus-critical logic.
 - Update `PLAN.md` and `learnings.md` when behavior changes.
 - Update `PLAN.md` test status after running `cargo test -p claudeth --release` and `prek run`.
+- Run `cargo test -p claudeth --release` even if `prek run` skips checks.
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
 
