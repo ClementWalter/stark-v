@@ -530,6 +530,19 @@ fn execute_create<S: State + Clone>(
             let mut success = exec_result.success;
 
             if exec_result.success && !exec_result.return_data.is_empty() {
+                if exec_result.return_data[0] == 0xEF {
+                    // EIP-3541: reject code starting with 0xEF and consume all remaining gas.
+                    return Ok((
+                        false,
+                        gas_available,
+                        0,
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        exec_result.gas_trace,
+                        returned_state,
+                    ));
+                }
                 // Calculate code deposit cost: 200 gas per byte (G_codedeposit)
                 use crate::evm::gas::GAS_CODE_DEPOSIT;
                 let code_size = exec_result.return_data.len() as u64;
@@ -1030,6 +1043,62 @@ mod tests {
         // Contract address should be computed deterministically
         let addr = contract_address.unwrap();
         assert_ne!(addr, Address::ZERO);
+    }
+
+    #[test]
+    fn test_execute_create_rejects_0xef_prefix() {
+        let mut state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            tx_ctx: &tx_ctx,
+        };
+
+        let sender = Address::from([0x01; 20]);
+        state.set_balance(&sender, U256::from_u64(1_000_000));
+        state.increment_nonce(&sender);
+
+        // Init code that returns a single byte 0xEF.
+        let init_code = vec![
+            0x60, 0xEF, // PUSH1 0xEF
+            0x60, 0x00, // PUSH1 0x00
+            0x53,       // MSTORE8
+            0x60, 0x01, // PUSH1 0x01
+            0x60, 0x00, // PUSH1 0x00
+            0xF3,       // RETURN
+        ];
+
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(100000),
+            to: None,
+            value: U256::ZERO,
+            data: Bytes::from(init_code),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let gas_available = 100000;
+        let result = execute_create(&tx, state, &sender, contexts, gas_available);
+
+        assert!(result.is_ok());
+        let (success, gas_used, gas_refund, return_data, logs, contract_address, _gas_trace, state) =
+            result.unwrap();
+
+        assert!(!success);
+        assert_eq!(gas_used, gas_available);
+        assert_eq!(gas_refund, 0);
+        assert!(return_data.is_empty());
+        assert!(logs.is_empty());
+        assert!(contract_address.is_none());
+
+        let expected_address = compute_create_address(&sender, U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
     }
 
     #[test]

@@ -390,6 +390,16 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         match result {
             Ok(exec_result) => {
                 if exec_result.success && !exec_result.return_data.is_empty() {
+                    if exec_result.return_data[0] == 0xEF {
+                        // EIP-3541: reject code starting with 0xEF and consume all gas.
+                        let _ = evm.into_state();
+                        return CreateResult {
+                            success: false,
+                            address: None,
+                            return_data: Vec::new(),
+                            gas_used: msg.gas,
+                        };
+                    }
                     // Deploy the contract code
                     let mut final_state = evm.into_state();
                     final_state.set_code(&contract_address, exec_result.return_data.clone());
@@ -508,6 +518,7 @@ mod tests {
     use super::*;
     use crate::evm::interpreter::{BlockContext, TxContext};
     use crate::state::InMemoryState;
+    use crate::types::{Address, U256};
 
     #[test]
     fn test_recursive_host_blockhash_parent_only() {
@@ -587,5 +598,47 @@ mod tests {
             Host::<InMemoryState>::blobhash(&host, &U256::from_u64(2)),
             None
         );
+    }
+
+    #[test]
+    fn test_recursive_host_create_rejects_0xef_prefix() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x01; 20]);
+        state.set_balance(&caller, U256::from_u64(1_000_000));
+        state.increment_nonce(&caller);
+
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let mut host = RecursiveHost::new()
+            .with_block_context(block_ctx)
+            .with_tx_context(tx_ctx);
+
+        let init_code = vec![
+            0x60, 0xEF, // PUSH1 0xEF
+            0x60, 0x00, // PUSH1 0x00
+            0x53,       // MSTORE8
+            0x60, 0x01, // PUSH1 0x01
+            0x60, 0x00, // PUSH1 0x00
+            0xF3,       // RETURN
+        ];
+
+        let gas = 100000;
+        let msg = CreateMessage {
+            gas,
+            caller,
+            value: U256::ZERO,
+            init_code,
+            salt: None,
+        };
+
+        let result = host.create(&mut state, msg);
+
+        assert!(!result.success);
+        assert_eq!(result.gas_used, gas);
+        assert!(result.return_data.is_empty());
+        assert!(result.address.is_none());
+
+        let expected_address = compute_create_address(&caller, U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
     }
 }

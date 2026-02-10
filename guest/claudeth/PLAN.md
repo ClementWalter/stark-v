@@ -30,16 +30,19 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Witness-based state reconstruction from WITNESS v1 (account/storage proofs).
 - In-tree secp256k1 field/point arithmetic and ECDSA verify/recover; tests use
   fixed signature vectors.
+- EIP-3860 initcode size limits enforced for creation txs and CREATE/CREATE2.
 
 ### Known Gaps / Limitations
 
+- EIP-170 max code size is not enforced; CREATE/CREATE2 also lack code-deposit
+  gas charging.
 - No in-tree signer yet; tests rely on fixed signature vectors.
 - EELS blockchain fixtures are external and ignored by default.
 
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-10): pass.
-- `prek run` (2026-02-10): pass (no applicable files).
+- `prek run` (2026-02-10): pass.
 
 ## Plan
 
@@ -56,14 +59,15 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   CREATE/CREATE2 (reject > 49,152 bytes) with tests.
 - Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
   results and only apply execution state on success.
+- Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
+  CREATE/CREATE2 paths, consuming all remaining gas on failure.
 
 ### Backlog (Not Scheduled)
 
+- Enforce EIP-170 max code size and charge code-deposit gas for CREATE/CREATE2.
 - Add an in-tree signer for generating ECDSA signatures in tests.
 - Integrate EELS blockchain fixtures into CI (still optional by default).
-- Enforce EIP-170 max code size and EIP-3541 (0xEF prefix) for contract creation,
-  including code-deposit gas charging for CREATE/CREATE2 and creation txs.
 
 ## Immediate Next Task
 
-No immediate task queued; next work should come from new gaps or failing tests.
+Enforce EIP-170 max code size and charge code-deposit gas for CREATE/CREATE2.
