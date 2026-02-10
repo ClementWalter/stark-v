@@ -2,18 +2,17 @@
 
 Date: 2026-02-10
 
-## Consensus-Critical Execution Semantics
+## Consensus-Critical Execution
 
 - Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas, return `success=false`, and do not abort block processing.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and reverts only the current call frame.
-- `SELFDESTRUCT` follows EIP-6780: only deletes if created in the same transaction; created-account tracking resets per transaction.
+- `SELFDESTRUCT` follows EIP-6780: only deletes if the contract was created in the same transaction; created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
 - SSTORE gas/refund accounting follows EIP-2200 + EIP-2929 + EIP-3529 using original vs current values; refunds are capped to 1/5 of gas used.
-- Original storage tracking must reset at transaction boundaries and after pre-block system calls.
-- Transient storage (EIP-1153) must clear at transaction end and after pre-block system calls.
+- Original storage and transient storage (EIP-1153) must reset at transaction boundaries and after pre-block system calls.
 - Coinbase receives only the priority fee; base fee and blob data fee are burned.
 
-## Transaction Validation Rules
+## Transaction Validation
 
 - Sender must be an EOA (no code), signature must recover, and nonce must match exactly (too low/high both reject).
 - Gas limit must cover intrinsic gas and not exceed the block gas limit.

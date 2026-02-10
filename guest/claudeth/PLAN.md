@@ -10,7 +10,7 @@ processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 (type `0x03`) and post-Shanghai fields are supported.
 
-## Verified Status (from code review, 2026-02-10)
+## Verified Status (code/README review, 2026-02-10)
 
 ### Implemented
 
@@ -58,7 +58,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Receipt encoding/decoding with EIP-2718 typed envelopes.
 - SSTORE gas/refund accounting with original storage tracking.
 - Transient storage (EIP-1153) implementation and clearing.
-- Documentation refresh (PLAN/learnings aligned to code).
+- Documentation revalidated against code/README.
 
 ### Backlog (Not Scheduled)
 
