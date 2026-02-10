@@ -1066,7 +1066,7 @@ fn test_fixture_parent_hash_linkage_uses_real_header_hashes() {
 }
 
 #[test]
-fn test_multichain_fixture_parent_selection_uses_parent_hash_not_linear_order() {
+fn test_multi_chain_fixture_parent_selection_uses_parent_hash_not_linear_order() {
     let fixture_path = Path::new(
         "tests/eels/BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json",
     );
