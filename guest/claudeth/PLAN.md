@@ -10,8 +10,8 @@ processing with header validations and root checks, a partial MPT (with
 inclusion/exclusion proof verification), and EIP-4895 withdrawals application.
 Block processing applies EIP-4788 (beacon root) and EIP-2935 (history storage)
 system calls before transaction execution. The block header type includes
-Shanghai/Cancun fields. The secp256k1 module still uses `k256`, with in-tree
-field and affine point arithmetic in place as a foundation for replacing it.
+Shanghai/Cancun fields. The secp256k1 module has in-tree field and affine point
+arithmetic plus ECDSA verify/recover, and tests use fixed signature vectors.
 
 ## Verified Status (from code)
 
@@ -64,8 +64,7 @@ field and affine point arithmetic in place as a foundation for replacing it.
 
 ### Known Gaps / Limitations
 
-- `k256` dependency still required for signing in unit tests.
-- No in-tree signing; tests still sign with `k256`.
+- No in-tree signing yet; tests use fixed signature vectors.
 - EELS blockchain fixtures are external and ignored by default.
 
 ## Testing Status
@@ -84,16 +83,15 @@ field and affine point arithmetic in place as a foundation for replacing it.
 ### P2: Remove `k256`
 
 - P2.1: Replace k256-based signing in tests with fixed secp256k1 vectors and
-  ensure verification/recovery uses prehashed message inputs. (not done)
+  ensure verification/recovery uses prehashed message inputs. (done)
 - P2.2: Add in-tree finite-field helpers (mod add/sub/mul/pow/inv) plus curve
   constants for secp256k1. (done)
 - P2.3: Implement affine point arithmetic (on-curve check, add, double,
   scalar mul) over the secp256k1 field. (done)
 - P2.4: Implement ECDSA verify/recover using in-tree field/point ops and
   execution-specs recovery rules (including x-coordinate validity check). (done)
-- P2.5: Remove `k256` dependency and update crypto module wiring/tests. (not done)
+- P2.5: Remove `k256` dependency and update crypto module wiring/tests. (done)
 
 ## Immediate Next Task
 
-Replace k256-based signing in unit tests with fixed secp256k1 vectors (or an
-in-tree signer), then move `k256` to `dev-dependencies` or remove it entirely.
+No immediate task queued; next work should come from new gaps or test failures.

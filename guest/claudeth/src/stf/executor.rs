@@ -593,7 +593,6 @@ mod tests {
     use crate::state::InMemoryState;
     use crate::types::transaction::{BlobTransaction, Eip1559Transaction, LegacyTransaction};
     use crate::types::{Bytes, Hash};
-    use k256::ecdsa::SigningKey;
 
     #[test]
     fn test_compute_create_address() {
@@ -729,16 +728,8 @@ mod tests {
         assert!(result.is_err());
     }
 
-    fn test_signing_key(seed: u8) -> SigningKey {
-        let mut key_bytes = [0u8; 32];
-        key_bytes[31] = seed;
-        SigningKey::from_bytes(&key_bytes.into()).expect("valid test signing key")
-    }
-
     fn create_signed_blob_tx() -> (Transaction, Address) {
-        let signing_key = test_signing_key(1);
-
-        let mut tx = BlobTransaction {
+        let tx = BlobTransaction {
             chain_id: U256::ONE,
             nonce: U256::ZERO,
             max_priority_fee_per_gas: U256::ZERO,
@@ -750,26 +741,20 @@ mod tests {
             access_list: Vec::new(),
             max_fee_per_blob_gas: U256::from_u64(1),
             blob_versioned_hashes: vec![Hash::from([0x01; 32])],
-            v: U256::ZERO,
-            r: U256::ZERO,
-            s: U256::ZERO,
+            v: U256::from(0u64),
+            r: U256::from_be_bytes([
+                0x27, 0x33, 0xc6, 0x7e, 0x24, 0xaa, 0x3d, 0x66,
+                0x8c, 0xcf, 0x93, 0x1f, 0x51, 0x33, 0x86, 0x4b,
+                0xf8, 0xc1, 0x68, 0xd8, 0x94, 0xef, 0x49, 0x37,
+                0x3b, 0xdd, 0xb9, 0x38, 0x86, 0xe2, 0x90, 0xb2,
+            ]),
+            s: U256::from_be_bytes([
+                0x4c, 0xee, 0xce, 0x8a, 0x1c, 0xc1, 0x0e, 0xf3,
+                0xde, 0x14, 0x00, 0x02, 0x3b, 0xfa, 0x6f, 0x52,
+                0x29, 0x11, 0x86, 0xce, 0x08, 0xf9, 0x3d, 0xb8,
+                0x80, 0xd7, 0x0c, 0x53, 0x65, 0x6a, 0xa2, 0xac,
+            ]),
         };
-
-        let signing_hash = tx.signing_hash();
-        let (signature, recovery_id) = signing_key
-            .sign_prehash_recoverable(signing_hash.as_bytes())
-            .expect("failed to sign");
-        let sig_bytes = signature.to_bytes();
-
-        let mut r_bytes = [0u8; 32];
-        r_bytes.copy_from_slice(&sig_bytes[..32]);
-        tx.r = U256::from_be_bytes(r_bytes);
-
-        let mut s_bytes = [0u8; 32];
-        s_bytes.copy_from_slice(&sig_bytes[32..]);
-        tx.s = U256::from_be_bytes(s_bytes);
-
-        tx.v = U256::from(recovery_id.to_byte() as u64);
 
         let sender = tx.recover_sender().expect("recover sender");
         (Transaction::Blob(tx), sender)

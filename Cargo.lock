@@ -447,7 +447,6 @@ name = "claudeth"
 version = "0.1.0"
 dependencies = [
  "hex",
- "k256",
  "serde",
  "serde_json",
  "walkdir",

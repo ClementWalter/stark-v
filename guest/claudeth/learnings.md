@@ -96,7 +96,8 @@ Date: 2026-02-10
 - ECDSA verify/recover are in-tree: recovery uses x = r (or r + n for recid >= 2),
   Euler criterion for quadratic residue, sqrt via `(p + 1) / 4`, and y-parity
   selection; verify uses `u1 = z*s^-1`, `u2 = r*s^-1`, then checks `x(u1G+u2Q)`.
-- Tests in `stf::transaction` and `stf::executor` still sign with `k256`.
+- Tests use fixed signature vectors with known private keys and expected
+  addresses; no in-tree signer yet.
 
 ## Pre-commit Hygiene
 
@@ -122,6 +123,7 @@ Date: 2026-02-10
 - Treat point-at-infinity cases explicitly in secp256k1 arithmetic.
 - In recovery, derive x from `r` (or `r + n` for high recid), check quadratic
   residue before sqrt, and flip y to match parity.
+- Keep fixed signature vectors in tests until an in-tree signer exists.
 
 **Don't**
 
@@ -132,3 +134,4 @@ Date: 2026-02-10
 - Accept witness accounts with mismatched code hashes or unsorted entries.
 - Ignore `y == 0` and `x1 == x2` edge cases in point arithmetic.
 - Skip the x-coordinate validity check in ECDSA recovery.
+- Reintroduce external signing dependencies unless absolutely necessary.

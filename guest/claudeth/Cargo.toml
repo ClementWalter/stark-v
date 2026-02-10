@@ -12,7 +12,6 @@ evm-trace = []  # Enable EVM execution tracing for debugging
 
 [dependencies]
 serde = { workspace = true, features = ["derive", "alloc"] }
-k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

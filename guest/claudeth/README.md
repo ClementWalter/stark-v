@@ -28,7 +28,7 @@ written in Rust for the stark-v zkVM. It targets `no_std` and
 
 **Known Gaps / Limitations**
 
-- `k256` is still used for signing in unit tests (ECDSA verify/recover are in-tree)
+- No in-tree signing yet; tests use fixed secp256k1 vectors (ECDSA verify/recover are in-tree)
 - EELS blockchain tests require external fixtures and are ignored by default
 
 ## Testing
