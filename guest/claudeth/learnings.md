@@ -37,8 +37,8 @@ Date: 2026-02-10
 
 - Input RLP list has 5-7 items: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - Witness input is detected by a top-level list of 3 items where the first is a u64 version (currently `1`).
-- `withdrawals` must be provided iff `withdrawals_root` is present in the header; empty list is valid.
-- Recent block hashes are capped at 256 and must end with `parent.compute_hash()`. Genesis (`block.number == 0`) rejects any list.
+- `withdrawals` must be provided iff `withdrawals_root` is present in the header; an empty list is valid.
+- Recent block hashes are capped at 256, must end with `parent.compute_hash()`, and genesis (`block.number == 0`) rejects any list.
 - Witness accounts are strictly increasing by address; storage entries are strictly increasing by slot.
 - Account trie keys are `keccak256(address)`; storage trie keys are `keccak256(U256 slot)`.
 - Empty `account_rlp` requires an exclusion proof and empty `code` + `storage_entries`.
@@ -49,6 +49,7 @@ Date: 2026-02-10
 
 - Receipt roots use typed receipt envelopes (EIP-2718): `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`. Legacy receipts are plain RLP lists.
 - Receipt decoding accepts typed envelopes for `0x01..0x03` and rejects unknown prefixes.
+- Receipt status encoding is `0x01` for success and empty bytes (`0x80`) for failure.
 - Logs bloom uses execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
