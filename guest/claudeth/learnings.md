@@ -4,7 +4,7 @@ Date: 2026-02-10
 
 ## Execution Semantics
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume remaining gas, return `success=false`, and do not abort block processing.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) burn remaining gas, return `success=false`, and do not abort block processing.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and reverts only the current call frame.
 - `SELFDESTRUCT` follows EIP-6780: only deletes contracts created in the same transaction; created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
@@ -14,13 +14,13 @@ Date: 2026-02-10
 
 ## Transaction Validation
 
-- Sender must be an EOA (no code), signature must recover, and nonce must match exactly (too low/high both reject).
+- Sender must be an EOA (no code), signature must recover, and nonce must match exactly.
 - Gas limit must cover intrinsic gas and not exceed the block gas limit.
 - Legacy/EIP-2930 require `gas_price >= base_fee` when `base_fee > 0`.
 - EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
 - Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (+ blob fee cap for type `0x03`).
 - Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
-- Chain ID rules: legacy uses EIP-155 encoding in `v`, typed txs use explicit `chain_id`.
+- Chain ID rules: legacy uses EIP-155 encoding in `v`; typed txs use explicit `chain_id`.
 - Blob tx validation: non-empty versioned hashes, version byte `0x01`, count limit `6`, and `max_fee_per_blob_gas >= blob_base_fee`.
 
 ## Block Processing And Header Rules
