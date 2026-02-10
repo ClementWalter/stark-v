@@ -7,18 +7,19 @@ Date: 2026-02-10
 - Exceptional halts (OOG, invalid opcode/jump) revert the current transaction and consume all remaining gas.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and only reverts the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and are applied after execution.
+- Transactions must originate from EOAs; sender accounts with code are invalid.
 
 ## Block Processing Order
 
 - Validate the child header against its parent before any state transitions.
 - Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution.
-- Post-execution checks: receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, blob gas used.
+- Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Header and Cancun Rules
 
 - Post-merge headers enforce `difficulty == 0`, `mix_hash == 0`, `nonce == 0`, and `ommers_hash == EMPTY_OMMERS_HASH`.
-- `extra_data.len() <= 32` and `gas_used <= gas_limit`.
-- Base fee for child headers must match the EIP-1559 formula from the parent header.
+- `extra_data.len() <= 32` and `gas_used <= gas_limit`; gas limit changes are bounded by parent/1024 and must stay above the minimum.
+- Base fee for child headers must match the EIP-1559 formula derived from the parent.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
 
@@ -35,14 +36,14 @@ Date: 2026-02-10
 
 ## Transactions, Fees, and Blobs
 
-- Typed transactions accepted: `0x01`, `0x02`, `0x03`.
 - Effective gas price for EIP-1559/EIP-4844 is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
-- Base fee caps: legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee`.
-- EIP-3860: contract creation txs with initcode > 49,152 bytes are invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas (no initcode execution).
+- Base fee caps: legacy/EIP-2930 require `gas_price >= base_fee`; EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
+- Balance validation uses the max-fee cap: `gas_limit * max_fee_per_gas + value` (plus blob fee cap for type 0x03).
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - Blob data fee is charged upfront and burned (not credited to coinbase).
-- `TxContext` carries `blob_versioned_hashes`; `BLOBHASH` returns zero for out-of-range indices.
-- `execute_transaction` must call `validate_blob_structure` directly because block processing does not use `validate_transaction`.
+- EIP-3860: contract creation txs with initcode > 49,152 bytes are invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas.
+- EIP-170 max code size enforcement and code-deposit gas charging apply to CREATE/CREATE2.
+- EIP-3541 rejects contract code starting with `0xEF`, consuming all remaining gas on failure.
 
 ## Receipts and Logs
 
@@ -52,8 +53,6 @@ Date: 2026-02-10
 
 ## EVM Semantics and State Roots
 
-- Contract creation rejects code starting with `0xEF` (EIP-3541) and consumes all remaining gas.
-- Contract creation charges code-deposit gas (200 per byte) and rejects code larger than 24KB (EIP-170), consuming all remaining gas.
 - SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if the contract was created in the same transaction, otherwise keep code/storage.
 - Track created accounts for the current transaction and clear them at tx end; deletion is applied at tx end after successful execution.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
@@ -80,22 +79,11 @@ Date: 2026-02-10
 ## Do / Don't (Next Iteration)
 
 **Do**
-- Keep EIP-4788 and EIP-2935 system calls before transaction execution.
-- Enforce witness ordering and proof validation for accounts and storage slots.
-- Validate base fee caps per tx type before charging balances.
-- Validate blob versioned hashes in `execute_transaction`, not just in standalone validation.
-- Enforce EIP-3860 initcode size limits in transaction validation and CREATE/CREATE2 handling.
-- Enforce EIP-170 max code size and charge code-deposit gas for CREATE/CREATE2.
-- Charge blob data fees upfront and burn them (not coinbase).
-- Apply EIP-6780 SELFDESTRUCT rules and clear created-account tracking per transaction.
-- Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
-- Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
-- Use the in-tree deterministic signer in tests; derive expected sender from the secret key.
-- Accept typed receipt envelopes for `0x01..0x03` and reject unknown receipt prefixes.
+- Read the relevant `execution-specs` fork implementation before changing consensus-critical logic.
+- Update `PLAN.md` and `learnings.md` when behavior changes.
+- Keep all cargo commands scoped to `-p claudeth`.
 
 **Don't**
-- Treat EVM `REVERT` as exceptional.
-- Accept recent block hash lists for genesis or lists without the parent hash last.
-- Skip blob field all-or-nothing checks or blob count/version validations.
-- Delete SELFDESTRUCTed accounts that were not created in the current transaction.
-- Ignore point-at-infinity or `y == 0` edge cases in secp256k1 arithmetic.
+- Skip or disable pre-commit hooks.
+- Add shell scripts (`.sh`) to this project.
+- Assume `PLAN.md` is correct without re-checking the code and README.

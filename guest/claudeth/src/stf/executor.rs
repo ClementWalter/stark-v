@@ -36,7 +36,7 @@ use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
     blob_data_fee, calculate_intrinsic_gas, validate_balance, validate_base_fee,
     validate_blob_fee, validate_blob_structure, validate_chain_id, validate_gas, validate_nonce,
-    validate_signature, ValidationError,
+    validate_sender_is_eoa, validate_signature, ValidationError,
 };
 use crate::types::{Address, Hash, Transaction, U256};
 
@@ -166,6 +166,7 @@ pub fn execute_transaction<S: State + Clone>(
     validate_base_fee(tx, exec_ctx.block_ctx.base_fee)?;
     validate_blob_structure(tx)?;
     validate_blob_fee(tx, exec_ctx.block_ctx.excess_blob_gas)?;
+    validate_sender_is_eoa(state.get_code(&sender))?;
 
     let intrinsic_gas = calculate_intrinsic_gas(tx).as_u64();
     let gas_limit = tx.gas_limit().as_u64();

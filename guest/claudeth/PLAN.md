@@ -22,6 +22,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   EIP-4844 blob transactions.
 - EIP-4844 blob tx encoding/decoding, signing hash, blob fee validation, and
   blob gas accounting.
+- Reject transactions from senders with non-empty code (EOA-only requirement).
 - Block processing with parent header validation, receipts/tx/state root checks,
   logs bloom validation, gas used checks, and blob gas used checks.
 - EIP-4895 withdrawals application and withdrawals root validation.
@@ -69,6 +70,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   if created in the same transaction, and clear created-account tracking per tx.
 - Accept and decode typed receipt envelopes for `0x01..0x03`, rejecting
   unsupported prefixes.
+- Reject transactions whose sender account has code (EOA-only requirement).
 
 ### Backlog (Not Scheduled)
 
@@ -76,4 +78,4 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Immediate Next Task
 
-Integrate EELS blockchain fixtures into CI (still optional by default).
+None. (Backlog items only.)

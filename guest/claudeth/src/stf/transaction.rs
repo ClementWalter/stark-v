@@ -60,6 +60,8 @@ pub enum ValidationError {
     MissingBlobGasContext,
     /// Initcode size exceeds the EIP-3860 limit
     InitCodeSizeExceeded,
+    /// Sender account has code (transactions must originate from EOAs)
+    SenderHasCode,
 }
 
 impl fmt::Display for ValidationError {
@@ -96,6 +98,9 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::InitCodeSizeExceeded => {
                 write!(f, "Initcode size exceeds EIP-3860 limit")
+            }
+            ValidationError::SenderHasCode => {
+                write!(f, "Sender account has code")
             }
         }
     }
@@ -512,6 +517,15 @@ pub fn validate_balance(
     Ok(())
 }
 
+/// Validates that the sender is an EOA (no contract code).
+pub fn validate_sender_is_eoa(account_code: &[u8]) -> Result<(), ValidationError> {
+    if account_code.is_empty() {
+        Ok(())
+    } else {
+        Err(ValidationError::SenderHasCode)
+    }
+}
+
 /// Validates blob-specific structure (hash list, count limit, version byte).
 pub fn validate_blob_structure(tx: &Transaction) -> Result<(), ValidationError> {
     let Transaction::Blob(tx) = tx else {
@@ -633,6 +647,7 @@ pub fn validate_chain_id(
 /// * `tx` - The transaction to validate
 /// * `account_nonce` - The current nonce of the sender's account
 /// * `account_balance` - The sender's account balance
+/// * `account_code` - The sender's account code (must be empty for EOAs)
 /// * `block_gas_limit` - The block gas limit
 /// * `base_fee` - The current block base fee
 /// * `chain_id` - The expected chain ID for the network
@@ -652,6 +667,7 @@ pub fn validate_chain_id(
 ///     &tx,
 ///     U256::from(5u64),           // account nonce
 ///     U256::from(1_000_000u64),   // account balance
+///     &[],                        // account code
 ///     U256::from(30_000_000u64),  // block gas limit
 ///     U256::from(10u64),          // base fee
 ///     U256::from(1u64),           // chain ID (mainnet)
@@ -664,6 +680,7 @@ pub fn validate_transaction(
     tx: &Transaction,
     account_nonce: U256,
     account_balance: U256,
+    account_code: &[u8],
     block_gas_limit: U256,
     base_fee: U256,
     chain_id: U256,
@@ -683,7 +700,10 @@ pub fn validate_transaction(
     // 5. Validate balance
     validate_balance(tx, account_balance, base_fee)?;
 
-    // 6. Validate chain ID
+    // 6. Validate sender account is an EOA
+    validate_sender_is_eoa(account_code)?;
+
+    // 7. Validate chain ID
     validate_chain_id(tx, chain_id)?;
 
     Ok(sender)
@@ -1408,6 +1428,7 @@ mod tests {
             &tx,
             U256::from(0u64),
             U256::from(1_000_000_000_000_000u64),
+            &[],
             U256::from(30_000_000u64),
             U256::from(10u64),
             U256::from(1u64),
@@ -1426,6 +1447,7 @@ mod tests {
             &tx,
             U256::from(5u64), // Wrong nonce
             U256::from(1_000_000_000_000_000u64),
+            &[],
             U256::from(30_000_000u64),
             U256::from(10u64),
             U256::from(1u64),
@@ -1443,6 +1465,7 @@ mod tests {
             &tx,
             U256::from(0u64),
             U256::from(100u64), // Insufficient balance
+            &[],
             U256::from(30_000_000u64),
             U256::from(10u64),
             U256::from(1u64),
@@ -1460,6 +1483,7 @@ mod tests {
             &tx,
             U256::from(0u64),
             U256::from(1_000_000_000_000_000u64),
+            &[],
             U256::from(30_000_000u64),
             U256::from(10u64),
             U256::from(1u64),
@@ -1478,6 +1502,7 @@ mod tests {
             &legacy,
             U256::from(0u64),
             U256::from(1_000_000_000_000_000u64),
+            &[],
             U256::from(30_000_000u64),
             U256::from(10u64),
             U256::from(1u64),
@@ -1491,11 +1516,30 @@ mod tests {
             &eip1559,
             U256::from(0u64),
             U256::from(1_000_000_000_000_000u64),
+            &[],
             U256::from(30_000_000u64),
             U256::from(10u64),
             U256::from(1u64),
         )
         .is_ok());
+    }
+
+    #[test]
+    fn test_validate_transaction_rejects_sender_with_code() {
+        let (tx, _) = create_signed_legacy_tx();
+        let tx = Transaction::Legacy(tx);
+
+        let result = validate_transaction(
+            &tx,
+            U256::from(0u64),
+            U256::from(1_000_000_000_000_000u64),
+            &[0x60, 0x00, 0x60, 0x00, 0x52], // non-empty code
+            U256::from(30_000_000u64),
+            U256::from(10u64),
+            U256::from(1u64),
+        );
+
+        assert_eq!(result, Err(ValidationError::SenderHasCode));
     }
 
     // =========================================================================
