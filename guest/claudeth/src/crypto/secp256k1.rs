@@ -8,10 +8,12 @@
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
 
-use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-
 use crate::crypto::keccak256;
-use crate::types::{Address, Hash};
+use crate::crypto::secp256k1_math::{
+    mod_add, mod_inv, mod_mul, mod_pow, mod_sub, secp256k1_n, secp256k1_p, SECP256K1_B,
+};
+use crate::crypto::secp256k1_point::{point_add, scalar_mul, AffinePoint};
+use crate::types::{Address, Hash, U256};
 
 /// Error type for secp256k1 operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +26,64 @@ pub enum Secp256k1Error {
     InvalidPublicKey,
     /// Signature verification failed
     VerificationFailed,
+}
+
+fn parse_signature(signature: &[u8]) -> Result<(U256, U256), Secp256k1Error> {
+    if signature.len() != 64 {
+        return Err(Secp256k1Error::InvalidSignature);
+    }
+
+    let mut r_bytes = [0u8; 32];
+    r_bytes.copy_from_slice(&signature[..32]);
+    let mut s_bytes = [0u8; 32];
+    s_bytes.copy_from_slice(&signature[32..]);
+
+    let r = U256::from_be_bytes(r_bytes);
+    let s = U256::from_be_bytes(s_bytes);
+    let n = secp256k1_n();
+
+    if r.is_zero() || r >= n || s.is_zero() || s >= n {
+        return Err(Secp256k1Error::InvalidSignature);
+    }
+
+    Ok((r, s))
+}
+
+fn parse_public_key(public_key: &[u8]) -> Result<AffinePoint, Secp256k1Error> {
+    if public_key.len() != 64 {
+        return Err(Secp256k1Error::InvalidPublicKey);
+    }
+
+    let mut x_bytes = [0u8; 32];
+    x_bytes.copy_from_slice(&public_key[..32]);
+    let mut y_bytes = [0u8; 32];
+    y_bytes.copy_from_slice(&public_key[32..]);
+
+    let point = AffinePoint::Point {
+        x: U256::from_be_bytes(x_bytes),
+        y: U256::from_be_bytes(y_bytes),
+    };
+
+    if !point.is_on_curve() {
+        return Err(Secp256k1Error::InvalidPublicKey);
+    }
+
+    Ok(point)
+}
+
+fn sqrt_mod_p(value: U256) -> Option<U256> {
+    if value.is_zero() {
+        return Some(U256::ZERO);
+    }
+
+    let p = secp256k1_p();
+    let legendre_exp = (p - U256::ONE) / U256::from_u64(2);
+    if mod_pow(value, legendre_exp, p) != U256::ONE {
+        return None;
+    }
+
+    let sqrt_exp = (p + U256::ONE) / U256::from_u64(4);
+    Some(mod_pow(value, sqrt_exp, p))
 }
 
 /// Verifies an ECDSA signature against a message hash and public key.
@@ -57,33 +117,34 @@ pub fn verify_signature(
     signature: &[u8],
     public_key: &[u8],
 ) -> Result<bool, Secp256k1Error> {
-    // Validate signature length
     if signature.len() != 64 {
         return Err(Secp256k1Error::InvalidSignature);
     }
-
-    // Validate public key length
     if public_key.len() != 64 {
         return Err(Secp256k1Error::InvalidPublicKey);
     }
 
-    // Parse signature
-    let sig = Signature::try_from(signature).map_err(|_| Secp256k1Error::InvalidSignature)?;
+    let public_key = parse_public_key(public_key)?;
+    let (r, s) = parse_signature(signature)?;
 
-    // Construct uncompressed public key with 0x04 prefix
-    let mut pk_bytes = [0u8; 65];
-    pk_bytes[0] = 0x04;
-    pk_bytes[1..].copy_from_slice(public_key);
+    let n = secp256k1_n();
+    let z = U256::from_be_bytes(*message_hash.as_bytes());
 
-    // Parse public key
-    let verifying_key =
-        VerifyingKey::from_sec1_bytes(&pk_bytes).map_err(|_| Secp256k1Error::InvalidPublicKey)?;
+    let s_inv = mod_inv(s, n).ok_or(Secp256k1Error::InvalidSignature)?;
+    let u1 = mod_mul(z, s_inv, n);
+    let u2 = mod_mul(r, s_inv, n);
 
-    // Verify signature over the prehashed message (Ethereum uses Keccak-256 prehash).
-    use k256::ecdsa::signature::hazmat::PrehashVerifier;
-    Ok(verifying_key
-        .verify_prehash(message_hash.as_bytes(), &sig)
-        .is_ok())
+    let g = AffinePoint::generator();
+    let u1g = scalar_mul(u1, g);
+    let u2q = scalar_mul(u2, public_key);
+    let sum = point_add(u1g, u2q);
+
+    let AffinePoint::Point { x, .. } = sum else {
+        return Ok(false);
+    };
+
+    let x_mod_n = mod_add(x, U256::ZERO, n);
+    Ok(x_mod_n == r)
 }
 
 /// Recovers the public key from a signature and message hash.
@@ -117,34 +178,54 @@ pub fn recover_public_key(
     signature: &[u8],
     recovery_id: u8,
 ) -> Result<[u8; 64], Secp256k1Error> {
-    // Validate signature length
-    if signature.len() != 64 {
-        return Err(Secp256k1Error::InvalidSignature);
-    }
-
-    // Validate recovery ID
     if recovery_id > 3 {
         return Err(Secp256k1Error::InvalidRecoveryId);
     }
 
-    // Parse signature
-    let sig = Signature::try_from(signature).map_err(|_| Secp256k1Error::InvalidSignature)?;
+    let (r, s) = parse_signature(signature)?;
+    let n = secp256k1_n();
+    let p = secp256k1_p();
 
-    // Parse recovery ID
-    let recid = RecoveryId::try_from(recovery_id).map_err(|_| Secp256k1Error::InvalidRecoveryId)?;
+    let x = if recovery_id >= 2 {
+        r.checked_add(n)
+            .filter(|value| *value < p)
+            .ok_or(Secp256k1Error::InvalidSignature)?
+    } else {
+        r
+    };
 
-    // Recover public key
-    let recovered_key = VerifyingKey::recover_from_prehash(message_hash.as_bytes(), &sig, recid)
-        .map_err(|_| Secp256k1Error::VerificationFailed)?;
+    let x_sq = mod_mul(x, x, p);
+    let x_cubed = mod_mul(x_sq, x, p);
+    let y_sq = mod_add(x_cubed, SECP256K1_B, p);
 
-    // Convert to uncompressed format (65 bytes with 0x04 prefix)
-    let pk_bytes = recovered_key.to_encoded_point(false);
-    let pk_slice = pk_bytes.as_bytes();
+    let mut y = sqrt_mod_p(y_sq).ok_or(Secp256k1Error::InvalidSignature)?;
+    let y_is_odd = (y & U256::ONE) == U256::ONE;
+    let recid_is_odd = (recovery_id & 1) == 1;
+    if y_is_odd != recid_is_odd {
+        y = mod_sub(U256::ZERO, y, p);
+    }
 
-    // Extract the 64 bytes (skip 0x04 prefix)
+    let r_point = AffinePoint::Point { x, y };
+    if !r_point.is_on_curve() {
+        return Err(Secp256k1Error::InvalidSignature);
+    }
+
+    let r_inv = mod_inv(r, n).ok_or(Secp256k1Error::InvalidSignature)?;
+    let z = U256::from_be_bytes(*message_hash.as_bytes());
+
+    let u1 = mod_sub(U256::ZERO, mod_mul(z, r_inv, n), n);
+    let u2 = mod_mul(s, r_inv, n);
+
+    let g = AffinePoint::generator();
+    let q = point_add(scalar_mul(u1, g), scalar_mul(u2, r_point));
+
+    let AffinePoint::Point { x, y } = q else {
+        return Err(Secp256k1Error::VerificationFailed);
+    };
+
     let mut result = [0u8; 64];
-    result.copy_from_slice(&pk_slice[1..]);
-
+    result[..32].copy_from_slice(&x.to_be_bytes());
+    result[32..].copy_from_slice(&y.to_be_bytes());
     Ok(result)
 }
 

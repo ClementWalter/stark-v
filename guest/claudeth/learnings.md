@@ -93,6 +93,10 @@ Date: 2026-02-10
 - Affine point arithmetic must treat infinity explicitly: `P + (-P) = O`,
   doubling with `y == 0` yields infinity, and scalar multiplication uses
   double-and-add over U256 scalars.
+- ECDSA verify/recover are in-tree: recovery uses x = r (or r + n for recid >= 2),
+  Euler criterion for quadratic residue, sqrt via `(p + 1) / 4`, and y-parity
+  selection; verify uses `u1 = z*s^-1`, `u2 = r*s^-1`, then checks `x(u1G+u2Q)`.
+- Tests in `stf::transaction` and `stf::executor` still sign with `k256`.
 
 ## Pre-commit Hygiene
 
@@ -116,6 +120,8 @@ Date: 2026-02-10
   MSB-first).
 - Enforce EIP-2 signature bounds and `v/y_parity` during sender recovery.
 - Treat point-at-infinity cases explicitly in secp256k1 arithmetic.
+- In recovery, derive x from `r` (or `r + n` for high recid), check quadratic
+  residue before sqrt, and flip y to match parity.
 
 **Don't**
 
@@ -125,3 +131,4 @@ Date: 2026-02-10
 - Accept recent block hash lists for genesis or lists with a mismatched parent.
 - Accept witness accounts with mismatched code hashes or unsorted entries.
 - Ignore `y == 0` and `x1 == x2` edge cases in point arithmetic.
+- Skip the x-coordinate validity check in ECDSA recovery.
