@@ -19,7 +19,7 @@ Date: 2026-02-10
 ## Header Rules (Post-Merge / Cancun)
 
 - Enforce `difficulty == 0`, `mix_hash == 0`, `nonce == 0`, and `ommers_hash == EMPTY_OMMERS_HASH`.
-- `extra_data.len() <= 32`, `gas_used <= gas_limit`, and gas limit delta bounded by parent/1024 with minimum floor.
+- `extra_data.len() <= 32`, `gas_used <= gas_limit`, and gas limit delta bounded by parent/1024 with a minimum floor.
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
@@ -66,7 +66,7 @@ Date: 2026-02-10
 - Deterministic signing uses `keccak256(secret_key || msg_hash || attempt)` for nonce selection; retry if `r,s` invalid.
 - For Ethereum transactions, keep `v` in `{27,28}` for legacy and `{0,1}` for typed txs; reject or retry if recovery id would require `x >= n`.
 
-## Pre-Commit Hygiene
+## Tooling and Process
 
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable.
 - Always run `cargo test -p claudeth --release` and `prek run` before committing.
