@@ -2,13 +2,13 @@
 
 Date: 2026-02-10
 
-## Consensus Execution Semantics
+## Execution Semantics
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas, return `success=false`, and do not abort block processing.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume remaining gas, return `success=false`, and do not abort block processing.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and reverts only the current call frame.
-- `SELFDESTRUCT` follows EIP-6780: only deletes if the contract was created in the same transaction; created-account tracking resets per transaction.
+- `SELFDESTRUCT` follows EIP-6780: only deletes contracts created in the same transaction; created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
-- SSTORE gas/refund accounting follows EIP-2200 + EIP-2929 + EIP-3529 using original vs current values; refunds are capped to 1/5 of gas used.
+- SSTORE gas/refund follows EIP-2200 + EIP-2929 + EIP-3529 with original vs current values; refunds are capped to 1/5 of gas used.
 - Original storage and transient storage (EIP-1153) reset at transaction boundaries and after pre-block system calls.
 - Coinbase receives only the priority fee; base fee and blob data fee are burned.
 
@@ -16,7 +16,7 @@ Date: 2026-02-10
 
 - Sender must be an EOA (no code), signature must recover, and nonce must match exactly (too low/high both reject).
 - Gas limit must cover intrinsic gas and not exceed the block gas limit.
-- Legacy/EIP-2930 require `gas_price >= base_fee`.
+- Legacy/EIP-2930 require `gas_price >= base_fee` when `base_fee > 0`.
 - EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
 - Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (+ blob fee cap for type `0x03`).
 - Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
