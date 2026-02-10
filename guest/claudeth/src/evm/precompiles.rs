@@ -8,7 +8,9 @@
 //! - 0x05: MODEXP (Cancun gas formula / EIP-2565)
 //! - 0x06: ALT_BN128 ECADD
 //! - 0x07: ALT_BN128 ECMUL
+//! - 0x08: ALT_BN128 PAIRING (reserved, implementation pending)
 //! - 0x09: BLAKE2F (EIP-152)
+//! - 0x0a: POINT_EVALUATION (reserved, implementation pending)
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
@@ -73,9 +75,18 @@ pub fn execute_precompile(
         5 => Some(modexp_precompile(input, available_gas)),
         6 => Some(ecadd_precompile(input, available_gas)),
         7 => Some(ecmul_precompile(input, available_gas)),
+        8 => Some(unimplemented_reserved_precompile()),
         9 => Some(blake2f_precompile(input, available_gas)),
+        10 => Some(unimplemented_reserved_precompile()),
         _ => None,
     }
+}
+
+fn unimplemented_reserved_precompile() -> Result<PrecompileResult, PrecompileError> {
+    // execution-specs reserves 0x08 and 0x0a as precompiles, so treating them
+    // as empty-code accounts is semantically wrong. We fail explicitly until
+    // full implementations land to preserve "failed sub-call" semantics.
+    Err(PrecompileError::OutOfGas)
 }
 
 fn meter_precompile_result(
@@ -325,7 +336,10 @@ const BLAKE2B_SIGMA: [[usize; 16]; 10] = [
     [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
 ];
 
-fn blake2f_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+fn blake2f_precompile(
+    input: &[u8],
+    available_gas: u64,
+) -> Result<PrecompileResult, PrecompileError> {
     if input.len() != 213 {
         return Err(PrecompileError::OutOfGas);
     }
@@ -401,78 +415,14 @@ fn blake2b_compress(
 
     for round in 0..rounds as usize {
         let schedule = &BLAKE2B_SIGMA[round % BLAKE2B_SIGMA.len()];
-        blake2b_mix(
-            &mut v,
-            0,
-            4,
-            8,
-            12,
-            m[schedule[0]],
-            m[schedule[1]],
-        );
-        blake2b_mix(
-            &mut v,
-            1,
-            5,
-            9,
-            13,
-            m[schedule[2]],
-            m[schedule[3]],
-        );
-        blake2b_mix(
-            &mut v,
-            2,
-            6,
-            10,
-            14,
-            m[schedule[4]],
-            m[schedule[5]],
-        );
-        blake2b_mix(
-            &mut v,
-            3,
-            7,
-            11,
-            15,
-            m[schedule[6]],
-            m[schedule[7]],
-        );
-        blake2b_mix(
-            &mut v,
-            0,
-            5,
-            10,
-            15,
-            m[schedule[8]],
-            m[schedule[9]],
-        );
-        blake2b_mix(
-            &mut v,
-            1,
-            6,
-            11,
-            12,
-            m[schedule[10]],
-            m[schedule[11]],
-        );
-        blake2b_mix(
-            &mut v,
-            2,
-            7,
-            8,
-            13,
-            m[schedule[12]],
-            m[schedule[13]],
-        );
-        blake2b_mix(
-            &mut v,
-            3,
-            4,
-            9,
-            14,
-            m[schedule[14]],
-            m[schedule[15]],
-        );
+        blake2b_mix(&mut v, 0, 4, 8, 12, m[schedule[0]], m[schedule[1]]);
+        blake2b_mix(&mut v, 1, 5, 9, 13, m[schedule[2]], m[schedule[3]]);
+        blake2b_mix(&mut v, 2, 6, 10, 14, m[schedule[4]], m[schedule[5]]);
+        blake2b_mix(&mut v, 3, 7, 11, 15, m[schedule[6]], m[schedule[7]]);
+        blake2b_mix(&mut v, 0, 5, 10, 15, m[schedule[8]], m[schedule[9]]);
+        blake2b_mix(&mut v, 1, 6, 11, 12, m[schedule[10]], m[schedule[11]]);
+        blake2b_mix(&mut v, 2, 7, 8, 13, m[schedule[12]], m[schedule[13]]);
+        blake2b_mix(&mut v, 3, 4, 9, 14, m[schedule[14]], m[schedule[15]]);
     }
 
     let mut output = [0u64; 8];
@@ -1286,6 +1236,20 @@ mod tests {
     }
 
     #[test]
+    fn test_pairing_address_is_reserved_precompile() {
+        let addr = precompile_address(8);
+        let result = execute_precompile(&addr, &[], u64::MAX).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_point_evaluation_address_is_reserved_precompile() {
+        let addr = precompile_address(10);
+        let result = execute_precompile(&addr, &[], u64::MAX).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
     fn test_blake2f_precompile_vector_rounds_zero() {
         let addr = precompile_address(9);
         let input = blake2_reference_input(0, 1);
@@ -1335,8 +1299,8 @@ mod tests {
     fn test_blake2f_precompile_oog() {
         let addr = precompile_address(9);
         let input = blake2_reference_input(u32::MAX, 1);
-        let result = execute_precompile(&addr, &input, GAS_BLAKE2F_ROUND - 1)
-            .expect("precompile exists");
+        let result =
+            execute_precompile(&addr, &input, GAS_BLAKE2F_ROUND - 1).expect("precompile exists");
         assert_eq!(result, Err(PrecompileError::OutOfGas));
     }
 

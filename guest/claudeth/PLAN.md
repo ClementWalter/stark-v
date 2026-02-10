@@ -1,115 +1,120 @@
 # Claudeth Completion Plan
 
-This plan is based on direct inspection of `README.md`, `src/`, `tests/`,
-`execution-specs/`, and `learnings.md` on 2026-02-10.
+This plan is based on direct inspection of `README.md`, `src/`, `tests/`, `execution-specs/`, and `learnings.md` on 2026-02-10.
 
 ## Reality Check vs README
 
-- `README.md` claims full execution-spec compatibility, but the current EELS
-  harness is still partial:
-  - skips `InvalidBlocks`,
-  - executes only a small subset (`.take(10)`),
-  - is disabled for full execution (`#[ignore]`),
-  - uses a parent-hash workaround.
-- Precompile coverage is incomplete in `src/evm/precompiles.rs`:
+- `README.md` claims full execution-spec compatibility, but current automated coverage does not prove it yet:
+  - `tests/eels_blockchain_tests.rs` skips `InvalidBlocks`, truncates with `.take(10)`, and keeps full execution behind `#[ignore]`.
+  - The EELS execution test currently keeps a parent-hash overwrite workaround.
+- Precompile surface is incomplete in `src/evm/precompiles.rs`:
   - implemented: `0x01..0x07`, `0x09`;
-  - missing: `0x08` (`ALT_BN128_PAIRING`), `0x0a` (`POINT_EVALUATION`).
-- RV32 parity is not enforced by repeatable automated checks through
-  `../../crates/runner/`.
+  - not implemented: `0x08` (`ALT_BN128_PAIRING`), `0x0a` (`POINT_EVALUATION`).
+- Because `0x08` and `0x0a` are currently not dispatched as precompiles, calls to those addresses can incorrectly fall through to empty-code call behavior.
 
 ## Completed Baseline
 
-- Native `cargo test -p claudeth --release` passes locally.
-- Existing precompile behavior (`0x01..0x07`, `0x09`) includes gas-aware failure
-  semantics at call boundaries.
-- ECADD/ECMUL implementations already follow EELS-style zero-padding and strict
-  malformed-point rejection semantics.
-- BLAKE2F (`0x09`) now matches EIP-152 input layout/endian rules, per-round gas
-  accounting, and execution-spec vectors (`rounds=0` and `rounds=12`).
+- Native `cargo test -p claudeth --release` passes.
+- Existing precompile behavior (`0x01..0x07`, `0x09`) uses EVM-style sub-call failure semantics for malformed inputs and out-of-gas.
+- `ECADD`/`ECMUL` follow EIP-196 style decoding and malformed-point rejection.
+- `BLAKE2F` follows EIP-152 input layout and test vectors.
 
 ## Remaining Tasks (Ordered by Priority)
 
-### Task 1 (P0): Implement ALT_BN128 pairing precompile (`0x08`)
+### Task 1 (P0): Reserve Known Precompile Addresses 0x08/0x0a (Do Now)
 
 Why:
-- Execution-spec tests and production contracts rely on EIP-197 pairing.
-- Missing `0x08` causes semantic mismatches for valid precompile calls.
+- `execution-specs` maps both `0x08` and `0x0a` as precompiled contracts, so treating them as normal empty-code accounts is semantically wrong.
+- Silent fallthrough can incorrectly return success and incorrectly move call value.
 
 What:
-- Add `0x08` dispatch and pairing-check implementation over BN254 G1/G2.
-- Return 32-byte boolean result, with strict malformed input handling.
+- Treat `0x08` and `0x0a` as recognized precompile addresses immediately.
+- Until full implementations land, force them to fail as precompile sub-calls rather than falling through to regular CALL empty-code behavior.
+- Add regression tests to lock this behavior.
 
 How:
-- Follow `execution-specs` `alt_bn128_pairing_check` rules:
-  - input length multiple of 192;
-  - strict field and curve validation for G1/G2;
-  - subgroup checks (`[curve_order]P == inf`);
-  - gas `GAS_BN256_PAIRING_BASE + n * GAS_BN256_PAIRING_POINT`.
-- Add positive/negative vectors and OOG tests.
+- Extend `execute_precompile` dispatch to include IDs `8` and `10` with explicit failure stubs.
+- Keep failure mapped to `PrecompileError::OutOfGas` so host-level call semantics remain “failed sub-call consuming forwarded gas”.
+- Add unit tests in `src/evm/precompiles.rs` and `src/evm/host.rs` proving:
+  - dispatcher returns `Some(Err(...))` for `0x08`/`0x0a`;
+  - CALL to `0x08` fails and does not transfer value.
 
-### Task 2 (P0): Implement POINT_EVALUATION precompile (`0x0a`)
+### Task 2 (P0): Implement ALT_BN128 Pairing Precompile (`0x08`)
 
 Why:
-- Cancun-era correctness depends on EIP-4844 point-evaluation behavior.
+- EIP-197 compatibility requires actual pairing verification, not a failure stub.
 
 What:
-- Add `0x0a` dispatch and strict 192-byte input handling.
-- Verify versioned hash and KZG proof semantics.
+- Implement pairing check over BN254 with proper output encoding and gas rules.
 
 How:
-- Match `execution-specs` `point_evaluation` behavior:
-  - fixed gas `GAS_POINT_EVALUATION`,
-  - versioned-hash check,
-  - proof verification and expected 64-byte output constants.
-- Add valid and invalid proof/path tests, including gas behavior.
+- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/alt_bn128.py`:
+  - 192-byte tuple decoding (`G1` + `G2`), strict field/curve validation;
+  - subgroup checks (`[curve_order]P == infinity`);
+  - gas `45000 + 34000 * n`;
+  - output `U256(1)`/`U256(0)` as 32 bytes.
 
-### Task 3 (P0): Remove EELS blockchain harness shortcuts
+### Task 3 (P0): Implement POINT_EVALUATION Precompile (`0x0a`)
 
 Why:
-- Current harness cannot substantiate README-level compatibility.
+- Cancun/Prague correctness requires EIP-4844 point-evaluation behavior.
 
 What:
-- Make the blockchain test integration deterministic and representative.
+- Implement strict 192-byte input verification with versioned-hash and KZG proof verification.
 
 How:
-- Remove `InvalidBlocks` skip and `.take(10)` truncation.
+- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py`:
+  - fixed gas `GAS_POINT_EVALUATION`;
+  - exact input parsing (`versioned_hash`, `z`, `y`, `commitment`, `proof`);
+  - versioned-hash check and proof verification;
+  - output two 32-byte constants (`FIELD_ELEMENTS_PER_BLOB`, `BLS_MODULUS`).
+
+### Task 4 (P0): Make EELS Blockchain Harness Representative
+
+Why:
+- Current harness cannot justify README-level compatibility claims.
+
+What:
+- Execute representative fixtures without truncation/shortcuts and enforce expected outcomes.
+
+How:
+- Remove `InvalidBlocks` skip and `.take(10)` limits.
 - Remove parent-hash overwrite workaround.
-- Implement robust `expectException` matching for invalid fixtures.
-- Unignore full execution test once deterministic.
+- Implement robust handling for `expectException` on invalid fixtures.
+- Replace informational-only behavior with assertions suitable for CI.
 
-### Task 4 (P0): Add explicit fork-aware rule gating
-
-Why:
-- Hard-coded modern assumptions can break historical fixtures.
-
-What:
-- Thread fork/network context through STF/EVM rule checks.
-
-How:
-- Use fixture network metadata to gate tx/header/precompile/opcode behavior.
-- Replace unconditional post-Cancun assumptions with fork-conditioned logic.
-
-### Task 5 (P1): Add automated RV32 parity checks via runner
+### Task 5 (P0): Add Fork-Aware Rule Gating
 
 Why:
-- Native passing tests do not prove RV32 correctness.
+- Current execution logic is mostly Cancun-first; historical fixtures require fork-specific behavior.
 
 What:
-- Add reproducible checks that compare native and RV32 outputs.
+- Thread fork/network context through block/transaction/precompile/opcode rules.
 
 How:
-- Add a small `uv run` Python parity harness for representative scenarios
-  (precompiles + STF transitions).
-- Wire the harness into local validation workflow.
+- Parse fixture fork/network metadata and gate rule branches accordingly.
+- Replace unconditional modern assumptions with fork-conditional checks.
 
-### Task 6 (P1): Make README claims continuously verifiable
+### Task 6 (P1): Add RV32 Parity Automation via Runner
 
 Why:
-- Claims should be backed by explicit, repeatable evidence.
+- Native passing tests do not guarantee `riscv32im-unknown-none-elf` parity.
 
 What:
-- Align documentation claims with enforceable checks and current scope.
+- Add automated parity checks between native and RV32 executions.
 
 How:
-- Either reduce unsupported claims or add the missing automation/tests.
-- Document exact commands that prove each claim.
+- Add a `uv run` Python harness that runs representative scenarios through both paths.
+- Compare outputs/state roots/receipts roots and fail on divergence.
+
+### Task 7 (P1): Align README Claims With Continuously Verifiable Checks
+
+Why:
+- Project claims should be backed by enforceable automation.
+
+What:
+- Update documentation and/or checks so every headline claim is verifiable.
+
+How:
+- Keep claims only for validated behavior.
+- Document exact commands and expected artifacts that prove each claim.

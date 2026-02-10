@@ -9,7 +9,7 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::evm::gas::{blob_gas_price, code_deposit_cost, MAX_CODE_SIZE};
+use crate::evm::gas::{MAX_CODE_SIZE, blob_gas_price, code_deposit_cost};
 use crate::evm::precompiles::execute_precompile;
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -73,7 +73,6 @@ pub struct CreateResult {
     /// Gas used by init code execution (including code deposit if applicable).
     pub gas_used: u64,
 }
-
 
 /// Host interface for external calls and block/tx data access.
 pub trait Host<S: State> {
@@ -219,7 +218,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             };
         };
 
-        if let Some(precompile_result) = execute_precompile(&msg.code_address, &msg.input, msg.gas) {
+        if let Some(precompile_result) = execute_precompile(&msg.code_address, &msg.input, msg.gas)
+        {
             match precompile_result {
                 Ok(result) => {
                     if !msg.value.is_zero() {
@@ -234,10 +234,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
 
                         let recipient_balance = state.get_balance(&msg.address);
-                        state.set_balance(
-                            &msg.address,
-                            recipient_balance.saturating_add(msg.value),
-                        );
+                        state
+                            .set_balance(&msg.address, recipient_balance.saturating_add(msg.value));
                     }
 
                     return CallResult {
@@ -406,7 +404,10 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
             // Add to new contract address
             let contract_balance = create_state.get_balance(&contract_address);
-            create_state.set_balance(&contract_address, contract_balance.saturating_add(msg.value));
+            create_state.set_balance(
+                &contract_address,
+                contract_balance.saturating_add(msg.value),
+            );
         }
 
         // Build call context for the constructor
@@ -583,8 +584,8 @@ pub fn compute_create2_address(sender: &Address, salt: &U256, init_code: &[u8]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::evm::interpreter::{BlockContext, TxContext};
     use crate::evm::gas::MAX_CODE_SIZE;
+    use crate::evm::interpreter::{BlockContext, TxContext};
     use crate::state::InMemoryState;
     use crate::types::{Address, U256};
 
@@ -731,6 +732,36 @@ mod tests {
     }
 
     #[test]
+    fn test_recursive_host_reserved_precompile_fails_and_keeps_balances() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x22; 20]);
+        let precompile = precompile_address(8);
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&precompile, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::Call,
+            gas: 5000,
+            address: precompile,
+            caller,
+            value: U256::from_u64(5),
+            code_address: precompile,
+            input: Vec::new(),
+            is_static: false,
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(!result.success);
+        assert!(result.return_data.is_empty());
+        assert_eq!(result.gas_used, 5000);
+
+        // Reserved precompile failures must not transfer value.
+        assert_eq!(state.get_balance(&caller), U256::from_u64(10));
+        assert_eq!(state.get_balance(&precompile), U256::from_u64(1));
+    }
+
+    #[test]
     fn test_recursive_host_create_rejects_0xef_prefix() {
         let mut state = InMemoryState::new();
         let caller = Address::from([0x01; 20]);
@@ -746,10 +777,10 @@ mod tests {
         let init_code = vec![
             0x60, 0xEF, // PUSH1 0xEF
             0x60, 0x00, // PUSH1 0x00
-            0x53,       // MSTORE8
+            0x53, // MSTORE8
             0x60, 0x01, // PUSH1 0x01
             0x60, 0x00, // PUSH1 0x00
-            0xF3,       // RETURN
+            0xF3, // RETURN
         ];
 
         let gas = 100000;
