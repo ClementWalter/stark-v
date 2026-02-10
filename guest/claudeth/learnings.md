@@ -71,6 +71,7 @@ Date: 2026-02-10
 
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable.
 - `prek run` may skip checks when no files are eligible; the run is still required.
+- `git commit` runs `prek` and will stash/restore unstaged changes; keep staging tight.
 - Do not add shell scripts (`.sh`); use `uv run` Python scripts with PEP 723 metadata.
 - Keep fork naming consistent with Cancun in docs and comments unless a later fork is explicitly implemented.
 
@@ -87,6 +88,7 @@ Do:
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
 - Run `cargo test -p claudeth --release` and `prek run` before committing.
+- Keep staged changes scoped; `prek` stashes unstaged files during commit.
 - Interpret 6-item guest input lists based on `withdrawals_root` presence.
 - Treat EVM exceptional halts as failed executions, not block-stopping errors.
 - Pay coinbase only the priority fee; burn the base fee portion.
