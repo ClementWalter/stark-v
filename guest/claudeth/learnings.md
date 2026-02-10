@@ -6,11 +6,11 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid jump/opcode) revert the current transaction and consume all remaining gas.
 - `REVERT` is non-exceptional: it preserves remaining gas and only reverts the current call frame.
-- Gas refunds are capped at 1/5 of gas used (EIP-3529); SSTORE clearing refund uses 4800 gas in `stf::executor`.
+- Gas refunds are capped at 1/5 of gas used (EIP-3529); SSTORE clearing refund is 4800 gas in `stf::executor`.
 
 ## Block Processing Order
 
-- Validate child header against parent before executing transactions.
+- Validate child header against parent before any state transitions.
 - Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transaction execution.
 - Post-execution checks: receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, blob gas used.
 
@@ -32,6 +32,11 @@ Date: 2026-02-10
 - Empty `account_rlp` requires exclusion proof and empty `code` + `storage_entries`.
 - `code_hash` must match `keccak256(code_bytes)`; empty code requires the empty code hash.
 - Storage proofs use `rlp::encode_u256(value)` for inclusion; zero values require exclusion proofs.
+
+## Guest Output and Errors
+
+- Output is RLP with `status`, `gas_used`, `receipts_root`, `state_root`, `error_code`, and `error_data` (RLP-encoded details).
+- Header/tx/root mismatches surface via `error_code` and keep `gas_used` at zero on failure.
 
 ## Trie / State
 

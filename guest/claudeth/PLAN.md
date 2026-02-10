@@ -10,6 +10,8 @@ processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 (type 0x03) and post-Shanghai fields are supported.
 
+Status verified against current code and tests; no new gaps identified.
+
 ## Verified Status (from code)
 
 ### Implemented
