@@ -1,15 +1,13 @@
 ## Do
-- Do treat post-merge `mix_hash` as `prev_randao`: enforce `difficulty == 0`, `nonce == 0`, and empty ommers hash, but allow non-zero mix hash.
-- Do parse and pass fixture withdrawals into `process_block`; using `vec![]` for every block invalidates Shanghai/Cancun body validation.
-- Do validate consensus constants (especially trie roots) against execution-spec vectors before trusting internal constants.
-- Do run `cargo test -p claudeth --release` and `prek run --all-files` before finalizing changes.
-- Do use ignored EELS blockchain execution as a diagnostic signal to identify the current highest-frequency failure class.
-- Do keep precompile failures mapped to EVM sub-call failure semantics (CALL/STATICCALL fail without halting caller execution).
+- Do pin consensus constants with literal-vector tests, not only by comparing computed values to internal constants.
+- Do treat Ethereum empty trie root as `0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421` and fail fast on any drift.
+- Do validate withdrawals-root computation against real execution-spec fixture vectors (for example `bcExample/shanghaiExample.json`) to catch RLP/key-index encoding mistakes.
+- Do run `cargo test -p claudeth --release` and `prek run --all-files` before committing to keep protocol and lint gates aligned.
+- Do keep post-merge header checks strict: `difficulty == 0`, `nonce == 0`, and empty ommers hash, while allowing non-zero `mix_hash` (`prev_randao`).
 
 ## Don't
-- Don't enforce `mix_hash == 0` post-merge; that rejects valid Cancun/Prague fixtures at header validation.
-- Don't leave fixture harness shortcuts (like hardcoded empty withdrawals) in place when evaluating execution-spec conformance.
-- Don't assume internal trie constants are correct without cross-checking the canonical Ethereum values.
-- Don't rely on unit-test green status alone as proof of execution-spec compatibility while blockchain integration remains ignored.
-- Don't keep parent-hash rewrite workarounds in the long-term conformance path.
-- Don't start `0x0a` point-evaluation implementation without a spec-aligned KZG verification path.
+- Don't trust "empty trie" logic unless it is anchored to canonical spec bytes.
+- Don't consider EELS compatibility claims reliable while parent-hash rewrites exist in the blockchain harness.
+- Don't leave blob transaction fixture conversion limited to `0x00/0x01/0x02`; Cancun coverage requires `0x03` support.
+- Don't pass empty block-hash history into blockchain fixture execution when tests depend on `BLOCKHASH` semantics.
+- Don't treat unimplemented `0x0a` point-evaluation as acceptable for Cancun conformance paths.

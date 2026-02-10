@@ -4,136 +4,130 @@ Last reviewed: 2026-02-10
 
 ## Ground Truth Snapshot
 
-- `README.md` promises:
-  - full compatibility with Ethereum execution-spec tests;
-  - tests run on native and RV32 targets;
-  - no external dependencies.
-- The EELS blockchain execution harness remains `#[ignore]` and still contains the parent-hash rewrite workaround.
-- `Cargo.toml` still includes `serde`, so the "no dependencies" claim is currently inaccurate.
-- Precompile status in `src/evm/precompiles.rs`:
-  - implemented: `0x01..0x07`, `0x09`;
-  - partial: `0x08` (non-trivial pairing arithmetic still missing);
-  - missing: `0x0a` point evaluation.
-- Post-fix ignored-run sampling confirms a protocol constant mismatch:
-  - expected empty trie root from fixtures: `0x56e81f17...5b48e01b...`;
-  - computed in claudeth: `0x56e81f17...5b96e01b...`.
-  This affects withdrawals and receipts root checks even for empty lists.
+- `README.md` still claims full execution-spec compatibility and that tests run on both native and RV32 targets.
+- Deterministic conformance blockers still present in code:
+  - `tests/eels_blockchain_tests.rs` keeps the full blockchain suite `#[ignore]` and does not hard-fail on failures/errors.
+  - The harness still rewrites `block_header.parent_hash = parent_header.compute_hash()` as a workaround.
+  - The harness converts only tx types `0x00/0x01/0x02`; blob tx (`0x03`) fixtures are rejected.
+  - `process_block` is called with empty block-hash history (`&[]`), so `BLOCKHASH` fixture behavior cannot match.
+  - Precompile `0x0a` (point evaluation) is still unimplemented in `src/evm/precompiles.rs`.
+- `Cargo.toml` still includes `serde`, so README "no dependencies" is currently inaccurate.
 
 ## Completed This Turn
 
-### Task 1 (DONE): Wire Fixture Withdrawals Into Blockchain Execution
+### Task 1 (DONE): Fix Canonical Empty Trie Root and Lock Spec Vectors
 
 Why:
-- The harness previously passed `withdrawals = vec![]` for every block, making Shanghai/Cancun withdrawals validation structurally wrong.
+- Empty trie root is a consensus constant used by transactions/receipts/withdrawals roots.
+- A wrong constant creates deterministic root mismatches even when the rest of the transition logic is correct.
 
 What:
-- Added strict fixture withdrawal conversion and passed real fixture withdrawals to `process_block`.
+- Corrected `EMPTY_TRIE_ROOT` to canonical Ethereum value.
+- Added regression vectors for the canonical empty root and a non-empty Shanghai withdrawals root.
 
 How:
-- Replaced `TestBlock.withdrawals` from `Vec<Value>` to `Vec<TestWithdrawal>`.
-- Added `convert_test_withdrawal` (strict hex/decimal numeric parsing via existing parsers).
-- Wired converted withdrawals into execution with block/withdrawal-index error context.
-- Added conversion regression tests for success, invalid address, and out-of-range amount.
+- Updated `src/state/partial_mpt/trie.rs` constant from `...5b96...` to `...5b48...`.
+- Added `test_empty_trie_root_matches_execution_specs_constant` in trie tests.
+- Added `test_calculate_withdrawals_root_matches_shanghai_fixture_vector` in block tests using
+  `tests/eels/BlockchainTests/ValidBlocks/bcExample/shanghaiExample.json`
+  (`0x27f166f1d7c789251299535cb176ba34116e44894476a7886fe5d73d9be5c973`).
 
 ## Priority Backlog (Why / What / How)
 
-### Task 2 (P0, FIRST): Fix Empty Trie Root Constant and Add Spec Vectors
+### Task 2 (P0, FIRST): Remove Parent-Hash Rewrite Workaround
 
 Why:
-- A wrong empty trie root constant causes deterministic root mismatches (`withdrawals_root`, `receipts_root`) on empty tries.
+- Rewriting parent hash bypasses core header validity and makes blockchain conformance results non-authoritative.
 
 What:
-- Correct the empty trie root constant and lock it with spec-vector tests.
+- Execute fixtures with true header parent hash values.
 
 How:
-- Align `EMPTY_TRIE_ROOT` with execution-spec / Ethereum canonical value.
-- Add tests for empty trie root and known withdrawals-root vectors from `execution-specs`.
-- Re-run ignored blockchain execution sample to verify failure class shifts.
+- Remove workaround mutation in `tests/eels_blockchain_tests.rs`.
+- Fix header hash/encoding parity path (`src/types/block.rs` and conversion assumptions) until parent linkage validates natively.
+- Keep `expectException` handling for invalid blocks intact.
 
-### Task 3 (P0): Remove Parent-Hash Rewrite Workaround and Execute Canonical Header Validation
+### Task 3 (P0): Support Blob Transactions in EELS Fixture Conversion
 
 Why:
-- Rewriting parent hash bypasses core header validation and blocks conformance claims.
+- Cancun/Prague fixtures include type-`0x03` transactions; rejecting them blocks large conformance surface area.
 
 What:
-- Stop mutating fixture headers and validate against true parent linkage.
+- Extend fixture conversion to parse and build `Transaction::Blob`.
 
 How:
-- Remove `block_header.parent_hash = parent_header.compute_hash()` workaround.
-- Keep expected-invalid fixture handling (`expectException`) intact.
-- Add regression checks for parent-hash mismatch behavior.
+- Add `0x03` branch in `convert_test_transaction` with strict field validation.
+- Add conversion tests for valid blob txs and malformed cases.
 
-### Task 4 (P0): Enforce EELS Blockchain Assertions (Unignore + Hard Fail)
+### Task 4 (P0): Wire Real Block Hash History for `BLOCKHASH` Semantics
 
 Why:
-- Compatibility cannot be claimed while the main blockchain suite is ignored and soft-failing.
+- Passing `&[]` for block hashes causes deterministic divergence for any fixture that depends on historical hashes.
 
 What:
-- Promote blockchain execution to a strict correctness gate.
+- Feed canonical parent-history hashes into `process_block` in fixture execution order.
 
 How:
-- Unignore when P0 functional blockers are resolved.
-- Restore strict final assertions on `failed` and `errors`.
-- Keep detailed diagnostics for triage.
+- Track prior canonical headers in harness and pass their hashes (up to required window) into `process_block`.
+- Add regression tests around known BLOCKHASH fixtures.
 
-### Task 5 (P0): Complete ALT_BN128 Pairing (`0x08`) for Non-Trivial Inputs
+### Task 5 (P0): Implement Precompile `0x0a` Point Evaluation
 
 Why:
-- EIP-197 requires full pairing-product evaluation; current behavior rejects non-trivial valid inputs.
+- EIP-4844 Cancun conformance requires point-evaluation behavior; current implementation always fails.
 
 What:
-- Implement full non-trivial pairing arithmetic with spec-conformant outputs.
+- Implement calldata validation, gas accounting, proof verification, and output formatting for `0x0a`.
 
 How:
-- Port execution-spec semantics for Miller loop + final exponentiation.
-- Keep strict decoding/subgroup checks.
-- Add vectors for valid tuples and malformed/subgroup-invalid cases.
+- Mirror execution-spec behavior for point-evaluation precompile.
+- Add vectors for valid proof, invalid proof, malformed input, and OOG behavior.
 
-### Task 6 (P0): Implement Point Evaluation Precompile (`0x0a`)
+### Task 6 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
 
 Why:
-- Cancun compatibility requires EIP-4844 point-evaluation behavior.
+- Current pairing implementation only handles validation/identity fast paths and rejects non-trivial valid tuples.
 
 What:
-- Implement calldata validation, fixed gas behavior, KZG verification, and canonical output.
+- Implement full pairing product check.
 
 How:
-- Mirror execution-spec Cancun point-evaluation logic.
-- Add vectors for success, invalid proofs, and malformed input.
+- Add Miller loop + final exponentiation path with strict subgroup/field validation.
+- Add conformance vectors for valid and invalid tuples.
 
-### Task 7 (P0): Introduce Fork-Aware Rule Gating Across STF/EVM Paths
+### Task 7 (P0): Turn Blockchain EELS Execution Into a Hard Gate
 
 Why:
-- Fixtures span multiple eras; always-on modern rules create deterministic false failures.
+- Compatibility cannot be claimed while the canonical blockchain suite is ignored and non-fatal.
 
 What:
-- Thread explicit fork capability context into header/tx validation and execution behavior.
+- Promote `test_execute_all_blockchain_tests` to a strict correctness gate.
 
 How:
-- Define fork flags used by validation and precompile availability checks.
-- Feed fixture network metadata into execution context.
-- Add cross-fork regression tests around Shanghai/Cancun boundaries.
+- Remove `#[ignore]` once preceding P0 blockers are resolved.
+- Restore hard assertions on `failed == 0` and `errors == 0`.
+- Keep diagnostics for triage only, not pass criteria.
 
 ### Task 8 (P1): Add Native vs RV32 Automated Parity Gate
 
 Why:
-- README says tests are run on both targets, but no automated parity gate enforces this.
+- README claims both native and RV32 test execution; this is not currently enforced as an automated parity gate.
 
 What:
-- Add reproducible native-vs-runner parity checks over curated fixtures.
+- Add deterministic parity checks for curated fixture sets across both targets.
 
 How:
-- Add a `uv run` Python driver (PEP 723 metadata) to execute both targets and diff outputs.
-- Integrate into local and CI quality workflow.
+- Add `uv run` Python parity driver (PEP 723 metadata) that runs native and runner workflows and compares results.
+- Integrate parity command into local quality workflow.
 
-### Task 9 (P1): Align README Claims With Verifiable Reality
+### Task 9 (P1): Align README Claims With Verified Reality
 
 Why:
-- Public guarantees must match test-enforced behavior.
+- Public claims must match measured, enforced behavior.
 
 What:
-- Update README and/or implementation so every claim is true and measurable.
+- Update README (or implementation) to remove unverifiable/inaccurate claims.
 
 How:
 - Resolve dependency claim mismatch (`serde` vs "no dependencies").
-- Document exact EELS and cross-target coverage actually enforced by tests.
+- Document exact scope/status of EELS coverage and native/RV32 parity checks.
