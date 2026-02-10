@@ -57,6 +57,7 @@ re-verified against code on 2026-02-10.
   consume remaining gas without aborting block processing.
 - Receipt encoding/decoding with EIP-2718 typed envelopes.
 - SSTORE gas/refund accounting with original storage tracking.
+- Documentation refresh (PLAN/learnings aligned to code).
 
 ### Backlog (Not Scheduled)
 
