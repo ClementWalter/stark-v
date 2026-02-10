@@ -4,11 +4,11 @@ Date: 2026-02-10
 
 ## Consensus-Critical Execution
 
-- Exceptional halts (OOG, invalid opcode/jump) consume all remaining gas and revert the current transaction.
+- Exceptional halts (OOG, invalid opcode/jump) consume all remaining gas and revert the current call frame.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and only reverts the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
 - Transactions must originate from EOAs; sender accounts with code are invalid.
-- SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction, and clear created-account tracking per tx.
+- SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; reset created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas.
 - EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2.
 - EIP-3541 rejects contract code starting with 0xEF, consuming all remaining gas on failure.
@@ -17,7 +17,7 @@ Date: 2026-02-10
 
 - Validate the child header against its parent before any state transitions.
 - Post-merge header rules: `difficulty == 0`, `mix_hash == 0`, `nonce == 0`, and `ommers_hash == EMPTY_OMMERS_HASH`.
-- `extra_data.len() <= 32`, `gas_used <= gas_limit`, and gas limit delta bounded by parent/1024 with a minimum floor.
+- `extra_data.len() <= 32`, `gas_used <= gas_limit`, and gas-limit delta bounded by parent/1024 with a minimum floor.
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
@@ -26,7 +26,7 @@ Date: 2026-02-10
 
 ## Guest Input And WITNESS v1
 
-- Input RLP list has 5–7 items: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
+- Input RLP list has 5-7 items: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - Witness input is detected by a top-level list of 3 items where the first is a u64 version (currently `1`).
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; empty list is valid.
 - Recent block hashes are capped at 256 and must end with `parent.compute_hash()`. Genesis (`block.number == 0`) rejects any list.
