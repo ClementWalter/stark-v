@@ -2,7 +2,7 @@
 //!
 //! This module provides the [`BlockHeader`] type for Ethereum blocks,
 //! with support for post-Cancun fields including EIP-1559, EIP-4895,
-//! EIP-4844, and EIP-4788.
+//! EIP-4844, EIP-4788, and EIP-7685.
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
@@ -54,12 +54,13 @@ where
 
 /// Ethereum block header supporting post-Cancun fork fields.
 ///
-/// This structure contains all 20 fields required for a complete
-/// Ethereum block header post-Cancun fork, including support for:
+/// This structure contains all 21 fields required for a complete
+/// Ethereum block header post-Prague fork, including support for:
 /// - EIP-1559 (base_fee_per_gas)
 /// - EIP-4895 (withdrawals_root)
 /// - EIP-4844 (blob_gas_used, excess_blob_gas)
 /// - EIP-4788 (parent_beacon_block_root)
+/// - EIP-7685 (requests_hash)
 ///
 /// # Examples
 ///
@@ -87,6 +88,7 @@ where
 ///     blob_gas_used: None,
 ///     excess_blob_gas: None,
 ///     parent_beacon_block_root: None,
+///     requests_hash: None,
 /// };
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +137,8 @@ pub struct BlockHeader {
     pub excess_blob_gas: Option<u64>,
     /// Parent beacon block root (EIP-4788, Cancun fork)
     pub parent_beacon_block_root: Option<Hash>,
+    /// Requests hash (EIP-7685, Prague fork)
+    pub requests_hash: Option<Hash>,
 }
 
 impl BlockHeader {
@@ -407,7 +411,8 @@ impl BlockHeader {
             rlp::encode_u64(self.timestamp),
             rlp::encode_bytes(self.extra_data.as_ref()),
             rlp::encode_hash(&self.mix_hash),
-            rlp::encode_u64(self.nonce),
+            // Yellow Paper/Execution-specs define nonce as Bytes8, not uint.
+            rlp::encode_bytes(&self.nonce.to_be_bytes()),
         ];
 
         // Add optional fields if present
@@ -429,6 +434,10 @@ impl BlockHeader {
 
         if let Some(parent_beacon_block_root) = self.parent_beacon_block_root {
             items.push(rlp::encode_hash(&parent_beacon_block_root));
+        }
+        // EIP-7685 appends requests_hash after parent_beacon_block_root.
+        if let Some(requests_hash) = self.requests_hash {
+            items.push(rlp::encode_hash(&requests_hash));
         }
 
         rlp::encode_list(&items)
@@ -479,7 +488,13 @@ impl BlockHeader {
         let extra_data = Bytes::from_slice(&extra_data_bytes);
 
         let (mix_hash, _) = rlp::decode_hash(&items[13])?;
-        let (nonce, _) = rlp::decode_u64(&items[14])?;
+        let (nonce_bytes, _) = rlp::decode_bytes(&items[14])?;
+        if nonce_bytes.len() != 8 {
+            return Err(RlpError::InvalidLength);
+        }
+        let mut nonce_array = [0u8; 8];
+        nonce_array.copy_from_slice(&nonce_bytes);
+        let nonce = u64::from_be_bytes(nonce_array);
 
         // Decode optional fields if present
         let base_fee_per_gas = if items.len() > 15 {
@@ -516,6 +531,12 @@ impl BlockHeader {
         } else {
             None
         };
+        let requests_hash = if items.len() > 20 {
+            let (root, _) = rlp::decode_hash(&items[20])?;
+            Some(root)
+        } else {
+            None
+        };
 
         Ok(BlockHeader {
             parent_hash,
@@ -538,6 +559,7 @@ impl BlockHeader {
             blob_gas_used,
             excess_blob_gas,
             parent_beacon_block_root,
+            requests_hash,
         })
     }
 }
@@ -608,6 +630,7 @@ impl Default for BlockHeader {
             blob_gas_used: None,
             excess_blob_gas: None,
             parent_beacon_block_root: None,
+            requests_hash: None,
         }
     }
 }
@@ -634,6 +657,7 @@ impl StdHash for BlockHeader {
         self.blob_gas_used.hash(state);
         self.excess_blob_gas.hash(state);
         self.parent_beacon_block_root.hash(state);
+        self.requests_hash.hash(state);
     }
 }
 
@@ -1145,6 +1169,7 @@ mod tests {
         header.blob_gas_used = Some(131072);
         header.excess_blob_gas = Some(262144);
         header.parent_beacon_block_root = Some(Hash::from([0x43; 32]));
+        header.requests_hash = Some(Hash::from([0x44; 32]));
 
         let encoded = header.encode_rlp();
         let decoded = BlockHeader::decode_rlp(&encoded).unwrap();
@@ -1394,6 +1419,7 @@ mod tests {
         header.blob_gas_used = Some(131072);
         header.excess_blob_gas = Some(262144);
         header.parent_beacon_block_root = Some(Hash::from([0x43; 32]));
+        header.requests_hash = Some(Hash::from([0x44; 32]));
 
         let hash = header.compute_hash();
         assert_eq!(hash.as_bytes().len(), 32);

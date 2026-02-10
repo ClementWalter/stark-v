@@ -128,6 +128,7 @@ struct TestBlockHeader {
     nonce: Option<String>,
     number: String,
     parent_beacon_block_root: Option<String>,
+    requests_hash: Option<String>,
     parent_hash: String,
     receipt_trie: Option<String>,
     state_root: String,
@@ -671,6 +672,12 @@ fn convert_test_block_header(
         .map(|h| Hash::from_str(h))
         .transpose()
         .map_err(|err| format!("invalid parent_beacon_block_root: {err}"))?;
+    let requests_hash = test_header
+        .requests_hash
+        .as_ref()
+        .map(|h| Hash::from_str(h))
+        .transpose()
+        .map_err(|err| format!("invalid requests_hash: {err}"))?;
 
     Ok(BlockHeader {
         parent_hash,
@@ -693,6 +700,7 @@ fn convert_test_block_header(
         blob_gas_used,
         excess_blob_gas,
         parent_beacon_block_root,
+        requests_hash,
     })
 }
 
@@ -829,6 +837,72 @@ fn test_convert_test_withdrawal_rejects_amount_over_u64() {
     assert!(err.contains("too large for u64"));
 }
 
+fn load_single_blockchain_case(path: &Path, case_name: &str) -> BlockchainTest {
+    let mut cases = load_blockchain_test(path).expect("load fixture file");
+    cases.remove(case_name).expect("fixture case present")
+}
+
+fn assert_header_hash_matches_fixture(test_header: &TestBlockHeader) {
+    let expected_hash = test_header
+        .hash
+        .as_ref()
+        .expect("fixture header hash must be present");
+    let expected_hash = claudeth::types::Hash::from_str(expected_hash).expect("parse fixture hash");
+    let converted = convert_test_block_header(test_header).expect("convert fixture header");
+    assert_eq!(converted.compute_hash(), expected_hash);
+}
+
+#[test]
+fn test_fixture_header_hashes_match_for_cancun_and_prague_examples() {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExample/shanghaiExample.json");
+
+    let cancun_case = load_single_blockchain_case(
+        fixture_path,
+        "BlockchainTests/ValidBlocks/bcExample/shanghaiExample.json::shanghaiExample_Cancun",
+    );
+    assert_header_hash_matches_fixture(&cancun_case.genesis_block_header);
+    assert_header_hash_matches_fixture(
+        cancun_case.blocks[0]
+            .block_header
+            .as_ref()
+            .expect("valid block header"),
+    );
+
+    let prague_case = load_single_blockchain_case(
+        fixture_path,
+        "BlockchainTests/ValidBlocks/bcExample/shanghaiExample.json::shanghaiExample_Prague",
+    );
+    assert_header_hash_matches_fixture(&prague_case.genesis_block_header);
+    assert_header_hash_matches_fixture(
+        prague_case.blocks[0]
+            .block_header
+            .as_ref()
+            .expect("valid block header"),
+    );
+}
+
+#[test]
+fn test_fixture_parent_hash_linkage_uses_real_header_hashes() {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExample/shanghaiExample.json");
+    let case = load_single_blockchain_case(
+        fixture_path,
+        "BlockchainTests/ValidBlocks/bcExample/shanghaiExample.json::shanghaiExample_Prague",
+    );
+
+    let genesis = convert_test_block_header(&case.genesis_block_header).expect("convert genesis");
+    let child = convert_test_block_header(
+        case.blocks[0]
+            .block_header
+            .as_ref()
+            .expect("valid block header"),
+    )
+    .expect("convert child");
+
+    assert_eq!(child.parent_hash, genesis.compute_hash());
+}
+
 #[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {
@@ -914,7 +988,7 @@ fn test_execute_all_blockchain_tests() {
                     break;
                 }
 
-                let mut block_header =
+                let block_header =
                     match convert_test_block_header(test_block.block_header.as_ref().unwrap()) {
                         Ok(h) => h,
                         Err(e) => {
@@ -924,10 +998,6 @@ fn test_execute_all_blockchain_tests() {
                             break;
                         }
                     };
-
-                // WORKAROUND: Fix parent hash to avoid validation failure
-                // The actual parent hash from RLP encoding doesn't match our computed hash
-                block_header.parent_hash = parent_header.compute_hash();
 
                 // Convert transactions
                 let transactions: Result<Vec<_>, String> = test_block

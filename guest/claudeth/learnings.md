@@ -1,13 +1,12 @@
 ## Do
-- Do pin consensus constants with literal-vector tests, not only by comparing computed values to internal constants.
-- Do treat Ethereum empty trie root as `0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421` and fail fast on any drift.
-- Do validate withdrawals-root computation against real execution-spec fixture vectors (for example `bcExample/shanghaiExample.json`) to catch RLP/key-index encoding mistakes.
-- Do run `cargo test -p claudeth --release` and `prek run --all-files` before committing to keep protocol and lint gates aligned.
-- Do keep post-merge header checks strict: `difficulty == 0`, `nonce == 0`, and empty ommers hash, while allowing non-zero `mix_hash` (`prev_randao`).
+- Do model post-Prague headers with `requests_hash` (EIP-7685) and include it in RLP/hash ordering after `parent_beacon_block_root`.
+- Do encode block-header `nonce` as `Bytes8` in RLP (fixed 8-byte string), not as a uint; this is required for fixture hash parity.
+- Do anchor header-hash behavior to real fixture vectors (for example Cancun + Prague entries from `bcExample/shanghaiExample.json`) so parent-linkage bugs are caught immediately.
+- Do remove harness workarounds once parity is fixed; use real fixture `parentHash` links as the validation source of truth.
+- Do run `cargo test -p claudeth --release` and `prek run --all-files` before committing.
 
 ## Don't
-- Don't trust "empty trie" logic unless it is anchored to canonical spec bytes.
-- Don't consider EELS compatibility claims reliable while parent-hash rewrites exist in the blockchain harness.
-- Don't leave blob transaction fixture conversion limited to `0x00/0x01/0x02`; Cancun coverage requires `0x03` support.
-- Don't pass empty block-hash history into blockchain fixture execution when tests depend on `BLOCKHASH` semantics.
-- Don't treat unimplemented `0x0a` point-evaluation as acceptable for Cancun conformance paths.
+- Don't treat `parentHash` rewrites in the EELS harness as acceptable; they hide consensus-critical header encoding defects.
+- Don't assume Cancun-era header fields are sufficient for Prague fixtures; missing `requestsHash` breaks block-hash computation deterministically.
+- Don't parse or serialize header `nonce` with integer RLP helpers when comparing against execution-spec fixtures.
+- Don't rely on synthetic hash tests only; keep fixture-backed regression tests for real-world header layouts.

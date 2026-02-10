@@ -22,11 +22,11 @@ use crate::crypto::rlp::encode_u256;
 use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{BlockContext, CallContext, Evm, TxContext};
 use crate::state::{State, Trie};
+use crate::stf::transaction::{MAX_BLOB_GAS_PER_BLOCK, blob_gas_used};
 use crate::stf::{
-    calculate_receipts_root_with_types, execute_transaction, Bloom, ExecutionError,
-    TransactionExecutionResult, TransactionReceipt,
+    Bloom, ExecutionError, TransactionExecutionResult, TransactionReceipt,
+    calculate_receipts_root_with_types, execute_transaction,
 };
-use crate::stf::transaction::{blob_gas_used, MAX_BLOB_GAS_PER_BLOCK};
 use crate::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
 
 #[cfg(test)]
@@ -249,15 +249,15 @@ fn apply_withdrawals<S: State>(state: &mut S, withdrawals: &[Withdrawal]) {
 /// The address of the beacon roots contract (EIP-4788).
 /// `0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02`
 const BEACON_ROOTS_ADDRESS: Address = Address::new([
-    0x00, 0x0f, 0x3d, 0xf6, 0xd7, 0x32, 0x80, 0x7e, 0xf1, 0x31, 0x9f, 0xb7, 0xb8, 0xbb, 0x85,
-    0x22, 0xd0, 0xbe, 0xac, 0x02,
+    0x00, 0x0f, 0x3d, 0xf6, 0xd7, 0x32, 0x80, 0x7e, 0xf1, 0x31, 0x9f, 0xb7, 0xb8, 0xbb, 0x85, 0x22,
+    0xd0, 0xbe, 0xac, 0x02,
 ]);
 
 /// The system address used as caller for EIP-4788 system calls.
 /// `0xfffffffffffffffffffffffffffffffffffffffe`
 const SYSTEM_ADDRESS: Address = Address::new([
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xfe,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xfe,
 ]);
 
 /// Gas limit for the beacon root system call (30 million).
@@ -333,8 +333,8 @@ fn apply_beacon_root_system_call<S: State + Clone>(
 /// The address of the historical block hashes contract (EIP-2935).
 /// `0x0000F90827F1C53a10cb7A02335B175320002935`
 const HISTORY_STORAGE_ADDRESS: Address = Address::new([
-    0x00, 0x00, 0xf9, 0x08, 0x27, 0xf1, 0xc5, 0x3a, 0x10, 0xcb, 0x7a, 0x02, 0x33, 0x5b,
-    0x17, 0x53, 0x20, 0x00, 0x29, 0x35,
+    0x00, 0x00, 0xf9, 0x08, 0x27, 0xf1, 0xc5, 0x3a, 0x10, 0xcb, 0x7a, 0x02, 0x33, 0x5b, 0x17, 0x53,
+    0x20, 0x00, 0x29, 0x35,
 ]);
 
 /// Executes the EIP-2935 historical block hashes system call.
@@ -441,6 +441,7 @@ fn apply_history_storage_system_call<S: State + Clone>(
 ///     blob_gas_used: None,
 ///     excess_blob_gas: None,
 ///     parent_beacon_block_root: None,
+///     requests_hash: None,
 /// };
 ///
 /// let mut block = parent.clone();
@@ -530,12 +531,7 @@ pub fn process_block<S: State + Clone>(
         }
 
         // Execute transaction
-        let mut exec_result = execute_transaction(
-            tx,
-            state,
-            &tx_exec_ctx,
-            cumulative_gas_used,
-        )?;
+        let mut exec_result = execute_transaction(tx, state, &tx_exec_ctx, cumulative_gas_used)?;
 
         // Update cumulative gas
         cumulative_gas_used += exec_result.gas_used;
@@ -660,7 +656,7 @@ pub fn process_block<S: State + Clone>(
 mod tests {
     use super::*;
     use crate::state::InMemoryState;
-    use crate::types::{Address, Bytes, Hash, Withdrawal, EMPTY_OMMERS_HASH};
+    use crate::types::{Address, Bytes, EMPTY_OMMERS_HASH, Hash, Withdrawal};
 
     fn create_test_parent() -> BlockHeader {
         BlockHeader {
@@ -684,6 +680,7 @@ mod tests {
             blob_gas_used: None,
             excess_blob_gas: None,
             parent_beacon_block_root: None,
+            requests_hash: None,
         }
     }
 
@@ -704,8 +701,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         if let Err(ref e) = result {
             eprintln!("Error processing empty block: {e:?}");
         }
@@ -726,8 +730,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -743,8 +754,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -760,8 +778,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -778,8 +803,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -796,8 +828,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::InvalidHeader(_))
@@ -813,8 +852,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::GasUsedMismatch { .. })
@@ -831,8 +877,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::BlobGasUsedMismatch { .. })
@@ -858,8 +911,15 @@ mod tests {
             Hash::ZERO
         };
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         // We expect this to fail since we set an incorrect receipts root
         assert!(matches!(
             result,
@@ -878,8 +938,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(result.is_ok());
 
         // Test maximum valid decrease
@@ -889,8 +956,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(result.is_ok());
     }
 
@@ -906,8 +980,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::TransactionsRootMismatch { .. })
@@ -926,8 +1007,15 @@ mod tests {
         let withdrawals = vec![];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::LogsBloomMismatch { .. })
@@ -948,8 +1036,15 @@ mod tests {
         }];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::UnexpectedWithdrawals { .. })
@@ -966,8 +1061,15 @@ mod tests {
 
         block.withdrawals_root = Some(calculate_withdrawals_root(&withdrawals));
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(result.is_ok());
     }
 
@@ -986,8 +1088,15 @@ mod tests {
         }];
         let mut state = InMemoryState::new();
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         assert!(matches!(
             result,
             Err(BlockProcessingError::WithdrawalsRootMismatch { .. })
@@ -1015,9 +1124,16 @@ mod tests {
         block.state_root = expected_state.compute_state_root();
 
         let mut state = InMemoryState::new();
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE)
-                .expect("process block");
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        )
+        .expect("process block");
 
         assert_eq!(result.state_root, expected_state.compute_state_root());
         assert_eq!(
@@ -1045,11 +1161,18 @@ mod tests {
         use crate::stf::Log;
 
         // Create two receipts with logs (bloom is auto-generated from logs)
-        let log1 = Log::new(Address::from([1u8; 20]), vec![Hash::from([2u8; 32])], Bytes::new());
-        let receipt1 =
-            TransactionReceipt::new(true, U256::from(100u64), vec![log1.clone()]);
+        let log1 = Log::new(
+            Address::from([1u8; 20]),
+            vec![Hash::from([2u8; 32])],
+            Bytes::new(),
+        );
+        let receipt1 = TransactionReceipt::new(true, U256::from(100u64), vec![log1.clone()]);
 
-        let log2 = Log::new(Address::from([3u8; 20]), vec![Hash::from([4u8; 32])], Bytes::new());
+        let log2 = Log::new(
+            Address::from([3u8; 20]),
+            vec![Hash::from([4u8; 32])],
+            Bytes::new(),
+        );
         let receipt2 = TransactionReceipt::new(true, U256::from(200u64), vec![log2.clone()]);
 
         let receipts = vec![receipt1.clone(), receipt2.clone()];
@@ -1068,23 +1191,23 @@ mod tests {
 
     /// The EIP-4788 beacon roots contract runtime bytecode.
     const BEACON_ROOTS_BYTECODE: [u8; 97] = [
-        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x4d, 0x57, 0x60, 0x20,
-        0x36, 0x14, 0x60, 0x24, 0x57, 0x5f, 0x5f, 0xfd, 0x5b, 0x5f, 0x35, 0x80, 0x15, 0x60,
-        0x49, 0x57, 0x62, 0x00, 0x1f, 0xff, 0x81, 0x06, 0x90, 0x81, 0x54, 0x14, 0x60, 0x3c,
-        0x57, 0x5f, 0x5f, 0xfd, 0x5b, 0x62, 0x00, 0x1f, 0xff, 0x01, 0x54, 0x5f, 0x52, 0x60,
-        0x20, 0x5f, 0xf3, 0x5b, 0x5f, 0x5f, 0xfd, 0x5b, 0x62, 0x00, 0x1f, 0xff, 0x42, 0x06,
-        0x42, 0x81, 0x55, 0x5f, 0x35, 0x90, 0x62, 0x00, 0x1f, 0xff, 0x01, 0x55, 0x00,
+        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x4d, 0x57, 0x60, 0x20, 0x36, 0x14,
+        0x60, 0x24, 0x57, 0x5f, 0x5f, 0xfd, 0x5b, 0x5f, 0x35, 0x80, 0x15, 0x60, 0x49, 0x57, 0x62,
+        0x00, 0x1f, 0xff, 0x81, 0x06, 0x90, 0x81, 0x54, 0x14, 0x60, 0x3c, 0x57, 0x5f, 0x5f, 0xfd,
+        0x5b, 0x62, 0x00, 0x1f, 0xff, 0x01, 0x54, 0x5f, 0x52, 0x60, 0x20, 0x5f, 0xf3, 0x5b, 0x5f,
+        0x5f, 0xfd, 0x5b, 0x62, 0x00, 0x1f, 0xff, 0x42, 0x06, 0x42, 0x81, 0x55, 0x5f, 0x35, 0x90,
+        0x62, 0x00, 0x1f, 0xff, 0x01, 0x55, 0x00,
     ];
 
     /// The EIP-2935 historical block hashes contract runtime bytecode.
     const HISTORY_STORAGE_BYTECODE: [u8; 83] = [
-        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x46, 0x57, 0x60, 0x20,
-        0x36, 0x03, 0x60, 0x42, 0x57, 0x5f, 0x35, 0x60, 0x01, 0x43, 0x03, 0x81, 0x11, 0x60,
-        0x42, 0x57, 0x61, 0x1f, 0xff, 0x81, 0x43, 0x03, 0x11, 0x60, 0x42, 0x57, 0x61, 0x1f,
-        0xff, 0x90, 0x06, 0x54, 0x5f, 0x52, 0x60, 0x20, 0x5f, 0xf3, 0x5b, 0x5f, 0x5f, 0xfd,
-        0x5b, 0x5f, 0x35, 0x61, 0x1f, 0xff, 0x60, 0x01, 0x43, 0x03, 0x06, 0x55, 0x00,
+        0x33, 0x73, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x14, 0x60, 0x46, 0x57, 0x60, 0x20, 0x36, 0x03,
+        0x60, 0x42, 0x57, 0x5f, 0x35, 0x60, 0x01, 0x43, 0x03, 0x81, 0x11, 0x60, 0x42, 0x57, 0x61,
+        0x1f, 0xff, 0x81, 0x43, 0x03, 0x11, 0x60, 0x42, 0x57, 0x61, 0x1f, 0xff, 0x90, 0x06, 0x54,
+        0x5f, 0x52, 0x60, 0x20, 0x5f, 0xf3, 0x5b, 0x5f, 0x5f, 0xfd, 0x5b, 0x5f, 0x35, 0x61, 0x1f,
+        0xff, 0x60, 0x01, 0x43, 0x03, 0x06, 0x55, 0x00,
     ];
 
     #[test]
@@ -1147,8 +1270,8 @@ mod tests {
     #[test]
     fn test_beacon_root_system_call_debug() {
         // Debug: execute a minimal SSTORE test to verify EVM+state works
-        use crate::evm::interpreter::{Evm, CallContext, TxContext};
         use crate::evm::host::NullHost;
+        use crate::evm::interpreter::{CallContext, Evm, TxContext};
 
         let mut state = InMemoryState::new();
         let test_addr = Address::from([0xaa; 20]);
@@ -1164,8 +1287,7 @@ mod tests {
             call_data: vec![],
         };
 
-        let mut evm = Evm::new(code, 100_000, state.clone(), NullHost)
-            .with_call_context(call_ctx);
+        let mut evm = Evm::new(code, 100_000, state.clone(), NullHost).with_call_context(call_ctx);
 
         let result = evm.run();
         eprintln!("Simple SSTORE test: result={result:?}");
@@ -1182,8 +1304,8 @@ mod tests {
         let code2 = vec![
             0x61, 0x03, 0xf4, // PUSH2 1012
             0x61, 0x03, 0xf4, // PUSH2 1012
-            0x55,             // SSTORE
-            0x00,             // STOP
+            0x55, // SSTORE
+            0x00, // STOP
         ];
         let call_ctx_big = CallContext {
             address: test_addr,
@@ -1194,7 +1316,10 @@ mod tests {
         let mut evm_big = Evm::new(code2, 100_000, InMemoryState::new(), NullHost)
             .with_call_context(call_ctx_big);
         let result_big = evm_big.run();
-        eprintln!("Big key SSTORE test: result={:?}", result_big.as_ref().map(|r| (r.success, r.gas_used)));
+        eprintln!(
+            "Big key SSTORE test: result={:?}",
+            result_big.as_ref().map(|r| (r.success, r.gas_used))
+        );
         assert!(result_big.is_ok());
         let big_state = evm_big.into_state();
         let v_big = big_state.sload(&test_addr, &U256::from_u64(1012));
@@ -1245,18 +1370,18 @@ mod tests {
         // PUSH3 0x1fff TIMESTAMP MOD TIMESTAMP DUP2 SSTORE PUSH0 CALLDATALOAD SWAP1 PUSH3 0x1fff ADD SSTORE STOP
         let set_bytecode = vec![
             0x62, 0x00, 0x1f, 0xff, // PUSH3 0x1fff
-            0x42,                     // TIMESTAMP
-            0x06,                     // MOD
-            0x42,                     // TIMESTAMP
-            0x81,                     // DUP2
-            0x55,                     // SSTORE
-            0x5f,                     // PUSH0
-            0x35,                     // CALLDATALOAD
-            0x90,                     // SWAP1
-            0x62, 0x00, 0x1f, 0xff,  // PUSH3 0x1fff
-            0x01,                     // ADD
-            0x55,                     // SSTORE
-            0x00,                     // STOP
+            0x42, // TIMESTAMP
+            0x06, // MOD
+            0x42, // TIMESTAMP
+            0x81, // DUP2
+            0x55, // SSTORE
+            0x5f, // PUSH0
+            0x35, // CALLDATALOAD
+            0x90, // SWAP1
+            0x62, 0x00, 0x1f, 0xff, // PUSH3 0x1fff
+            0x01, // ADD
+            0x55, // SSTORE
+            0x00, // STOP
         ];
 
         let call_ctx3 = CallContext {
@@ -1271,18 +1396,16 @@ mod tests {
             .with_parent_hash(parent.compute_hash())
             .with_tx_context(tx_ctx.clone());
 
-        let mut evm3 = Evm::new(
-            set_bytecode,
-            SYSTEM_CALL_GAS_LIMIT,
-            state.clone(),
-            host2,
-        )
-        .with_block_context(block_ctx.clone())
-        .with_tx_context(tx_ctx.clone())
-        .with_call_context(call_ctx3);
+        let mut evm3 = Evm::new(set_bytecode, SYSTEM_CALL_GAS_LIMIT, state.clone(), host2)
+            .with_block_context(block_ctx.clone())
+            .with_tx_context(tx_ctx.clone())
+            .with_call_context(call_ctx3);
 
         let result3 = evm3.run();
-        eprintln!("Direct set path: result={:?}", result3.as_ref().map(|r| (r.success, r.gas_used)));
+        eprintln!(
+            "Direct set path: result={:?}",
+            result3.as_ref().map(|r| (r.success, r.gas_used))
+        );
         assert!(result3.is_ok());
 
         let history_buffer_length = 8191u64;
@@ -1290,8 +1413,10 @@ mod tests {
         let root_idx = timestamp_idx + history_buffer_length;
 
         let direct_state = evm3.into_state();
-        let stored_ts_direct = direct_state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
-        let stored_root_direct = direct_state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
+        let stored_ts_direct =
+            direct_state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
+        let stored_root_direct =
+            direct_state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
         eprintln!("Direct set: stored_ts={stored_ts_direct:?}, stored_root={stored_root_direct:?}");
 
         // Now test the full bytecode
@@ -1307,7 +1432,10 @@ mod tests {
 
         let result2 = evm2.run();
         match &result2 {
-            Ok(r) => eprintln!("Beacon root EVM: success={}, gas_used={}", r.success, r.gas_used),
+            Ok(r) => eprintln!(
+                "Beacon root EVM: success={}, gas_used={}",
+                r.success, r.gas_used
+            ),
             Err(e) => eprintln!("Beacon root EVM error: {e:?}"),
         }
         assert!(result2.is_ok());
@@ -1323,7 +1451,10 @@ mod tests {
 
         let stored_ts = final_state2.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
         let stored_root = final_state2.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
-        eprintln!("timestamp_idx={timestamp_idx} (ts={}), root_idx={root_idx}", block.timestamp);
+        eprintln!(
+            "timestamp_idx={timestamp_idx} (ts={}), root_idx={root_idx}",
+            block.timestamp
+        );
         eprintln!("stored_ts={stored_ts:?}");
         eprintln!("stored_root={stored_root:?}");
 
@@ -1377,8 +1508,7 @@ mod tests {
         let root_idx = timestamp_idx + history_buffer_length;
 
         // Check that timestamp was stored at timestamp_idx
-        let stored_timestamp =
-            state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
+        let stored_timestamp = state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(timestamp_idx));
         assert_eq!(
             stored_timestamp,
             U256::from_u64(block.timestamp),
@@ -1450,20 +1580,21 @@ mod tests {
             excess_blob_gas: None,
         };
         let parent_hash = parent.compute_hash();
-        apply_beacon_root_system_call(
-            &mut expected_state,
-            &block,
-            &block_ctx,
-            parent_hash,
-            &[],
-        );
+        apply_beacon_root_system_call(&mut expected_state, &block, &block_ctx, parent_hash, &[]);
         block.state_root = expected_state.compute_state_root();
 
         let transactions = vec![];
         let withdrawals = vec![];
 
-        let result =
-            process_block(&block, &parent, &transactions, &withdrawals, &[], &mut state, U256::ONE);
+        let result = process_block(
+            &block,
+            &parent,
+            &transactions,
+            &withdrawals,
+            &[],
+            &mut state,
+            U256::ONE,
+        );
         if let Err(ref e) = result {
             eprintln!("Error processing block with beacon root: {e:?}");
         }
@@ -1474,9 +1605,6 @@ mod tests {
         let timestamp_idx = block.timestamp % history_buffer_length;
         let root_idx = timestamp_idx + history_buffer_length;
         let stored_root = state.sload(&BEACON_ROOTS_ADDRESS, &U256::from_u64(root_idx));
-        assert_eq!(
-            stored_root,
-            U256::from_be_bytes(*beacon_root.as_bytes()),
-        );
+        assert_eq!(stored_root, U256::from_be_bytes(*beacon_root.as_bytes()),);
     }
 }
