@@ -8,6 +8,7 @@
 //! - 0x05: MODEXP (Cancun gas formula / EIP-2565)
 //! - 0x06: ALT_BN128 ECADD
 //! - 0x07: ALT_BN128 ECMUL
+//! - 0x09: BLAKE2F (EIP-152)
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
@@ -25,8 +26,8 @@ use crate::crypto::secp256k1_math::secp256k1_n;
 use crate::crypto::secp256k1_math::{mod_add, mod_inv, mod_mul, mod_sub};
 use crate::crypto::{ripemd160, sha256};
 use crate::evm::gas::{
-    GAS_BN256_ADD, GAS_BN256_MUL, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD,
-    GAS_MODEXP_BASE,
+    GAS_BLAKE2F_ROUND, GAS_BN256_ADD, GAS_BN256_MUL, GAS_ECRECOVER, GAS_IDENTITY_BASE,
+    GAS_IDENTITY_WORD, GAS_MODEXP_BASE,
 };
 use crate::evm::gas::{GAS_RIPEMD160_BASE, GAS_RIPEMD160_WORD, GAS_SHA256_BASE, GAS_SHA256_WORD};
 use crate::types::{Address, Hash, U256};
@@ -72,6 +73,7 @@ pub fn execute_precompile(
         5 => Some(modexp_precompile(input, available_gas)),
         6 => Some(ecadd_precompile(input, available_gas)),
         7 => Some(ecmul_precompile(input, available_gas)),
+        9 => Some(blake2f_precompile(input, available_gas)),
         _ => None,
     }
 }
@@ -297,6 +299,187 @@ fn ecmul_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult
         output,
         gas_used: GAS_BN256_MUL,
     })
+}
+
+const BLAKE2B_IV: [u64; 8] = [
+    0x6a09e667f3bcc908,
+    0xbb67ae8584caa73b,
+    0x3c6ef372fe94f82b,
+    0xa54ff53a5f1d36f1,
+    0x510e527fade682d1,
+    0x9b05688c2b3e6c1f,
+    0x1f83d9abfb41bd6b,
+    0x5be0cd19137e2179,
+];
+
+const BLAKE2B_SIGMA: [[usize; 16]; 10] = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
+    [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
+    [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
+    [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
+    [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
+    [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
+    [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
+    [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
+    [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
+];
+
+fn blake2f_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+    if input.len() != 213 {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    let rounds = u32::from_be_bytes([input[0], input[1], input[2], input[3]]);
+    let gas_used = u64::from(rounds).saturating_mul(GAS_BLAKE2F_ROUND);
+    if gas_used > available_gas {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    let final_block_flag = input[212];
+    if final_block_flag > 1 {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    let mut h = [0u64; 8];
+    for (idx, word) in h.iter_mut().enumerate() {
+        *word = read_u64_le(input, 4 + idx * 8);
+    }
+
+    let mut m = [0u64; 16];
+    for (idx, word) in m.iter_mut().enumerate() {
+        *word = read_u64_le(input, 68 + idx * 8);
+    }
+
+    let t0 = read_u64_le(input, 196);
+    let t1 = read_u64_le(input, 204);
+    let output_words = blake2b_compress(rounds, h, m, t0, t1, final_block_flag == 1);
+
+    let mut output = vec![0u8; 64];
+    for (idx, word) in output_words.iter().enumerate() {
+        output[idx * 8..(idx + 1) * 8].copy_from_slice(&word.to_le_bytes());
+    }
+
+    Ok(PrecompileResult { output, gas_used })
+}
+
+fn read_u64_le(input: &[u8], offset: usize) -> u64 {
+    let mut word = [0u8; 8];
+    word.copy_from_slice(&input[offset..offset + 8]);
+    u64::from_le_bytes(word)
+}
+
+fn blake2b_mix(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize, x: u64, y: u64) {
+    // Rotation constants and operation order follow RFC-7693 section 3.2 exactly.
+    v[a] = v[a].wrapping_add(v[b]).wrapping_add(x);
+    v[d] = (v[d] ^ v[a]).rotate_right(32);
+    v[c] = v[c].wrapping_add(v[d]);
+    v[b] = (v[b] ^ v[c]).rotate_right(24);
+    v[a] = v[a].wrapping_add(v[b]).wrapping_add(y);
+    v[d] = (v[d] ^ v[a]).rotate_right(16);
+    v[c] = v[c].wrapping_add(v[d]);
+    v[b] = (v[b] ^ v[c]).rotate_right(63);
+}
+
+fn blake2b_compress(
+    rounds: u32,
+    h: [u64; 8],
+    m: [u64; 16],
+    t0: u64,
+    t1: u64,
+    final_block: bool,
+) -> [u64; 8] {
+    let mut v = [0u64; 16];
+    v[..8].copy_from_slice(&h);
+    v[8..].copy_from_slice(&BLAKE2B_IV);
+    v[12] ^= t0;
+    v[13] ^= t1;
+
+    if final_block {
+        v[14] = !v[14];
+    }
+
+    for round in 0..rounds as usize {
+        let schedule = &BLAKE2B_SIGMA[round % BLAKE2B_SIGMA.len()];
+        blake2b_mix(
+            &mut v,
+            0,
+            4,
+            8,
+            12,
+            m[schedule[0]],
+            m[schedule[1]],
+        );
+        blake2b_mix(
+            &mut v,
+            1,
+            5,
+            9,
+            13,
+            m[schedule[2]],
+            m[schedule[3]],
+        );
+        blake2b_mix(
+            &mut v,
+            2,
+            6,
+            10,
+            14,
+            m[schedule[4]],
+            m[schedule[5]],
+        );
+        blake2b_mix(
+            &mut v,
+            3,
+            7,
+            11,
+            15,
+            m[schedule[6]],
+            m[schedule[7]],
+        );
+        blake2b_mix(
+            &mut v,
+            0,
+            5,
+            10,
+            15,
+            m[schedule[8]],
+            m[schedule[9]],
+        );
+        blake2b_mix(
+            &mut v,
+            1,
+            6,
+            11,
+            12,
+            m[schedule[10]],
+            m[schedule[11]],
+        );
+        blake2b_mix(
+            &mut v,
+            2,
+            7,
+            8,
+            13,
+            m[schedule[12]],
+            m[schedule[13]],
+        );
+        blake2b_mix(
+            &mut v,
+            3,
+            4,
+            9,
+            14,
+            m[schedule[14]],
+            m[schedule[15]],
+        );
+    }
+
+    let mut output = [0u64; 8];
+    for (idx, word) in output.iter_mut().enumerate() {
+        *word = h[idx] ^ v[idx] ^ v[idx + 8];
+    }
+    output
 }
 
 fn decode_bn254_g1(bytes: &[u8]) -> Result<Bn254Point, PrecompileError> {
@@ -742,6 +925,7 @@ fn modular_exponentiation(base: &BigUint, exponent_bytes: &[u8], modulus: &BigUi
 mod tests {
     use super::*;
     use crate::crypto::secp256k1::{address_from_secret_key, sign_recoverable};
+    use hex::decode as hex_decode;
 
     fn execute_precompile_ok(address: &Address, input: &[u8]) -> PrecompileResult {
         execute_precompile(address, input, u64::MAX)
@@ -1099,6 +1283,85 @@ mod tests {
         let result =
             execute_precompile(&addr, &input, GAS_BN256_MUL - 1).expect("precompile exists");
         assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_blake2f_precompile_vector_rounds_zero() {
+        let addr = precompile_address(9);
+        let input = blake2_reference_input(0, 1);
+        let result = execute_precompile_ok(&addr, &input);
+
+        let expected = hex_decode(
+            "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5\
+             d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b",
+        )
+        .expect("valid hex");
+        assert_eq!(result.output, expected);
+        assert_eq!(result.gas_used, 0);
+    }
+
+    #[test]
+    fn test_blake2f_precompile_vector_rounds_twelve() {
+        let addr = precompile_address(9);
+        let input = blake2_reference_input(12, 1);
+        let result = execute_precompile_ok(&addr, &input);
+
+        let expected = hex_decode(
+            "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d1\
+             7d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923",
+        )
+        .expect("valid hex");
+        assert_eq!(result.output, expected);
+        assert_eq!(result.gas_used, 12 * GAS_BLAKE2F_ROUND);
+    }
+
+    #[test]
+    fn test_blake2f_precompile_invalid_length_fails() {
+        let addr = precompile_address(9);
+        let input = vec![0u8; 212];
+        let result = execute_precompile(&addr, &input, u64::MAX).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_blake2f_precompile_invalid_final_flag_fails() {
+        let addr = precompile_address(9);
+        let input = blake2_reference_input(12, 2);
+        let result = execute_precompile(&addr, &input, u64::MAX).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_blake2f_precompile_oog() {
+        let addr = precompile_address(9);
+        let input = blake2_reference_input(u32::MAX, 1);
+        let result = execute_precompile(&addr, &input, GAS_BLAKE2F_ROUND - 1)
+            .expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    fn blake2_reference_input(rounds: u32, final_block_flag: u8) -> Vec<u8> {
+        // These vectors come from execution-spec EIP-152 tests and are used to
+        // validate byte-level compatibility with canonical fixtures.
+        let h = hex_decode(
+            "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5\
+             d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b",
+        )
+        .expect("valid state vector");
+        let m = {
+            let mut message = vec![0u8; 128];
+            message[..3].copy_from_slice(b"abc");
+            message
+        };
+
+        let mut input = Vec::with_capacity(213);
+        input.extend_from_slice(&rounds.to_be_bytes());
+        input.extend_from_slice(&h);
+        input.extend_from_slice(&m);
+        input.extend_from_slice(&3u64.to_le_bytes());
+        input.extend_from_slice(&0u64.to_le_bytes());
+        input.push(final_block_flag);
+        input
     }
 
     fn modexp_input(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
