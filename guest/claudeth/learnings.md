@@ -47,8 +47,7 @@ Date: 2026-02-10
 
 ## Receipts, Logs, And Trie Behavior
 
-- Receipt roots use typed receipt envelopes (EIP-2718): `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`. Legacy receipts are plain RLP lists.
-- Receipt decoding accepts typed envelopes for `0x01..0x03` and rejects unknown prefixes.
+- Receipt roots use typed envelopes (EIP-2718): `type || RLP(receipt)` for `0x01`, `0x02`, `0x03`. Legacy receipts are plain RLP lists, and decoding rejects unknown prefixes.
 - Receipt status encoding is `0x01` for success and empty bytes (`0x80`) for failure.
 - Logs bloom uses execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.

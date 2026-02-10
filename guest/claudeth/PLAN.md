@@ -85,4 +85,4 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Immediate Next Task
 
-None. (README matches code; backlog items only.)
+None. (README matches code after review on 2026-02-10; backlog items only.)
