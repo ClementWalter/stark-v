@@ -9,8 +9,8 @@ Date: 2026-02-10
 - `SELFDESTRUCT` follows EIP-6780: only deletes contracts created in the same transaction; created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
 - SSTORE gas/refund follows EIP-2200 + EIP-2929 + EIP-3529 with original vs current values; refunds are capped to 1/5 of gas used.
-- Original storage and transient storage (EIP-1153) reset at transaction boundaries and after pre-block system calls.
-- Coinbase receives only the priority fee; base fee and blob data fee are burned.
+- Transient storage (EIP-1153), original storage, selfdestruct markers, and created-accounts tracking reset at transaction boundaries and after pre-block system calls.
+- Sender balance is reduced by `effective_gas_price * gas_limit` and blob data fee up front, then refunded for unused gas at the effective price; coinbase receives only the priority fee and base/blob data fees are burned.
 
 ## Transaction Validation
 
@@ -18,7 +18,7 @@ Date: 2026-02-10
 - Gas limit must cover intrinsic gas and not exceed the block gas limit.
 - Legacy/EIP-2930 require `gas_price >= base_fee` when `base_fee > 0`.
 - EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and `max_priority_fee_per_gas <= max_fee_per_gas`.
-- Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (+ blob fee cap for type `0x03`).
+- Balance checks use max-fee caps: `gas_limit * max_fee_per_gas + value` (+ blob fee cap for type `0x03`).
 - Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
 - Chain ID rules: legacy uses EIP-155 encoding in `v`; typed txs use explicit `chain_id`.
 - Blob tx validation: non-empty versioned hashes, version byte `0x01`, count limit `6`, and `max_fee_per_blob_gas >= blob_base_fee`.

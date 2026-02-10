@@ -43,7 +43,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass (unit + doc tests; 1 ignored EELS test)
+- `cargo test -p claudeth --release` (2026-02-10): pass (1 ignored EELS test)
 - `prek run` (2026-02-10): pass (no eligible files)
 
 ## Plan
