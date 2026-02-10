@@ -4,14 +4,14 @@ Date: 2026-02-10
 
 ## Consensus-Critical Execution
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and state changes are applied only on success.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and state changes apply only on success.
 - `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
-- Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
-- Coinbase receives only the priority fee; base fee is burned for post-London transactions.
-- SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
+- Gas refunds come only from storage clears (4800 per clear) and are capped at 1/5 of gas used (EIP-3529).
+- SELFDESTRUCT (EIP-6780): transfer balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns `0` after charging initcode gas and memory expansion.
-- EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2; oversized code consumes all remaining gas in the create call.
+- EIP-170 max code size and code-deposit gas apply to CREATE/CREATE2; oversized code consumes all remaining gas in the create call.
 - EIP-3541 rejects contract code starting with `0xEF` for tx creation and CREATE/CREATE2, consuming all remaining gas on failure.
+- Coinbase receives only the priority fee; base fee is burned for post-London transactions.
 - Blob data fee is charged upfront and burned (not credited to coinbase).
 
 ## Transaction Validation
@@ -34,7 +34,7 @@ Date: 2026-02-10
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing: `blob_gas_used` and `excess_blob_gas` must appear together, and `excess_blob_gas` must match the parent-derived formula.
 - `BLOBBASEFEE` uses the execution-specs Taylor expansion when `excess_blob_gas` is present.
-- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transactions; they run with a fixed gas limit, do not count against the block gas limit, and no-op if the target contract has no code.
+- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transactions; fixed gas limit, no block gas accounting, no-op if target has no code.
 - Post-execution checks include receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Guest Input And WITNESS v1
@@ -80,6 +80,7 @@ Date: 2026-02-10
 ## Do / Don't (Next Iteration)
 
 **Do**
+
 - Read the relevant `execution-specs` implementation before changing consensus-critical logic.
 - Update `PLAN.md` and `learnings.md` when behavior changes.
 - Update `PLAN.md` test status after running `cargo test -p claudeth --release` and `prek run`.
@@ -91,6 +92,7 @@ Date: 2026-02-10
 - Pay coinbase only the priority fee; burn the base fee portion.
 
 **Don't**
+
 - Skip or disable pre-commit hooks.
 - Add shell scripts (`.sh`) to this project.
 - Assume `PLAN.md` is correct without re-checking the code and README.
