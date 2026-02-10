@@ -4,7 +4,7 @@ Date: 2026-02-10
 
 ## Consensus-Critical Execution Semantics
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false` while block processing continues; only successful executions commit state.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and only successful executions commit state.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and reverts only the current call frame.
 - `SELFDESTRUCT` follows EIP-6780 (delete only if created in the same transaction); created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
@@ -60,7 +60,7 @@ Date: 2026-02-10
 - `prek run` may skip checks when no files are eligible; it still must be executed.
 - `git commit` runs `prek` and will stash/restore unstaged changes; keep staging tight.
 - Do not add shell scripts (`.sh`); use `uv run` Python scripts with PEP 723 metadata.
-- Keep fork naming consistent with Cancun in docs and comments unless a later fork is explicitly implemented.
+- Keep documentation fork naming consistent with Cancun until a later fork is implemented.
 
 ## Do / Don't (Next Iteration)
 
