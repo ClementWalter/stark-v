@@ -36,6 +36,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   storage tracking cleared at tx and system-call boundaries.
 - Transient storage (EIP-1153) implementation and clearing.
 - Coinbase receives only the priority fee; base fee and blob data fee are burned.
+ - State-trie integration tests now use `keccak256(address)` keys to match
+   production state root and proof behavior.
 
 ### Known Gaps / Limitations
 
@@ -43,7 +45,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass
+- `cargo test -p claudeth --release` (2026-02-10): pass (1 ignored)
 - `prek run` (2026-02-10): pass (no eligible files)
 
 ## Plan
@@ -51,11 +53,12 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 ### Now
 
 - No immediate implementation work identified. Core STF, transaction types,
-  block validation, and witness handling match README claims.
+  block validation, witness handling, and state-trie keying match README claims.
 
 ### Done
 
 - Revalidated README, code, and learnings against current implementation.
+- Aligned state-trie integration tests with keccak256 address keying.
 
 ### Backlog (Not Scheduled)
 

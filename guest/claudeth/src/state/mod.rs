@@ -18,7 +18,8 @@ pub use storage::Storage;
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::types::{Hash, U256, Address};
+    use crate::crypto::keccak256;
+    use crate::types::{Address, Hash, U256};
 
     // =========================================================================
     // Account State Integration Tests
@@ -37,23 +38,25 @@ mod integration_tests {
             Hash::from([0x22; 32]),
         );
 
-        // Insert accounts into state trie (using address as key)
+        // Insert accounts into state trie (using keccak256(address) as key)
         let addr1 = Address::from([0x01; 20]);
         let addr2 = Address::from([0x02; 20]);
 
-        state_trie.insert(addr1.as_bytes(), account1.encode_rlp());
-        state_trie.insert(addr2.as_bytes(), account2.encode_rlp());
+        let key1 = keccak256(addr1.as_bytes());
+        let key2 = keccak256(addr2.as_bytes());
+        state_trie.insert(key1.as_bytes(), account1.encode_rlp());
+        state_trie.insert(key2.as_bytes(), account2.encode_rlp());
 
         // Compute state root
         let state_root = state_trie.compute_root();
         assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Retrieve accounts
-        let retrieved1_rlp = state_trie.get(addr1.as_bytes()).unwrap();
+        let retrieved1_rlp = state_trie.get(key1.as_bytes()).unwrap();
         let retrieved1 = Account::decode_rlp(&retrieved1_rlp).unwrap();
         assert_eq!(retrieved1, account1);
 
-        let retrieved2_rlp = state_trie.get(addr2.as_bytes()).unwrap();
+        let retrieved2_rlp = state_trie.get(key2.as_bytes()).unwrap();
         let retrieved2 = Account::decode_rlp(&retrieved2_rlp).unwrap();
         assert_eq!(retrieved2, account2);
     }
@@ -65,17 +68,18 @@ mod integration_tests {
         // Create and insert account
         let account = Account::new_eoa(U256::from(10u64), U256::from(5000u64));
         let addr = Address::from([0xAA; 20]);
-        state_trie.insert(addr.as_bytes(), account.encode_rlp());
+        let key = keccak256(addr.as_bytes());
+        state_trie.insert(key.as_bytes(), account.encode_rlp());
 
         let state_root = state_trie.compute_root();
 
         // Generate proof for account
-        let proof = state_trie.generate_proof(addr.as_bytes()).unwrap();
+        let proof = state_trie.generate_proof(key.as_bytes()).unwrap();
         assert!(!proof.is_empty());
 
         // Verify proof
         let account_rlp = account.encode_rlp();
-        assert!(verify_proof(state_root, addr.as_bytes(), Some(&account_rlp), &proof));
+        assert!(verify_proof(state_root, key.as_bytes(), Some(&account_rlp), &proof));
     }
 
     #[test]
@@ -85,18 +89,19 @@ mod integration_tests {
 
         // Insert initial account
         let account1 = Account::new_eoa(U256::from(1u64), U256::from(100u64));
-        state_trie.insert(addr.as_bytes(), account1.encode_rlp());
+        let key = keccak256(addr.as_bytes());
+        state_trie.insert(key.as_bytes(), account1.encode_rlp());
         let root1 = state_trie.compute_root();
 
         // Update account (increase nonce and balance)
         let account2 = Account::new_eoa(U256::from(2u64), U256::from(200u64));
-        state_trie.insert(addr.as_bytes(), account2.encode_rlp());
+        state_trie.insert(key.as_bytes(), account2.encode_rlp());
         let root2 = state_trie.compute_root();
 
         assert_ne!(root1, root2);
 
         // Verify final state
-        let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
+        let retrieved_rlp = state_trie.get(key.as_bytes()).unwrap();
         let retrieved = Account::decode_rlp(&retrieved_rlp).unwrap();
         assert_eq!(retrieved, account2);
     }
@@ -163,16 +168,17 @@ mod integration_tests {
             code_hash,
         );
 
-        // Insert contract into state trie
+        // Insert contract into state trie (using keccak256(address) as key)
         let mut state_trie = Trie::new();
         let addr = Address::from([0xCC; 20]);
-        state_trie.insert(addr.as_bytes(), contract.encode_rlp());
+        let key = keccak256(addr.as_bytes());
+        state_trie.insert(key.as_bytes(), contract.encode_rlp());
 
         let state_root = state_trie.compute_root();
         assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Verify contract retrieval
-        let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
+        let retrieved_rlp = state_trie.get(key.as_bytes()).unwrap();
         let retrieved = Account::decode_rlp(&retrieved_rlp).unwrap();
         assert_eq!(retrieved.storage_root, storage_root);
         assert_eq!(retrieved.code_hash, code_hash);
@@ -185,7 +191,8 @@ mod integration_tests {
         // Account 1: EOA
         let eoa = Account::new_eoa(U256::from(5u64), U256::from(1_000_000u64));
         let eoa_addr = Address::from([0x01; 20]);
-        state_trie.insert(eoa_addr.as_bytes(), eoa.encode_rlp());
+        let eoa_key = keccak256(eoa_addr.as_bytes());
+        state_trie.insert(eoa_key.as_bytes(), eoa.encode_rlp());
 
         // Account 2: Contract with storage
         let mut storage1 = Storage::new();
@@ -197,7 +204,8 @@ mod integration_tests {
             Hash::from([0x11; 32]),
         );
         let contract1_addr = Address::from([0x02; 20]);
-        state_trie.insert(contract1_addr.as_bytes(), contract1.encode_rlp());
+        let contract1_key = keccak256(contract1_addr.as_bytes());
+        state_trie.insert(contract1_key.as_bytes(), contract1.encode_rlp());
 
         // Account 3: Another contract with different storage
         let mut storage2 = Storage::new();
@@ -210,24 +218,25 @@ mod integration_tests {
             Hash::from([0x22; 32]),
         );
         let contract2_addr = Address::from([0x03; 20]);
-        state_trie.insert(contract2_addr.as_bytes(), contract2.encode_rlp());
+        let contract2_key = keccak256(contract2_addr.as_bytes());
+        state_trie.insert(contract2_key.as_bytes(), contract2.encode_rlp());
 
         // Compute final state root
         let state_root = state_trie.compute_root();
         assert_ne!(state_root, EMPTY_TRIE_ROOT);
 
         // Verify all accounts
-        let eoa_rlp = state_trie.get(eoa_addr.as_bytes()).unwrap();
+        let eoa_rlp = state_trie.get(eoa_key.as_bytes()).unwrap();
         let retrieved_eoa = Account::decode_rlp(&eoa_rlp).unwrap();
         assert_eq!(retrieved_eoa.nonce, U256::from(5u64));
         assert!(retrieved_eoa.is_eoa());
 
-        let contract1_rlp = state_trie.get(contract1_addr.as_bytes()).unwrap();
+        let contract1_rlp = state_trie.get(contract1_key.as_bytes()).unwrap();
         let retrieved_contract1 = Account::decode_rlp(&contract1_rlp).unwrap();
         assert!(retrieved_contract1.is_contract());
         assert_eq!(retrieved_contract1.storage_root, storage1.compute_root());
 
-        let contract2_rlp = state_trie.get(contract2_addr.as_bytes()).unwrap();
+        let contract2_rlp = state_trie.get(contract2_key.as_bytes()).unwrap();
         let retrieved_contract2 = Account::decode_rlp(&contract2_rlp).unwrap();
         assert!(retrieved_contract2.is_contract());
         assert_eq!(retrieved_contract2.storage_root, storage2.compute_root());
@@ -249,7 +258,8 @@ mod integration_tests {
             initial_storage_root,
             Hash::from([0x44; 32]),
         );
-        state_trie.insert(addr.as_bytes(), account.encode_rlp());
+        let key = keccak256(addr.as_bytes());
+        state_trie.insert(key.as_bytes(), account.encode_rlp());
         let state_root1 = state_trie.compute_root();
 
         // Update storage
@@ -265,7 +275,7 @@ mod integration_tests {
             updated_storage_root,
             Hash::from([0x44; 32]),
         );
-        state_trie.insert(addr.as_bytes(), updated_account.encode_rlp());
+        state_trie.insert(key.as_bytes(), updated_account.encode_rlp());
         let state_root2 = state_trie.compute_root();
 
         assert_ne!(state_root1, state_root2);
@@ -280,18 +290,20 @@ mod integration_tests {
         // Insert two accounts
         let account1 = Account::new_eoa(U256::from(1u64), U256::from(100u64));
         let account2 = Account::new_eoa(U256::from(2u64), U256::from(200u64));
-        state_trie.insert(addr1.as_bytes(), account1.encode_rlp());
-        state_trie.insert(addr2.as_bytes(), account2.encode_rlp());
+        let key1 = keccak256(addr1.as_bytes());
+        let key2 = keccak256(addr2.as_bytes());
+        state_trie.insert(key1.as_bytes(), account1.encode_rlp());
+        state_trie.insert(key2.as_bytes(), account2.encode_rlp());
 
         let root_before = state_trie.compute_root();
 
         // Delete account1
-        state_trie.delete(addr1.as_bytes());
+        state_trie.delete(key1.as_bytes());
         let root_after = state_trie.compute_root();
 
         assert_ne!(root_before, root_after);
-        assert!(state_trie.get(addr1.as_bytes()).is_none());
-        assert!(state_trie.get(addr2.as_bytes()).is_some());
+        assert!(state_trie.get(key1.as_bytes()).is_none());
+        assert!(state_trie.get(key2.as_bytes()).is_some());
     }
 
     #[test]
@@ -303,25 +315,27 @@ mod integration_tests {
         // Insert accounts
         let account1 = Account::new_eoa(U256::from(1u64), U256::from(1000u64));
         let account2 = Account::new_eoa(U256::from(2u64), U256::from(2000u64));
-        state_trie.insert(addr1.as_bytes(), account1.encode_rlp());
-        state_trie.insert(addr2.as_bytes(), account2.encode_rlp());
+        let key1 = keccak256(addr1.as_bytes());
+        let key2 = keccak256(addr2.as_bytes());
+        state_trie.insert(key1.as_bytes(), account1.encode_rlp());
+        state_trie.insert(key2.as_bytes(), account2.encode_rlp());
 
         let state_root = state_trie.compute_root();
 
         // Generate proofs
-        let proof1 = state_trie.generate_proof(addr1.as_bytes()).unwrap();
-        let proof2 = state_trie.generate_proof(addr2.as_bytes()).unwrap();
+        let proof1 = state_trie.generate_proof(key1.as_bytes()).unwrap();
+        let proof2 = state_trie.generate_proof(key2.as_bytes()).unwrap();
 
         // Verify proofs
         assert!(verify_proof(
             state_root,
-            addr1.as_bytes(),
+            key1.as_bytes(),
             Some(&account1.encode_rlp()),
             &proof1
         ));
         assert!(verify_proof(
             state_root,
-            addr2.as_bytes(),
+            key2.as_bytes(),
             Some(&account2.encode_rlp()),
             &proof2
         ));
@@ -343,7 +357,8 @@ mod integration_tests {
             storage_root1,
             Hash::from([0x55; 32]),
         );
-        state_trie.insert(addr.as_bytes(), account1.encode_rlp());
+        let key = keccak256(addr.as_bytes());
+        state_trie.insert(key.as_bytes(), account1.encode_rlp());
 
         // Clear storage
         storage.clear();
@@ -356,10 +371,10 @@ mod integration_tests {
             EMPTY_TRIE_ROOT,
             Hash::from([0x55; 32]),
         );
-        state_trie.insert(addr.as_bytes(), account2.encode_rlp());
+        state_trie.insert(key.as_bytes(), account2.encode_rlp());
 
         // Verify
-        let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
+        let retrieved_rlp = state_trie.get(key.as_bytes()).unwrap();
         let retrieved = Account::decode_rlp(&retrieved_rlp).unwrap();
         assert_eq!(retrieved.storage_root, EMPTY_TRIE_ROOT);
     }
@@ -371,7 +386,8 @@ mod integration_tests {
 
         // Start as EOA
         let eoa = Account::new_eoa(U256::from(5u64), U256::from(10000u64));
-        state_trie.insert(addr.as_bytes(), eoa.encode_rlp());
+        let key = keccak256(addr.as_bytes());
+        state_trie.insert(key.as_bytes(), eoa.encode_rlp());
         let root1 = state_trie.compute_root();
 
         // Convert to contract (deploy code)
@@ -384,13 +400,13 @@ mod integration_tests {
             storage.compute_root(),
             Hash::from([0x66; 32]),
         );
-        state_trie.insert(addr.as_bytes(), contract.encode_rlp());
+        state_trie.insert(key.as_bytes(), contract.encode_rlp());
         let root2 = state_trie.compute_root();
 
         assert_ne!(root1, root2);
 
         // Verify conversion
-        let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
+        let retrieved_rlp = state_trie.get(key.as_bytes()).unwrap();
         let retrieved = Account::decode_rlp(&retrieved_rlp).unwrap();
         assert!(retrieved.is_contract());
         assert_eq!(retrieved.nonce, U256::from(6u64));
@@ -421,7 +437,8 @@ mod integration_tests {
                 )
             };
 
-            state_trie.insert(addr.as_bytes(), account.encode_rlp());
+            let key = keccak256(addr.as_bytes());
+            state_trie.insert(key.as_bytes(), account.encode_rlp());
         }
 
         let state_root = state_trie.compute_root();
@@ -433,7 +450,8 @@ mod integration_tests {
             addr_bytes[19] = i;
             let addr = Address::from(addr_bytes);
 
-            let account_rlp = state_trie.get(addr.as_bytes()).unwrap();
+            let key = keccak256(addr.as_bytes());
+            let account_rlp = state_trie.get(key.as_bytes()).unwrap();
             let account = Account::decode_rlp(&account_rlp).unwrap();
             assert_eq!(account.nonce, U256::from(i as u64));
         }
@@ -464,19 +482,20 @@ mod integration_tests {
     fn test_account_nonce_increment() {
         let addr = Address::from([0x33; 20]);
         let mut state_trie = Trie::new();
+        let key = keccak256(addr.as_bytes());
 
         // Initial account with nonce 0
         let mut account = Account::new_eoa(U256::ZERO, U256::from(5000u64));
-        state_trie.insert(addr.as_bytes(), account.encode_rlp());
+        state_trie.insert(key.as_bytes(), account.encode_rlp());
 
         // Simulate 10 transactions
         for i in 1..=10u64 {
             account.nonce = U256::from(i);
-            state_trie.insert(addr.as_bytes(), account.encode_rlp());
+            state_trie.insert(key.as_bytes(), account.encode_rlp());
         }
 
         // Verify final state
-        let retrieved_rlp = state_trie.get(addr.as_bytes()).unwrap();
+        let retrieved_rlp = state_trie.get(key.as_bytes()).unwrap();
         let retrieved = Account::decode_rlp(&retrieved_rlp).unwrap();
         assert_eq!(retrieved.nonce, U256::from(10u64));
     }
@@ -490,24 +509,26 @@ mod integration_tests {
         // Initial balances
         let mut account1 = Account::new_eoa(U256::from(1u64), U256::from(1000u64));
         let mut account2 = Account::new_eoa(U256::from(0u64), U256::from(0u64));
-        state_trie.insert(addr1.as_bytes(), account1.encode_rlp());
-        state_trie.insert(addr2.as_bytes(), account2.encode_rlp());
+        let key1 = keccak256(addr1.as_bytes());
+        let key2 = keccak256(addr2.as_bytes());
+        state_trie.insert(key1.as_bytes(), account1.encode_rlp());
+        state_trie.insert(key2.as_bytes(), account2.encode_rlp());
 
         // Transfer 300 wei from account1 to account2
         account1.balance = U256::from(700u64);
         account1.nonce = U256::from(2u64); // Increment nonce
         account2.balance = U256::from(300u64);
 
-        state_trie.insert(addr1.as_bytes(), account1.encode_rlp());
-        state_trie.insert(addr2.as_bytes(), account2.encode_rlp());
+        state_trie.insert(key1.as_bytes(), account1.encode_rlp());
+        state_trie.insert(key2.as_bytes(), account2.encode_rlp());
 
         // Verify final state
-        let retrieved1_rlp = state_trie.get(addr1.as_bytes()).unwrap();
+        let retrieved1_rlp = state_trie.get(key1.as_bytes()).unwrap();
         let retrieved1 = Account::decode_rlp(&retrieved1_rlp).unwrap();
         assert_eq!(retrieved1.balance, U256::from(700u64));
         assert_eq!(retrieved1.nonce, U256::from(2u64));
 
-        let retrieved2_rlp = state_trie.get(addr2.as_bytes()).unwrap();
+        let retrieved2_rlp = state_trie.get(key2.as_bytes()).unwrap();
         let retrieved2 = Account::decode_rlp(&retrieved2_rlp).unwrap();
         assert_eq!(retrieved2.balance, U256::from(300u64));
     }

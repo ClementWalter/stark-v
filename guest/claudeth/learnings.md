@@ -92,6 +92,8 @@ Date: 2026-02-10
 - State root is computed by sorting addresses, using `keccak256(address)` as
   trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
+- Tests that build account tries directly must hash addresses with
+  `keccak256(address)` to match production state roots and proof verification.
 
 ## Types & Crypto
 
@@ -121,6 +123,7 @@ Do:
 - Run `cargo test -p claudeth --release` and `prek run` before committing.
 - Keep all cargo commands scoped to `-p claudeth`.
 - Read execution-specs code before touching consensus-critical logic.
+- Use `keccak256(address)` when constructing account tries in tests/tools.
 - Update `PLAN.md` and this file when behavior changes.
 
 Don't:
