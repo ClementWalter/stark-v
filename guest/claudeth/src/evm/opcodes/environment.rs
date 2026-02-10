@@ -941,7 +941,17 @@ pub fn execute_selfdestruct<S: State>(
     self_address: Address,
 ) -> Result<(), EvmError> {
     let beneficiary = utils::u256_to_address(&stack.pop().map_err(EvmError::from)?)?;
-    state.selfdestruct(&self_address, &beneficiary);
+    let originator_balance = state.get_balance(&self_address);
+    if !originator_balance.is_zero() && beneficiary != self_address {
+        let beneficiary_balance = state.get_balance(&beneficiary);
+        state.set_balance(&self_address, U256::ZERO);
+        state.set_balance(&beneficiary, beneficiary_balance.saturating_add(originator_balance));
+    }
+
+    if state.account_created_in_tx(&self_address) {
+        state.set_balance(&self_address, U256::ZERO);
+        state.selfdestruct(&self_address, &beneficiary);
+    }
     Ok(())
 }
 

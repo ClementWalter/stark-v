@@ -1305,10 +1305,23 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
             // 0xFF: SELFDESTRUCT
             0xFF => {
-                // SELFDESTRUCT: mark account for deletion and transfer balance
+                // SELFDESTRUCT (EIP-6780): transfer balance, delete only if created in tx
                 let beneficiary_u256 = self.stack.pop()?;
                 let beneficiary = u256_to_address(&beneficiary_u256);
-                self.state.selfdestruct(&self.call_ctx.address, &beneficiary);
+                let originator = self.call_ctx.address;
+                let originator_balance = self.state.get_balance(&originator);
+
+                if !originator_balance.is_zero() && beneficiary != originator {
+                    let beneficiary_balance = self.state.get_balance(&beneficiary);
+                    self.state.set_balance(&originator, U256::ZERO);
+                    self.state
+                        .set_balance(&beneficiary, beneficiary_balance.saturating_add(originator_balance));
+                }
+
+                if self.state.account_created_in_tx(&originator) {
+                    self.state.set_balance(&originator, U256::ZERO);
+                    self.state.selfdestruct(&originator, &beneficiary);
+                }
                 self.stopped = true;
             }
 
@@ -1535,7 +1548,7 @@ mod tests {
     use super::*;
     use crate::evm::host::{CallResult, CreateResult};
     use crate::evm::MAX_INIT_CODE_SIZE;
-    use crate::state::InMemoryState;
+    use crate::state::{InMemoryState, State};
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -2489,16 +2502,34 @@ mod tests {
         let contract_addr = Address::new([0xCC; 20]);
         state.set_balance(&contract_addr, U256::from_u64(1000));
 
-        let mut evm = Evm::new(code, 100000, state, NullHost);
+        let mut evm = Evm::new(code.clone(), 100000, state, NullHost);
         evm.call_ctx.address = contract_addr;
+        evm.state.clear_created_accounts();
+        assert!(!evm.state.account_created_in_tx(&contract_addr));
 
         let result = evm.run().unwrap();
         assert!(result.success);
-        // Check that selfdestruct was recorded
-        let selfdestructs = evm.state.get_selfdestructs();
+        assert!(!evm.state.account_created_in_tx(&contract_addr));
+        // Non-created accounts transfer balance but are not deleted (EIP-6780).
+        assert!(evm.state.get_selfdestructs().is_empty());
+        assert_eq!(evm.state.get_balance(&contract_addr), U256::ZERO);
+        assert_eq!(evm.state.get_balance(&beneficiary), U256::from_u64(1000));
+
+        let mut created_state = InMemoryState::new();
+        created_state.set_balance(&contract_addr, U256::from_u64(1000));
+        created_state.mark_account_created(&contract_addr);
+
+        let mut created_evm = Evm::new(code, 100000, created_state, NullHost);
+        created_evm.call_ctx.address = contract_addr;
+
+        let created_result = created_evm.run().unwrap();
+        assert!(created_result.success);
+        let selfdestructs = created_evm.state.get_selfdestructs();
         assert_eq!(selfdestructs.len(), 1);
         assert_eq!(selfdestructs[0].0, contract_addr);
         assert_eq!(selfdestructs[0].1, beneficiary);
+        assert_eq!(created_evm.state.get_balance(&contract_addr), U256::ZERO);
+        assert_eq!(created_evm.state.get_balance(&beneficiary), U256::from_u64(1000));
     }
 
     #[test]

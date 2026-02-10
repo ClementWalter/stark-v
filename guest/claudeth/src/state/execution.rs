@@ -7,12 +7,12 @@
 extern crate alloc;
 
 #[cfg(not(target_arch = "riscv32"))]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(not(target_arch = "riscv32"))]
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::collections::BTreeMap as HashMap;
+use alloc::collections::{BTreeMap as HashMap, BTreeSet};
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
@@ -76,6 +76,18 @@ pub trait State {
     /// Clears self-destruct list (called at transaction end)
     fn clear_selfdestructs(&mut self);
 
+    /// Marks an account as created in the current transaction.
+    fn mark_account_created(&mut self, address: &Address);
+
+    /// Returns true if the account was created in the current transaction.
+    fn account_created_in_tx(&self, address: &Address) -> bool;
+
+    /// Clears the created-accounts set (called at transaction end).
+    fn clear_created_accounts(&mut self);
+
+    /// Permanently removes an account and its storage/code.
+    fn destroy_account(&mut self, address: &Address);
+
     /// Computes the current state root
     fn compute_state_root(&self) -> Hash;
 }
@@ -96,7 +108,15 @@ pub struct InMemoryState {
     transient_storage: HashMap<(Address, U256), U256>,
     /// Self-destructed accounts and their beneficiaries
     selfdestructs: Vec<(Address, Address)>,
+    /// Accounts created in the current transaction (EIP-6780)
+    created_accounts: CreatedAccounts,
 }
+
+#[cfg(not(target_arch = "riscv32"))]
+type CreatedAccounts = HashSet<Address>;
+
+#[cfg(target_arch = "riscv32")]
+type CreatedAccounts = BTreeSet<Address>;
 
 impl InMemoryState {
     /// Creates a new empty in-memory state
@@ -107,6 +127,7 @@ impl InMemoryState {
             storage: HashMap::new(),
             transient_storage: HashMap::new(),
             selfdestructs: Vec::new(),
+            created_accounts: CreatedAccounts::new(),
         }
     }
 
@@ -319,6 +340,24 @@ impl State for InMemoryState {
 
     fn clear_selfdestructs(&mut self) {
         self.selfdestructs.clear();
+    }
+
+    fn mark_account_created(&mut self, address: &Address) {
+        self.created_accounts.insert(*address);
+    }
+
+    fn account_created_in_tx(&self, address: &Address) -> bool {
+        self.created_accounts.contains(address)
+    }
+
+    fn clear_created_accounts(&mut self) {
+        self.created_accounts.clear();
+    }
+
+    fn destroy_account(&mut self, address: &Address) {
+        self.accounts.remove(address);
+        self.code.remove(address);
+        self.storage.remove(address);
     }
 
     fn compute_state_root(&self) -> Hash {
@@ -847,6 +886,36 @@ mod tests {
         assert_eq!(selfdestructs[0], (addr, beneficiary));
     }
 
+    #[test]
+    fn test_created_accounts_tracking() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x01; 20]);
+
+        assert!(!state.account_created_in_tx(&addr));
+        state.mark_account_created(&addr);
+        assert!(state.account_created_in_tx(&addr));
+        state.clear_created_accounts();
+        assert!(!state.account_created_in_tx(&addr));
+    }
+
+    #[test]
+    fn test_destroy_account_removes_state() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x01; 20]);
+
+        state.set_balance(&addr, U256::from(100u64));
+        state.increment_nonce(&addr);
+        state.set_code(&addr, vec![0x60, 0x00]);
+        state.sstore(&addr, &U256::from(1u64), U256::from(2u64));
+
+        state.destroy_account(&addr);
+
+        assert_eq!(state.get_balance(&addr), U256::ZERO);
+        assert_eq!(state.get_nonce(&addr), U256::ZERO);
+        assert!(state.get_code(&addr).is_empty());
+        assert_eq!(state.sload(&addr, &U256::from(1u64)), U256::ZERO);
+    }
+
     // =========================================================================
     // Integration Tests
     // =========================================================================
@@ -922,16 +991,20 @@ mod tests {
         // Set transient storage and selfdestruct
         state.tstore(&addr, &U256::from(0u64), U256::from(42u64));
         state.selfdestruct(&addr, &beneficiary);
+        state.mark_account_created(&addr);
 
         assert_eq!(state.tload(&addr, &U256::from(0u64)), U256::from(42u64));
         assert_eq!(state.get_selfdestructs().len(), 1);
+        assert!(state.account_created_in_tx(&addr));
 
         // Clear transaction-scoped state
         state.clear_transient_storage();
         state.clear_selfdestructs();
+        state.clear_created_accounts();
 
         assert_eq!(state.tload(&addr, &U256::from(0u64)), U256::ZERO);
         assert_eq!(state.get_selfdestructs().len(), 0);
+        assert!(!state.account_created_in_tx(&addr));
     }
 
     // =========================================================================

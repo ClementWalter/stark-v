@@ -343,6 +343,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             compute_create_address(&msg.caller, nonce.saturating_sub(U256::ONE))
         };
 
+        state.mark_account_created(&contract_address);
+
         // Clone state
         let mut create_state = state.clone();
 

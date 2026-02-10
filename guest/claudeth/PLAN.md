@@ -16,6 +16,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 - EVM interpreter with full opcode coverage, including Cancun opcodes
   (`BLOBHASH`, `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`).
+- EIP-6780 SELFDESTRUCT semantics: immediate balance transfer, deletion only for
+  contracts created in the same transaction, with created-account tracking.
 - Transaction validation and execution for Legacy, EIP-2930, EIP-1559, and
   EIP-4844 blob transactions.
 - EIP-4844 blob tx encoding/decoding, signing hash, blob fee validation, and
@@ -62,6 +64,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
 - Deterministic in-tree signer used by signature-related tests.
+- Apply EIP-6780 SELFDESTRUCT rules: transfer balance immediately, delete only
+  if created in the same transaction, and clear created-account tracking per tx.
 
 ### Backlog (Not Scheduled)
 

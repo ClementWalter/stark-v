@@ -48,6 +48,8 @@ Date: 2026-02-10
 - Logs bloom follows execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - Contract creation rejects code starting with `0xEF` (EIP-3541) and consumes all remaining gas.
 - Contract creation charges code-deposit gas (200 per byte) and rejects code larger than 24KB (EIP-170), consuming all remaining gas.
+- SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if the contract was created in the same transaction, otherwise keep code/storage.
+- Track created accounts for the current transaction and clear them at tx end; deletion is applied at tx end after successful execution.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
 
@@ -79,6 +81,7 @@ Date: 2026-02-10
 - Enforce EIP-3860 initcode size limits in transaction validation and CREATE/CREATE2 handling.
 - Enforce EIP-170 max code size and charge code-deposit gas for CREATE/CREATE2.
 - Charge blob data fees upfront and burn them (not coinbase).
+- Apply EIP-6780 SELFDESTRUCT rules and clear created-account tracking per transaction.
 - Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
 - Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
 - Use the in-tree deterministic signer in tests; derive expected sender from the secret key.
@@ -87,4 +90,5 @@ Date: 2026-02-10
 - Treat EVM `REVERT` as exceptional.
 - Accept recent block hash lists for genesis or lists without the parent hash last.
 - Skip blob field all-or-nothing checks or blob count/version validations.
+- Delete SELFDESTRUCTed accounts that were not created in the current transaction.
 - Ignore point-at-infinity or `y == 0` edge cases in secp256k1 arithmetic.

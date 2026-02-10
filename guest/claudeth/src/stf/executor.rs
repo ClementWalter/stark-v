@@ -264,6 +264,7 @@ pub fn execute_transaction<S: State + Clone>(
         Err(err) => {
             state.clear_transient_storage();
             state.clear_selfdestructs();
+            state.clear_created_accounts();
             return Err(err);
         }
     };
@@ -295,10 +296,15 @@ pub fn execute_transaction<S: State + Clone>(
         coinbase_balance.saturating_add(gas_fee),
     );
 
+    if success {
+        apply_selfdestructs(state);
+    }
+
     // Step 5: Build result
 
     state.clear_transient_storage();
     state.clear_selfdestructs();
+    state.clear_created_accounts();
 
     Ok(TransactionExecutionResult {
         sender,
@@ -323,6 +329,17 @@ struct ExecutionContexts<'a> {
     parent_hash: Hash,
     block_hashes: &'a [Hash],
     tx_ctx: &'a TxContext,
+}
+
+fn apply_selfdestructs<S: State>(state: &mut S) {
+    let mut to_delete = Vec::new();
+    for (address, _) in state.get_selfdestructs() {
+        to_delete.push(*address);
+    }
+
+    for address in to_delete {
+        state.destroy_account(&address);
+    }
 }
 
 fn apply_value_transfer<S: State>(tx: &Transaction, sender: &Address, state: &mut S) {
@@ -447,7 +464,7 @@ fn execute_call<S: State + Clone>(
 /// Executes a contract creation transaction
 fn execute_create<S: State + Clone>(
     tx: &Transaction,
-    state: S,
+    mut state: S,
     sender: &Address,
     contexts: ExecutionContexts<'_>,
     gas_available: u64,
@@ -455,6 +472,7 @@ fn execute_create<S: State + Clone>(
     // Compute contract address
     let nonce = state.get_nonce(sender);
     let contract_address = compute_create_address(sender, nonce.saturating_sub(U256::ONE));
+    state.mark_account_created(&contract_address);
 
     // Execute init code
     let init_code = tx.data().to_vec();
