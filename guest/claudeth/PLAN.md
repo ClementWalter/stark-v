@@ -51,6 +51,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - In-tree finite-field helpers and curve constants.
 - Affine point arithmetic and ECDSA verify/recover.
 - Removed k256 dependency; tests use fixed signature vectors.
+- Executor validates blob versioned hashes (non-empty, count limit, version byte).
 
 ### Backlog (Not Scheduled)
 

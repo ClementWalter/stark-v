@@ -51,6 +51,7 @@ Date: 2026-02-10
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`, blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - Blob data fee is charged from the sender and burned (not credited to coinbase).
 - `TxContext` carries `blob_versioned_hashes`; `BLOBHASH` returns zero for out-of-range indices.
+- `execute_transaction` must call `validate_blob_structure` directly because block processing does not use `validate_transaction`.
 
 ## Logs Bloom
 
@@ -75,6 +76,7 @@ Date: 2026-02-10
 - Keep EIP-4788 and EIP-2935 system calls before transaction execution.
 - Enforce witness ordering and proof validation for accounts and storage slots.
 - Validate base fee caps per tx type before charging balances.
+- Validate blob versioned hashes in `execute_transaction`, not just in standalone validation.
 - Charge blob data fees upfront and burn them (not coinbase).
 - Sort addresses before computing state roots and use `keccak256(address)` as trie keys.
 - Enforce EIP-2 signature bounds and correct `v/y_parity` handling.
