@@ -7,7 +7,7 @@ Date: 2026-02-10
 - Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and revert only the current call frame; the transaction is still included with `success=false`, no logs, and full gas used.
 - `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
-- Coinbase receives only the priority fee; base fee is burned for all post-London transactions (priority fee = effective gas price - base fee).
+- Coinbase receives only the priority fee; base fee is burned for post-London transactions.
 - SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
 - EIP-3860: creation tx initcode > 49,152 bytes is invalid; CREATE/CREATE2 oversize initcode returns 0 after charging gas.
 - EIP-170 max code size and code-deposit gas charging apply to CREATE/CREATE2.

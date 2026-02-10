@@ -8,8 +8,8 @@ Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 `riscv32im-unknown-none-elf`. It implements a full EVM interpreter, block
 processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
-(type `0x03`) and post-Shanghai fields are supported.
-README alignment revalidated against code on 2026-02-10.
+(type `0x03`) and post-Shanghai fields are supported. README alignment
+revalidated against code on 2026-02-10.
 
 ## Verified Status (from code, reviewed 2026-02-10)
 
@@ -55,8 +55,7 @@ README alignment revalidated against code on 2026-02-10.
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass. (Unit, integration, and
-  doc tests ran; EELS blockchain tests remain ignored by default.)
+- `cargo test -p claudeth --release` (2026-02-10): pass.
 - `prek run` (2026-02-10): pass. (Hooks skipped due to no eligible files; run
   still required.)
 
