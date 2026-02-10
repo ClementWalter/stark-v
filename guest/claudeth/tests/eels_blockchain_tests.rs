@@ -155,6 +155,10 @@ struct TestTransaction {
     /// EIP-1559 transaction fields
     max_fee_per_gas: Option<String>,
     max_priority_fee_per_gas: Option<String>,
+    /// EIP-4844 blob transaction field
+    max_fee_per_blob_gas: Option<String>,
+    /// EIP-4844 blob transaction field
+    blob_versioned_hashes: Option<Vec<String>>,
     /// EIP-2930 access list
     access_list: Option<Vec<AccessListEntry>>,
     /// Signature fields
@@ -410,8 +414,8 @@ fn convert_test_transaction(
     test_tx: &TestTransaction,
 ) -> Result<claudeth::types::Transaction, String> {
     use claudeth::types::transaction::{
-        AccessListEntry as ClaudethAccessListEntry, Eip1559Transaction, Eip2930Transaction,
-        LegacyTransaction,
+        AccessListEntry as ClaudethAccessListEntry, BlobTransaction, Eip1559Transaction,
+        Eip2930Transaction, LegacyTransaction,
     };
     use claudeth::types::{Hash, Transaction};
 
@@ -555,6 +559,80 @@ fn convert_test_transaction(
                 value,
                 data,
                 access_list,
+                v,
+                r,
+                s,
+            })
+        }
+        0x03 => {
+            // Cancun/Prague fixtures include type-3 transactions; rejecting
+            // these silently skews conformance coverage toward pre-4844 flows.
+            let chain_id = test_tx
+                .chain_id
+                .as_ref()
+                .ok_or("EIP-4844 transaction missing chain_id")?;
+            let max_fee_per_gas = test_tx
+                .max_fee_per_gas
+                .as_ref()
+                .ok_or("EIP-4844 transaction missing max_fee_per_gas")?;
+            let max_priority_fee_per_gas = test_tx
+                .max_priority_fee_per_gas
+                .as_ref()
+                .ok_or("EIP-4844 transaction missing max_priority_fee_per_gas")?;
+            let max_fee_per_blob_gas = test_tx
+                .max_fee_per_blob_gas
+                .as_ref()
+                .ok_or("EIP-4844 transaction missing max_fee_per_blob_gas")?;
+            let to = to.ok_or("EIP-4844 transaction missing to address")?;
+
+            let access_list = test_tx
+                .access_list
+                .as_ref()
+                .map(|al| {
+                    al.iter()
+                        .map(|entry| {
+                            let address = parse_address(&entry.address)?;
+                            let storage_keys = entry
+                                .storage_keys
+                                .iter()
+                                .map(|key| {
+                                    Hash::from_str(key)
+                                        .map_err(|err| format!("invalid storage key {key}: {err}"))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok(ClaudethAccessListEntry {
+                                address,
+                                storage_keys,
+                            })
+                        })
+                        .collect::<Result<Vec<_>, String>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+
+            let blob_versioned_hashes = test_tx
+                .blob_versioned_hashes
+                .as_ref()
+                .ok_or("EIP-4844 transaction missing blob_versioned_hashes")?
+                .iter()
+                .map(|hash| {
+                    Hash::from_str(hash)
+                        .map_err(|err| format!("invalid blob versioned hash {hash}: {err}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Transaction::Blob(BlobTransaction {
+                chain_id: parse_u256(chain_id)?,
+                nonce,
+                max_priority_fee_per_gas: parse_u256(max_priority_fee_per_gas)?,
+                max_fee_per_gas: parse_u256(max_fee_per_gas)?,
+                gas_limit,
+                to,
+                value,
+                data,
+                access_list,
+                max_fee_per_blob_gas: parse_u256(max_fee_per_blob_gas)?,
+                blob_versioned_hashes,
                 v,
                 r,
                 s,
@@ -835,6 +913,62 @@ fn test_convert_test_withdrawal_rejects_amount_over_u64() {
 
     let err = convert_test_withdrawal(&test_withdrawal).unwrap_err();
     assert!(err.contains("too large for u64"));
+}
+
+#[test]
+fn test_convert_test_transaction_blob_fixture_case() {
+    use claudeth::types::Transaction;
+    use std::path::Path;
+
+    let case = load_single_blockchain_case(
+        Path::new(
+            "tests/eels/BlockchainTests/ValidBlocks/bcEIP4844-blobtransactions/blockWithAllTransactionTypes.json",
+        ),
+        "BlockchainTests/ValidBlocks/bcEIP4844-blobtransactions/blockWithAllTransactionTypes.json::blockWithAllTransactionTypes_Cancun",
+    );
+    let blob_test_tx = case.blocks[0]
+        .transactions
+        .iter()
+        .find(|tx| tx.tx_type.as_deref() == Some("0x03"))
+        .expect("fixture must include type-3 transaction");
+
+    let converted = convert_test_transaction(blob_test_tx).expect("convert blob transaction");
+
+    match converted {
+        Transaction::Blob(blob) => {
+            assert_eq!(blob.max_fee_per_blob_gas, U256::from(10u64));
+            assert_eq!(blob.blob_versioned_hashes.len(), 1);
+        }
+        _ => panic!("expected blob transaction"),
+    }
+}
+
+#[test]
+fn test_convert_test_transaction_blob_missing_fee_field() {
+    let test_tx = TestTransaction {
+        tx_type: Some("0x03".to_string()),
+        chain_id: Some("0x01".to_string()),
+        data: "0x".to_string(),
+        gas_limit: "0x5208".to_string(),
+        nonce: "0x00".to_string(),
+        to: "0x100000000000000000000000000000000000000a".to_string(),
+        value: "0x00".to_string(),
+        gas_price: None,
+        max_fee_per_gas: Some("0x03e8".to_string()),
+        max_priority_fee_per_gas: Some("0x01".to_string()),
+        max_fee_per_blob_gas: None,
+        blob_versioned_hashes: Some(vec![
+            "0x01a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8".to_string(),
+        ]),
+        access_list: Some(vec![]),
+        v: "0x00".to_string(),
+        r: "0x01".to_string(),
+        s: "0x01".to_string(),
+        sender: None,
+    };
+
+    let err = convert_test_transaction(&test_tx).unwrap_err();
+    assert!(err.contains("missing max_fee_per_blob_gas"));
 }
 
 fn load_single_blockchain_case(path: &Path, case_name: &str) -> BlockchainTest {

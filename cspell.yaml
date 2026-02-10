@@ -18,6 +18,7 @@ words:
   - bitmaski
   - blobbasefee
   - blobhash
+  - blobtransactions
   - blockhash
   - bltu
   - bytemuck
