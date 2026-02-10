@@ -53,7 +53,7 @@ The codebase embeds a **Partial MPT** implementation capable of:
 - Building tries from account/storage data
 - Computing roots
 - Generating and verifying Merkle proofs
-- (Future) Reconstructing minimal state from witnesses
+- Reconstructing minimal state from witnesses
 
 ## References
 
