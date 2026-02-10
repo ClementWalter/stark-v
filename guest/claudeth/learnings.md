@@ -16,26 +16,25 @@ Date: 2026-02-10
 - Validate the child header against the parent before executing transactions.
 - Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls
   before transaction execution and before computing the post-state root.
-- Post-execution checks: receipts root, transactions root, logs bloom,
+- Post-execution checks include receipts root, transactions root, logs bloom,
   withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Header Validation Essentials
 
 - Post-merge headers enforce `difficulty == 0`, `mix_hash == 0`, `nonce == 0`,
   and `ommers_hash == EMPTY_OMMERS_HASH`.
-- `extra_data.len() <= 32` and `gas_used <= gas_limit`.
-- Base fee per gas is derived from the parent (EIP-1559).
-- Blob fields are all-or-nothing: if `blob_gas_used` or `excess_blob_gas` is
-  present, both must be present and `excess_blob_gas` must match the
-  parent-derived value.
+- `extra_data.len() <= 32` and `gas_used <= gas_limit` must hold.
+- Base fee per gas and excess blob gas are derived from the parent; blob fields
+  are all-or-nothing (`blob_gas_used` and `excess_blob_gas` must appear
+  together).
 
-## Guest Input (Current)
+## Guest Input and Witness Rules
 
 - Input is an RLP list of 5–7 items:
   `block_header`, `parent_header`, `chain_id`, `transactions`,
   `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - `withdrawals` must be provided iff `withdrawals_root` is present in the
-  header; empty list is valid.
+  header; an empty list is valid.
 - Recent block hashes are capped at 256 entries, ordered oldest → newest; when
   provided, the last hash must equal `parent.compute_hash()`.
 - Genesis (`block.number == 0`) rejects any recent block hashes list.
@@ -43,7 +42,7 @@ Date: 2026-02-10
 ## Witness Validation (WITNESS v1)
 
 - Witness entries are validated against `state_root` using MPT proofs.
-- Accounts must be sorted by ascending address with no duplicates.
+- Accounts are sorted by ascending address with no duplicates.
 - Account trie keys are `keccak256(address)`.
 - Empty `account_rlp` requires an exclusion proof and empty `code_bytes` plus
   `storage_entries`.
@@ -70,16 +69,15 @@ Date: 2026-02-10
   EIP-4844 require `max_fee_per_gas >= base_fee`.
 - Signature recovery enforces EIP-2 bounds: `0 < r < SECP256K1N`,
   `0 < s <= SECP256K1N/2`, and valid `v/y_parity` per tx type.
-- Signature verification is done over the prehashed message (Keccak-256), and
-  tests use fixed vectors instead of k256 signing.
+- Signature verification is done over the prehashed message (Keccak-256).
 
 ## Blob Transaction Rules
 
 - Blob tx validation enforces non-empty blob hashes, KZG version byte `0x01`,
   blob count limit, and `max_fee_per_blob_gas >= blob_base_fee`.
 - Blob txs require a 20-byte `to` address (no contract creation).
-- `TxContext` carries `blob_versioned_hashes`; `RecursiveHost::blobhash` reads
-  from it and returns zero for out-of-range indices.
+- `TxContext` carries `blob_versioned_hashes`; `BLOBHASH` returns zero for
+  out-of-range indices.
 - Blob data fee is charged from sender and burned (not credited to coinbase).
 - Blob receipt encoding uses type prefix `0x03`.
 
@@ -91,7 +89,10 @@ Date: 2026-02-10
 ## secp256k1 In-Tree Work
 
 - secp256k1 constants are fixed (p, n, b), and modular helpers exist for
-  add/sub/mul/pow/inv as a foundation for removing `k256`.
+  add/sub/mul/pow/inv.
+- Affine point arithmetic must treat infinity explicitly: `P + (-P) = O`,
+  doubling with `y == 0` yields infinity, and scalar multiplication uses
+  double-and-add over U256 scalars.
 
 ## Pre-commit Hygiene
 
@@ -114,8 +115,7 @@ Date: 2026-02-10
 - Use execution-specs logs bloom bit ordering (reversed 11-bit index,
   MSB-first).
 - Enforce EIP-2 signature bounds and `v/y_parity` during sender recovery.
-- Reuse in-tree secp256k1 modular helpers for point/ecdsa work to avoid new
-  dependencies.
+- Treat point-at-infinity cases explicitly in secp256k1 arithmetic.
 
 **Don't**
 
@@ -124,3 +124,4 @@ Date: 2026-02-10
 - Leave unused `src/*.rs` files (pre-commit will fail).
 - Accept recent block hash lists for genesis or lists with a mismatched parent.
 - Accept witness accounts with mismatched code hashes or unsorted entries.
+- Ignore `y == 0` and `x1 == x2` edge cases in point arithmetic.
