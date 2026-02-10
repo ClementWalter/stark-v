@@ -16,6 +16,8 @@ Date: 2026-02-10
   current values; refunds are capped to 1/5 of gas used.
 - Transient storage (EIP-1153), original storage, and created-account tracking
   reset at transaction boundaries and after pre-block system calls.
+- COINBASE is pre-warmed (EIP-3651) alongside sender, recipient, precompiles,
+  and access list entries; BALANCE/EXTCODE on coinbase uses warm costs.
 
 ## Transaction Validation & Fees
 
@@ -94,6 +96,13 @@ Date: 2026-02-10
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
 - Tests that build account tries directly must hash addresses with
   `keccak256(address)` to match production state roots and proof verification.
+
+## Guest IO
+
+- Guest output is `RLP([status, gas_used, receipts_root, state_root, error_code, error_data])`;
+  error details are encoded as a nested RLP list.
+- RLP decode errors are surfaced with a stable kind code (invalid encoding,
+  unexpected end, invalid length, input too short, leading zero, non-canonical).
 
 ## Types & Crypto
 

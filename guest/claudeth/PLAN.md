@@ -17,6 +17,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 - EVM interpreter with full opcode coverage, including Cancun opcodes
   (`BLOBHASH`, `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`) and post-Cancun
   execution semantics (EIP-6780, EIP-3541, EIP-3860, EIP-170).
+- EIP-3651 warm COINBASE handling in the initial warm address set.
 - Transaction validation and execution for Legacy, EIP-2930, EIP-1559, and
   EIP-4844 blob transactions, including EIP-2718 typed envelopes.
 - EIP-4844 blob tx encoding/decoding, signing hash, blob fee validation, and
@@ -36,8 +37,10 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   storage tracking cleared at tx and system-call boundaries.
 - Transient storage (EIP-1153) implementation and clearing.
 - Coinbase receives only the priority fee; base fee and blob data fee are burned.
- - State-trie integration tests now use `keccak256(address)` keys to match
-   production state root and proof behavior.
+- State-trie integration tests now use `keccak256(address)` keys to match
+  production state root and proof behavior.
+- Guest output encodes error status and details as an RLP list for deterministic
+  error handling in the host.
 
 ### Known Gaps / Limitations
 
@@ -45,7 +48,7 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass (1 ignored)
+- `cargo test -p claudeth --release` (2026-02-10): pass (1235 tests)
 - `prek run` (2026-02-10): pass (no eligible files)
 
 ## Plan
@@ -59,6 +62,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 
 - Revalidated README, code, and learnings against current implementation.
 - Aligned state-trie integration tests with keccak256 address keying.
+- Pre-warmed COINBASE (EIP-3651) and added a gas-cost regression test.
+- Refreshed PLAN and learnings after code/README audit.
 
 ### Backlog (Not Scheduled)
 
