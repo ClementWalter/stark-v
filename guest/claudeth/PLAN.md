@@ -1,35 +1,90 @@
 # Claudeth Implementation Plan
 
-Priority-ordered tasks to reach full EELS compatibility and the project goals.
+This plan is the source of truth for completion. It is based on code reality, not README claims.
 
-Status: Precompiles 0x01-0x04 are implemented (ECRECOVER, SHA256, RIPEMD160, IDENTITY).
+## Current Reality Snapshot
 
-- Task 1: Implement remaining legacy precompiles (MODEXP, ALT_BN128 add/mul/pairing, BLAKE2F).
-Why: State and blockchain tests include these precompiles; missing them blocks fixture coverage.
-What: Implement 0x05-0x09 semantics and gas formulas.
-How: Follow execution-specs precompile implementations and gas functions; add targeted unit tests and fixture-driven checks.
+- Implemented precompiles: `0x01..0x05` (ECRECOVER, SHA256, RIPEMD160, IDENTITY, MODEXP).
+- Missing precompiles: `0x06..0x0a` (BN254 add/mul/pairing, BLAKE2F, point evaluation).
+- No fork gating: execution currently applies post-Cancun-style rules broadly.
+- EELS integration is partial:
+  - skips `InvalidBlocks`;
+  - ignores full execution test by default;
+  - executes only a tiny subset in ignored mode (`take(10)`);
+  - uses a parent-hash workaround in tests.
+- RV32im execution tests are not wired through `../../crates/runner`.
 
-- Task 2: Implement Cancun/Prague precompiles (point evaluation, P256VERIFY) with fork gating.
-Why: Cancun/Prague fixtures include EIP-4844 and EIP-7212 behavior.
-What: Add precompile handlers for the newer addresses and enforce activation by fork.
-How: Introduce a fork config in block/tx context, map precompile set by fork, and add tests that assert activation boundaries.
+## Priority Tasks (Why / What / How)
 
-- Task 3: Fork-aware STF rules (gas schedule, opcodes, tx validity).
-Why: EELS fixtures span multiple forks; current execution applies post-Cancun rules everywhere.
-What: Add a fork selection mechanism based on block metadata/config, and gate rules accordingly.
-How: Define a fork enum + schedule parser for fixture network fields; thread into validation and EVM gas tables.
+### Task 1 (P0): Implement Cancun-spec MODEXP precompile (`0x05`) and proper precompile OOG call semantics
+Status: Completed.
+Why:
+- MODEXP is required by core blockchain/state fixtures and currently unimplemented.
+- Current precompile call path can escalate insufficient precompile gas into a caller-level exceptional halt instead of a failed call result.
+What:
+- Add precompile `0x05` with Cancun gas formula (`EIP-2565`) and EELS calldata parsing (`buffer_read` zero-padding semantics).
+- Ensure precompile insufficient gas returns `success = false` and consumes forwarded gas, instead of throwing caller OOG.
+How:
+- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/modexp.py`.
+- Compute gas using `complexity/iterations` exactly per spec.
+- Add focused tests for:
+  - gas formula boundaries;
+  - `base_len=0 && mod_len=0`;
+  - modulus zero behavior;
+  - OOG call behavior at host/interpreter boundary.
 
-- Task 4: Full EELS blockchain fixture execution.
-Why: README goal is EELS compatibility; current harness only parses a subset and runs a handful of files.
-What: Execute all valid/invalid blockchain tests with correct error mapping and reporting.
-How: Implement exception mapping, expand harness to run all fixture files, and add a fast subset smoke test.
+### Task 2 (P0): Implement remaining legacy precompiles (`0x06..0x09`)
+Why:
+- BN254 and BLAKE2F coverage is required by many execution fixtures.
+What:
+- Implement `ECADD`, `ECMUL`, `ECPAIRING`, `BLAKE2F` with exact input validation and output conventions.
+How:
+- Mirror execution-specs implementations and add deterministic vector tests.
+- Add call-level OOG and malformed-input behavior tests.
 
-- Task 5: RV32im build + runner integration for tests.
-Why: Project promises RV32im compatibility; tests currently run natively only.
-What: Add a Python (uv-run) test driver that compiles to RV32im and runs via the runner.
-How: Build a `uv run` script that compiles `-p claudeth` to RV32im, runs the ELF with `../../crates/runner`, and mirrors the native test list.
+### Task 3 (P0): Add fork-aware rules through STF, EVM, and transaction validation
+Why:
+- EELS fixtures span multiple forks; one-ruleset execution cannot pass full fixture sets.
+What:
+- Introduce a fork schedule model and gate:
+  - transaction types/fields validity;
+  - opcode availability;
+  - precompile set and gas tables;
+  - header field expectations (withdrawals/blob/beacon root/history behavior).
+How:
+- Parse fixture `network` into a fork enum.
+- Thread fork context from test harness -> `process_block` -> validation/execution layers.
 
-- Task 6: no_std enforcement and size/cycle benchmarking parity.
-Why: `no_std` is a core claim; RV32im constraints need continuous verification.
-What: Add a `no_std` build target and benchmark checks in CI-like scripts.
-How: Provide a `uv run` script that builds with `#![no_std]` gated features and runs `benchmarks/` with fixed inputs.
+### Task 4 (P0): Make blockchain fixture execution complete and deterministic
+Why:
+- README-level compatibility requires running and validating real fixtures, including invalid blocks.
+What:
+- Remove subset/skip behavior and execute full fixture corpus with explicit pass/fail accounting.
+- Handle expected exceptions and invalid blocks correctly.
+How:
+- Replace ad-hoc test flow with a fixture runner that maps execution errors to fixture exception categories.
+- Remove parent-hash workaround and fix root-cause mismatches.
+
+### Task 5 (P1): Implement point-evaluation precompile (`0x0a`) with fork gating
+Why:
+- Cancun fixtures rely on EIP-4844 point evaluation behavior.
+What:
+- Implement `POINT_EVALUATION` precompile and gate activation by fork.
+How:
+- Follow execution-specs Cancun implementation and add positive/negative vectors.
+
+### Task 6 (P1): Add RV32im execution path in tests using the stark-v runner
+Why:
+- Project target is `riscv32im-unknown-none-elf`; native-only testing is insufficient.
+What:
+- Add `uv run` Python driver to compile and run `-p claudeth` guest binaries via `../../crates/runner`.
+How:
+- Mirror representative native tests on RV32im and fail CI if mismatched.
+
+### Task 7 (P1): Enforce no_std and benchmark claims continuously
+Why:
+- Current claims (no_std, cycle efficiency) are not continuously validated.
+What:
+- Add explicit no_std build checks and reproducible benchmark scripts.
+How:
+- Use `uv run` scripts for deterministic build/benchmark pipelines and record baseline outputs in `benchmarks/`.

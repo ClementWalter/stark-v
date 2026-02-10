@@ -219,30 +219,42 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             };
         };
 
-        if let Some(result) = execute_precompile(&msg.code_address, &msg.input) {
-            if !msg.value.is_zero() {
-                let caller_balance = state.get_balance(&msg.caller);
-                if caller_balance < msg.value {
+        if let Some(precompile_result) = execute_precompile(&msg.code_address, &msg.input, msg.gas) {
+            match precompile_result {
+                Ok(result) => {
+                    if !msg.value.is_zero() {
+                        let caller_balance = state.get_balance(&msg.caller);
+                        if caller_balance < msg.value {
+                            return CallResult {
+                                success: false,
+                                return_data: Vec::new(),
+                                gas_used: 0,
+                            };
+                        }
+                        state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
+
+                        let recipient_balance = state.get_balance(&msg.address);
+                        state.set_balance(
+                            &msg.address,
+                            recipient_balance.saturating_add(msg.value),
+                        );
+                    }
+
+                    return CallResult {
+                        success: true,
+                        return_data: result.output,
+                        gas_used: result.gas_used,
+                    };
+                }
+                // Precompile OOG is a sub-call failure that consumes forwarded gas.
+                Err(_) => {
                     return CallResult {
                         success: false,
                         return_data: Vec::new(),
-                        gas_used: 0,
+                        gas_used: msg.gas,
                     };
                 }
-                state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
-
-                let recipient_balance = state.get_balance(&msg.address);
-                state.set_balance(
-                    &msg.address,
-                    recipient_balance.saturating_add(msg.value),
-                );
             }
-
-            return CallResult {
-                success: true,
-                return_data: result.output,
-                gas_used: result.gas_used,
-            };
         }
 
         // Get contract code from code_address
@@ -590,6 +602,23 @@ mod tests {
         code
     }
 
+    fn precompile_address(id: u8) -> Address {
+        let mut bytes = [0u8; 20];
+        bytes[19] = id;
+        Address::from(bytes)
+    }
+
+    fn modexp_input(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
+        let mut input = Vec::with_capacity(96 + base.len() + exponent.len() + modulus.len());
+        input.extend_from_slice(&U256::from_u64(base.len() as u64).to_be_bytes());
+        input.extend_from_slice(&U256::from_u64(exponent.len() as u64).to_be_bytes());
+        input.extend_from_slice(&U256::from_u64(modulus.len() as u64).to_be_bytes());
+        input.extend_from_slice(base);
+        input.extend_from_slice(exponent);
+        input.extend_from_slice(modulus);
+        input
+    }
+
     #[test]
     fn test_recursive_host_blockhash_parent_only() {
         let parent_hash = Hash::from([0x11; 32]);
@@ -668,6 +697,37 @@ mod tests {
             Host::<InMemoryState>::blobhash(&host, &U256::from_u64(2)),
             None
         );
+    }
+
+    #[test]
+    fn test_recursive_host_precompile_oog_fails_call_and_keeps_balances() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x11; 20]);
+        let precompile = precompile_address(5);
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&precompile, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new();
+        let input = modexp_input(&vec![0x01; 256], &[0x01], &vec![0x03; 256]);
+        let msg = CallMessage {
+            kind: CallKind::Call,
+            gas: 300,
+            address: precompile,
+            caller,
+            value: U256::from_u64(5),
+            code_address: precompile,
+            input,
+            is_static: false,
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(!result.success);
+        assert!(result.return_data.is_empty());
+        assert_eq!(result.gas_used, 300);
+
+        // Failed sub-calls must not move value, so balances stay unchanged.
+        assert_eq!(state.get_balance(&caller), U256::from_u64(10));
+        assert_eq!(state.get_balance(&precompile), U256::from_u64(1));
     }
 
     #[test]
