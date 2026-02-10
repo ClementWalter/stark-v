@@ -46,6 +46,8 @@ README alignment revalidated against code on 2026-02-10.
   all remaining gas without aborting block processing.
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
+- Pay coinbase only the priority fee (effective gas price minus base fee),
+  burning the base fee portion.
 
 ### Known Gaps / Limitations
 
@@ -80,6 +82,8 @@ README alignment revalidated against code on 2026-02-10.
   (receipt failure, no block abort) with coverage.
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
+- Pay coinbase only the priority fee (effective gas price minus base fee),
+  burning the base fee portion.
 - Deterministic in-tree signer used by signature-related tests.
 - Apply EIP-6780 SELFDESTRUCT rules: transfer balance immediately, delete only
   if created in the same transaction, and clear created-account tracking per tx.

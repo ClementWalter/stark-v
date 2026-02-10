@@ -289,8 +289,9 @@ pub fn execute_transaction<S: State + Clone>(
     let sender_balance = state.get_balance(&sender);
     state.set_balance(&sender, sender_balance.saturating_add(gas_refund));
 
-    // Pay coinbase (block producer) the gas fee
-    let gas_fee = U256::from_u64(final_gas_used).saturating_mul(effective_gas_price);
+    // Pay coinbase only the priority fee (base fee is burned).
+    let priority_fee_per_gas = effective_gas_price.saturating_sub(exec_ctx.block_ctx.base_fee);
+    let gas_fee = U256::from_u64(final_gas_used).saturating_mul(priority_fee_per_gas);
     let coinbase_balance = state.get_balance(&exec_ctx.block_ctx.coinbase);
     state.set_balance(
         &exec_ctx.block_ctx.coinbase,
@@ -890,7 +891,7 @@ mod tests {
 
         assert_eq!(state.get_balance(&sender), expected_sender_balance);
         assert_eq!(state.get_balance(&recipient), value);
-        assert_eq!(state.get_balance(&coinbase), gas_fee);
+        assert_eq!(state.get_balance(&coinbase), U256::ZERO);
     }
 
     #[test]
