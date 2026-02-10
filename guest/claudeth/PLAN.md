@@ -8,49 +8,34 @@ Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 `riscv32im-unknown-none-elf`. It implements a full EVM interpreter, block
 processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
-(type `0x03`) and post-Shanghai fields are supported. README alignment reviewed
-against code on 2026-02-10; docs and comments now consistently refer to Cancun-era
-functionality.
+(type `0x03`) and post-Shanghai fields are supported. README alignment was
+re-verified against code on 2026-02-10.
 
 ## Verified Status (from code, reviewed 2026-02-10)
 
 ### Implemented
 
 - EVM interpreter with full opcode coverage, including Cancun opcodes
-  (`BLOBHASH`, `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`).
-- EIP-6780 SELFDESTRUCT semantics: immediate balance transfer, deletion only for
-  contracts created in the same transaction, with created-account tracking.
+  (`BLOBHASH`, `BLOBBASEFEE`, `TLOAD`, `TSTORE`, `PREVRANDAO`) and post-Cancun
+  execution semantics (EIP-6780, EIP-3541, EIP-3860, EIP-170).
 - Transaction validation and execution for Legacy, EIP-2930, EIP-1559, and
-  EIP-4844 blob transactions.
+  EIP-4844 blob transactions, including EIP-2718 typed envelopes.
 - EIP-4844 blob tx encoding/decoding, signing hash, blob fee validation, and
   blob gas accounting.
-- Reject transactions from senders with non-empty code (EOA-only requirement).
 - Block processing with parent header validation, receipts/tx/state root checks,
   logs bloom validation, gas used checks, and blob gas used checks.
 - EIP-4895 withdrawals application and withdrawals root validation.
 - EIP-4788 beacon root system call and EIP-2935 history storage system call.
-- Guest input decoding supports optional recent block hashes for BLOCKHASH
-  (length `<= min(block.number, 256)` and last hash == parent hash) and
-  withdrawals list when `withdrawals_root` is present; witness input is detected
+- Guest input decoding supports optional recent block hashes for BLOCKHASH and
+  withdrawals list when `withdrawals_root` is present; witness input detected
   via a versioned 3-item list (WITNESS v1).
-- Receipt decoding supports EIP-2718 typed envelopes for `0x01..0x03`.
 - Partial MPT implementation with inclusion/exclusion proof verification.
 - Witness-based state reconstruction from WITNESS v1 (account/storage proofs).
-- In-tree secp256k1 field/point arithmetic and ECDSA verify/recover.
-- Deterministic in-tree secp256k1 signer for tests.
-- EIP-3860 initcode size limits enforced for creation txs and CREATE/CREATE2.
-- EIP-170 max code size enforcement and code-deposit gas charging for
-  CREATE/CREATE2.
-- Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
-  results and only apply execution state on success.
-- Treat exceptional halts (OOG/invalid opcode) as failed executions that consume
-  all remaining gas without aborting block processing.
-- Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
-  CREATE/CREATE2 paths, consuming all remaining gas on failure.
-- Pay coinbase only the priority fee (effective gas price minus base fee),
-  burning the base fee portion.
-- EIP-2200 SSTORE gas/refund accounting with original-value tracking and
-  EIP-3529 refund adjustments, with per-transaction original storage clearing.
+- In-tree secp256k1 field/point arithmetic and ECDSA verify/recover, with
+  deterministic signer for tests.
+- SSTORE gas/refund accounting (EIP-2200 + EIP-2929 + EIP-3529) with original
+  storage tracking cleared at tx and system-call boundaries.
+- Coinbase receives only the priority fee; base fee and blob data fee are burned.
 
 ### Known Gaps / Limitations
 
@@ -58,42 +43,20 @@ functionality.
 
 ## Testing Status
 
-- `cargo test -p claudeth --release` (2026-02-10): pass.
-- `prek run` (2026-02-10): pass (no eligible files).
+- `cargo test -p claudeth --release` (2026-02-10): pass (ignored: `test_execute_all_blockchain_tests`)
+- `prek run` (2026-02-10): pass (no eligible files)
 
 ## Plan
 
 ### Done
 
-- Witness RLP decoding alongside `state_entries` input.
-- Account/storage proof verification and code hash validation.
-- Witness parsing tests for valid/invalid cases.
-- In-tree finite-field helpers and curve constants.
-- Affine point arithmetic and ECDSA verify/recover.
-- Removed k256 dependency; tests now sign with in-tree code.
-- Executor validates blob versioned hashes (non-empty, count limit, version
-  byte).
-- Enforced EIP-3860 initcode size limits for contract-creation transactions and
-  CREATE/CREATE2 (reject > 49,152 bytes) with tests.
-- Enforced EIP-170 max code size and code-deposit gas charging for CREATE/CREATE2
-  with tests.
-- Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
-  results and only apply execution state on success.
-- Treat exceptional halts as failed executions consuming all remaining gas
-  (receipt failure, no block abort) with coverage.
-- Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
-  CREATE/CREATE2 paths, consuming all remaining gas on failure.
-- Pay coinbase only the priority fee (effective gas price minus base fee),
-  burning the base fee portion.
-- Deterministic in-tree signer used by signature-related tests.
-- Apply EIP-6780 SELFDESTRUCT rules: transfer balance immediately, delete only
-  if created in the same transaction, and clear created-account tracking per tx.
-- Accept and decode typed receipt envelopes for `0x01..0x03`, rejecting
-  unsupported prefixes.
-- Reject transactions whose sender account has code (EOA-only requirement).
-- Implement EIP-2200 SSTORE gas/refund logic with original-value tracking and
-  clear original storage at transaction and system-call boundaries.
-- Align fork naming in source comments to Cancun-era functionality.
+- WITNESS v1 decoding and proof validation integrated into guest input.
+- Blob tx validation, blob fee charging, and blob gas accounting.
+- EIP-6780 SELFDESTRUCT, EIP-3541, EIP-3860, EIP-170 enforcement.
+- Transaction execution semantics: REVERT non-exceptional; exceptional halts
+  consume remaining gas without aborting block processing.
+- Receipt encoding/decoding with EIP-2718 typed envelopes.
+- SSTORE gas/refund accounting with original storage tracking.
 
 ### Backlog (Not Scheduled)
 
@@ -101,4 +64,4 @@ functionality.
 
 ## Immediate Next Task
 
-None. (README and code now align; backlog items only.)
+None. (README and code align; backlog items only.)
