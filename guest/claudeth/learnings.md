@@ -6,17 +6,16 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid opcode/jump, stack errors) burn remaining gas,
   return `success=false`, and do not abort block processing.
-- `REVERT` is non-exceptional: it returns `success=false`, preserves remaining
-  gas, and reverts only the current call frame.
-- `SELFDESTRUCT` follows EIP-6780: only deletes contracts created in the same
-  transaction; created-account tracking resets per transaction.
+- `REVERT` is non-exceptional: returns `success=false`, preserves remaining gas,
+  and reverts only the current call frame.
+- `SELFDESTRUCT` follows EIP-6780: only contracts created in the same
+  transaction are deleted; others only transfer balance.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170
   code-size checks; failures consume all remaining gas.
 - SSTORE gas/refund follows EIP-2200 + EIP-2929 + EIP-3529 with original vs
   current values; refunds are capped to 1/5 of gas used.
-- Transient storage (EIP-1153), original storage, selfdestruct markers, and
-  created-account tracking reset at transaction boundaries and after pre-block
-  system calls.
+- Transient storage (EIP-1153), original storage, and created-account tracking
+  reset at transaction boundaries and after pre-block system calls.
 
 ## Transaction Validation & Fees
 
@@ -26,8 +25,8 @@ Date: 2026-02-10
 - Legacy/EIP-2930 require `gas_price >= base_fee` when `base_fee > 0`.
 - EIP-1559/EIP-4844 require `max_fee_per_gas >= base_fee` and
   `max_priority_fee_per_gas <= max_fee_per_gas`.
-- Balance checks use max-fee caps: `gas_limit * max_fee_per_gas + value`
-  (plus blob fee cap for type `0x03`).
+- Balance checks use max-fee caps: `gas_limit * max_fee_per_gas + value`, plus
+  `blob_gas * max_fee_per_blob_gas` for type `0x03`.
 - Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
 - Sender is charged upfront for gas and blob data fee; unused gas is refunded.
 - Coinbase receives only the priority fee; base fee and blob data fee are burned.
@@ -83,6 +82,9 @@ Date: 2026-02-10
   failure.
 - Logs bloom uses execution-specs bit order: reverse the 11-bit index
   (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
+- Transactions root uses an MPT keyed by `RLP(tx_index)` with `RLP(tx)` values.
+- Withdrawals root uses an MPT keyed by `RLP(withdrawal_index)` with
+  `RLP(withdrawal)` values.
 - State root is computed by sorting addresses, using `keccak256(address)` as
   trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
@@ -90,7 +92,7 @@ Date: 2026-02-10
 ## Types & Crypto
 
 - EIP-55 checksumming uses Keccak-256 over the lowercase hex address without
-  the `0x` prefix; `types::Address::to_checksum_string` already follows this.
+  the `0x` prefix; `types::Address::to_checksum_string` follows this.
 - Address parsing accepts any hex case and does not validate checksum.
 - EIP-55 test vectors must match canonical casing (e.g.,
   `0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed`).
