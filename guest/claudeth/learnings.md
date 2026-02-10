@@ -4,11 +4,11 @@ Date: 2026-02-10
 
 ## Consensus-Critical Execution Semantics
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false`; block processing continues and only successful executions commit state.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas, return `success=false`, and do not abort block processing.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and reverts only the current call frame.
-- `SELFDESTRUCT` follows EIP-6780 (delete only if created in the same transaction); created-account tracking resets per transaction.
+- `SELFDESTRUCT` follows EIP-6780: delete only if created in the same transaction; created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
-- SSTORE gas/refunds follow EIP-2200 + EIP-2929 + EIP-3529 using original vs current values; refunds are capped to 1/5 of gas used.
+- SSTORE gas/refund accounting follows EIP-2200 + EIP-2929 + EIP-3529 using original vs current values; refunds are capped to 1/5 of gas used.
 - Original storage tracking must reset at transaction boundaries and after pre-block system calls.
 - Coinbase receives only priority fees; base fee and blob data fee are burned.
 
@@ -21,7 +21,7 @@ Date: 2026-02-10
 - Balance checks use the max-fee cap: `gas_limit * max_fee_per_gas + value` (+ blob fee cap for type `0x03`).
 - Effective gas price is `min(max_fee_per_gas, base_fee + max_priority_fee_per_gas)`.
 - Chain ID rules: legacy uses EIP-155 encoding in `v`, typed txs use explicit `chain_id`.
-- Blob tx validation: non-empty versioned hashes, version byte `0x01`, count limit `6`, and `max_fee_per_blob_gas >= blob_base_fee` (requires excess blob gas in block context).
+- Blob tx validation: non-empty versioned hashes, version byte `0x01`, count limit `6`, and `max_fee_per_blob_gas >= blob_base_fee`.
 
 ## Block Processing And Header Rules
 
@@ -30,7 +30,7 @@ Date: 2026-02-10
 - `extra_data.len() <= 32`, `gas_used <= gas_limit`, gas-limit delta bounded by parent/1024, and minimum gas limit enforced.
 - Base fee must match the EIP-1559 formula derived from the parent header.
 - Blob fields are all-or-nothing; `excess_blob_gas` must match the parent-derived formula.
-- Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before transactions; fixed gas limit, no block gas accounting, no-op if target has no code.
+- Pre-transaction system calls: EIP-4788 beacon root and EIP-2935 history storage; fixed gas limit, no block gas accounting, no-op if target has no code.
 - Post-execution checks: receipts root, transactions root, logs bloom, withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Guest Input And WITNESS v1
