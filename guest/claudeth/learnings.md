@@ -83,6 +83,7 @@ Date: 2026-02-10
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
 - Run `prek run` even when it reports no files to check.
+- Interpret 6-item guest input lists based on `withdrawals_root` presence.
 
 **Don't**
 - Skip or disable pre-commit hooks.
