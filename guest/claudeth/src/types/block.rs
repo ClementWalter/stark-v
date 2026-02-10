@@ -26,10 +26,8 @@ use crate::types::{Address, Bytes, Hash, U256};
 ///
 /// This is 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347.
 pub const EMPTY_OMMERS_HASH: Hash = Hash::new([
-    0x1d, 0xcc, 0x4d, 0xe8, 0xde, 0xc7, 0x5d, 0x7a,
-    0xab, 0x85, 0xb5, 0x67, 0xb6, 0xcc, 0xd4, 0x1a,
-    0xd3, 0x12, 0x45, 0x1b, 0x94, 0x8a, 0x74, 0x13,
-    0xf0, 0xa1, 0x42, 0xfd, 0x40, 0xd4, 0x93, 0x47,
+    0x1d, 0xcc, 0x4d, 0xe8, 0xde, 0xc7, 0x5d, 0x7a, 0xab, 0x85, 0xb5, 0x67, 0xb6, 0xcc, 0xd4, 0x1a,
+    0xd3, 0x12, 0x45, 0x1b, 0x94, 0x8a, 0x74, 0x13, 0xf0, 0xa1, 0x42, 0xfd, 0x40, 0xd4, 0x93, 0x47,
 ]);
 
 // Helper functions for serializing/deserializing [u8; 256]
@@ -123,7 +121,7 @@ pub struct BlockHeader {
     pub timestamp: u64,
     /// Extra data (max 32 bytes)
     pub extra_data: Bytes,
-    /// Mix hash (always 0 post-merge)
+    /// PrevRandao randomness beacon value (stored in the legacy mix hash slot post-merge)
     pub mix_hash: Hash,
     /// Nonce (always 0 post-merge)
     pub nonce: u64,
@@ -202,7 +200,7 @@ impl BlockHeader {
         Ok(())
     }
 
-    /// Validates post-merge fields (difficulty, mix_hash, nonce should be zero).
+    /// Validates post-merge consensus-constant fields.
     ///
     /// # Examples
     ///
@@ -211,7 +209,7 @@ impl BlockHeader {
     ///
     /// let mut header = BlockHeader::default();
     /// header.difficulty = U256::ZERO;
-    /// header.mix_hash = Hash::ZERO;
+    /// header.mix_hash = Hash::from([0x42; 32]);
     /// header.nonce = 0;
     /// assert!(header.validate_post_merge_fields().is_ok());
     ///
@@ -221,9 +219,6 @@ impl BlockHeader {
     pub fn validate_post_merge_fields(&self) -> Result<(), ValidationError> {
         if !self.difficulty.is_zero() {
             return Err(ValidationError::NonZeroDifficulty);
-        }
-        if self.mix_hash != Hash::ZERO {
-            return Err(ValidationError::NonZeroMixHash);
         }
         if self.nonce != 0 {
             return Err(ValidationError::NonZeroNonce);
@@ -264,16 +259,16 @@ impl BlockHeader {
     /// ```
     /// use claudeth::types::BlockHeader;
     ///
-/// let mut parent = BlockHeader::default();
-/// parent.gas_used = parent.gas_limit / 2;
-/// let mut child = BlockHeader::default();
-/// child.parent_hash = parent.compute_hash();
-/// child.number = parent.number + 1;
-/// child.timestamp = parent.timestamp + 1;
-/// child.base_fee_per_gas = parent.base_fee_per_gas;
-///
-/// assert!(child.validate_against_parent(&parent).is_ok());
-/// ```
+    /// let mut parent = BlockHeader::default();
+    /// parent.gas_used = parent.gas_limit / 2;
+    /// let mut child = BlockHeader::default();
+    /// child.parent_hash = parent.compute_hash();
+    /// child.number = parent.number + 1;
+    /// child.timestamp = parent.timestamp + 1;
+    /// child.base_fee_per_gas = parent.base_fee_per_gas;
+    ///
+    /// assert!(child.validate_against_parent(&parent).is_ok());
+    /// ```
     pub fn validate_against_parent(&self, parent: &BlockHeader) -> Result<(), ValidationError> {
         let parent_hash = parent.compute_hash();
         if self.parent_hash != parent_hash {
@@ -322,9 +317,7 @@ impl BlockHeader {
 
         let (parent_base_fee_per_gas, base_fee_per_gas) =
             match (parent.base_fee_per_gas, self.base_fee_per_gas) {
-                (Some(parent_base_fee), Some(child_base_fee)) => {
-                    (parent_base_fee, child_base_fee)
-                }
+                (Some(parent_base_fee), Some(child_base_fee)) => (parent_base_fee, child_base_fee),
                 (None, None) => (0, 0),
                 _ => return Err(ValidationError::MissingBaseFeePerGas),
             };
@@ -342,8 +335,7 @@ impl BlockHeader {
             }
         }
 
-        let header_has_blob_fields =
-            self.blob_gas_used.is_some() || self.excess_blob_gas.is_some();
+        let header_has_blob_fields = self.blob_gas_used.is_some() || self.excess_blob_gas.is_some();
         let parent_has_blob_fields =
             parent.blob_gas_used.is_some() || parent.excess_blob_gas.is_some();
 
@@ -668,8 +660,6 @@ pub enum ValidationError {
     ExtraDataTooLarge { size: usize, max_size: usize },
     /// Non-zero difficulty in post-merge block
     NonZeroDifficulty,
-    /// Non-zero mix hash in post-merge block
-    NonZeroMixHash,
     /// Non-zero nonce in post-merge block
     NonZeroNonce,
     /// Non-empty ommers hash in post-merge block
@@ -701,7 +691,10 @@ pub enum ValidationError {
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValidationError::GasUsedExceedsLimit { gas_used, gas_limit } => {
+            ValidationError::GasUsedExceedsLimit {
+                gas_used,
+                gas_limit,
+            } => {
                 write!(f, "gas used ({gas_used}) exceeds gas limit ({gas_limit})")
             }
             ValidationError::ExtraDataTooLarge { size, max_size } => {
@@ -709,9 +702,6 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::NonZeroDifficulty => {
                 write!(f, "difficulty must be zero in post-merge blocks")
-            }
-            ValidationError::NonZeroMixHash => {
-                write!(f, "mix hash must be zero in post-merge blocks")
             }
             ValidationError::NonZeroNonce => {
                 write!(f, "nonce must be zero in post-merge blocks")
@@ -723,7 +713,10 @@ impl fmt::Display for ValidationError {
                 write!(f, "parent hash does not match provided parent header")
             }
             ValidationError::InvalidBlockNumber { expected, actual } => {
-                write!(f, "block number {actual} does not match expected {expected}")
+                write!(
+                    f,
+                    "block number {actual} does not match expected {expected}"
+                )
             }
             ValidationError::InvalidTimestamp { parent, actual } => {
                 write!(
@@ -735,10 +728,7 @@ impl fmt::Display for ValidationError {
                 gas_limit,
                 min_gas_limit,
             } => {
-                write!(
-                    f,
-                    "gas limit {gas_limit} below minimum {min_gas_limit}"
-                )
+                write!(f, "gas limit {gas_limit} below minimum {min_gas_limit}")
             }
             ValidationError::GasLimitTooLow {
                 gas_limit,
@@ -876,7 +866,8 @@ mod tests {
     fn test_validate_post_merge_valid() {
         let mut header = BlockHeader::default();
         header.difficulty = U256::ZERO;
-        header.mix_hash = Hash::ZERO;
+        // Post-merge this field carries prev_randao, so non-zero is valid.
+        header.mix_hash = Hash::from([0x42; 32]);
         header.nonce = 0;
         assert!(header.validate_post_merge_fields().is_ok());
     }
@@ -889,10 +880,10 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_post_merge_invalid_mix_hash() {
+    fn test_validate_post_merge_allows_non_zero_mix_hash() {
         let mut header = BlockHeader::default();
         header.mix_hash = Hash::from([0x42; 32]);
-        assert!(header.validate_post_merge_fields().is_err());
+        assert!(header.validate_post_merge_fields().is_ok());
     }
 
     #[test]

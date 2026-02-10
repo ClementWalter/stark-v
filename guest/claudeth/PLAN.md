@@ -5,128 +5,133 @@ Last reviewed: 2026-02-10
 ## Ground Truth Snapshot
 
 - `cargo test -p claudeth --release` passes locally.
-- `tests/eels_blockchain_tests.rs` still does not prove end-to-end compatibility:
-  - `test_execute_all_blockchain_tests` is `#[ignore]`;
-  - the parent hash is still overwritten with a local workaround;
-  - final failure assertions are still commented out.
+- `tests/eels_blockchain_tests.rs::test_execute_all_blockchain_tests` is still `#[ignore]` and still contains non-conformance workarounds:
+  - parent hash is overwritten before execution;
+  - final `failed/errors` assertions are commented out.
+- A full ignored-run baseline (before this turn's fix) reported:
+  - `Total: 1142`, `Passed: 82`, `Failed: 1060`, `Errors: 0`.
+  - dominant failure reason then: `InvalidHeader("mix hash must be zero in post-merge blocks")`.
+- After the first fix in this turn, sampled ignored-run failures shifted to deeper execution mismatches, dominated by `WithdrawalsRootMismatch`, confirming the previous header gate was incorrect and is now removed.
 - Precompile status in `src/evm/precompiles.rs`:
   - implemented: `0x01..0x07`, `0x09`;
-  - partially implemented: `0x08` (strict tuple decoding + G2 validation + infinity identity success; non-trivial pairing arithmetic still missing);
-  - not implemented: `0x0a` (`POINT_EVALUATION`) is still reserved-fail.
-- README contract is not yet satisfied by enforceable checks:
-  - it claims full `execution-spec-tests` compatibility, but the execution harness is not enforcing zero failures;
-  - it claims all tests are run on native and RV32im, but CI-level parity checks are not present in this crate.
+  - partially implemented: `0x08` (strict decoding + curve checks + infinity-identity success; non-trivial pairing arithmetic still missing);
+  - not implemented: `0x0a` (`POINT_EVALUATION`) remains a deterministic failure path.
+- README contract is still not satisfied by enforceable checks:
+  - execution-spec compatibility is not enforced by passing blockchain suite assertions;
+  - native/RV32 parity is not enforced by an automated gate in this crate;
+  - README says "no dependencies" but crate depends on `serde`.
 
 ## Completed This Turn
 
-- Implemented Task 1 in `src/evm/precompiles.rs`:
-  - added strict G2 tuple decoding and on-curve validation aligned with execution-spec byte ordering;
-  - added non-empty identity fast path for pairing tuples involving infinity points;
-  - kept non-trivial pairing arithmetic explicitly unsupported (deterministic failure).
-- Added/updated pairing regression tests:
-  - all-zero tuple now returns `1`;
-  - infinity-G1 + valid-G2 tuple returns `1`;
-  - malformed G2 field element fails;
-  - non-trivial tuple remains pending and fails.
-- Re-ran quality gates:
-  - `cargo test -p claudeth --release`;
-  - `prek run --all-files`.
+- Fixed post-merge header validation in `src/types/block.rs`:
+  - removed the incorrect `mix_hash == 0` requirement;
+  - retained required checks for `difficulty == 0`, `nonce == 0`, and empty ommers hash.
+- Updated block header docs/tests to match execution-spec semantics where the legacy mix-hash slot carries `prev_randao` post-merge.
+- Revalidated targeted tests for the updated behavior in release mode.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, DONE): Pairing Input Validation + Infinity Identity Fast Path
+### Task 1 (P0, FIRST, DONE): Align Post-Merge Header Validation with PrevRandao Semantics
 
 Why:
-- Valid non-empty pairing calldata where every pair is identity-equivalent (infinity cases) should succeed per EIP-197 semantics.
-- Previously, all non-empty inputs failed, which created guaranteed false negatives even before full pairing arithmetic was added.
+- Execution-spec Cancun/Prague header validation does not require post-merge `mix_hash` to be zero; enforcing it rejects valid fixtures at the header gate.
 
 What:
-- Implement strict tuple decoding for `0x08` (G1 + G2) with canonical field/layout checks.
-- Implement the pairing identity fast path: if all decoded pairs are trivial (contain infinity), return success `U256(1)`.
-- Keep non-trivial pairings explicitly unimplemented for now.
+- Remove non-zero mix-hash rejection from post-merge validation while keeping other consensus-constant checks.
 
 How:
-- Mirror `bytes_to_g2` framing from `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/alt_bn128.py`:
-  - 128-byte G2 decoding, field modulus checks, coefficient order parity (`x = (x1, x0)`, `y = (y1, y0)`), and on-curve validation.
-- Parse all tuples after gas/malformed-length checks.
-- For each tuple, detect infinity-only contributions and short-circuit to deterministic success when every tuple is trivial.
-- Add Rust tests covering:
-  - one all-zero tuple succeeds with `1`;
-  - malformed G2 coordinates fail;
-  - non-trivial valid tuple remains explicitly unsupported.
+- Follow `execution-specs/src/ethereum/forks/cancun/fork.py::validate_header` behavior:
+  - keep checks for zero `difficulty`, zero `nonce`, and empty ommers hash;
+  - do not enforce `prev_randao/mix_hash` equality to zero.
 
-### Task 2 (P0, FIRST): Complete ALT_BN128 Non-Trivial Pairing Arithmetic
+### Task 2 (P0): Fix Withdrawals Root Computation/Validation Mismatch
 
 Why:
-- EIP-197 correctness requires full pairing product evaluation for non-infinity tuples.
+- After Task 1, the dominant failing reason in ignored blockchain runs is `WithdrawalsRootMismatch`, which now blocks broad fixture execution.
 
 What:
-- Implement non-trivial pairing result computation and canonical success/failure output (`1`/`0`).
+- Make computed withdrawals root exactly match execution-spec trie rules and fixture expectations.
 
 How:
-- Follow execution-spec semantics for subgroup checks and pairing product evaluation.
-- Add finite field extension arithmetic required by Miller loop/final exponentiation.
-- Preserve failure mode semantics for malformed/subgroup-invalid tuples.
+- Diff `calculate_withdrawals_root` path against execution-spec (`fork.py` + trie encoding behavior).
+- Verify withdrawal RLP payload and trie key encoding (`rlp(index)` as trie key) end-to-end.
+- Add focused regression tests for:
+  - empty withdrawals list root;
+  - single withdrawal root;
+  - multi-withdrawal order sensitivity.
 
-### Task 3 (P0): Implement POINT_EVALUATION Precompile (`0x0a`)
-
-Why:
-- Cancun/4844 fixtures require this precompile; reserved-fail cannot pass conformance.
-
-What:
-- Implement strict input validation, fixed gas, proof verification, and canonical output words.
-
-How:
-- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py`.
-- Implement versioned hash derivation and proof verification semantics equivalent to the reference.
-- Add success/failure vectors from execution-spec tests.
-
-### Task 4 (P0): Remove Blockchain Harness Workarounds and Enforce Assertions
+### Task 3 (P0): Remove Blockchain Harness Workarounds and Enforce Assertions
 
 Why:
-- Compatibility claims are not meaningful while the harness is ignored and mutates header linkage.
+- Compatibility claims are not meaningful while the integration harness is ignored and mutates header linkage.
 
 What:
-- Convert EELS blockchain test execution into an enforceable correctness gate.
+- Convert EELS blockchain execution into an enforceable correctness gate.
 
 How:
 - Remove parent-hash overwrite workaround.
-- Keep full diagnostic output, but make summary checks hard-fail (`failed == 0`, `errors == 0`) once precompile and fork gaps are closed.
-- Keep parser coverage broad across valid + invalid block suites.
+- Keep diagnostics, but hard-fail on `failed != 0` or `errors != 0` once functional blockers are resolved.
+- Keep parser coverage broad for valid + invalid suites.
 
-### Task 5 (P0): Add Fork-Aware Rule Gating
-
-Why:
-- Fixtures span multiple hard forks; always-on Cancun-era behavior causes deterministic mismatches.
-
-What:
-- Thread fork/network metadata into execution paths and gate rules accordingly.
-
-How:
-- Parse and propagate fixture network/fork context.
-- Gate precompile availability (notably `0x0a`) and fork-specific transaction/block validation.
-- Add focused regression tests across at least two fork boundaries.
-
-### Task 6 (P1): Add Native vs RV32im Parity Checks
+### Task 4 (P0): Complete ALT_BN128 Pairing for Non-Trivial Inputs (`0x08`)
 
 Why:
-- README claims cross-target testing; native-only success is insufficient.
+- EIP-197 requires full pairing product evaluation; current behavior fails all non-trivial tuples.
 
 What:
-- Add reproducible parity checks between native and runner execution.
+- Implement non-trivial pairing arithmetic and canonical `1`/`0` output behavior.
 
 How:
-- Add a `uv run` Python script (PEP 723 metadata) that executes a curated fixture set on both targets and compares deterministic outputs.
-- Integrate parity checks into the project test workflow.
+- Mirror execution-spec subgroup and pairing-product semantics.
+- Add field-extension arithmetic needed for Miller loop/final exponentiation.
+- Add vectors for success/failure and malformed/subgroup-invalid inputs.
 
-### Task 7 (P1): Align Implementation with README Contract
+### Task 5 (P0): Implement POINT_EVALUATION Precompile (`0x0a`)
 
 Why:
-- Remaining README claims should be enforceable through code and tests, not aspirational.
+- Cancun/4844 compatibility requires this precompile; reserved-fail cannot satisfy conformance.
 
 What:
-- Close the last contract gaps once functional parity tasks above are complete.
+- Implement strict calldata checks, fixed gas, KZG proof verification, and canonical output words.
 
 How:
-- Reconcile any remaining mismatch between documented guarantees and verified behavior.
-- If strict zero-dependency is required, remove residual non-core dependencies as a dedicated follow-up.
+- Follow `execution-specs/src/ethereum/forks/cancun/vm/precompiled_contracts/point_evaluation.py`.
+- Match versioned hash derivation and proof verification semantics.
+- Add success/failure vectors from execution-spec fixtures.
+
+### Task 6 (P0): Add Fork-Aware Rule Gating Across Execution Paths
+
+Why:
+- Fixtures span multiple protocol eras; always-on modern rules cause deterministic mismatches.
+
+What:
+- Thread explicit fork metadata/rules into validation and EVM execution.
+
+How:
+- Propagate fixture/network fork context into block and transaction execution.
+- Gate precompile availability and fork-specific transaction/block checks.
+- Add regression tests spanning at least two fork boundaries.
+
+### Task 7 (P1): Add Native vs RV32im Deterministic Parity Gate
+
+Why:
+- README claims cross-target coverage; this is not currently enforced.
+
+What:
+- Add a reproducible native-vs-runner parity check over curated fixtures.
+
+How:
+- Add a `uv run` Python script (PEP 723 metadata) to execute both targets and diff outputs.
+- Integrate script into the local quality workflow.
+
+### Task 8 (P1): Align README Claims with Verifiable Guarantees
+
+Why:
+- Project claims must be true and enforceable via code/tests.
+
+What:
+- Reconcile README with verified behavior after functional parity tasks are complete.
+
+How:
+- Either implement missing guarantees or narrow statements to what CI/test gates actually prove.
+- Resolve dependency claim mismatch (`serde` vs "no dependencies") explicitly.
