@@ -27,6 +27,7 @@ Date: 2026-02-10
 ## Guest Input and WITNESS v1
 
 - Input RLP list has 5–7 items: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
+- Witness input is detected by a top-level list of 3 items where the first is a u64 version (currently `1`).
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; empty list is valid.
 - Recent block hashes are capped at 256 and must end with `parent.compute_hash()`. Genesis (`block.number == 0`) rejects any list.
 - Witness accounts are sorted by ascending address; storage entries are sorted by slot.
