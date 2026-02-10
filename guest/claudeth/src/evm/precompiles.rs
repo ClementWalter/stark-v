@@ -7,6 +7,7 @@
 //! - 0x04: IDENTITY
 //! - 0x05: MODEXP (Cancun gas formula / EIP-2565)
 //! - 0x06: ALT_BN128 ECADD
+//! - 0x07: ALT_BN128 ECMUL
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
@@ -24,7 +25,8 @@ use crate::crypto::secp256k1_math::secp256k1_n;
 use crate::crypto::secp256k1_math::{mod_add, mod_inv, mod_mul, mod_sub};
 use crate::crypto::{ripemd160, sha256};
 use crate::evm::gas::{
-    GAS_BN256_ADD, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD, GAS_MODEXP_BASE,
+    GAS_BN256_ADD, GAS_BN256_MUL, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD,
+    GAS_MODEXP_BASE,
 };
 use crate::evm::gas::{GAS_RIPEMD160_BASE, GAS_RIPEMD160_WORD, GAS_SHA256_BASE, GAS_SHA256_WORD};
 use crate::types::{Address, Hash, U256};
@@ -69,6 +71,7 @@ pub fn execute_precompile(
         )),
         5 => Some(modexp_precompile(input, available_gas)),
         6 => Some(ecadd_precompile(input, available_gas)),
+        7 => Some(ecmul_precompile(input, available_gas)),
         _ => None,
     }
 }
@@ -270,6 +273,32 @@ fn ecadd_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult
     })
 }
 
+fn ecmul_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+    if available_gas < GAS_BN256_MUL {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    // EELS uses buffer_read semantics: short calldata is right-padded with zeros.
+    let point = decode_bn254_g1(read_padded_bytes(input, 0, 64).as_slice())?;
+    let scalar = U256::from_be_bytes(read_padded_word(input, 64));
+    let result = bn254_point_mul(point, scalar);
+
+    let output = match result {
+        Bn254Point::Infinity => vec![0u8; 64],
+        Bn254Point::Point { x, y } => {
+            let mut out = vec![0u8; 64];
+            out[..32].copy_from_slice(&x.to_be_bytes());
+            out[32..].copy_from_slice(&y.to_be_bytes());
+            out
+        }
+    };
+
+    Ok(PrecompileResult {
+        output,
+        gas_used: GAS_BN256_MUL,
+    })
+}
+
 fn decode_bn254_g1(bytes: &[u8]) -> Result<Bn254Point, PrecompileError> {
     if bytes.len() != 64 {
         return Err(PrecompileError::OutOfGas);
@@ -358,6 +387,24 @@ fn bn254_point_add(left: Bn254Point, right: Bn254Point) -> Bn254Point {
             Bn254Point::Point { x: x_2, y: y_2 }
         }
     }
+}
+
+fn bn254_point_mul(point: Bn254Point, scalar: U256) -> Bn254Point {
+    let mut result = Bn254Point::Infinity;
+    let mut addend = point;
+    let mut n = scalar;
+
+    // LSB-first double-and-add matches scalar multiplication semantics while
+    // keeping arithmetic in our existing affine helpers.
+    while !n.is_zero() {
+        if (n & U256::ONE) == U256::ONE {
+            result = bn254_point_add(result, addend);
+        }
+        addend = bn254_point_double(addend);
+        n >>= 1;
+    }
+
+    result
 }
 
 fn modexp_gas_cost(
@@ -952,6 +999,105 @@ mod tests {
 
         let result =
             execute_precompile(&addr, &input, GAS_BN256_ADD - 1).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_ecmul_precompile_scalar_zero_returns_infinity() {
+        let addr = precompile_address(7);
+        let mut input = Vec::new();
+        input.extend_from_slice(&bn254_point(U256::from_u64(1), U256::from_u64(2)));
+        input.extend_from_slice(&U256::ZERO.to_be_bytes());
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.gas_used, GAS_BN256_MUL);
+        assert_eq!(result.output, vec![0u8; 64]);
+    }
+
+    #[test]
+    fn test_ecmul_precompile_scalar_one_returns_same_point() {
+        let addr = precompile_address(7);
+        let point = bn254_point(U256::from_u64(1), U256::from_u64(2));
+        let mut input = Vec::new();
+        input.extend_from_slice(&point);
+        input.extend_from_slice(&U256::ONE.to_be_bytes());
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.gas_used, GAS_BN256_MUL);
+        assert_eq!(result.output, point);
+    }
+
+    #[test]
+    fn test_ecmul_precompile_scalar_two_matches_eip196_vector_g1x2() {
+        let addr = precompile_address(7);
+        let mut input = Vec::new();
+        input.extend_from_slice(&bn254_point(U256::from_u64(1), U256::from_u64(2)));
+        input.extend_from_slice(&U256::from_u64(2).to_be_bytes());
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.gas_used, GAS_BN256_MUL);
+        assert_eq!(
+            result.output,
+            bn254_point(
+                U256::from_be_bytes([
+                    0x03, 0x06, 0x44, 0xe7, 0x2e, 0x13, 0x1a, 0x02, 0x9b, 0x85, 0x04, 0x5b, 0x68,
+                    0x18, 0x15, 0x85, 0xd9, 0x78, 0x16, 0xa9, 0x16, 0x87, 0x1c, 0xa8, 0xd3, 0xc2,
+                    0x08, 0xc1, 0x6d, 0x87, 0xcf, 0xd3,
+                ]),
+                U256::from_be_bytes([
+                    0x15, 0xed, 0x73, 0x8c, 0x0e, 0x0a, 0x7c, 0x92, 0xe7, 0x84, 0x5f, 0x96, 0xb2,
+                    0xae, 0x9c, 0x0a, 0x68, 0xa6, 0xa4, 0x49, 0xe3, 0x53, 0x8f, 0xc7, 0xff, 0x3e,
+                    0xbf, 0x7a, 0x5a, 0x18, 0xa2, 0xc4,
+                ]),
+            )
+        );
+    }
+
+    #[test]
+    fn test_ecmul_precompile_zero_pads_missing_scalar_as_zero() {
+        let addr = precompile_address(7);
+        // Only the point is provided, so the scalar decodes as zero.
+        let input = bn254_point(U256::from_u64(1), U256::from_u64(2));
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.gas_used, GAS_BN256_MUL);
+        assert_eq!(result.output, vec![0u8; 64]);
+    }
+
+    #[test]
+    fn test_ecmul_precompile_invalid_field_element_fails() {
+        let addr = precompile_address(7);
+        let mut invalid_point = vec![0u8; 64];
+        invalid_point[..32].copy_from_slice(&bn254_field_modulus().to_be_bytes());
+
+        let mut input = Vec::new();
+        input.extend_from_slice(&invalid_point);
+        input.extend_from_slice(&U256::ONE.to_be_bytes());
+
+        let result = execute_precompile(&addr, &input, GAS_BN256_MUL).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_ecmul_precompile_invalid_curve_point_fails() {
+        let addr = precompile_address(7);
+        let mut input = Vec::new();
+        input.extend_from_slice(&bn254_point(U256::from_u64(1), U256::from_u64(3)));
+        input.extend_from_slice(&U256::from_u64(2).to_be_bytes());
+
+        let result = execute_precompile(&addr, &input, GAS_BN256_MUL).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_ecmul_precompile_oog() {
+        let addr = precompile_address(7);
+        let mut input = Vec::new();
+        input.extend_from_slice(&bn254_point(U256::from_u64(1), U256::from_u64(2)));
+        input.extend_from_slice(&U256::ONE.to_be_bytes());
+
+        let result =
+            execute_precompile(&addr, &input, GAS_BN256_MUL - 1).expect("precompile exists");
         assert_eq!(result, Err(PrecompileError::OutOfGas));
     }
 
