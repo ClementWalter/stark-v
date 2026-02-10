@@ -44,6 +44,7 @@ EIP-2935 historical block hashes system calls.
   EIP-1559/EIP-4844 (`max_fee_per_gas >= base_fee`)
 - Logs bloom bit ordering matches execution-specs (reversed 11-bit index,
   MSB-first within bytes)
+- EIP-2 signature bounds enforced (`r/s` range, low-`s`, and `v/y_parity`)
 - `no_std` riscv32 guest entry and bump allocator
 - Deterministic state root computation by sorting account addresses before trie
   insertion
@@ -57,7 +58,7 @@ EIP-2935 historical block hashes system calls.
 ## Testing Status
 
 - `cargo test -p claudeth --release` (2026-02-10): pass
-- `prek run` (2026-02-10): pass (no files to check)
+- `prek run` (2026-02-10): pass
 
 ## Plan
 

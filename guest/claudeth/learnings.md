@@ -56,6 +56,8 @@ Date: 2026-02-10
 - `TxContext` carries `blob_versioned_hashes`; `RecursiveHost::blobhash` reads
   from it and returns zero for out-of-range indices.
 - Receipt encoding for blob txs uses prefix `0x03`.
+- Signature recovery must enforce EIP-2 bounds: `0 < r < SECP256K1N`,
+  `0 < s <= SECP256K1N/2`, and valid `v/y_parity` values per transaction type.
 
 ## Blob Gas Accounting (EIP-4844)
 
@@ -102,6 +104,8 @@ Date: 2026-02-10
   the last hash to match the parent hash when provided.
 - Validate base fee caps per transaction type before charging balance.
 - Use execution-specs logs bloom bit ordering (reversed 11-bit index, MSB-first).
+- Enforce EIP-2 signature bounds and `v/y_parity` constraints during sender
+  recovery.
 
 **Don't**
 

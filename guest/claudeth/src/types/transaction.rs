@@ -26,6 +26,42 @@ use crate::crypto::{keccak256, recover_address, rlp, RlpError, Secp256k1Error};
 use crate::types::{Address, Bytes, Hash, U256};
 
 // =============================================================================
+// Signature Validation Constants
+// =============================================================================
+
+const SECP256K1N_BYTES: [u8; 32] = [
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+    0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b,
+    0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41,
+];
+
+const SECP256K1N_HALF_BYTES: [u8; 32] = [
+    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d,
+    0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
+];
+
+fn secp256k1n() -> U256 {
+    U256::from_be_bytes(SECP256K1N_BYTES)
+}
+
+fn secp256k1n_half() -> U256 {
+    U256::from_be_bytes(SECP256K1N_HALF_BYTES)
+}
+
+fn validate_signature_values(r: U256, s: U256) -> Result<(), Secp256k1Error> {
+    if r.is_zero() || r >= secp256k1n() {
+        return Err(Secp256k1Error::InvalidSignature);
+    }
+    if s.is_zero() || s > secp256k1n_half() {
+        return Err(Secp256k1Error::InvalidSignature);
+    }
+    Ok(())
+}
+
+// =============================================================================
 // Access List Types
 // =============================================================================
 
@@ -370,16 +406,25 @@ impl LegacyTransaction {
     /// assert!(result.is_err());
     /// ```
     pub fn recover_sender(&self) -> Result<Address, Secp256k1Error> {
+        validate_signature_values(self.r, self.s)?;
         let signing_hash = self.signing_hash();
 
         // Extract recovery_id from v
         let v_u64 = self.v.as_u64();
-        let recovery_id = if v_u64 >= 35 {
-            // EIP-155: v = chain_id * 2 + 35 + {0,1}
-            ((v_u64 - 35) % 2) as u8
-        } else {
+        let recovery_id = if v_u64 == 27 || v_u64 == 28 {
             // Pre-EIP-155: v = 27 or 28
             (v_u64 - 27) as u8
+        } else if v_u64 >= 35 {
+            // EIP-155: v = chain_id * 2 + 35 + {0,1}
+            let chain_id = (v_u64 - 35) / 2;
+            let v0 = 35 + chain_id * 2;
+            let v1 = v0 + 1;
+            if v_u64 != v0 && v_u64 != v1 {
+                return Err(Secp256k1Error::InvalidSignature);
+            }
+            (v_u64 - 35 - chain_id * 2) as u8
+        } else {
+            return Err(Secp256k1Error::InvalidSignature);
         };
 
         // Convert r and s to 64-byte signature
@@ -571,10 +616,15 @@ impl Eip2930Transaction {
 
     /// Recovers the sender address from the transaction signature.
     pub fn recover_sender(&self) -> Result<Address, Secp256k1Error> {
+        validate_signature_values(self.r, self.s)?;
         let signing_hash = self.signing_hash();
 
         // For EIP-2930, v is 0 or 1
-        let recovery_id = self.v.as_u64() as u8;
+        let v_u64 = self.v.as_u64();
+        if v_u64 > 1 {
+            return Err(Secp256k1Error::InvalidSignature);
+        }
+        let recovery_id = v_u64 as u8;
 
         // Convert r and s to 64-byte signature
         let r_bytes = self.r.to_be_bytes();
@@ -772,10 +822,15 @@ impl Eip1559Transaction {
 
     /// Recovers the sender address from the transaction signature.
     pub fn recover_sender(&self) -> Result<Address, Secp256k1Error> {
+        validate_signature_values(self.r, self.s)?;
         let signing_hash = self.signing_hash();
 
         // For EIP-1559, v is 0 or 1
-        let recovery_id = self.v.as_u64() as u8;
+        let v_u64 = self.v.as_u64();
+        if v_u64 > 1 {
+            return Err(Secp256k1Error::InvalidSignature);
+        }
+        let recovery_id = v_u64 as u8;
 
         // Convert r and s to 64-byte signature
         let r_bytes = self.r.to_be_bytes();
@@ -965,8 +1020,13 @@ impl BlobTransaction {
 
     /// Recovers the sender address from the transaction signature.
     pub fn recover_sender(&self) -> Result<Address, Secp256k1Error> {
+        validate_signature_values(self.r, self.s)?;
         let signing_hash = self.signing_hash();
-        let recovery_id = self.v.as_u64() as u8;
+        let v_u64 = self.v.as_u64();
+        if v_u64 > 1 {
+            return Err(Secp256k1Error::InvalidSignature);
+        }
+        let recovery_id = v_u64 as u8;
 
         let r_bytes = self.r.to_be_bytes();
         let s_bytes = self.s.to_be_bytes();
@@ -1874,6 +1934,118 @@ mod tests {
         };
         let result = tx.recover_sender();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_legacy_tx_recover_sender_invalid_v() {
+        let tx = LegacyTransaction {
+            nonce: U256::from(0u64),
+            gas_price: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Some(Address::ZERO),
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            v: U256::from(29u64),
+            r: U256::from(1u64),
+            s: U256::from(1u64),
+        };
+        let result = tx.recover_sender();
+        assert_eq!(result, Err(Secp256k1Error::InvalidSignature));
+    }
+
+    #[test]
+    fn test_legacy_tx_recover_sender_invalid_r_high() {
+        let tx = LegacyTransaction {
+            nonce: U256::from(0u64),
+            gas_price: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Some(Address::ZERO),
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            v: U256::from(27u64),
+            r: secp256k1n(),
+            s: U256::from(1u64),
+        };
+        let result = tx.recover_sender();
+        assert_eq!(result, Err(Secp256k1Error::InvalidSignature));
+    }
+
+    #[test]
+    fn test_legacy_tx_recover_sender_invalid_s_high() {
+        let tx = LegacyTransaction {
+            nonce: U256::from(0u64),
+            gas_price: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Some(Address::ZERO),
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            v: U256::from(27u64),
+            r: U256::from(1u64),
+            s: secp256k1n_half().saturating_add(U256::ONE),
+        };
+        let result = tx.recover_sender();
+        assert_eq!(result, Err(Secp256k1Error::InvalidSignature));
+    }
+
+    #[test]
+    fn test_eip2930_tx_recover_sender_invalid_y_parity() {
+        let tx = Eip2930Transaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            gas_price: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Some(Address::ZERO),
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            access_list: vec![],
+            v: U256::from(2u64),
+            r: U256::from(1u64),
+            s: U256::from(1u64),
+        };
+        let result = tx.recover_sender();
+        assert_eq!(result, Err(Secp256k1Error::InvalidSignature));
+    }
+
+    #[test]
+    fn test_eip1559_tx_recover_sender_invalid_y_parity() {
+        let tx = Eip1559Transaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(2_000_000_000u64),
+            max_fee_per_gas: U256::from(20_000_000_000u64),
+            gas_limit: U256::from(21000u64),
+            to: Some(Address::ZERO),
+            value: U256::from(1_000_000_000_000_000_000u64),
+            data: Bytes::new(),
+            access_list: vec![],
+            v: U256::from(2u64),
+            r: U256::from(1u64),
+            s: U256::from(1u64),
+        };
+        let result = tx.recover_sender();
+        assert_eq!(result, Err(Secp256k1Error::InvalidSignature));
+    }
+
+    #[test]
+    fn test_blob_tx_recover_sender_invalid_y_parity() {
+        let tx = BlobTransaction {
+            chain_id: U256::from(1u64),
+            nonce: U256::from(0u64),
+            max_priority_fee_per_gas: U256::from(1u64),
+            max_fee_per_gas: U256::from(10u64),
+            gas_limit: U256::from(21_000u64),
+            to: Address::from([0x11; 20]),
+            value: U256::ZERO,
+            data: Bytes::new(),
+            access_list: vec![],
+            max_fee_per_blob_gas: U256::from(1_000_000u64),
+            blob_versioned_hashes: vec![Hash::from([0x11; 32])],
+            v: U256::from(2u64),
+            r: U256::from(1u64),
+            s: U256::from(1u64),
+        };
+        let result = tx.recover_sender();
+        assert_eq!(result, Err(Secp256k1Error::InvalidSignature));
     }
 
     // =========================================================================
