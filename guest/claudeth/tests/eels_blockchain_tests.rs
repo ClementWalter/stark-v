@@ -180,7 +180,9 @@ struct TestAccount {
 }
 
 /// Load a single blockchain test from a JSON file
-fn load_blockchain_test(path: &Path) -> Result<HashMap<String, BlockchainTest>, Box<dyn std::error::Error>> {
+fn load_blockchain_test(
+    path: &Path,
+) -> Result<HashMap<String, BlockchainTest>, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(path)?;
     let tests: HashMap<String, BlockchainTest> = serde_json::from_str(&content)?;
     Ok(tests)
@@ -190,7 +192,10 @@ fn load_blockchain_test(path: &Path) -> Result<HashMap<String, BlockchainTest>, 
 fn discover_blockchain_tests() -> Vec<std::path::PathBuf> {
     let test_dir = Path::new("tests/eels/BlockchainTests");
     if !test_dir.exists() {
-        eprintln!("Warning: EELS test directory not found at {}", test_dir.display());
+        eprintln!(
+            "Warning: EELS test directory not found at {}",
+            test_dir.display()
+        );
         eprintln!("Run scripts/fetch_eels_tests.py to download test fixtures");
         return vec![];
     }
@@ -203,10 +208,6 @@ fn discover_blockchain_tests() -> Vec<std::path::PathBuf> {
         if entry.path().extension().and_then(|s| s.to_str()) == Some("json") {
             // Skip metadata files
             if entry.path().file_name().and_then(|s| s.to_str()) == Some("index.json") {
-                continue;
-            }
-            // Skip InvalidBlocks for initial integration (focus on valid blocks first)
-            if entry.path().to_string_lossy().contains("InvalidBlocks") {
                 continue;
             }
             tests.push(entry.path().to_path_buf());
@@ -265,7 +266,10 @@ fn dump_transaction_disassembly(test_block: &TestBlock) {
     }
 }
 
-fn apply_pre_state(state: &mut InMemoryState, pre: &HashMap<String, TestAccount>) -> Result<(), String> {
+fn apply_pre_state(
+    state: &mut InMemoryState,
+    pre: &HashMap<String, TestAccount>,
+) -> Result<(), String> {
     for (address_str, account) in pre {
         let address = parse_address(address_str)?;
         let balance = parse_u256(&account.balance)?;
@@ -392,7 +396,9 @@ fn parse_u64(value: &str) -> Result<u64, String> {
     u64::try_from(u256_val).map_err(|_| format!("value {value} too large for u64"))
 }
 
-fn convert_test_transaction(test_tx: &TestTransaction) -> Result<claudeth::types::Transaction, String> {
+fn convert_test_transaction(
+    test_tx: &TestTransaction,
+) -> Result<claudeth::types::Transaction, String> {
     use claudeth::types::transaction::{
         AccessListEntry as ClaudethAccessListEntry, Eip1559Transaction, Eip2930Transaction,
         LegacyTransaction,
@@ -550,7 +556,9 @@ fn convert_test_transaction(test_tx: &TestTransaction) -> Result<claudeth::types
     Ok(tx)
 }
 
-fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::types::BlockHeader, String> {
+fn convert_test_block_header(
+    test_header: &TestBlockHeader,
+) -> Result<claudeth::types::BlockHeader, String> {
     use claudeth::types::{BlockHeader, Hash};
 
     let parent_hash = Hash::from_str(&test_header.parent_hash)
@@ -563,8 +571,8 @@ fn convert_test_block_header(test_header: &TestBlockHeader) -> Result<claudeth::
         .map_err(|err| format!("invalid uncle_hash: {err}"))?
         .unwrap_or(claudeth::types::EMPTY_OMMERS_HASH);
     let coinbase = parse_address(&test_header.coinbase)?;
-    let state_root =
-        Hash::from_str(&test_header.state_root).map_err(|err| format!("invalid state_root: {err}"))?;
+    let state_root = Hash::from_str(&test_header.state_root)
+        .map_err(|err| format!("invalid state_root: {err}"))?;
     let transactions_root = test_header
         .transactions_trie
         .as_ref()
@@ -680,8 +688,8 @@ fn test_can_parse_blockchain_tests() {
     let mut block_header_converted = false;
     let mut transaction_converted = false;
 
-    for test_path in tests.iter().take(10) {
-        // Parse first 10 tests
+    // Parse every discovered file so this test actually tracks fixture-shape drift.
+    for test_path in &tests {
         match load_blockchain_test(test_path) {
             Ok(test_cases) => {
                 for test in test_cases.values() {
@@ -715,7 +723,10 @@ fn test_can_parse_blockchain_tests() {
 
                 parsed += test_cases.len();
                 let num_cases = test_cases.len();
-                println!("✓ Parsed {num_cases} test cases from {}", test_path.display());
+                println!(
+                    "✓ Parsed {num_cases} test cases from {}",
+                    test_path.display()
+                );
             }
             Err(e) => {
                 failed += 1;
@@ -730,8 +741,14 @@ fn test_can_parse_blockchain_tests() {
 
     assert!(parsed > 0, "Should successfully parse at least one test");
     assert!(pre_state_parsed, "Should parse at least one pre-state");
-    assert!(block_header_converted, "Should convert at least one block header");
-    assert!(transaction_converted, "Should convert at least one transaction");
+    assert!(
+        block_header_converted,
+        "Should convert at least one block header"
+    );
+    assert!(
+        transaction_converted,
+        "Should convert at least one transaction"
+    );
 }
 
 #[test]
@@ -752,8 +769,9 @@ fn test_execute_all_blockchain_tests() {
     let mut failed = 0;
     let mut errors = 0;
 
-    for test_path in tests.iter().take(10) {
-        // Test first 10 files
+    // Execute all discovered fixtures. This test remains ignored for now because
+    // full EELS parity is still under active implementation.
+    for test_path in &tests {
         let test_cases = match load_blockchain_test(test_path) {
             Ok(cases) => cases,
             Err(e) => {
@@ -787,7 +805,8 @@ fn test_execute_all_blockchain_tests() {
             // Execute blocks sequentially
             // Note: Using converted genesis header. Parent hash validation will fail until
             // we fix RLP encoding to match EELS format exactly.
-            let mut parent_header = match convert_test_block_header(&test_case.genesis_block_header) {
+            let mut parent_header = match convert_test_block_header(&test_case.genesis_block_header)
+            {
                 Ok(h) => h,
                 Err(e) => {
                     eprintln!("✗ {test_name}: Failed to convert genesis header: {e}");
@@ -802,19 +821,31 @@ fn test_execute_all_blockchain_tests() {
             let mut block_results = Vec::new();
 
             for (block_idx, test_block) in test_case.blocks.iter().enumerate() {
-                // Skip invalid blocks
+                let expects_exception = test_block.expect_exception.is_some();
+
+                // Invalid blocks may omit a decoded header in fixtures. If an
+                // exception is expected, this is a successful invalid-case path.
                 if test_block.block_header.is_none() {
-                    continue;
+                    if expects_exception {
+                        continue;
+                    }
+                    failure_reason = format!(
+                        "Block {block_idx}: Missing block header without expectException marker"
+                    );
+                    test_failed = true;
+                    break;
                 }
 
-                let mut block_header = match convert_test_block_header(test_block.block_header.as_ref().unwrap()) {
-                    Ok(h) => h,
-                    Err(e) => {
-                        failure_reason = format!("Block {block_idx}: Failed to convert header: {e}");
-                        test_failed = true;
-                        break;
-                    }
-                };
+                let mut block_header =
+                    match convert_test_block_header(test_block.block_header.as_ref().unwrap()) {
+                        Ok(h) => h,
+                        Err(e) => {
+                            failure_reason =
+                                format!("Block {block_idx}: Failed to convert header: {e}");
+                            test_failed = true;
+                            break;
+                        }
+                    };
 
                 // WORKAROUND: Fix parent hash to avoid validation failure
                 // The actual parent hash from RLP encoding doesn't match our computed hash
@@ -827,7 +858,9 @@ fn test_execute_all_blockchain_tests() {
                     .enumerate()
                     .map(|(tx_idx, tx)| {
                         convert_test_transaction(tx).map_err(|e| {
-                            format!("Block {block_idx}, tx {tx_idx}: Failed to convert transaction: {e}")
+                            format!(
+                                "Block {block_idx}, tx {tx_idx}: Failed to convert transaction: {e}"
+                            )
                         })
                     })
                     .collect();
@@ -853,19 +886,51 @@ fn test_execute_all_blockchain_tests() {
                     chain_id,
                 ) {
                     Ok(result) => {
+                        if expects_exception {
+                            failure_reason = format!(
+                                "Block {block_idx}: Expected exception `{}` but execution succeeded",
+                                test_block.expect_exception.as_deref().unwrap_or("<missing>")
+                            );
+                            test_failed = true;
+                            break;
+                        }
                         parent_header = block_header;
                         block_results.push(result);
                     }
                     Err(e) => {
+                        if expects_exception {
+                            // Invalid blocks are expected to fail execution and
+                            // should not advance the canonical parent header.
+                            continue;
+                        }
+
                         // Extract transaction results from error for debugging
                         #[cfg(feature = "evm-trace")]
                         let tx_results = match &e {
-                            claudeth::stf::BlockProcessingError::GasUsedMismatch { transaction_results, .. } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::ReceiptsRootMismatch { transaction_results, .. } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::StateRootMismatch { transaction_results, .. } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::TransactionsRootMismatch { transaction_results, .. } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::LogsBloomMismatch { transaction_results, .. } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::GasLimitExceeded { transaction_results, .. } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::GasUsedMismatch {
+                                transaction_results,
+                                ..
+                            } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::ReceiptsRootMismatch {
+                                transaction_results,
+                                ..
+                            } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::StateRootMismatch {
+                                transaction_results,
+                                ..
+                            } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::TransactionsRootMismatch {
+                                transaction_results,
+                                ..
+                            } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::LogsBloomMismatch {
+                                transaction_results,
+                                ..
+                            } => Some(transaction_results),
+                            claudeth::stf::BlockProcessingError::GasLimitExceeded {
+                                transaction_results,
+                                ..
+                            } => Some(transaction_results),
                             _ => None,
                         };
 
@@ -875,7 +940,9 @@ fn test_execute_all_blockchain_tests() {
                         if let Some(results) = tx_results {
                             for (tx_idx, tx_result) in results.iter().enumerate() {
                                 if let Some(trace) = tx_result.gas_trace.as_ref() {
-                                    eprintln!("Gas trace for {test_name} block {block_idx} tx {tx_idx}:");
+                                    eprintln!(
+                                        "Gas trace for {test_name} block {block_idx} tx {tx_idx}:"
+                                    );
                                     eprintln!("{}", trace.format());
                                 }
                             }
