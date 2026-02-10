@@ -4,7 +4,7 @@ Date: 2026-02-10
 
 ## Consensus-Critical Execution
 
-- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and revert only the current call frame.
+- Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and revert only the current call frame; the transaction is still included with `success=false`, no logs, and full gas used.
 - `REVERT` is non-exceptional: return `success=false`, preserve remaining gas, and revert only the current call frame.
 - Gas refunds are capped at 1/5 of gas used (EIP-3529) and applied after execution.
 - SELFDESTRUCT (EIP-6780): transfer full balance immediately; delete only if created in the same transaction; clear created-account tracking per tx.
@@ -83,6 +83,7 @@ Date: 2026-02-10
 - Keep WITNESS version detection and `WITNESS.md` in sync.
 - Run `cargo test -p claudeth --release` and `prek run` before committing.
 - Interpret 6-item guest input lists based on `withdrawals_root` presence.
+- Treat EVM exceptional halts as failed executions, not block-stopping errors.
 
 **Don't**
 - Skip or disable pre-commit hooks.

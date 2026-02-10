@@ -436,6 +436,7 @@ fn execute_call<S: State + Clone>(
         _ => Vec::new(),
     };
 
+    let state_before_exec = state.clone();
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &code,
         gas_available,
@@ -458,7 +459,16 @@ fn execute_call<S: State + Clone>(
             exec_result.gas_trace,
             returned_state,
         )),
-        Err(_) => Err(ExecutionError::ExecutionFailed),
+        Err(_) => Ok((
+            false,
+            gas_available,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            state_before_exec,
+        )),
     }
 }
 
@@ -532,6 +542,7 @@ fn execute_create<S: State + Clone>(
         _ => Vec::new(),
     };
 
+    let state_before_exec = state.clone();
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &init_code,
         gas_available,
@@ -611,7 +622,16 @@ fn execute_create<S: State + Clone>(
                 returned_state,
             ))
         }
-        Err(_) => Err(ExecutionError::ExecutionFailed),
+        Err(_) => Ok((
+            false,
+            gas_available,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            state_before_exec,
+        )),
     }
 }
 
@@ -959,6 +979,44 @@ mod tests {
             execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_call_invalid_opcode_consumes_gas() {
+        let mut state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            tx_ctx: &tx_ctx,
+        };
+
+        let sender = Address::from([0x01; 20]);
+        let recipient = Address::from([0x02; 20]);
+        state.set_code(&recipient, vec![0xFE]); // INVALID opcode
+
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(21_000),
+            to: Some(recipient),
+            value: U256::ZERO,
+            data: Bytes::new(),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let gas_available = 100;
+        let result = execute_call(&tx, state, &sender, &recipient, contexts, gas_available)
+            .expect("execute call");
+
+        assert!(!result.0);
+        assert_eq!(result.1, gas_available);
+        assert_eq!(result.2, 0);
+        assert!(result.4.is_empty());
     }
 
     #[test]

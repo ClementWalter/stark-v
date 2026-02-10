@@ -42,6 +42,8 @@ README alignment revalidated against code on 2026-02-10.
   CREATE/CREATE2.
 - Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
   results and only apply execution state on success.
+- Treat exceptional halts (OOG/invalid opcode) as failed executions that consume
+  all remaining gas without aborting block processing.
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
 
@@ -74,6 +76,8 @@ README alignment revalidated against code on 2026-02-10.
   with tests.
 - Treat REVERT as non-exceptional: convert REVERT to `success=false` execution
   results and only apply execution state on success.
+- Treat exceptional halts as failed executions consuming all remaining gas
+  (receipt failure, no block abort) with coverage.
 - Enforce EIP-3541 (reject contract code starting with 0xEF) for tx creation and
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
 - Deterministic in-tree signer used by signature-related tests.
