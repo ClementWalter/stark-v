@@ -162,6 +162,7 @@ words:
   - regs
   - remu
   - repr
+  - reprioritizing
   - returndata
   - returndatacopy
   - returndatasize

@@ -1,12 +1,14 @@
 ## Do
-- Do resolve blockchain fixture parents by `block_header.parent_hash` against a hash-indexed executed-header map; multi-chain fixtures are not linear.
-- Do build `BLOCKHASH` input as a bounded ancestry window ordered by increasing block number (oldest -> newest), with direct parent last.
-- Do keep invalid blocks from mutating canonical execution context (state/header index); they are expected failures, not chain progression.
-- Do add fixture-backed regression tests for branch-switch scenarios (`chainname` A/B) so parent selection regressions are caught immediately.
-- Do validate host-level `BLOCKHASH` lookups with explicit window-order tests, not just end-to-end fixture execution.
+- Do resolve EELS fixture parents by `block_header.parent_hash` using a hash-indexed executed-header map.
+- Do pass `BLOCKHASH` inputs as an ancestry window ordered oldest -> newest with the direct parent last.
+- Do keep expected-invalid blocks out of canonical state/header indexes.
+- Do capture full-suite conformance baselines with `cargo test -p claudeth --release ... --ignored --nocapture` before reprioritizing fixes.
+- Do redirect both stdout and stderr when collecting mismatch taxonomies, because fixture failures are often emitted with `eprintln!`.
+- Do hash trie node RLP bytes with Keccak-256; never synthesize node references via zero-padding.
 
 ## Don't
-- Don't reuse “previous loop header” as parent in EELS harnesses; that breaks as soon as a fixture includes forks.
-- Don't pass empty recent hash arrays to block processing when validating conformance; it guarantees wrong `BLOCKHASH` semantics.
-- Don't assume fixture order implies canonical ancestry; treat header hash linkage as the source of truth.
-- Don't insert headers from expected-invalid blocks into ancestry indexes; that pollutes later parent/hash resolution.
+- Don't use fixture iteration order as canonical chain order in multi-branch tests.
+- Don't pass an empty recent-hash list into block execution when `BLOCKHASH` may be used.
+- Don't index ancestry with headers from blocks that are expected to fail.
+- Don't treat `<32` byte node RLP as a padded 32-byte digest surrogate.
+- Don't trust baseline summaries alone for triage when error-class details were not captured from stderr.

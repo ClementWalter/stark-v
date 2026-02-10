@@ -5,140 +5,158 @@ Last reviewed: 2026-02-10
 ## Ground Truth Snapshot
 
 - `cargo test -p claudeth --release` passes (unit, integration, and doc tests).
-- `test_execute_all_blockchain_tests` is still `#[ignore]`, so full EELS blockchain conformance is not enforced.
-- Harness now resolves block parents by real `parent_hash` and feeds a spec-ordered recent hash window for `BLOCKHASH` (oldest -> newest), including multi-chain fixture coverage.
-- Deterministic conformance gaps still known in code:
-  - precompile `0x0a` point evaluation is not implemented,
-  - precompile `0x08` pairing is still partial for non-trivial tuples.
-- README claims still overstate guaranteed conformance until full EELS blockchain pass is a hard gate.
+- Full blockchain fixture suite is still ignored and non-gating (`#[ignore]`).
+- Latest full EELS blockchain baseline:
+  - command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
+  - totals: `Total: 1142`, `Passed: 898`, `Failed: 244`, `Errors: 0`
+- Harness improvements already landed: parent resolution by `parent_hash` and `BLOCKHASH` ancestry window ordering (oldest -> newest).
+- Known deterministic implementation gaps still visible in code:
+  - precompile `0x0a` (point evaluation) is unimplemented,
+  - precompile `0x08` pairing is partial for non-trivial tuples.
+- Short-node zero-padding in `Node::compute_hash` has been removed; short RLP nodes are now Keccak-hashed.
 
-## Completed This Turn
+## Completed
 
 ### Task 1 (DONE): Canonical Parent Selection and `BLOCKHASH` Inputs in EELS Harness
 
 Why:
-- Linear parent tracking is incorrect for multi-chain fixtures and can mask real consensus behavior.
-- Empty `block_hashes` input makes `BLOCKHASH`-dependent execution diverge by construction.
+- Linear parent tracking is wrong for multi-chain fixtures.
+- Missing recent block hashes guarantees `BLOCKHASH` divergence.
 
 What:
-- Replaced linear `parent_header` progression with `parent_hash`-based parent lookup.
-- Added recent canonical hash window generation from parent ancestry and passed it to `process_block`.
-- Added regression tests for:
-  - multi-chain fixture parent resolution (`A`/`B` branch switch),
-  - `BLOCKHASH` window ordering + host lookup behavior.
+- Parent lookup switched to `parent_hash` over executed-header hash index.
+- Recent ancestry hash window is now passed into block processing.
+- Added multi-chain and `BLOCKHASH` window-order regression coverage.
 
 How:
-- Introduced harness helpers to resolve parent headers from an executed-header hash map.
-- Built bounded (max 256) ancestry hash windows in increasing block-number order.
-- Updated success-path bookkeeping to index executed headers by computed hash.
+- Introduced hash-indexed header lookup helpers.
+- Constructed bounded 256-entry ancestry windows in increasing block-number order.
+- Updated executed-header bookkeeping on successful blocks.
+
+### Task 2 (DONE): Re-baseline Full EELS Blockchain Results
+
+Why:
+- Post-harness-fix mismatch profile had to be measured before further fixes.
+
+What:
+- Re-ran the entire ignored blockchain suite and captured hard counts.
+
+How:
+- Executed the full ignored test command in `--release`.
+- Recorded baseline (`1142 / 898 / 244 / 0`) for all subsequent prioritization.
+
+### Task 3 (DONE): Fix MPT Short-Node Hash Semantics (Zero-Padding Bug)
+
+Why:
+- Zero-padding short node RLP bytes produced pseudo-hashes and consensus-risky trie roots.
+
+What:
+- Replaced short-node zero-padding behavior with Keccak-256 hashing of encoded node bytes.
+- Added a regression test to enforce hashed behavior for short encoded nodes.
+
+How:
+- Updated `Node::compute_hash` in `src/state/partial_mpt/node.rs`.
+- Updated `test_compute_hash_inline_node` to assert `keccak256(rlp(node))` for short encodings.
+- Re-ran targeted release tests:
+  - `state::partial_mpt::node::tests::test_compute_hash_inline_node`
+  - `test_withdrawals_root_matches_shanghai_fixture_vector`
+  - `test_single_key_storage_root`
 
 ## Priority Backlog (Why / What / How)
 
-### Task 2 (P0, FIRST): Re-baseline Full EELS Blockchain Results After Harness Fix
+### Task 4 (P0, FIRST): Align Withdrawal Processing and `withdrawalsRoot` Parity
 
 Why:
-- Parent-selection and `BLOCKHASH` inputs were consensus-significant; mismatch distribution changed and must be measured before further fixes.
+- Withdrawal-root failures still block Shanghai/Cancun fixture correctness.
 
 What:
-- Run full ignored blockchain suite and produce an updated failure taxonomy with top fixture families and mismatch classes.
+- Validate withdrawal decoding + insertion path against execution-spec behavior end-to-end.
 
 How:
-- Execute `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored`.
-- Capture aggregate counts and top recurring errors (`GasUsedMismatch`, `StateRootMismatch`, `WithdrawalsRootMismatch`, etc.).
-- Pin the smallest reproducible fixtures per mismatch class for targeted implementation tasks.
+- Confirm keying (`enumerate` index) and value RLP encoding against `execution-specs`.
+- Add fixture-backed regressions for edge withdrawal lists.
+- Re-run minimal failing withdrawal fixtures from the EELS suite.
 
-### Task 3 (P0): Fix Withdrawal Fixture Semantics and Root Parity
+### Task 5 (P0): Eliminate Systematic Gas Accounting Divergences
 
 Why:
-- Persistent `WithdrawalsRootMismatch` prevents post-Shanghai block correctness.
+- `GasUsedMismatch` is still the largest visible failure class.
 
 What:
-- Ensure fixture withdrawal decoding and trie root construction match execution-spec behavior exactly.
+- Bring per-transaction and per-block gas accounting in line with spec.
 
 How:
-- Audit conversion and RLP encoding against execution-spec withdrawal list-root logic.
-- Add fixture-backed regression tests for duplicate indices, bounds, and zero-amount behavior.
+- Reproduce smallest failing gas fixtures.
+- Patch one deterministic gas rule at a time (warm/cold, refunds, precompile cost paths).
+- Add fixture-driven regression tests per fixed rule.
 
-### Task 4 (P0): Eliminate Systematic Gas Accounting Divergences
+### Task 6 (P0): Resolve State Root Divergences on Valid Fixtures
 
 Why:
-- `GasUsedMismatch` is one of the largest blockers to blockchain fixture parity.
+- `StateRootMismatch` on valid blocks indicates consensus-level STF drift.
 
 What:
-- Align transaction and block gas accounting with spec across warm/cold access, refunds, and tx-fee edge cases.
+- Fix execution/state-commit semantics producing incorrect post-state roots.
 
 How:
-- Start from minimal failing fixtures produced by Task 2.
-- Trace per-transaction gas deltas and patch one deterministic rule at a time.
-- Add regression tests for each corrected gas rule.
-
-### Task 5 (P0): Resolve State Root Divergences on Valid Fixtures
-
-Why:
-- `StateRootMismatch` means STF semantics are still incorrect even when block structure validates.
-
-What:
-- Fix execution/state-commit behavior causing root drift on valid blocks.
-
-How:
-- Triage smallest failing valid fixtures from Task 2.
+- Start from smallest valid failing fixtures.
 - Compare account/storage/code transitions with execution-spec expectations.
-- Add deterministic fixture-based root regression tests.
+- Add deterministic root regression tests per corrected behavior.
 
-### Task 6 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
-
-Why:
-- Blob-era conformance requires point-evaluation precompile support.
-
-What:
-- Implement input validation, gas accounting, verification, and output semantics.
-
-How:
-- Mirror execution-spec behavior and add vectors for success, malformed calldata, invalid proof, and OOG.
-
-### Task 7 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
+### Task 7 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
 
 Why:
-- Current pairing implementation only handles validation + identity-equivalent paths.
+- Cancun-era conformance requires this precompile.
 
 What:
-- Implement full pairing product equation for non-trivial tuple sets.
+- Implement full point-evaluation precompile semantics (validation, gas, output).
 
 How:
-- Add Miller loop + final exponentiation flow with subgroup validation.
-- Add regression vectors covering valid/invalid multi-pairing inputs.
+- Mirror execution-spec behavior and vectors.
+- Cover success, malformed input, invalid proof, and OOG.
 
-### Task 8 (P0): Turn Full EELS Blockchain Test Into a Hard Gate
+### Task 8 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
 
 Why:
-- README-level compatibility claims are not defensible while the comprehensive suite is ignored and non-fatal.
+- Pairing precompile is incomplete for non-identity tuple sets.
 
 What:
-- Make `test_execute_all_blockchain_tests` mandatory and fail on any error/mismatch.
+- Implement full pairing product equation support.
 
 How:
-- Remove `#[ignore]` once Tasks 2-7 converge.
-- Enforce `failed == 0` and `errors == 0` in assertions.
+- Add full Miller loop + final exponentiation flow with subgroup checks.
+- Add multi-pair valid/invalid fixture coverage.
 
-### Task 9 (P1): Add Native vs RV32 Parity Automation
+### Task 9 (P0): Turn Full EELS Blockchain Test Into a Hard Gate
 
 Why:
-- Dual-target behavior is claimed, but parity is not automatically verified.
+- README compatibility claims are not defensible while the full suite remains ignored.
 
 What:
-- Add deterministic parity checks between native and RISC-V runs for curated fixtures.
+- Make full blockchain fixture pass mandatory.
 
 How:
-- Add a `uv run` Python script (PEP 723 metadata) that executes both paths and compares outcomes.
-- Integrate into local validation workflow.
+- Remove `#[ignore]` once P0 functional gaps are resolved.
+- Fail test on any mismatch/error (`failed == 0 && errors == 0`).
 
-### Task 10 (P1): Align README Claims With Enforced Guarantees
+### Task 10 (P1): Add Native vs RV32 Parity Automation
 
 Why:
-- Public claims should reflect what CI and hard gates actually verify.
+- README claims dual-target execution, but parity is not enforced automatically.
 
 What:
-- Reconcile README conformance/dependency/testing claims with real enforced behavior.
+- Add deterministic parity check workflow for curated fixtures.
 
 How:
-- Update wording only after hard-gate completion, or explicitly scope claims to current coverage.
+- Add a `uv run` PEP 723 Python driver that runs native and RV32 paths and diffs outcomes.
+
+### Task 11 (P1): Align README Claims With Enforced Guarantees
+
+Why:
+- Public guarantees must match hard gates and measured behavior.
+
+What:
+- Update README language to match what tests actually enforce.
+
+How:
+- Tighten wording once full-suite hard gate is active (or explicitly scope current guarantees).
