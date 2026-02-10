@@ -66,6 +66,7 @@ Date: 2026-02-10
 
 - The no-orphan Rust files hook fails if any `src/*.rs` file is unreachable.
 - Always run `cargo test -p claudeth --release` and `prek run` before committing.
+- `prek run` may skip checks when no files are eligible; the run is still required.
 - Do not add shell scripts (`.sh`); use `uv run` Python scripts with PEP 723 metadata.
 
 ## Known Gaps
