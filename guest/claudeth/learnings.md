@@ -1,13 +1,12 @@
 ## Do
-- Do model Prague headers with `requests_hash` and keep it in canonical RLP order (after `parent_beacon_block_root`) to preserve fixture hash parity.
-- Do encode header `nonce` as an 8-byte RLP byte string (`Bytes8`), not as an integer, when comparing against execution-spec fixtures.
-- Do convert EELS type-`0x03` fixture transactions into `Transaction::Blob` with strict required fields: `chainId`, `maxFeePerGas`, `maxPriorityFeePerGas`, `maxFeePerBlobGas`, and `blobVersionedHashes`.
-- Do keep fixture conversion strict and fail loudly on malformed blob fields so fixture-shape drift is detected immediately.
-- Do validate harness behavior with real fixture-backed tests (not synthetic-only cases), especially for consensus-critical encoding and transaction-type coverage.
-- Do run `cargo test -p claudeth --release` and `prek run --all-files` before committing.
+- Do resolve blockchain fixture parents by `block_header.parent_hash` against a hash-indexed executed-header map; multi-chain fixtures are not linear.
+- Do build `BLOCKHASH` input as a bounded ancestry window ordered by increasing block number (oldest -> newest), with direct parent last.
+- Do keep invalid blocks from mutating canonical execution context (state/header index); they are expected failures, not chain progression.
+- Do add fixture-backed regression tests for branch-switch scenarios (`chainname` A/B) so parent selection regressions are caught immediately.
+- Do validate host-level `BLOCKHASH` lookups with explicit window-order tests, not just end-to-end fixture execution.
 
 ## Don't
-- Don't rewrite fixture `parentHash` values in the harness; that hides real consensus bugs.
-- Don't assume Cancun-era fixture parsing is enough for Prague/Cancun blob suites; missing type `0x03` support silently drops conformance surface.
-- Don't treat a passing unit-test suite as conformance proof while `test_execute_all_blockchain_tests` is ignored or non-fatal.
-- Don't prioritize speculative optimizations before fixing deterministic mismatch classes first (parent linkage, gas used, state root, withdrawals root).
+- Don't reuse “previous loop header” as parent in EELS harnesses; that breaks as soon as a fixture includes forks.
+- Don't pass empty recent hash arrays to block processing when validating conformance; it guarantees wrong `BLOCKHASH` semantics.
+- Don't assume fixture order implies canonical ancestry; treat header hash linkage as the source of truth.
+- Don't insert headers from expected-invalid blocks into ancestry indexes; that pollutes later parent/hash resolution.

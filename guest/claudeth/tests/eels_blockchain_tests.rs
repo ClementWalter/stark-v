@@ -230,6 +230,34 @@ fn discover_blockchain_tests() -> Vec<std::path::PathBuf> {
     tests
 }
 
+fn resolve_parent_header<'a>(
+    block_header: &claudeth::types::BlockHeader,
+    headers_by_hash: &'a HashMap<claudeth::types::Hash, claudeth::types::BlockHeader>,
+) -> Option<&'a claudeth::types::BlockHeader> {
+    headers_by_hash.get(&block_header.parent_hash)
+}
+
+fn collect_recent_block_hashes(
+    parent_hash: claudeth::types::Hash,
+    headers_by_hash: &HashMap<claudeth::types::Hash, claudeth::types::BlockHeader>,
+) -> Vec<claudeth::types::Hash> {
+    // execution-specs expects BLOCKHASH inputs in increasing block-number
+    // order with the direct parent as the last element.
+    let mut newest_to_oldest = Vec::new();
+    let mut cursor = parent_hash;
+
+    while cursor != claudeth::types::Hash::ZERO && newest_to_oldest.len() < 256 {
+        newest_to_oldest.push(cursor);
+        let Some(parent_header) = headers_by_hash.get(&cursor) else {
+            break;
+        };
+        cursor = parent_header.parent_hash;
+    }
+
+    newest_to_oldest.reverse();
+    newest_to_oldest
+}
+
 fn parse_address(value: &str) -> Result<Address, String> {
     Address::from_str(value).map_err(|err| format!("invalid address {value}: {err}"))
 }
@@ -1038,6 +1066,118 @@ fn test_fixture_parent_hash_linkage_uses_real_header_hashes() {
 }
 
 #[test]
+fn test_multichain_fixture_parent_selection_uses_parent_hash_not_linear_order() {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json",
+    );
+    let case = load_single_blockchain_case(
+        fixture_path,
+        "BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json::UncleFromSideChain_Cancun",
+    );
+
+    let genesis = convert_test_block_header(&case.genesis_block_header).expect("convert genesis");
+    let genesis_hash = genesis.compute_hash();
+    let mut headers_by_hash = HashMap::new();
+    headers_by_hash.insert(genesis_hash, genesis.clone());
+
+    // The fixture switches from chain A height-3 back to chain B height-1.
+    // Parent resolution must follow parent_hash, not previous iteration order.
+    for test_block in case.blocks.iter().take(4) {
+        let header = convert_test_block_header(
+            test_block
+                .block_header
+                .as_ref()
+                .expect("fixture block header"),
+        )
+        .expect("convert fixture header");
+
+        let parent =
+            resolve_parent_header(&header, &headers_by_hash).expect("parent must be available");
+        if test_block.chain_name.as_deref() == Some("B")
+            && test_block.block_number.as_deref() == Some("1")
+        {
+            assert_eq!(parent.compute_hash(), genesis_hash);
+            assert_eq!(parent.number, 0);
+        }
+
+        headers_by_hash.insert(header.compute_hash(), header);
+    }
+}
+
+#[test]
+fn test_recent_block_hash_window_orders_from_oldest_to_newest() {
+    use claudeth::evm::host::{Host, RecursiveHost};
+    use claudeth::evm::interpreter::BlockContext;
+    use claudeth::types::{Address, BlockHeader, EMPTY_OMMERS_HASH, Hash, U256};
+
+    let genesis = BlockHeader {
+        parent_hash: Hash::ZERO,
+        ommers_hash: EMPTY_OMMERS_HASH,
+        coinbase: Address::ZERO,
+        state_root: Hash::ZERO,
+        transactions_root: Hash::ZERO,
+        receipts_root: Hash::ZERO,
+        logs_bloom: [0u8; 256],
+        difficulty: U256::ZERO,
+        number: 0,
+        gas_limit: 30_000_000,
+        gas_used: 0,
+        timestamp: 1,
+        extra_data: Bytes::new(),
+        mix_hash: Hash::ZERO,
+        nonce: 0,
+        base_fee_per_gas: Some(7),
+        withdrawals_root: None,
+        blob_gas_used: None,
+        excess_blob_gas: None,
+        parent_beacon_block_root: None,
+        requests_hash: None,
+    };
+
+    let mut block_1 = genesis.clone();
+    block_1.number = 1;
+    block_1.timestamp = 2;
+    block_1.parent_hash = genesis.compute_hash();
+
+    let mut block_2 = block_1.clone();
+    block_2.number = 2;
+    block_2.timestamp = 3;
+    block_2.parent_hash = block_1.compute_hash();
+
+    let mut headers_by_hash = HashMap::new();
+    headers_by_hash.insert(genesis.compute_hash(), genesis.clone());
+    headers_by_hash.insert(block_1.compute_hash(), block_1.clone());
+    headers_by_hash.insert(block_2.compute_hash(), block_2.clone());
+
+    let recent = collect_recent_block_hashes(block_2.compute_hash(), &headers_by_hash);
+    assert_eq!(recent.len(), 3);
+    assert_eq!(recent[0], genesis.compute_hash());
+    assert_eq!(recent[1], block_1.compute_hash());
+    assert_eq!(recent[2], block_2.compute_hash());
+
+    let block_ctx = BlockContext {
+        number: U256::from_u64(3),
+        ..BlockContext::default()
+    };
+    let host = RecursiveHost::new()
+        .with_block_context(block_ctx)
+        .with_recent_block_hashes(&recent);
+
+    assert_eq!(
+        Host::<InMemoryState>::blockhash(&host, &U256::from_u64(2)),
+        Some(block_2.compute_hash())
+    );
+    assert_eq!(
+        Host::<InMemoryState>::blockhash(&host, &U256::from_u64(1)),
+        Some(block_1.compute_hash())
+    );
+    assert_eq!(
+        Host::<InMemoryState>::blockhash(&host, &U256::from_u64(0)),
+        Some(genesis.compute_hash())
+    );
+}
+
+#[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {
     use claudeth::stf::process_block;
@@ -1088,11 +1228,10 @@ fn test_execute_all_blockchain_tests() {
                 }
             };
 
-            // Execute blocks sequentially
-            // Note: Using converted genesis header. Parent hash validation will fail until
-            // we fix RLP encoding to match EELS format exactly.
-            let mut parent_header = match convert_test_block_header(&test_case.genesis_block_header)
-            {
+            // Execute blocks sequentially while resolving parent headers by hash.
+            // Blockchain fixtures may include forks (chain A / B), so relying on
+            // previous loop iteration for parent selection is incorrect.
+            let genesis_header = match convert_test_block_header(&test_case.genesis_block_header) {
                 Ok(h) => h,
                 Err(e) => {
                     eprintln!("✗ {test_name}: Failed to convert genesis header: {e}");
@@ -1100,6 +1239,9 @@ fn test_execute_all_blockchain_tests() {
                     continue;
                 }
             };
+            let genesis_hash = genesis_header.compute_hash();
+            let mut headers_by_hash = HashMap::new();
+            headers_by_hash.insert(genesis_hash, genesis_header);
 
             let mut test_failed = false;
             let mut failure_reason = String::new();
@@ -1132,6 +1274,24 @@ fn test_execute_all_blockchain_tests() {
                             break;
                         }
                     };
+
+                let parent_header = match resolve_parent_header(&block_header, &headers_by_hash) {
+                    Some(parent) => parent,
+                    None => {
+                        if expects_exception {
+                            continue;
+                        }
+                        failure_reason = format!(
+                            "Block {block_idx}: parent header not found for parent hash {}",
+                            block_header.parent_hash
+                        );
+                        test_failed = true;
+                        break;
+                    }
+                };
+
+                let recent_block_hashes =
+                    collect_recent_block_hashes(block_header.parent_hash, &headers_by_hash);
 
                 // Convert transactions
                 let transactions: Result<Vec<_>, String> = test_block
@@ -1181,10 +1341,10 @@ fn test_execute_all_blockchain_tests() {
 
                 match process_block(
                     &block_header,
-                    &parent_header,
+                    parent_header,
                     &transactions,
                     &withdrawals,
-                    &[],
+                    &recent_block_hashes,
                     &mut state,
                     chain_id,
                 ) {
@@ -1200,7 +1360,7 @@ fn test_execute_all_blockchain_tests() {
                             test_failed = true;
                             break;
                         }
-                        parent_header = block_header;
+                        headers_by_hash.insert(block_header.compute_hash(), block_header);
                         block_results.push(result);
                     }
                     Err(e) => {

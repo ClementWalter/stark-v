@@ -4,159 +4,141 @@ Last reviewed: 2026-02-10
 
 ## Ground Truth Snapshot
 
-- `README.md` still claims full execution-spec compatibility and dual-target enforcement (native + RV32), but this is not currently guaranteed by hard gates.
-- `cargo test -p claudeth --release` passes locally, including current unit/integration/doc tests.
-- Full blockchain fixture execution (`test_execute_all_blockchain_tests` with `--ignored`) is still not a pass/fail gate and shows broad divergence in practice:
-  - multi-chain parent selection mismatches (`InvalidHeader("parent hash does not match provided parent header")`),
-  - frequent `GasUsedMismatch` across many valid/invalid suites,
-  - `StateRootMismatch` and `WithdrawalsRootMismatch` clusters on fixture families.
-- Deterministic harness gap confirmed and fixed this turn:
-  - fixture tx type `0x03` (blob tx) existed in EELS fixtures but was unsupported by converter.
-- Deterministic EVM gaps still present:
-  - precompile `0x0a` (point evaluation) still unimplemented,
-  - precompile `0x08` pairing still missing non-trivial full pairing product verification.
+- `cargo test -p claudeth --release` passes (unit, integration, and doc tests).
+- `test_execute_all_blockchain_tests` is still `#[ignore]`, so full EELS blockchain conformance is not enforced.
+- Harness now resolves block parents by real `parent_hash` and feeds a spec-ordered recent hash window for `BLOCKHASH` (oldest -> newest), including multi-chain fixture coverage.
+- Deterministic conformance gaps still known in code:
+  - precompile `0x0a` point evaluation is not implemented,
+  - precompile `0x08` pairing is still partial for non-trivial tuples.
+- README claims still overstate guaranteed conformance until full EELS blockchain pass is a hard gate.
 
 ## Completed This Turn
 
-### Task 1 (DONE): Prague Header Hash Parity and Parent-Linkage Harness Cleanup
+### Task 1 (DONE): Canonical Parent Selection and `BLOCKHASH` Inputs in EELS Harness
 
 Why:
-- Fixture parent linkage is consensus-critical and must use real fixture hashes.
+- Linear parent tracking is incorrect for multi-chain fixtures and can mask real consensus behavior.
+- Empty `block_hashes` input makes `BLOCKHASH`-dependent execution diverge by construction.
 
 What:
-- Added Prague `requests_hash` coverage and removed parent-hash rewrite workaround.
+- Replaced linear `parent_header` progression with `parent_hash`-based parent lookup.
+- Added recent canonical hash window generation from parent ancestry and passed it to `process_block`.
+- Added regression tests for:
+  - multi-chain fixture parent resolution (`A`/`B` branch switch),
+  - `BLOCKHASH` window ordering + host lookup behavior.
 
 How:
-- Updated header model/encoding tests and fixture-backed hash assertions.
-
-### Task 2 (DONE): Blob Transaction Fixture Conversion (`0x03`)
-
-Why:
-- Cancun/Prague fixtures include blob transactions, and converter rejection caused deterministic coverage holes.
-
-What:
-- Added full fixture conversion support from type `0x03` JSON into `Transaction::Blob`.
-
-How:
-- Extended `TestTransaction` fixture schema with blob fields.
-- Added strict conversion path in `convert_test_transaction`.
-- Added tests:
-  - fixture-backed blob conversion success,
-  - malformed blob fixture rejection (`max_fee_per_blob_gas` missing).
+- Introduced harness helpers to resolve parent headers from an executed-header hash map.
+- Built bounded (max 256) ancestry hash windows in increasing block-number order.
+- Updated success-path bookkeeping to index executed headers by computed hash.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 3 (P0, FIRST): Fix Canonical Parent Selection and BLOCKHASH Inputs in EELS Harness
+### Task 2 (P0, FIRST): Re-baseline Full EELS Blockchain Results After Harness Fix
 
 Why:
-- Multi-chain fixtures fail when harness assumes a single linear parent header.
-- Passing `&[]` for recent block hashes guarantees wrong `BLOCKHASH` behavior.
+- Parent-selection and `BLOCKHASH` inputs were consensus-significant; mismatch distribution changed and must be measured before further fixes.
 
 What:
-- Track executed canonical headers by hash and build per-block parent context correctly.
-- Feed bounded recent hash history (oldest -> newest) into `process_block`.
+- Run full ignored blockchain suite and produce an updated failure taxonomy with top fixture families and mismatch classes.
 
 How:
-- Replace single `parent_header` variable with canonical-chain mapping logic.
-- Select parent by fixture `parent_hash` for each block header.
-- Derive recent hash window from canonical ancestry.
-- Add regression tests for:
-  - multi-chain fixture parent selection,
-  - `BLOCKHASH` opcode sensitivity.
+- Execute `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored`.
+- Capture aggregate counts and top recurring errors (`GasUsedMismatch`, `StateRootMismatch`, `WithdrawalsRootMismatch`, etc.).
+- Pin the smallest reproducible fixtures per mismatch class for targeted implementation tasks.
 
-### Task 4 (P0): Correct Withdrawal Fixture Semantics and Root Parity
+### Task 3 (P0): Fix Withdrawal Fixture Semantics and Root Parity
 
 Why:
-- Repeated `WithdrawalsRootMismatch` indicates fixture-body interpretation mismatch.
+- Persistent `WithdrawalsRootMismatch` prevents post-Shanghai block correctness.
 
 What:
-- Reconcile fixture withdrawal parsing + encoding with execution-specs and EELS expectations for Shanghai+ invalid/edge fixtures.
+- Ensure fixture withdrawal decoding and trie root construction match execution-spec behavior exactly.
 
 How:
-- Audit conversion and RLP encoding against reference execution-spec withdrawal trie construction.
-- Add fixture-vector tests covering duplicate indexes, zero-amount, and bounds cases.
+- Audit conversion and RLP encoding against execution-spec withdrawal list-root logic.
+- Add fixture-backed regression tests for duplicate indices, bounds, and zero-amount behavior.
 
-### Task 5 (P0): Close Systematic Gas Accounting Divergences
+### Task 4 (P0): Eliminate Systematic Gas Accounting Divergences
 
 Why:
-- `GasUsedMismatch` is widespread and blocks conformance claims.
+- `GasUsedMismatch` is one of the largest blockers to blockchain fixture parity.
 
 What:
-- Identify and fix deterministic gas deltas (opcode costs, warm/cold behavior, refunds, tx-level accounting).
+- Align transaction and block gas accounting with spec across warm/cold access, refunds, and tx-fee edge cases.
 
 How:
-- Start from smallest reproducible failing fixtures (for example `bcValidBlockTest/timeDiff*` and `bcInvalidHeaderTest/timeDiff0`).
-- Compare computed per-tx gas with reference traces/spec formulas.
-- Add targeted regression tests for each corrected gas rule.
+- Start from minimal failing fixtures produced by Task 2.
+- Trace per-transaction gas deltas and patch one deterministic rule at a time.
+- Add regression tests for each corrected gas rule.
 
-### Task 6 (P0): Close State Root Divergences in Valid Block Fixtures
+### Task 5 (P0): Resolve State Root Divergences on Valid Fixtures
 
 Why:
-- `StateRootMismatch` in baseline valid fixtures means STF semantics are still off.
+- `StateRootMismatch` means STF semantics are still incorrect even when block structure validates.
 
 What:
-- Fix state-transition behavior for CREATE/REVERT/SELFDESTRUCT/other execution paths causing root drift.
+- Fix execution/state-commit behavior causing root drift on valid blocks.
 
 How:
-- Triage on minimal failing fixtures (`bcExample/*`, exploit/state cases).
-- Validate account/storage/code transitions against reference behavior.
-- Add deterministic state-root regression tests from fixtures.
+- Triage smallest failing valid fixtures from Task 2.
+- Compare account/storage/code transitions with execution-spec expectations.
+- Add deterministic fixture-based root regression tests.
 
-### Task 7 (P0): Implement Precompile `0x0a` Point Evaluation
+### Task 6 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
 
 Why:
-- EIP-4844 conformance requires point-evaluation precompile behavior.
+- Blob-era conformance requires point-evaluation precompile support.
 
 What:
-- Implement calldata validation, gas handling, verification path, and output formatting.
+- Implement input validation, gas accounting, verification, and output semantics.
 
 How:
-- Mirror execution-spec behavior and add vectors for success, malformed input, invalid proof, and OOG.
+- Mirror execution-spec behavior and add vectors for success, malformed calldata, invalid proof, and OOG.
 
-### Task 8 (P0): Complete ALT_BN128 Pairing (`0x08`) for Non-Trivial Inputs
+### Task 7 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
 
 Why:
-- Current implementation only handles validation + identity-equivalent fast paths.
+- Current pairing implementation only handles validation + identity-equivalent paths.
 
 What:
-- Implement full pairing product equation for non-trivial tuples.
+- Implement full pairing product equation for non-trivial tuple sets.
 
 How:
-- Add Miller loop + final exponentiation with subgroup checks.
-- Add fixture-like vectors for valid/invalid multi-pair inputs.
+- Add Miller loop + final exponentiation flow with subgroup validation.
+- Add regression vectors covering valid/invalid multi-pairing inputs.
 
-### Task 9 (P0): Turn Full EELS Blockchain Test into a Hard Gate
+### Task 8 (P0): Turn Full EELS Blockchain Test Into a Hard Gate
 
 Why:
-- Compatibility cannot be claimed while the comprehensive suite is ignored and non-fatal.
+- README-level compatibility claims are not defensible while the comprehensive suite is ignored and non-fatal.
 
 What:
-- Make `test_execute_all_blockchain_tests` a strict pass/fail validation step.
+- Make `test_execute_all_blockchain_tests` mandatory and fail on any error/mismatch.
 
 How:
-- Remove `#[ignore]` only after P0 divergences are resolved.
-- Enforce `failed == 0` and `errors == 0`.
+- Remove `#[ignore]` once Tasks 2-7 converge.
+- Enforce `failed == 0` and `errors == 0` in assertions.
 
-### Task 10 (P1): Add Native vs RV32 Parity Automation
+### Task 9 (P1): Add Native vs RV32 Parity Automation
 
 Why:
-- README claims dual-target testing but parity is not currently enforced automatically.
+- Dual-target behavior is claimed, but parity is not automatically verified.
 
 What:
-- Add deterministic native vs RV32 parity checks for curated fixture subsets.
+- Add deterministic parity checks between native and RISC-V runs for curated fixtures.
 
 How:
-- Add a `uv run` Python runner (PEP 723 metadata) to execute both paths and compare outcomes.
-- Integrate in local quality workflow.
+- Add a `uv run` Python script (PEP 723 metadata) that executes both paths and compares outcomes.
+- Integrate into local validation workflow.
 
-### Task 11 (P1): Align README Claims With Verified Reality
+### Task 10 (P1): Align README Claims With Enforced Guarantees
 
 Why:
-- Public claims should reflect enforced behavior, not aspirational status.
+- Public claims should reflect what CI and hard gates actually verify.
 
 What:
-- Update README wording or implementation until claims are accurate.
+- Reconcile README conformance/dependency/testing claims with real enforced behavior.
 
 How:
-- Reconcile dependency claim vs `Cargo.toml`.
-- Document exact conformance/test-scope guarantees.
+- Update wording only after hard-gate completion, or explicitly scope claims to current coverage.
