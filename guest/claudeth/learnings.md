@@ -82,8 +82,10 @@ Date: 2026-02-10
 - Read the relevant `execution-specs` implementation before changing consensus-critical logic.
 - Update `PLAN.md` and `learnings.md` when behavior changes.
 - Keep all cargo commands scoped to `-p claudeth`.
+- Keep WITNESS version detection and `WITNESS.md` in sync.
 
 **Don't**
 - Skip or disable pre-commit hooks.
 - Add shell scripts (`.sh`) to this project.
 - Assume `PLAN.md` is correct without re-checking the code and README.
+- Change witness version parsing without updating input docs/tests.
