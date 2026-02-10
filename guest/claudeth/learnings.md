@@ -6,11 +6,11 @@ Date: 2026-02-10
 
 - Exceptional halts (OOG, invalid opcode/jump, stack errors) consume all remaining gas and return `success=false` while block processing continues; only successful executions commit state.
 - `REVERT` is non-exceptional: it returns `success=false`, preserves remaining gas, and reverts only the current call frame.
-- `SELFDESTRUCT` follows EIP-6780: transfer balance immediately, delete only if created in the same transaction, and reset created-account tracking per transaction.
+- `SELFDESTRUCT` follows EIP-6780 (delete only if created in the same transaction); created-account tracking resets per transaction.
 - CREATE/CREATE2 enforce EIP-3860 initcode limits plus EIP-3541 and EIP-170 code-size checks; failures consume all remaining gas.
 - SSTORE gas/refunds follow EIP-2200 + EIP-2929 + EIP-3529 using original vs current values; refunds are capped to 1/5 of gas used.
-- Original storage tracking must reset at tx boundaries and after pre-block system calls.
-- Coinbase only receives priority fees; base fee and blob data fee are burned.
+- Original storage tracking must reset at transaction boundaries and after pre-block system calls.
+- Coinbase receives only priority fees; base fee and blob data fee are burned.
 
 ## Transaction Validation Rules
 
@@ -35,7 +35,7 @@ Date: 2026-02-10
 
 ## Guest Input And WITNESS v1
 
-- Input RLP list has 5-7 items and must fully consume the input bytes: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
+- Input RLP list has 5-7 items and must fully consume input bytes: `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries` or `witness`, optional `block_hashes`, optional `withdrawals`.
 - With 6 items, the last item is `withdrawals` only if `withdrawals_root` is present; otherwise it is `block_hashes`.
 - Witness input is detected by a top-level list of 3 items where the first item decodes to u64 version `1`.
 - `withdrawals` must be provided iff `withdrawals_root` is present in the header; an empty list is valid.
@@ -53,14 +53,6 @@ Date: 2026-02-10
 - Logs bloom uses execution-specs bit order: reverse the 11-bit index (`0x07FF - bit_to_set`) and set bits MSB-first within bytes.
 - State root is computed by sorting addresses, using `keccak256(address)` as trie keys, and omitting empty accounts.
 - Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
-
-## secp256k1 In-Tree Crypto
-
-- Fixed constants (p, n, b); affine point arithmetic handles infinity and doubling with `y == 0` => infinity.
-- ECDSA recovery uses `x = r` (or `r + n` for high recid), quadratic-residue check, sqrt via `(p + 1) / 4`, and y-parity selection.
-- ECDSA verify uses `u1 = z*s^-1`, `u2 = r*s^-1`, then checks `x(u1G + u2Q)`.
-- Deterministic signing uses `keccak256(secret_key || msg_hash || attempt)` for nonce selection; retry if `r,s` invalid.
-- For Ethereum txs, keep `v` in `{27,28}` for legacy and `{0,1}` for typed txs; reject if recovery id would require `x >= n`.
 
 ## Tooling And Process
 
