@@ -6,10 +6,11 @@ Date: 2026-02-10
 
 Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 `riscv32im-unknown-none-elf`. It includes a full EVM interpreter, block
-processing with header validations and root checks, a partial MPT, and
-EIP-4895 withdrawals application. The block header type includes
-Shanghai/Cancun fields. Block processing applies the EIP-4788 beacon root and
-EIP-2935 historical block hashes system calls.
+processing with header validations and root checks, a partial MPT (with
+inclusion/exclusion proof verification), and EIP-4895 withdrawals application.
+The block header type includes Shanghai/Cancun fields. Block processing applies
+EIP-4788 (beacon root) and EIP-2935 (history storage) system calls before
+transaction execution.
 
 ## Verified Status (from code)
 
@@ -26,7 +27,7 @@ EIP-2935 historical block hashes system calls.
 - EIP-4895 withdrawals application and withdrawals root validation
 - EIP-4788 beacon root system call during block processing
 - EIP-2935 historical block hashes system call during block processing
-- Partial MPT with proof support
+- Partial MPT with inclusion/exclusion proof verification (RLP node proofs)
 - Block header type supports Shanghai/Cancun fields
   (`withdrawals_root`, `blob_gas_used`, `excess_blob_gas`,
   `parent_beacon_block_root`)
@@ -48,6 +49,7 @@ EIP-2935 historical block hashes system calls.
 - `no_std` riscv32 guest entry and bump allocator
 - Deterministic state root computation by sorting account addresses before trie
   insertion
+- Witness format v1 draft defined in `WITNESS.md`
 
 ### Known Gaps / Limitations
 
@@ -64,10 +66,12 @@ EIP-2935 historical block hashes system calls.
 
 ### P1: Witness-Based State Reconstruction
 
-- Specify witness format (account proof, storage proof, code) and validation
-  rules.
-- Implement proof verification and minimal state reconstruction in `State`.
-- Wire witness-driven state into guest input decoding and state initialization.
+- Define witness format and validation rules (`WITNESS.md`) [done]
+- Add witness RLP decoding to guest input (versioned to coexist with full-state input)
+- Verify account proofs against `state_root` and decode account data
+- Verify storage proofs against each account’s `storage_root`
+- Validate code hashes and reconstruct minimal state (`State` impl)
+- Add unit tests for witness parsing + proof verification
 
 ### P2: Remove `k256`
 
@@ -75,4 +79,5 @@ EIP-2935 historical block hashes system calls.
 
 ## Immediate Next Task
 
-Define the witness format and validation rules for P1.
+Implement witness RLP decoding + account/storage proof validation to build the
+initial `State` from `WITNESS.md`.

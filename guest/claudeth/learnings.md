@@ -2,14 +2,14 @@
 
 Date: 2026-02-10
 
-## Consensus-Critical Behavior
+## Consensus-Critical EVM
 
 - Exceptional halts (OOG, InvalidJump, InvalidOpcode) fail only the current
   transaction: consume all gas and revert that transaction’s state changes.
 - `REVERT` is non-exceptional: preserve remaining gas and revert only the
   current call frame.
-- Gas refunds are capped at 1/5 of total gas used (EIP-3529) in
-  `stf::executor`.
+- Gas refunds are capped at 1/5 of total gas used (EIP-3529) and SSTORE
+  clearing refunds 4800 gas in `stf::executor`.
 
 ## Block Processing Order
 
@@ -17,9 +17,7 @@ Date: 2026-02-10
 - Apply EIP-4788 (beacon root) and EIP-2935 (history storage) system calls
   before executing transactions and before computing the state root.
 - Root checks are post-execution: receipts root, transactions root, logs bloom,
-  withdrawals root (if present), state root, and gas-used vs header.
-- Logs bloom bit ordering must follow execution-specs: reverse the 11-bit index
-  (bit_index = 0x07FF - bit_to_set) and set bits MSB-first within each byte.
+  withdrawals root (if present), state root, gas used, and blob gas used.
 
 ## Header Validation
 
@@ -31,16 +29,27 @@ Date: 2026-02-10
   `excess_blob_gas` is present, both are required, and `excess_blob_gas` must
   match the parent-derived value.
 
-## Guest Input Decoding
+## Guest Input (Current)
 
 - Input is an RLP list of 5–7 items:
   `block_header`, `parent_header`, `chain_id`, `transactions`, `state_entries`,
   optional `block_hashes`, optional `withdrawals`.
+- State entries are `[address, nonce, balance, code_bytes, storage_entries]`.
+  Storage entries are `[key_u256, value_u256]`.
 - A withdrawals list must be provided iff `withdrawals_root` is present in the
   header; an empty list is valid.
 - Recent block hashes are capped at 256 entries, are ordered oldest → newest,
   and when provided the last entry must equal `parent.compute_hash()`.
 - For genesis (`block.number == 0`), a recent block hashes list is invalid.
+
+## Trie / State
+
+- State trie keys are `keccak256(address)` and addresses are sorted before
+  insertion to keep the root deterministic.
+- Storage trie keys are `keccak256(U256 slot)` and zero values delete the key.
+- Empty trie root is `keccak256(rlp([]))` (`EMPTY_TRIE_ROOT`).
+- Partial MPT nodes inline RLP < 32 bytes; `Node::compute_hash` zero-pads
+  the raw RLP into a 32-byte `Hash` for storage.
 
 ## Transactions and Context
 
@@ -59,29 +68,10 @@ Date: 2026-02-10
 - Signature recovery must enforce EIP-2 bounds: `0 < r < SECP256K1N`,
   `0 < s <= SECP256K1N/2`, and valid `v/y_parity` values per transaction type.
 
-## Blob Gas Accounting (EIP-4844)
+## Logs Bloom
 
-- Blob gas used per tx is `GAS_PER_BLOB * blob_count`.
-- Cancun max blob gas per block is `786_432` (6 blobs * 131_072).
-- Blob data fee is `blob_gas_used * blob_base_fee` and is charged upfront from
-  the sender (burned, not credited to coinbase).
-- Block processing enforces the max blob gas per block and validates
-  `header.blob_gas_used` against the computed total.
-
-## State / Trie
-
-- Use `EMPTY_TRIE_ROOT` for empty tries (never `Hash::ZERO`).
-- State root must be deterministic: sort account addresses before inserting into
-  the state trie.
-- State trie keys are `keccak256(address)` (not raw 20-byte address).
-
-## Module Architecture
-
-- There are three `EvmError` enums; opcode-local errors must convert into
-  `evm::error::EvmError`.
-- `evm/mod.rs` re-exports from `interpreter`, not `error`.
-- `compute_create_address` and `compute_create2_address` must stay `pub` for
-  opcode access.
+- Logs bloom bit ordering must follow execution-specs: reverse the 11-bit index
+  (bit_index = 0x07FF - bit_to_set) and set bits MSB-first within each byte.
 
 ## Pre-commit Hygiene
 
@@ -94,8 +84,8 @@ Date: 2026-02-10
 **Do**
 
 - Keep EIP-4788 and EIP-2935 system calls before transaction execution.
-- Ensure `TxContext.blob_versioned_hashes` is set so `BLOBHASH` returns data for
-  blob txs.
+- Ensure `TxContext.blob_versioned_hashes` is set so `BLOBHASH` returns data
+  for blob txs.
 - Keep blob data fee charged upfront and burned (not credited to coinbase).
 - Validate `blob_gas_used` and enforce the Cancun max blob gas per block.
 - Sort addresses before computing the state root and use `keccak256(address)`
@@ -103,7 +93,8 @@ Date: 2026-02-10
 - Enforce recent block hashes list length ≤ min(block number, 256) and require
   the last hash to match the parent hash when provided.
 - Validate base fee caps per transaction type before charging balance.
-- Use execution-specs logs bloom bit ordering (reversed 11-bit index, MSB-first).
+- Use execution-specs logs bloom bit ordering (reversed 11-bit index,
+  MSB-first).
 - Enforce EIP-2 signature bounds and `v/y_parity` constraints during sender
   recovery.
 
