@@ -76,6 +76,7 @@ Date: 2026-02-10
 **Do**
 - Read the relevant `execution-specs` implementation before changing consensus-critical logic.
 - Update `PLAN.md` and `learnings.md` when behavior changes.
+- Update `PLAN.md` test status after running `cargo test -p claudeth --release` and `prek run`.
 - Keep all cargo commands scoped to `-p claudeth`.
 - Keep WITNESS version detection and `WITNESS.md` in sync.
 
