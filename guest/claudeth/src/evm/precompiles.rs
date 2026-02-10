@@ -6,6 +6,7 @@
 //! - 0x03: RIPEMD160
 //! - 0x04: IDENTITY
 //! - 0x05: MODEXP (Cancun gas formula / EIP-2565)
+//! - 0x06: ALT_BN128 ECADD
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
@@ -20,8 +21,11 @@ use alloc::vec::Vec;
 
 use crate::crypto::secp256k1::recover_address;
 use crate::crypto::secp256k1_math::secp256k1_n;
+use crate::crypto::secp256k1_math::{mod_add, mod_inv, mod_mul, mod_sub};
 use crate::crypto::{ripemd160, sha256};
-use crate::evm::gas::{GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD, GAS_MODEXP_BASE};
+use crate::evm::gas::{
+    GAS_BN256_ADD, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD, GAS_MODEXP_BASE,
+};
 use crate::evm::gas::{GAS_RIPEMD160_BASE, GAS_RIPEMD160_WORD, GAS_SHA256_BASE, GAS_SHA256_WORD};
 use crate::types::{Address, Hash, U256};
 
@@ -47,11 +51,24 @@ pub fn execute_precompile(
 ) -> Option<Result<PrecompileResult, PrecompileError>> {
     let id = precompile_id(address)?;
     match id {
-        1 => Some(meter_precompile_result(ecrecover_precompile(input), available_gas)),
-        2 => Some(meter_precompile_result(sha256_precompile(input), available_gas)),
-        3 => Some(meter_precompile_result(ripemd160_precompile(input), available_gas)),
-        4 => Some(meter_precompile_result(identity_precompile(input), available_gas)),
+        1 => Some(meter_precompile_result(
+            ecrecover_precompile(input),
+            available_gas,
+        )),
+        2 => Some(meter_precompile_result(
+            sha256_precompile(input),
+            available_gas,
+        )),
+        3 => Some(meter_precompile_result(
+            ripemd160_precompile(input),
+            available_gas,
+        )),
+        4 => Some(meter_precompile_result(
+            identity_precompile(input),
+            available_gas,
+        )),
         5 => Some(modexp_precompile(input, available_gas)),
+        6 => Some(ecadd_precompile(input, available_gas)),
         _ => None,
     }
 }
@@ -140,7 +157,10 @@ fn ecrecover_precompile(input: &[u8]) -> PrecompileResult {
     }
 }
 
-fn modexp_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+fn modexp_precompile(
+    input: &[u8],
+    available_gas: u64,
+) -> Result<PrecompileResult, PrecompileError> {
     let base_length = U256::from_be_bytes(read_padded_word(input, 0));
     let exponent_length = U256::from_be_bytes(read_padded_word(input, 32));
     let modulus_length = U256::from_be_bytes(read_padded_word(input, 64));
@@ -207,6 +227,137 @@ fn modexp_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResul
         output: result.to_be_bytes_padded(mod_len),
         gas_used: gas_cost.as_u64(),
     })
+}
+
+const BN254_P_BYTES: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
+
+fn bn254_p() -> U256 {
+    U256::from_be_bytes(BN254_P_BYTES)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bn254Point {
+    Infinity,
+    Point { x: U256, y: U256 },
+}
+
+fn ecadd_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+    if available_gas < GAS_BN256_ADD {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    // EELS reads each point with zero-padding, so short calldata still decodes as two 64-byte points.
+    let point_0 = decode_bn254_g1(read_padded_bytes(input, 0, 64).as_slice())?;
+    let point_1 = decode_bn254_g1(read_padded_bytes(input, 64, 64).as_slice())?;
+    let result = bn254_point_add(point_0, point_1);
+
+    let output = match result {
+        Bn254Point::Infinity => vec![0u8; 64],
+        Bn254Point::Point { x, y } => {
+            let mut out = vec![0u8; 64];
+            out[..32].copy_from_slice(&x.to_be_bytes());
+            out[32..].copy_from_slice(&y.to_be_bytes());
+            out
+        }
+    };
+
+    Ok(PrecompileResult {
+        output,
+        gas_used: GAS_BN256_ADD,
+    })
+}
+
+fn decode_bn254_g1(bytes: &[u8]) -> Result<Bn254Point, PrecompileError> {
+    if bytes.len() != 64 {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    let mut x_bytes = [0u8; 32];
+    let mut y_bytes = [0u8; 32];
+    x_bytes.copy_from_slice(&bytes[..32]);
+    y_bytes.copy_from_slice(&bytes[32..64]);
+
+    let x = U256::from_be_bytes(x_bytes);
+    let y = U256::from_be_bytes(y_bytes);
+    let p = bn254_p();
+
+    if x >= p || y >= p {
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    if x.is_zero() && y.is_zero() {
+        return Ok(Bn254Point::Infinity);
+    }
+
+    let y_sq = mod_mul(y, y, p);
+    let x_sq = mod_mul(x, x, p);
+    let x_cubed = mod_mul(x_sq, x, p);
+    let rhs = mod_add(x_cubed, U256::from_u64(3), p);
+
+    if y_sq != rhs {
+        // execution-specs treats malformed bn254 inputs as a precompile exceptional halt.
+        // We map this to OutOfGas to preserve EVM sub-call failure semantics.
+        return Err(PrecompileError::OutOfGas);
+    }
+
+    Ok(Bn254Point::Point { x, y })
+}
+
+fn bn254_point_double(point: Bn254Point) -> Bn254Point {
+    match point {
+        Bn254Point::Infinity => Bn254Point::Infinity,
+        Bn254Point::Point { x, y } => {
+            if y.is_zero() {
+                return Bn254Point::Infinity;
+            }
+
+            let p = bn254_p();
+            let numerator = mod_mul(U256::from_u64(3), mod_mul(x, x, p), p);
+            let denominator = mod_mul(U256::from_u64(2), y, p);
+            let Some(inv) = mod_inv(denominator, p) else {
+                return Bn254Point::Infinity;
+            };
+
+            let lambda = mod_mul(numerator, inv, p);
+            let lambda_sq = mod_mul(lambda, lambda, p);
+            let x_3 = mod_sub(mod_sub(lambda_sq, x, p), x, p);
+            let y_3 = mod_sub(mod_mul(lambda, mod_sub(x, x_3, p), p), y, p);
+
+            Bn254Point::Point { x: x_3, y: y_3 }
+        }
+    }
+}
+
+fn bn254_point_add(left: Bn254Point, right: Bn254Point) -> Bn254Point {
+    match (left, right) {
+        (Bn254Point::Infinity, point) | (point, Bn254Point::Infinity) => point,
+        (Bn254Point::Point { x: x_0, y: y_0 }, Bn254Point::Point { x: x_1, y: y_1 }) => {
+            let p = bn254_p();
+
+            if x_0 == x_1 {
+                if mod_add(y_0, y_1, p).is_zero() {
+                    return Bn254Point::Infinity;
+                }
+                return bn254_point_double(Bn254Point::Point { x: x_0, y: y_0 });
+            }
+
+            let numerator = mod_sub(y_1, y_0, p);
+            let denominator = mod_sub(x_1, x_0, p);
+            let Some(inv) = mod_inv(denominator, p) else {
+                return Bn254Point::Infinity;
+            };
+            let lambda = mod_mul(numerator, inv, p);
+
+            let lambda_sq = mod_mul(lambda, lambda, p);
+            let x_2 = mod_sub(mod_sub(lambda_sq, x_0, p), x_1, p);
+            let y_2 = mod_sub(mod_mul(lambda, mod_sub(x_0, x_2, p), p), y_0, p);
+
+            Bn254Point::Point { x: x_2, y: y_2 }
+        }
+    }
 }
 
 fn modexp_gas_cost(
@@ -599,9 +750,9 @@ mod tests {
         let addr = precompile_address(2);
         let result = execute_precompile_ok(&addr, &input);
         let expected = vec![
-            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d,
-            0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10,
-            0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
+            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae,
+            0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61,
+            0xf2, 0x00, 0x15, 0xad,
         ];
         assert_eq!(result.output, expected);
         assert_eq!(result.gas_used, GAS_SHA256_BASE + GAS_SHA256_WORD);
@@ -613,9 +764,9 @@ mod tests {
         let addr = precompile_address(3);
         let result = execute_precompile_ok(&addr, &input);
         let expected = vec![
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8e,
-            0xb2, 0x08, 0xf7, 0xe0, 0x5d, 0x98, 0x7a, 0x9b, 0x04, 0x4a, 0x8e, 0x98, 0xc6,
-            0xb0, 0x87, 0xf1, 0x5a, 0x0b, 0xfc,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8e, 0xb2,
+            0x08, 0xf7, 0xe0, 0x5d, 0x98, 0x7a, 0x9b, 0x04, 0x4a, 0x8e, 0x98, 0xc6, 0xb0, 0x87,
+            0xf1, 0x5a, 0x0b, 0xfc,
         ];
         assert_eq!(result.output, expected);
         assert_eq!(result.gas_used, GAS_RIPEMD160_BASE + GAS_RIPEMD160_WORD);
@@ -663,6 +814,93 @@ mod tests {
 
         let addr = precompile_address(5);
         let result = execute_precompile(&addr, &input, 300).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    fn bn254_point(x: U256, y: U256) -> Vec<u8> {
+        let mut out = vec![0u8; 64];
+        out[..32].copy_from_slice(&x.to_be_bytes());
+        out[32..].copy_from_slice(&y.to_be_bytes());
+        out
+    }
+
+    #[test]
+    fn test_ecadd_precompile_adds_two_points() {
+        let addr = precompile_address(6);
+        let one_two = bn254_point(U256::from_u64(1), U256::from_u64(2));
+        let mut input = Vec::new();
+        input.extend_from_slice(&one_two);
+        input.extend_from_slice(&one_two);
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.gas_used, GAS_BN256_ADD);
+        assert_eq!(
+            result.output,
+            bn254_point(
+                U256::from_be_bytes([
+                    0x15, 0x2b, 0xe2, 0x52, 0x42, 0x85, 0xb6, 0x12, 0x40, 0xa3, 0x1e, 0x7f, 0xd8,
+                    0xa8, 0x96, 0xa8, 0xc1, 0x96, 0xb5, 0x9f, 0xb5, 0x41, 0x21, 0x3f, 0x8d, 0xb2,
+                    0xdb, 0x70, 0xb8, 0xff, 0xff, 0xff,
+                ]),
+                U256::from_be_bytes([
+                    0x08, 0x51, 0x3d, 0x7b, 0xbe, 0xb4, 0x87, 0x87, 0x2b, 0xad, 0xcb, 0xfb, 0x5e,
+                    0x42, 0x3b, 0x30, 0x02, 0xe8, 0xeb, 0xec, 0x74, 0xeb, 0xdf, 0x58, 0xf7, 0xaa,
+                    0xd6, 0x35, 0x6d, 0x40, 0x00, 0x00,
+                ]),
+            )
+        );
+    }
+
+    #[test]
+    fn test_ecadd_precompile_zero_pads_short_input() {
+        let addr = precompile_address(6);
+        // Only one point is provided, so the second point is interpreted as infinity.
+        let input = bn254_point(U256::from_u64(1), U256::from_u64(2));
+
+        let result = execute_precompile_ok(&addr, &input);
+        assert_eq!(result.gas_used, GAS_BN256_ADD);
+        assert_eq!(
+            result.output,
+            bn254_point(U256::from_u64(1), U256::from_u64(2))
+        );
+    }
+
+    #[test]
+    fn test_ecadd_precompile_invalid_field_element_fails() {
+        let addr = precompile_address(6);
+        let mut invalid_point = vec![0u8; 64];
+        invalid_point[..32].copy_from_slice(&bn254_p().to_be_bytes());
+
+        let mut input = Vec::new();
+        input.extend_from_slice(&invalid_point);
+        input.extend_from_slice(&bn254_point(U256::ZERO, U256::ZERO));
+
+        let result = execute_precompile(&addr, &input, GAS_BN256_ADD).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_ecadd_precompile_invalid_curve_point_fails() {
+        let addr = precompile_address(6);
+        let invalid_point = bn254_point(U256::from_u64(1), U256::from_u64(3));
+
+        let mut input = Vec::new();
+        input.extend_from_slice(&invalid_point);
+        input.extend_from_slice(&bn254_point(U256::ZERO, U256::ZERO));
+
+        let result = execute_precompile(&addr, &input, GAS_BN256_ADD).expect("precompile exists");
+        assert_eq!(result, Err(PrecompileError::OutOfGas));
+    }
+
+    #[test]
+    fn test_ecadd_precompile_oog() {
+        let addr = precompile_address(6);
+        let mut input = Vec::new();
+        input.extend_from_slice(&bn254_point(U256::from_u64(1), U256::from_u64(2)));
+        input.extend_from_slice(&bn254_point(U256::ZERO, U256::ZERO));
+
+        let result =
+            execute_precompile(&addr, &input, GAS_BN256_ADD - 1).expect("precompile exists");
         assert_eq!(result, Err(PrecompileError::OutOfGas));
     }
 
