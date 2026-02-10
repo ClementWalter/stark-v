@@ -27,7 +27,8 @@ witness-based state reconstruction (WITNESS v1). Cancun blob transactions
   logs bloom validation, gas used checks, and blob gas used checks.
 - EIP-4895 withdrawals application and withdrawals root validation.
 - EIP-4788 beacon root system call and EIP-2935 history storage system call.
-- Guest input decoding supports optional recent block hashes for BLOCKHASH and
+- Guest input decoding supports optional recent block hashes for BLOCKHASH
+  (length `<= min(block.number, 256)` and last hash == parent hash) and
   withdrawals list when `withdrawals_root` is present; witness input is detected
   via a versioned 3-item list (WITNESS v1).
 - Receipt decoding supports EIP-2718 typed envelopes for `0x01..0x03`.
