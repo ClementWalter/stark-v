@@ -10,6 +10,7 @@ use std::vec::Vec;
 use alloc::vec::Vec;
 
 use crate::evm::gas::{blob_gas_price, code_deposit_cost, MAX_CODE_SIZE};
+use crate::evm::precompiles::execute_precompile;
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
 
@@ -217,6 +218,32 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 gas_used: msg.gas,
             };
         };
+
+        if let Some(result) = execute_precompile(&msg.code_address, &msg.input) {
+            if !msg.value.is_zero() {
+                let caller_balance = state.get_balance(&msg.caller);
+                if caller_balance < msg.value {
+                    return CallResult {
+                        success: false,
+                        return_data: Vec::new(),
+                        gas_used: 0,
+                    };
+                }
+                state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
+
+                let recipient_balance = state.get_balance(&msg.address);
+                state.set_balance(
+                    &msg.address,
+                    recipient_balance.saturating_add(msg.value),
+                );
+            }
+
+            return CallResult {
+                success: true,
+                return_data: result.output,
+                gas_used: result.gas_used,
+            };
+        }
 
         // Get contract code from code_address
         let code = state.get_code(&msg.code_address).to_vec();

@@ -14,6 +14,7 @@ pub mod host;
 pub mod interpreter;
 pub mod memory;
 pub mod opcodes;
+pub mod precompiles;
 pub mod stack;
 pub mod trace;
 
