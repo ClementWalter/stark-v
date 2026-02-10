@@ -1,6 +1,6 @@
 //! Ethereum transaction types
 //!
-//! This module provides transaction types for Ethereum post-Fusaka:
+//! This module provides transaction types for Ethereum post-Cancun:
 //! - Legacy transactions (Type 0)
 //! - EIP-2930 transactions (Type 1)
 //! - EIP-1559 transactions (Type 2)

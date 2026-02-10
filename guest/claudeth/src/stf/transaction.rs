@@ -8,7 +8,7 @@
 //! - Balance validation
 //! - Chain ID validation
 //!
-//! Validation follows Ethereum's Fusaka fork rules (post-EIP-1559, post-EIP-2930).
+//! Validation follows Ethereum's Cancun fork rules (post-EIP-1559, post-EIP-2930, post-EIP-4844).
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;

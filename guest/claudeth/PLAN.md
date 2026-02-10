@@ -9,7 +9,8 @@ Claudeth is a minimal-dependency Ethereum STF guest targeting `no_std` on
 processing with header validation and root checks, partial MPT proofs, and
 witness-based state reconstruction (WITNESS v1). Cancun blob transactions
 (type `0x03`) and post-Shanghai fields are supported. README alignment reviewed
-against code on 2026-02-10; no functional gaps found.
+against code on 2026-02-10; docs and comments now consistently refer to Cancun-era
+functionality.
 
 ## Verified Status (from code, reviewed 2026-02-10)
 
@@ -48,8 +49,8 @@ against code on 2026-02-10; no functional gaps found.
   CREATE/CREATE2 paths, consuming all remaining gas on failure.
 - Pay coinbase only the priority fee (effective gas price minus base fee),
   burning the base fee portion.
-- EIP-2200 SSTORE gas/refund accounting with original-value tracking and EIP-3529
-  refund adjustments, with per-transaction original storage clearing.
+- EIP-2200 SSTORE gas/refund accounting with original-value tracking and
+  EIP-3529 refund adjustments, with per-transaction original storage clearing.
 
 ### Known Gaps / Limitations
 
@@ -92,6 +93,7 @@ against code on 2026-02-10; no functional gaps found.
 - Reject transactions whose sender account has code (EOA-only requirement).
 - Implement EIP-2200 SSTORE gas/refund logic with original-value tracking and
   clear original storage at transaction and system-call boundaries.
+- Align fork naming in source comments to Cancun-era functionality.
 
 ### Backlog (Not Scheduled)
 
@@ -99,4 +101,4 @@ against code on 2026-02-10; no functional gaps found.
 
 ## Immediate Next Task
 
-None. (README matches code after review on 2026-02-10; backlog items only.)
+None. (README and code now align; backlog items only.)

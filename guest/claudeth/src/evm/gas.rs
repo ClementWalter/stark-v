@@ -1,7 +1,7 @@
 //! EVM Gas Metering
 //!
 //! This module implements gas cost calculations for Ethereum opcodes and operations,
-//! following the Fusaka fork specification. Gas metering ensures proper resource
+//! following the Cancun fork specification. Gas metering ensures proper resource
 //! accounting for EVM execution.
 //!
 //! ## Gas Cost Categories

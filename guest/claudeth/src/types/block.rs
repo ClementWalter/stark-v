@@ -1,7 +1,7 @@
 //! Ethereum block header type
 //!
 //! This module provides the [`BlockHeader`] type for Ethereum blocks,
-//! with support for all Fusaka fork fields including EIP-1559, EIP-4895,
+//! with support for post-Cancun fields including EIP-1559, EIP-4895,
 //! EIP-4844, and EIP-4788.
 
 #[cfg(target_arch = "riscv32")]
@@ -54,10 +54,10 @@ where
     Ok(bloom)
 }
 
-/// Ethereum block header supporting all Fusaka fork fields.
+/// Ethereum block header supporting post-Cancun fork fields.
 ///
 /// This structure contains all 20 fields required for a complete
-/// Ethereum block header post-Fusaka fork, including support for:
+/// Ethereum block header post-Cancun fork, including support for:
 /// - EIP-1559 (base_fee_per_gas)
 /// - EIP-4895 (withdrawals_root)
 /// - EIP-4844 (blob_gas_used, excess_blob_gas)
