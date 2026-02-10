@@ -75,8 +75,13 @@ Shanghai/Cancun fields.
 
 ### P2: Remove `k256`
 
-- Replace `k256` with in-tree secp256k1 implementation.
+- P2.1: Replace k256-based signing in tests with fixed secp256k1 vectors and
+  ensure verification/recovery uses prehashed message inputs. (done)
+- P2.2: Implement in-tree secp256k1 field + point arithmetic and ECDSA
+  verify/recover.
+- P2.3: Remove `k256` dependency from Cargo and tests.
 
 ## Immediate Next Task
 
-Replace `k256` with in-tree secp256k1 implementation.
+Implement in-tree secp256k1 field + point arithmetic and ECDSA
+verify/recover.
