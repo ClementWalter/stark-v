@@ -21,7 +21,7 @@ Last reviewed: 2026-02-11
   - `memory_write(...)` copies only `min(memory_output_size, len(child_output))` bytes and does not zero-fill the untouched tail of the output slice.
   - Fixture `callcodeOutput3partial` exercises exactly this partial-output behavior (historical filename; bytecode path is `DELEGATECALL`).
 - Task 2 implementation status (this pass):
-  - Patched call-output memory writes to preserve untouched output-tail bytes while still applying precharged memory expansion:
+  - Patched call-output memory writes to preserve untouched output-tail bytes while still applying already-charged memory expansion:
     - `src/evm/interpreter.rs`
     - `src/evm/opcodes/utils.rs`
   - Added focused regressions:
@@ -77,7 +77,7 @@ What:
 - Match `CALL*` output copy semantics from execution-spec for both Cancun and Prague:
   - copy only returned bytes into output memory;
   - leave the remaining output range unchanged (no forced zero-fill).
-- Ensure memory-size side effects still follow precharged expansion behavior.
+- Ensure memory-size side effects still follow already-charged expansion behavior.
 
 How:
 - Add focused fixture regressions for `callcodeOutput3partial`.

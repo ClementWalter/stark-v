@@ -93,7 +93,7 @@ pub fn write_memory_bytes(
     let end = offset
         .checked_add(size)
         .ok_or(EvmError::MemoryError(MemoryError::Overflow))?;
-    // Why: mirror CALL-family semantics from execution-specs: precharged
+    // Why: mirror CALL-family semantics from execution-specs: already-charged
     // output range expands memory, but only actual return-data bytes are copied.
     let _ = memory.expand(end).map_err(EvmError::MemoryError)?;
 

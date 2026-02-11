@@ -451,7 +451,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
         // Why: CALL-family output copy must preserve untouched tail bytes in the
         // output slice; only returned bytes are written. We still expand memory
-        // to the precharged output range so MSIZE/stateful expansion stays correct.
+        // to the already-charged output range so MSIZE/stateful expansion stays correct.
         self.expand_memory_range(offset, size)?;
         let copy_size = size.min(data.len());
         for (i, byte) in data.iter().take(copy_size).enumerate() {
