@@ -454,10 +454,14 @@ pub fn extcodehash<S: State>(
     if is_warm {
         *gas_remaining = (*gas_remaining).saturating_add(2600 - 100);
     }
-    let code_hash = state.get_code_hash(&address);
-    stack
-        .push(utils::hash_to_u256(&code_hash))
-        .map_err(EvmError::from)?;
+    // Why: execution-spec EXTCODEHASH returns 0 for non-existent/empty accounts,
+    // not keccak256(empty). Returning EMPTY_CODE_HASH breaks fixture control flow.
+    let code_hash = if state.account_exists(&address) {
+        utils::hash_to_u256(&state.get_code_hash(&address))
+    } else {
+        U256::ZERO
+    };
+    stack.push(code_hash).map_err(EvmError::from)?;
     Ok(())
 }
 
@@ -1410,7 +1414,26 @@ mod tests {
             .unwrap();
         extcodehash::<InMemoryState>(&mut stack, &state, false, &mut gas).unwrap();
 
-        // Empty account returns EMPTY_CODE_HASH (keccak256 of empty)
+        // Non-existent account returns 0 per execution-spec.
+        assert_eq!(stack.pop().unwrap(), U256::ZERO);
+    }
+
+    #[test]
+    fn test_extcodehash_returns_empty_code_hash_for_alive_code_empty_account() {
+        use crate::state::InMemoryState;
+
+        let mut stack = Stack::new();
+        let mut state = InMemoryState::new();
+        let mut gas = 10_000u64;
+        let address = Address::from([0x12; 20]);
+
+        // Why: account existence for EXTCODEHASH depends on account liveness.
+        // A non-empty account with no code must return keccak256(empty), not 0.
+        state.set_balance(&address, U256::from_u64(1));
+
+        stack.push(address_to_u256(&address)).unwrap();
+        extcodehash::<InMemoryState>(&mut stack, &state, false, &mut gas).unwrap();
+
         let empty_hash = keccak256(&[]);
         let mut bytes = [0u8; 32];
         bytes.copy_from_slice(empty_hash.as_bytes());

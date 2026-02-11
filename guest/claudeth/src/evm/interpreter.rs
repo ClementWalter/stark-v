@@ -698,8 +698,13 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.gas_remaining += 2500; // Refund 2600 - 100
                 }
 
-                let code_hash = self.state.get_code_hash(&address);
-                let hash_u256 = hash_to_u256(&code_hash);
+                // Why: execution-spec defines EXTCODEHASH(non-existent/empty) as 0.
+                // Returning keccak256(empty) here causes fixture branch divergence.
+                let hash_u256 = if self.state.account_exists(&address) {
+                    hash_to_u256(&self.state.get_code_hash(&address))
+                } else {
+                    U256::ZERO
+                };
                 self.stack.push(hash_u256)?;
             }
 
@@ -2488,6 +2493,42 @@ mod tests {
         assert!(result.success);
         // Hash should not be zero (it's the keccak of the code)
         assert_ne!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_extcodehash_opcode_nonexistent_account_returns_zero() {
+        // PUSH20 <address> EXTCODEHASH STOP
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let test_addr = Address::new([0x55; 20]);
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.push(0x3F); // EXTCODEHASH
+        code.push(0x00); // STOP
+
+        let state = InMemoryState::new();
+        let (result, _state) = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ZERO);
+    }
+
+    #[test]
+    fn test_extcodehash_opcode_alive_code_empty_account_returns_empty_code_hash() {
+        // PUSH20 <address> EXTCODEHASH STOP
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let test_addr = Address::new([0x56; 20]);
+        code.extend_from_slice(&test_addr.to_bytes());
+        code.push(0x3F); // EXTCODEHASH
+        code.push(0x00); // STOP
+
+        let mut state = InMemoryState::new();
+        // Why: keep account alive without deploying code to assert EMPTY_CODE_HASH path.
+        state.set_balance(&test_addr, U256::from_u64(1));
+
+        let (result, _state) = execute_bytecode(&code, 100000, state).unwrap();
+        assert!(result.success);
+        let expected = U256::from_be_bytes(*crate::crypto::keccak256(&[]).as_bytes());
+        assert_eq!(result.stack.peek(0).unwrap(), &expected);
     }
 
     #[test]

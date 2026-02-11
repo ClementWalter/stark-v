@@ -5,19 +5,15 @@ Last reviewed: 2026-02-11
 ## Ground Truth Snapshot
 
 - `cargo test -p claudeth --release` passes (unit, integration, and doc tests).
-- Full EELS blockchain fixture execution is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
-- Latest complete full-suite baseline (from the last completed ignored run):
+- Full EELS blockchain fixture execution is still non-gating (`test_execute_all_blockchain_tests` remains `#[ignore]`).
+- Latest complete full-suite baseline (from a completed ignored run):
   - command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
   - totals: `Total: 1142`, `Passed: 898`, `Failed: 244`, `Errors: 0`
-- A fresh rerun on 2026-02-11 revealed an additional deterministic harness issue before deep gas/root analysis:
-  - forked fixtures (for example `bcMultiChainTest/UncleFromSideChain`) still reuse a single mutable state across branches;
-  - parent headers are selected by hash, but parent state is still selected implicitly by loop order;
-  - this causes false `NonceTooLow` validation failures on otherwise non-exception branch blocks.
-- Deterministic implementation gaps currently visible in code:
-  - `SELFDESTRUCT` dynamic gas now includes execution-spec cold-beneficiary and new-account surcharges.
-  - precompile `0x0a` (point evaluation) is still unimplemented.
-  - precompile `0x08` pairing only handles identity/infinity paths; non-trivial tuples are unimplemented.
-  - full suite parity is not enforced as a hard gate, so README compatibility claims are not currently provable by CI/test gating.
+- A partial rerun on 2026-02-11 confirms `GasUsedMismatch` remains the dominant failure class (examples observed in logs: `extCodeHashOfDeletedAccountDynamic_*`, `randomStatetest123_*`, `ZeroValue_TransactionCALLwithData_OOGRevert_Prague`).
+- Deterministic implementation gaps still visible in code:
+  - precompile `0x0a` (point evaluation) is unimplemented;
+  - precompile `0x08` pairing still rejects non-trivial tuples;
+  - full EELS parity is not a hard test gate, so README compatibility claims are not yet enforceable.
 
 ## Completed
 
@@ -30,12 +26,10 @@ Why:
 What:
 - Parent selection switched to `parent_hash` lookup over executed-header hash index.
 - Recent block hashes are now passed in execution-spec order (oldest -> newest).
-- Added regression coverage for multi-branch parent resolution and `BLOCKHASH` ordering.
 
 How:
 - Added hash-indexed header resolution helpers.
 - Built bounded ancestry windows from parent hash walk.
-- Updated executed-header bookkeeping to exclude expected-invalid blocks.
 
 ### Task 2 (DONE): Re-baseline Full EELS Blockchain Results
 
@@ -43,7 +37,7 @@ Why:
 - Post-harness parity had to be measured before deeper fixes.
 
 What:
-- Captured a full-suite baseline (`1142 / 898 / 244 / 0`) for prioritization.
+- Captured full-suite baseline (`1142 / 898 / 244 / 0`) for prioritization.
 
 How:
 - Ran ignored full fixture command in `--release` and recorded aggregate totals.
@@ -57,7 +51,7 @@ What:
 - Replaced pseudo-hash behavior with Keccak-256 over encoded node bytes when 32-byte references are required.
 
 How:
-- Updated `Node::compute_hash` and added/updated regression assertions.
+- Updated `Node::compute_hash` and added regressions.
 
 ### Task 4 (DONE): Align Withdrawal Processing and `withdrawalsRoot`
 
@@ -73,63 +67,83 @@ How:
 ### Task 5 (DONE): Implement Full Cancun/Prague `SELFDESTRUCT` Gas Semantics
 
 Why:
-- Missing dynamic `SELFDESTRUCT` gas caused systematic undercharging in selfdestruct-heavy fixtures.
+- Missing dynamic `SELFDESTRUCT` gas caused systematic undercharging.
 
 What:
-- Implemented missing dynamic charges for opcode `0xFF`:
-  - cold beneficiary access surcharge,
-  - new-account surcharge when beneficiary is not alive and originator balance is non-zero.
+- Implemented cold-beneficiary and conditional new-account surcharges.
 
 How:
-- Mirrored execution-spec `system.py::selfdestruct` gas decision points.
-- Added interpreter regressions for cold/warm beneficiary behavior and zero/non-zero originator balances.
-- Validated with `cargo test -p claudeth --release test_selfdestruct` and full `cargo test -p claudeth --release`.
+- Mirrored execution-spec `system.py::selfdestruct` gas decision points and added opcode regressions.
 
 ### Task 6 (DONE): Resolve Parent-State Selection for Forked Blockchain Fixtures
 
 Why:
-- Forked fixtures were still mutating one linear state, creating false failures
-  on branch pivots (`NonceTooLow` on non-exception blocks).
+- Forked fixtures were mutating one linear state, creating false branch failures.
 
 What:
 - Added hash-indexed parent-state selection in the EELS harness.
-- Validated final post-state against fixture `lastblockhash` snapshot.
-- Added a regression for `bcMultiChainTest/UncleFromSideChain`.
 
 How:
 - Introduced per-block `HashMap<Hash, InMemoryState>` snapshots keyed by executed block hash.
-- Executed each block against a clone of its resolved parent state by `parent_hash`.
-- Ensured expected-invalid blocks do not advance header or state indexes.
+
+### Task 7 (DONE): Fix `EXTCODEHASH` Empty/Non-Existent Account Semantics
+
+Why:
+- Execution-spec requires `EXTCODEHASH` to push `0` for empty/non-existent accounts.
+- Returning `keccak256("")` in this case creates consensus-level control-flow divergence.
+
+What:
+- Updated both interpreter and opcode helper paths to return `0` when the account is not alive.
+- Added regressions for:
+  - non-existent account -> `0`;
+  - alive account with empty code -> `keccak256("")`.
+
+How:
+- Followed execution-spec `environment.py::extcodehash` behavior (`account == EMPTY_ACCOUNT` => `0`).
+- Patched `src/evm/interpreter.rs` and `src/evm/opcodes/environment.rs` with shared liveness-based behavior.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 7 (P0, FIRST): Systematically Eliminate Remaining Gas Accounting Divergences
+### Task 8 (P0, FIRST): Eliminate Remaining `SELFDESTRUCT`/Account-Liveness Gas Divergences
 
 Why:
-- `GasUsedMismatch` remains a dominant post-harness failure class and blocks full fixture parity.
+- `extCodeHashOfDeletedAccountDynamic_*` still fails with `GasUsedMismatch` after the `EXTCODEHASH` semantics fix, so at least one delete/liveness path is still off-spec.
 
 What:
-- Close remaining gas-rule deltas across CALL-family accounting, refunds, memory expansion, and opcode-specific dynamic costs.
+- Align post-`SELFDESTRUCT` account liveness and subsequent gas/account-access behavior across same-block transaction sequences.
 
 How:
-- Reproduce smallest deterministic failing fixtures per rule family.
-- Fix one family at a time with execution-spec cross-checks.
-- Add fixture-linked regressions for every patched family.
+- Reproduce with the smallest failing fixture subset.
+- Compare step-by-step against execution-spec `system.py` and account/state helpers.
+- Add regression tests for cross-transaction delete/liveness behavior in block execution.
 
-### Task 8 (P0): Resolve `StateRootMismatch` on Valid Fixtures
+### Task 9 (P0): Systematically Close Remaining CALL-Family Gas Rule Deltas
+
+Why:
+- `GasUsedMismatch` remains dominant and blocks full fixture parity.
+
+What:
+- Close remaining deltas in CALL/CALLCODE/DELEGATECALL/STATICCALL accounting (cold/warm access, new-account surcharge, stipend/forwarded gas boundaries).
+
+How:
+- Bucket failing fixtures by gas delta signature.
+- Patch one rule family at a time with execution-spec cross-checks.
+- Add targeted regressions for each corrected family.
+
+### Task 10 (P0): Resolve `StateRootMismatch` on Valid Fixtures
 
 Why:
 - Any valid-block state root mismatch is a consensus-level STF deviation.
 
 What:
-- Correct state transition semantics that still diverge after gas fixes.
+- Correct remaining transition semantics after gas-rule parity improves.
 
 How:
 - Start from smallest valid failing fixtures.
 - Diff account/storage/code transitions against execution-spec expectations.
-- Add deterministic post-state-root regression tests.
+- Add deterministic post-state-root regressions.
 
-### Task 9 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
+### Task 11 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
 
 Why:
 - Cancun/Prague conformance requires this precompile.
@@ -141,7 +155,7 @@ How:
 - Follow execution-spec `point_evaluation.py` semantics exactly.
 - Add tests for valid proof, invalid proof, malformed input, and OOG paths.
 
-### Task 10 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
+### Task 12 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
 
 Why:
 - Current implementation intentionally fails non-trivial tuples, breaking pairing coverage.
@@ -153,37 +167,37 @@ How:
 - Port execution-spec-compatible pairing checks and arithmetic flow.
 - Add multi-tuple valid and invalid regression vectors.
 
-### Task 11 (P0): Make Full EELS Blockchain Test a Hard Gate
+### Task 13 (P0): Make Full EELS Blockchain Execution a Hard Gate
 
 Why:
-- Compatibility claims are not defensible while full suite execution is ignored.
+- Compatibility claims are not defensible while full-suite execution is ignored.
 
 What:
 - Turn full fixture execution into a mandatory pass criterion.
 
 How:
 - Remove `#[ignore]` once P0 functional gaps are closed.
-- Enforce `failed == 0 && errors == 0` in test assertions.
+- Enforce `failed == 0 && errors == 0` in assertions.
 
-### Task 12 (P1): Enforce Native vs RV32 Parity on Curated Fixtures
+### Task 14 (P1): Enforce Native vs RV32 Parity on Curated Fixtures
 
 Why:
-- README claims dual-target execution but parity is not currently auto-verified.
+- README claims dual-target execution, but parity is not auto-verified.
 
 What:
 - Add automated parity checks between native and RV32 execution for deterministic fixture subsets.
 
 How:
 - Add a `uv run` PEP 723 Python driver that runs both targets and diffs outcomes.
-- Gate this parity command in CI when stable.
+- Gate the parity command in CI when stable.
 
-### Task 13 (P1): Align README Claims with Enforced Guarantees
+### Task 15 (P1): Align README Claims with Enforced Guarantees
 
 Why:
-- Public claims must match what tests actually enforce.
+- Public claims must match hard-gated behavior.
 
 What:
-- Update README wording to match hard-gated guarantees and measured conformance.
+- Update README wording to match measured and enforced conformance.
 
 How:
 - Tighten wording after full-suite gating lands, or explicitly scope current status.
