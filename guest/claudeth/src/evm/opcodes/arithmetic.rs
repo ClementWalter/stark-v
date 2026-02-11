@@ -254,13 +254,11 @@ pub fn mulmod(stack: &mut Stack) -> Result<(), EvmError> {
 
 /// EXP (0x0A): Exponentiation modulo 2^256
 ///
-/// Pops two values from the stack: base and exponent.
+/// Pops two values from the stack: base (top) and exponent (second).
 /// Computes base^exponent mod 2^256 and pushes the result.
 pub fn exp(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top (exponent)
-    let b = stack.pop()?;  // Second (base)
-    let base = b;
-    let exponent = a;
+    let base = stack.pop()?;      // Top
+    let exponent = stack.pop()?;  // Second
 
     // Fast path for common cases
     if exponent.is_zero() {
@@ -916,8 +914,8 @@ mod tests {
     #[test]
     fn test_exp_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(2u64)).unwrap();
-        stack.push(U256::from(10u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap(); // exponent
+        stack.push(U256::from(2u64)).unwrap(); // base (top)
         exp(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(1024u64));
     }
@@ -925,8 +923,8 @@ mod tests {
     #[test]
     fn test_exp_zero_exponent() {
         let mut stack = Stack::new();
-        stack.push(U256::from(42u64)).unwrap();
-        stack.push(U256::ZERO).unwrap();
+        stack.push(U256::ZERO).unwrap(); // exponent
+        stack.push(U256::from(42u64)).unwrap(); // base (top)
         exp(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -934,8 +932,8 @@ mod tests {
     #[test]
     fn test_exp_zero_base() {
         let mut stack = Stack::new();
-        stack.push(U256::ZERO).unwrap();
-        stack.push(U256::from(42u64)).unwrap();
+        stack.push(U256::from(42u64)).unwrap(); // exponent
+        stack.push(U256::ZERO).unwrap(); // base (top)
         exp(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
@@ -943,8 +941,8 @@ mod tests {
     #[test]
     fn test_exp_one() {
         let mut stack = Stack::new();
-        stack.push(U256::from(42u64)).unwrap();
-        stack.push(U256::ONE).unwrap();
+        stack.push(U256::ONE).unwrap(); // exponent
+        stack.push(U256::from(42u64)).unwrap(); // base (top)
         exp(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(42u64));
     }
@@ -952,8 +950,8 @@ mod tests {
     #[test]
     fn test_exp_overflow() {
         let mut stack = Stack::new();
-        stack.push(U256::from(2u64)).unwrap();
-        stack.push(U256::from(256u64)).unwrap();
+        stack.push(U256::from(256u64)).unwrap(); // exponent
+        stack.push(U256::from(2u64)).unwrap(); // base (top)
         exp(&mut stack).unwrap();
         // 2^256 wraps to 0
         assert_eq!(stack.pop().unwrap(), U256::ZERO);

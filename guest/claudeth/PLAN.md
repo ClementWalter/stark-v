@@ -8,37 +8,43 @@ Last reviewed: 2026-02-11
 - `cargo test -p claudeth --release` passes locally.
 - The full blockchain fixture sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
 - Post-fix ignored-suite probe (`cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`) now shows this first deterministic failure family:
-  - `BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json::{StrangeContractCreation_Cancun, StrangeContractCreation_Prague}`
-  - error: `GasUsedMismatch(expected=764553, computed=724753)`
-- After that first failure, the same probe also reports later failures (for example a valid-block selfdestruct edge-case fixture), but those are not the current frontier.
+  - `BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json::reentrencySuicide_Prague`
+  - error: `GasUsedMismatch(expected=109012, computed=111612)` (`+2600`)
+- Cancun for the same fixture currently passes; the frontier is Prague-specific.
 - Explicit known conformance gaps still present in code:
   - precompile `0x0a` point-evaluation unimplemented;
   - precompile `0x08` non-trivial pairing intentionally unsupported.
 
 ## Completed This Turn
 
-- Re-ran ignored-suite baseline and identified `mergeExample` as first deterministic failure.
-- Fixed post-merge opcode `0x44` context wiring:
-  - `src/stf/block.rs` now maps EVM block-context `difficulty` to header `mix_hash` when `header.difficulty == 0` (PREVRANDAO semantics).
-- Added focused regressions:
-  - `tests/eels_blockchain_tests.rs::{test_merge_example_cancun_fixture,test_merge_example_prague_fixture}`
-- Re-ran ignored-suite probe and confirmed `mergeExample` now passes; frontier moved to `StrangeContractCreation`.
+- Added focused regression coverage for:
+  - `tests/eels_blockchain_tests.rs::{test_strange_contract_creation_cancun_fixture,test_strange_contract_creation_prague_fixture}`
+- Fixed `StrangeContractCreation` root cause:
+  - `src/evm/opcodes/arithmetic.rs`: corrected `EXP` operand order to execution-spec semantics (`base=top`, `exponent=next`).
+- Hardened recursive CREATE collision semantics:
+  - `src/evm/host.rs`: immediate collision failure now increments creator nonce, burns forwarded gas, and skips init-code execution.
+  - `src/state/execution.rs`: added explicit `has_storage` to distinguish storage-collision from balance-only accounts.
+- Added host-level regression tests for CREATE collision/non-collision edge cases:
+  - `src/evm/host.rs::{test_recursive_host_create_collision_burns_forwarded_gas,test_recursive_host_create_balance_only_target_is_not_collision}`
+- Re-ran ignored-suite frontier probe and confirmed `StrangeContractCreation` now passes; frontier moved to `reentrencySuicide_Prague`.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix `StrangeContractCreation` Gas Mismatch
+### Task 1 (P0, FIRST): Fix `reentrencySuicide_Prague` Gas Mismatch (`+2600`)
 
 Why:
 - It is the current first deterministic failure family after the latest re-baseline.
 - Until this is fixed, full-suite conformance cannot progress in a deterministic order.
 
 What:
-- Align gas accounting for `BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation` (Cancun + Prague), removing `expected 764553 / computed 724753` mismatch.
+- Align Prague gas accounting for:
+  - `BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json::reentrencySuicide_Prague`
+  - remove `expected 109012 / computed 111612` mismatch.
 
 How:
-- Reproduce with focused fixture tests for both forks.
-- Compare opcode-level gas flow against execution-spec behavior for the exact creation path exercised by this fixture.
-- Patch the narrowest root-cause logic (no broad refactors), add dedicated regressions, and re-run focused tests.
+- Add focused Cancun/Prague fixture regressions for `reentrencySuicide`.
+- Compare Prague-vs-Cancun opcode-level gas flow; treat `+2600` as a likely single cold-account overcharge signal.
+- Patch the narrowest root-cause logic, validate fixture post-state, and re-run focused tests.
 
 ### Task 2 (P0): Re-Baseline Ignored Full-Suite Frontier After Task 1
 

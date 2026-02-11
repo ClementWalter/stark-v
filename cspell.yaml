@@ -161,6 +161,7 @@ words:
   - randao
   - readelf
   - recid
+  - reentrency
   - regs
   - remu
   - repr

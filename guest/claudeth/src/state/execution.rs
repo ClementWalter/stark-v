@@ -70,6 +70,9 @@ pub trait State {
     /// Returns true if the account is empty (no code, nonce = 0, balance = 0)
     fn is_empty(&self, address: &Address) -> bool;
 
+    /// Returns true if the account has non-empty persistent storage.
+    fn has_storage(&self, address: &Address) -> bool;
+
     /// Marks an account for self-destruction (SELFDESTRUCT)
     fn selfdestruct(&mut self, address: &Address, beneficiary: &Address);
 
@@ -352,6 +355,18 @@ impl State for InMemoryState {
     fn is_empty(&self, address: &Address) -> bool {
         let account = self.get_account(address);
         account.is_empty()
+    }
+
+    fn has_storage(&self, address: &Address) -> bool {
+        #[cfg(not(target_arch = "riscv32"))]
+        return self.storage.get(address).is_some_and(|storage| !storage.is_empty());
+
+        #[cfg(target_arch = "riscv32")]
+        return self
+            .storage
+            .get(address)
+            .map(|storage| !storage.is_empty())
+            .unwrap_or(false);
     }
 
     fn selfdestruct(&mut self, address: &Address, beneficiary: &Address) {
@@ -819,6 +834,16 @@ mod tests {
         state.sstore(&addr, &U256::from(1u64), U256::from(2u64));
         assert!(state.account_exists(&addr));
         assert!(!state.is_empty(&addr));
+        assert!(state.has_storage(&addr));
+    }
+
+    #[test]
+    fn test_has_storage_false_for_balance_only_account() {
+        let mut state = InMemoryState::new();
+        let addr = Address::from([0x02; 20]);
+
+        state.set_balance(&addr, U256::from(1u64));
+        assert!(!state.has_storage(&addr));
     }
 
     #[test]

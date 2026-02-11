@@ -1197,8 +1197,11 @@ fn summarize_transaction_results(transaction_results: &[TransactionExecutionResu
             .contract_address
             .map_or_else(|| "<none>".to_string(), |address| address.to_string());
         tx_summaries.push(format!(
-            "#{idx}: success={} gas_used={} cumulative_gas={} contract={contract}",
-            tx_result.success, tx_result.gas_used, tx_result.cumulative_gas_used
+            "#{idx}: success={} gas_used={} cumulative_gas={} return_len={} contract={contract}",
+            tx_result.success,
+            tx_result.gas_used,
+            tx_result.cumulative_gas_used,
+            tx_result.return_data.len()
         ));
     }
 
@@ -1770,6 +1773,32 @@ fn test_merge_example_cancun_fixture() {
 fn test_merge_example_prague_fixture() {
     assert_merge_example_case(
         "BlockchainTests/ValidBlocks/bcExample/mergeExample.json::mergeExample_Prague",
+    );
+}
+
+fn assert_strange_contract_creation_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("StrangeContractCreation fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("StrangeContractCreation post-state should match fixture");
+}
+
+#[test]
+fn test_strange_contract_creation_cancun_fixture() {
+    // Why: this historical exploit fixture stresses recursive CREATE failure
+    // semantics where collision handling and gas burn must match execution-spec.
+    assert_strange_contract_creation_case(
+        "BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json::StrangeContractCreation_Cancun",
+    );
+}
+
+#[test]
+fn test_strange_contract_creation_prague_fixture() {
+    assert_strange_contract_creation_case(
+        "BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json::StrangeContractCreation_Prague",
     );
 }
 

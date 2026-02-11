@@ -37,6 +37,9 @@
 - Do validate comparison-opcode behavior with compiler-generated control flow (for example, `gt(calldataload(4), 0)` loop guards), not only isolated opcode pushes.
 - Do map opcode `0x44` context to `mix_hash` (`PREVRANDAO`) when block `difficulty == 0` on post-merge forks; execution-spec block env uses `prev_randao`, not legacy PoW difficulty.
 - Do treat a deterministic `-19900` gas delta in post-merge creation fixtures as a high-signal indicator that `PREVRANDAO` returned zero and turned an expected `SSTORE` set-cost into a warm no-op-cost path.
+- Do implement `EXP` with execution-spec operand order (`base` = top stack item, `exponent` = next item), or constructor bitmask/packing logic will silently corrupt state and gas.
+- Do short-circuit recursive `CREATE`/`CREATE2` on destination collision (`code/nonce` or non-empty storage): increment creator nonce, burn forwarded gas, and skip init-code execution.
+- Do detect CREATE collision storage explicitly (for example via `has_storage`) instead of inferring from balance-sensitive account existence checks.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -66,3 +69,5 @@
 - Don't treat non-commutative comparison opcodes as if operands were symmetric; reversed operand order silently corrupts branch behavior.
 - Don't trust opcode-only micro-tests as sufficient when full-fixture gas deltas indicate skipped/extra control-flow paths.
 - Don't feed post-merge EVM `0x44` from header `difficulty`; that value is consensus-constant zero and breaks `PREVRANDAO`-dependent contract logic and gas accounting.
+- Don't reverse `EXP` operands; treating top-of-stack as exponent instead of base turns common `0x100 ** n` masks into zeros and causes deterministic storage/gas mismatches.
+- Don't use `account_exists` as a CREATE collision predicate; balance-only accounts are not collisions in execution-spec semantics.

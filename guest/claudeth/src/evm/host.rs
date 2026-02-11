@@ -463,6 +463,21 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             compute_create_address(&msg.caller, nonce)
         };
 
+        let has_code_or_nonce = state.get_nonce(&contract_address) != U256::ZERO
+            || !state.get_code(&contract_address).is_empty();
+        if has_code_or_nonce || state.has_storage(&contract_address) {
+            // Why: execution-spec CREATE collision path still increments the
+            // creator nonce and burns the full forwarded gas, but must not
+            // execute init code or mutate the destination account.
+            state.increment_nonce(&msg.caller);
+            return CreateResult {
+                success: false,
+                address: None,
+                return_data: Vec::new(),
+                gas_used: msg.gas,
+            };
+        }
+
         // Why: execution-spec increments creator nonce before init-code
         // execution, and this increment persists even if creation reverts.
         state.increment_nonce(&msg.caller);
@@ -1128,5 +1143,67 @@ mod tests {
 
         let expected_address = compute_create_address(&caller, U256::ZERO);
         assert!(state.get_code(&expected_address).is_empty());
+    }
+
+    #[test]
+    fn test_recursive_host_create_collision_burns_forwarded_gas() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x07; 20]);
+        state.set_balance(&caller, U256::from_u64(1_000_000));
+        state.set_nonce(&caller, U256::from_u64(7));
+
+        let collision_address = compute_create_address(&caller, U256::from_u64(7));
+        state.set_code(&collision_address, vec![0x00]);
+
+        let mut host = RecursiveHost::new()
+            .with_block_context(BlockContext::default())
+            .with_tx_context(TxContext::default());
+        let msg = CreateMessage {
+            gas: 50_000,
+            caller,
+            value: U256::ZERO,
+            init_code: vec![0x60, 0x00, 0x60, 0x00, 0xF3],
+            salt: None,
+        };
+
+        let result = host.create(&mut state, msg);
+
+        assert!(!result.success);
+        assert_eq!(result.gas_used, 50_000);
+        assert!(result.address.is_none());
+        assert!(result.return_data.is_empty());
+        // Why: CREATE collision increments creator nonce even though creation fails.
+        assert_eq!(state.get_nonce(&caller), U256::from_u64(8));
+        assert_eq!(state.get_code(&collision_address), [0x00]);
+    }
+
+    #[test]
+    fn test_recursive_host_create_balance_only_target_is_not_collision() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x09; 20]);
+        state.set_balance(&caller, U256::from_u64(1_000_000));
+        state.set_nonce(&caller, U256::from_u64(3));
+
+        let create_address = compute_create_address(&caller, U256::from_u64(3));
+        state.set_balance(&create_address, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new()
+            .with_block_context(BlockContext::default())
+            .with_tx_context(TxContext::default());
+        let msg = CreateMessage {
+            gas: 60_000,
+            caller,
+            value: U256::ZERO,
+            init_code: vec![0x60, 0x00, 0x60, 0x00, 0xF3],
+            salt: None,
+        };
+
+        let result = host.create(&mut state, msg);
+
+        assert!(result.success);
+        assert_eq!(result.address, Some(create_address));
+        assert!(result.gas_used < 60_000);
+        // Why: balance-only accounts are not CREATE-collisions in execution-spec.
+        assert_eq!(state.get_nonce(&caller), U256::from_u64(4));
     }
 }
