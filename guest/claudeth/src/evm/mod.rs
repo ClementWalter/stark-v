@@ -51,6 +51,7 @@ pub use gas::{
     keccak256_gas_cost,
     log_gas_cost,
     memory_expansion_cost,
+    memory_expansion_cost_for_range,
     opcode_gas_cost,
     sstore_gas_cost,
 };

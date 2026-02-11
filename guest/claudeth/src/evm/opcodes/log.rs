@@ -12,7 +12,7 @@ use std::vec::Vec;
 use alloc::vec::Vec;
 
 use crate::evm::error::EvmError;
-use crate::evm::{Memory, Stack, log_gas_cost, memory_expansion_cost};
+use crate::evm::{Memory, Stack, log_gas_cost, memory_expansion_cost_for_range};
 use crate::types::{Address, Hash};
 
 use super::utils;
@@ -29,7 +29,7 @@ pub fn execute_log(
     let offset = stack.pop().map_err(EvmError::from)?.as_usize();
     let size = stack.pop().map_err(EvmError::from)?.as_usize();
 
-    let mem_cost = memory_expansion_cost(memory.msize(), offset.saturating_add(size));
+    let mem_cost = memory_expansion_cost_for_range(memory.msize(), offset, size);
     utils::consume_gas(gas_remaining, mem_cost)?;
     utils::consume_gas(gas_remaining, log_gas_cost(num_topics, size))?;
 

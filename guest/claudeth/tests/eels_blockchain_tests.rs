@@ -1752,7 +1752,8 @@ fn test_eip1559_base_fee_prague_fixture() {
 }
 
 fn assert_merge_example_case(case_name: &str) {
-    let fixture_path = Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExample/mergeExample.json");
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExample/mergeExample.json");
     let case = load_single_blockchain_case(fixture_path, case_name);
     let (final_state, _results) = execute_blockchain_case(case_name, &case)
         .expect("mergeExample fixture should execute without gas mismatches");
@@ -1777,8 +1778,9 @@ fn test_merge_example_prague_fixture() {
 }
 
 fn assert_strange_contract_creation_case(case_name: &str) {
-    let fixture_path =
-        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json");
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json",
+    );
     let case = load_single_blockchain_case(fixture_path, case_name);
     let (final_state, _results) = execute_blockchain_case(case_name, &case)
         .expect("StrangeContractCreation fixture should execute without gas mismatches");
@@ -1905,6 +1907,32 @@ fn test_eip1559_val_causes_oof_cancun_fixture() {
 fn test_eip1559_val_causes_oof_prague_fixture() {
     assert_eip1559_val_causes_oof_case(
         "BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json::valCausesOOF_Prague",
+    );
+}
+
+fn assert_random_statetest_324_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/randomStatetest324.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("randomStatetest324 fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("randomStatetest324 post-state should match fixture");
+}
+
+#[test]
+fn test_random_statetest324_cancun_fixture() {
+    // Why: this fixture is the current first deterministic full-suite failure
+    // and catches +3 gas drift from zero-length memory range accounting.
+    assert_random_statetest_324_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest324.json::randomStatetest324_Cancun",
+    );
+}
+
+#[test]
+fn test_random_statetest324_prague_fixture() {
+    assert_random_statetest_324_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest324.json::randomStatetest324_Prague",
     );
 }
 

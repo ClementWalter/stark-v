@@ -31,20 +31,20 @@ use std::collections::BTreeSet;
 #[cfg(target_arch = "riscv32")]
 use alloc::collections::BTreeSet;
 
+use crate::evm::gas::{GAS_SELFDESTRUCT_COLD, GAS_SELFDESTRUCT_NEW_ACCOUNT};
 use crate::evm::host::{
-    CallKind, CallMessage, CreateMessage, Host, NullHost, compute_create2_address,
-    compute_create_address,
+    CallKind, CallMessage, CreateMessage, Host, NullHost, compute_create_address,
+    compute_create2_address,
 };
 use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
 #[cfg(feature = "evm-trace")]
 use crate::evm::trace::{GasTracer, opcode_name};
-use crate::evm::gas::{GAS_SELFDESTRUCT_COLD, GAS_SELFDESTRUCT_NEW_ACCOUNT};
 use crate::evm::{
     GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER, GAS_SSTORE_SENTRY,
     MAX_INIT_CODE_SIZE, create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost,
-    opcode_gas_cost, sstore_gas_cost,
+    memory_expansion_cost_for_range, opcode_gas_cost, sstore_gas_cost,
 };
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -255,6 +255,14 @@ fn hash_to_u256(hash: &Hash) -> U256 {
 
 fn u256_to_hash(value: &U256) -> Hash {
     Hash::from(value.to_be_bytes())
+}
+
+fn memory_range_end(offset: usize, size: usize) -> usize {
+    if size == 0 {
+        0
+    } else {
+        offset.saturating_add(size)
+    }
 }
 
 impl<S: State, H: Host<S>> Evm<S, H> {
@@ -506,7 +514,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.peek(1)?.as_usize();
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
 
                 // Hash cost
@@ -579,7 +587,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), dest, size);
                 self.consume_gas(mem_cost)?;
 
                 // Copy cost
@@ -607,7 +615,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), dest, size);
                 self.consume_gas(mem_cost)?;
 
                 // Copy cost
@@ -669,7 +677,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 };
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), dest, size);
                 self.consume_gas(mem_cost)?;
 
                 // Copy cost
@@ -705,7 +713,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 }
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), dest + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), dest, size);
                 self.consume_gas(mem_cost)?;
 
                 // Copy cost
@@ -929,7 +937,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
 
                 // Memory expansion
-                let max_offset = dest.max(src) + size;
+                // Why: size==0 must not expand memory, regardless of offsets.
+                let max_offset = memory_range_end(dest.max(src), size);
                 let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
                 self.consume_gas(mem_cost)?;
 
@@ -981,7 +990,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 }
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
 
                 // Log cost
@@ -1001,7 +1010,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let offset = self.stack.pop()?.as_usize();
                 let size = self.stack.pop()?.as_usize();
 
-                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
 
                 let init_code = self.read_memory_bytes(offset, size)?;
@@ -1016,7 +1025,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     // before executing init code; this affects subsequent
                     // cold/warm charging in the same transaction.
                     let caller_nonce = self.state.get_nonce(&self.call_ctx.address);
-                    let create_address = compute_create_address(&self.call_ctx.address, caller_nonce);
+                    let create_address =
+                        compute_create_address(&self.call_ctx.address, caller_nonce);
                     self.access_address(&create_address);
 
                     let max_gas = self.gas_remaining - (self.gas_remaining / 64);
@@ -1060,9 +1070,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.gas_remaining += 2500; // Refund 2600 - 100
                 }
 
-                let max_offset = in_offset
-                    .saturating_add(in_size)
-                    .max(out_offset.saturating_add(out_size));
+                let max_offset = memory_range_end(in_offset, in_size)
+                    .max(memory_range_end(out_offset, out_size));
                 let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
                 self.consume_gas(mem_cost)?;
 
@@ -1151,9 +1160,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.gas_remaining += 2500; // Refund 2600 - 100
                 }
 
-                let max_offset = in_offset
-                    .saturating_add(in_size)
-                    .max(out_offset.saturating_add(out_size));
+                let max_offset = memory_range_end(in_offset, in_size)
+                    .max(memory_range_end(out_offset, out_size));
                 let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
                 self.consume_gas(mem_cost)?;
 
@@ -1226,7 +1234,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
 
                 self.return_data = self.read_memory_bytes(offset, size)?;
@@ -1250,9 +1258,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.gas_remaining += 2500; // Refund 2600 - 100
                 }
 
-                let max_offset = in_offset
-                    .saturating_add(in_size)
-                    .max(out_offset.saturating_add(out_size));
+                let max_offset = memory_range_end(in_offset, in_size)
+                    .max(memory_range_end(out_offset, out_size));
                 let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
                 self.consume_gas(mem_cost)?;
 
@@ -1309,7 +1316,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
                 let salt = self.stack.pop()?;
 
-                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
 
                 let init_code = self.read_memory_bytes(offset, size)?;
@@ -1367,9 +1374,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.gas_remaining += 2500; // Refund 2600 - 100
                 }
 
-                let max_offset = in_offset
-                    .saturating_add(in_size)
-                    .max(out_offset.saturating_add(out_size));
+                let max_offset = memory_range_end(in_offset, in_size)
+                    .max(memory_range_end(out_offset, out_size));
                 let mem_cost = memory_expansion_cost(self.memory.msize(), max_offset);
                 self.consume_gas(mem_cost)?;
 
@@ -1425,7 +1431,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let size = self.stack.pop()?.as_usize();
 
                 // Memory expansion
-                let mem_cost = memory_expansion_cost(self.memory.msize(), offset + size);
+                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
 
                 let revert_data = self.read_memory_bytes(offset, size)?;

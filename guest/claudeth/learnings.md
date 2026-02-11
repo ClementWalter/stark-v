@@ -34,6 +34,7 @@
 - Do keep opcode-gas layering consistent: if dispatcher charges opcode base gas up front, dynamic helpers must return only dynamic components.
 - Do verify deterministic gas deltas against opcode-level decomposition (for example, `+375` mapping to one extra LOG base charge) before patching.
 - Do treat stable small deltas (for example `+3`) in first-failure fixtures as high-signal micro-accounting bugs and prioritize a focused opcode-level trace diff.
+- Do skip memory-expansion charging for zero-length ranges (`size == 0`) across LOG/copy/call/return/revert paths; execution-spec memory extension ignores empty ranges.
 - Do rerun ignored full-suite probes after each fix and re-prioritize against the new first deterministic failure family.
 - Do implement `LT`/`GT`/`SLT`/`SGT` with execution-spec operand order (`top` stack item compared against `next`), not reversed order.
 - Do validate comparison-opcode behavior with compiler-generated control flow (for example, `gt(calldataload(4), 0)` loop guards), not only isolated opcode pushes.
@@ -71,6 +72,7 @@
 - Don't map recursive `REVERT` to full forwarded gas burn; that conflates revert semantics with out-of-gas.
 - Don't charge LOG base gas in both opcode dispatch and `log_gas_cost`; that deterministically overcharges every LOG by `375`.
 - Don't treat solved failure families as the current bottleneck without rerunning the ignored suite to confirm the frontier moved.
+- Don't compute memory expansion from `offset + size` when `size == 0`; that overcharges by one word (`+3`) on empty-memory frames with non-zero offsets.
 - Don't treat non-commutative comparison opcodes as if operands were symmetric; reversed operand order silently corrupts branch behavior.
 - Don't trust opcode-only micro-tests as sufficient when full-fixture gas deltas indicate skipped/extra control-flow paths.
 - Don't feed post-merge EVM `0x44` from header `difficulty`; that value is consensus-constant zero and breaks `PREVRANDAO`-dependent contract logic and gas accounting.
