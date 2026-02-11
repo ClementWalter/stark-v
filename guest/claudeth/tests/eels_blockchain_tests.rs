@@ -1652,6 +1652,51 @@ fn test_withdrawal_warmup_prague_fixture() {
     );
 }
 
+fn assert_invalid_header_log_gas_case(fixture_rel_path: &str, case_name: &str) {
+    let fixture_path = Path::new(fixture_rel_path);
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("invalid-header fixture should execute valid blocks without gas mismatch");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("invalid-header fixture post-state should match fixture");
+}
+
+#[test]
+fn test_invalid_header_difficulty_is_zero_cancun_fixture() {
+    // Why: this fixture executes bytecode with LOG1 and catches LOG base-gas
+    // double charging as a deterministic +375 block gas mismatch.
+    assert_invalid_header_log_gas_case(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/DifficultyIsZero.json",
+        "BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/DifficultyIsZero.json::DifficultyIsZero_Cancun",
+    );
+}
+
+#[test]
+fn test_invalid_header_difficulty_is_zero_prague_fixture() {
+    assert_invalid_header_log_gas_case(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/DifficultyIsZero.json",
+        "BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/DifficultyIsZero.json::DifficultyIsZero_Prague",
+    );
+}
+
+#[test]
+fn test_invalid_header_time_diff0_cancun_fixture() {
+    // Why: first block in this fixture shares the same LOG1 path as
+    // DifficultyIsZero; it guards against regressions in block gas accounting.
+    assert_invalid_header_log_gas_case(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/timeDiff0.json",
+        "BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/timeDiff0.json::timeDiff0_Cancun",
+    );
+}
+
+#[test]
+fn test_invalid_header_time_diff0_prague_fixture() {
+    assert_invalid_header_log_gas_case(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/timeDiff0.json",
+        "BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/timeDiff0.json::timeDiff0_Prague",
+    );
+}
+
 #[test]
 fn test_block_processing_error_summary_omits_large_return_data_payloads() {
     let transaction_results = vec![TransactionExecutionResult {

@@ -843,8 +843,9 @@ pub fn call_gas_cost(is_value_transfer: bool, is_new_account: bool, is_cold_acce
 
 /// Calculates the dynamic gas cost for LOG operations.
 ///
-/// LOG operations have a base cost plus costs for topics and data:
-/// `cost = 375 + (375 * num_topics) + (8 * data_size)`
+/// The opcode base (`GAS_LOG`) is charged by the dispatcher via `opcode_gas_cost`.
+/// This helper intentionally returns only the dynamic portion:
+/// `cost = (375 * num_topics) + (8 * data_size)`
 ///
 /// # Arguments
 ///
@@ -860,17 +861,17 @@ pub fn call_gas_cost(is_value_transfer: bool, is_new_account: bool, is_cold_acce
 /// ```
 /// use claudeth::evm::gas::log_gas_cost;
 ///
-/// // LOG0 with 32 bytes of data
-/// assert_eq!(log_gas_cost(0, 32), 375 + 256);
+/// // LOG0 with 32 bytes of data (dynamic only)
+/// assert_eq!(log_gas_cost(0, 32), 256);
 ///
-/// // LOG1 with 1 topic and 64 bytes
-/// assert_eq!(log_gas_cost(1, 64), 375 + 375 + 512);
+/// // LOG1 with 1 topic and 64 bytes (dynamic only)
+/// assert_eq!(log_gas_cost(1, 64), 375 + 512);
 ///
-/// // LOG4 with 4 topics and 256 bytes
-/// assert_eq!(log_gas_cost(4, 256), 375 + 1500 + 2048);
+/// // LOG4 with 4 topics and 256 bytes (dynamic only)
+/// assert_eq!(log_gas_cost(4, 256), 1500 + 2048);
 /// ```
 pub fn log_gas_cost(num_topics: u8, data_size: usize) -> u64 {
-    GAS_LOG + (GAS_LOG_TOPIC * num_topics as u64) + (GAS_LOG_DATA * data_size as u64)
+    (GAS_LOG_TOPIC * num_topics as u64) + (GAS_LOG_DATA * data_size as u64)
 }
 
 /// Calculates the dynamic gas cost for copy operations.
@@ -1348,33 +1349,33 @@ mod tests {
 
     #[test]
     fn test_log0_no_data() {
-        // LOG0 with no data: 375 base
-        assert_eq!(log_gas_cost(0, 0), 375);
+        // LOG0 dynamic cost with no topics and no data.
+        assert_eq!(log_gas_cost(0, 0), 0);
     }
 
     #[test]
     fn test_log0_with_data() {
-        // LOG0 with 32 bytes: 375 + 8*32 = 631
-        assert_eq!(log_gas_cost(0, 32), 631);
+        // LOG0 dynamic cost for 32 bytes: 8*32.
+        assert_eq!(log_gas_cost(0, 32), 256);
     }
 
     #[test]
     fn test_log1() {
-        // LOG1 with 1 topic, 32 bytes: 375 + 375 + 8*32 = 1006
-        assert_eq!(log_gas_cost(1, 32), 1006);
+        // LOG1 dynamic cost for 1 topic and 32 bytes: 375 + 8*32.
+        assert_eq!(log_gas_cost(1, 32), 631);
     }
 
     #[test]
     fn test_log4_large_data() {
-        // LOG4 with 4 topics, 256 bytes: 375 + 4*375 + 8*256 = 3923
-        assert_eq!(log_gas_cost(4, 256), 3923);
+        // LOG4 dynamic cost for 4 topics and 256 bytes.
+        assert_eq!(log_gas_cost(4, 256), 3548);
     }
 
     #[test]
     fn test_log_formula() {
         for topics in 0..=4 {
             for size in [0, 32, 64, 128, 256] {
-                let expected = 375 + (375 * topics as u64) + (8 * size as u64);
+                let expected = (375 * topics as u64) + (8 * size as u64);
                 assert_eq!(log_gas_cost(topics, size), expected);
             }
         }
@@ -1562,7 +1563,7 @@ mod tests {
     fn test_log_max_topics() {
         // LOG4 is the maximum (4 topics)
         let cost = log_gas_cost(4, 0);
-        assert_eq!(cost, 375 + 375 * 4);
+        assert_eq!(cost, 375 * 4);
     }
 
     #[test]
