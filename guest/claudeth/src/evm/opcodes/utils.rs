@@ -12,7 +12,7 @@ use std::vec::Vec;
 use alloc::vec::Vec;
 
 use crate::evm::error::EvmError;
-use crate::evm::memory::Memory;
+use crate::evm::memory::{Memory, MemoryError};
 use crate::types::{Address, Hash, U256};
 
 // =============================================================================
@@ -77,18 +77,32 @@ pub fn read_memory_bytes(
     Ok(out)
 }
 
-/// Write `size` bytes to memory at `offset`. Data is zero-padded if `data.len() < size`.
+/// Expand memory for `size` bytes at `offset`, then write up to `data.len()`.
+///
+/// Bytes in `[offset + data.len(), offset + size)` are left unchanged.
 pub fn write_memory_bytes(
     memory: &mut Memory,
     offset: usize,
     data: &[u8],
     size: usize,
 ) -> Result<(), EvmError> {
-    for i in 0..size {
-        let byte = if i < data.len() { data[i] } else { 0 };
-        memory
-            .mstore8(offset + i, byte)
-            .map_err(EvmError::MemoryError)?;
+    if size == 0 {
+        return Ok(());
+    }
+
+    let end = offset
+        .checked_add(size)
+        .ok_or(EvmError::MemoryError(MemoryError::Overflow))?;
+    // Why: mirror CALL-family semantics from execution-specs: precharged
+    // output range expands memory, but only actual return-data bytes are copied.
+    let _ = memory.expand(end).map_err(EvmError::MemoryError)?;
+
+    let copy_size = size.min(data.len());
+    for (i, byte) in data.iter().take(copy_size).enumerate() {
+        let pos = offset
+            .checked_add(i)
+            .ok_or(EvmError::MemoryError(MemoryError::Overflow))?;
+        memory.mstore8(pos, *byte).map_err(EvmError::MemoryError)?;
     }
     Ok(())
 }

@@ -8,22 +8,30 @@ Last reviewed: 2026-02-11
 - Full blockchain sweep is still `#[ignore]` and non-fatal:
   - `tests/eels_blockchain_tests.rs::test_execute_all_blockchain_tests` remains ignored.
   - `run_all_blockchain_tests_impl()` still reports totals without asserting `failed == 0 && errors == 0`.
-- Release verification re-baseline (ignored sweep, deterministic frontier capture):
+- Fresh release sweep frontier capture (2026-02-11):
   - Command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
-  - First deterministic failing families observed:
-    1. `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::{..._Cancun,..._Prague}`
-       - `Block 0: GasUsedMismatch(expected=468193, computed=184878)`
-    2. `BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::{..._Cancun,..._Prague}`
-       - `Block 0: StateRootMismatch(...)`
-- Execution-spec analysis for the first failing family points to CREATE-message setup mismatch:
-  - In execution-specs, create-message processing increments the created account nonce *before* init-code execution.
-  - Claudeth top-level create path in `src/stf/executor.rs::execute_create()` was patched to align with this behavior.
-- Task 1 implementation status (this pass):
+  - First deterministic failures:
+    1. `BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::callcodeOutput3partial_Cancun`
+       - `Block 0: StateRootMismatch(expected=0x516006c1..., computed=0x4f87e2a7...)`
+    2. `BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::callcodeOutput3partial_Prague`
+       - `Block 0: StateRootMismatch(expected=0x3cbc8f19..., computed=0x9b341bbb...)`
+- `suicideStorageCheckVCreate` Cancun/Prague now pass in the same sweep and are no longer the frontier.
+- Execution-spec reference for this frontier:
+  - `execution-specs/src/ethereum/forks/{cancun,prague}/vm/instructions/system.py::generic_call()`
+  - `memory_write(...)` copies only `min(memory_output_size, len(child_output))` bytes and does not zero-fill the untouched tail of the output slice.
+  - Fixture `callcodeOutput3partial` exercises exactly this partial-output behavior (historical filename; bytecode path is `DELEGATECALL`).
+- Task 2 implementation status (this pass):
+  - Patched call-output memory writes to preserve untouched output-tail bytes while still applying precharged memory expansion:
+    - `src/evm/interpreter.rs`
+    - `src/evm/opcodes/utils.rs`
   - Added focused regressions:
-    - `test_suicide_storage_check_v_create_cancun_fixture`
-    - `test_suicide_storage_check_v_create_prague_fixture`
-  - Verified with `cargo test -p claudeth --release test_suicide_storage_check_v_create_ -- --nocapture` (both pass).
-  - Full ignored sweep has not yet been rerun to completion post-fix in this pass; next recorded deterministic frontier remains `callcodeOutput3partial`.
+    - `tests/eels_blockchain_tests.rs::test_callcode_output3partial_cancun_fixture`
+    - `tests/eels_blockchain_tests.rs::test_callcode_output3partial_prague_fixture`
+    - `src/evm/interpreter.rs::test_call_opcode_preserves_output_tail_when_return_data_is_shorter`
+  - Focused release validation passes:
+    - `cargo test -p claudeth --release test_call_opcode_preserves_output_tail_when_return_data_is_shorter`
+    - `cargo test -p claudeth --release test_callcode_output3partial_ -- --nocapture`
+  - Ignored full-sweep rerun passed both `callcodeOutput3partial` variants and progressed into `bcWalletTest` before manual interruption; next deterministic frontier still needs a complete post-fix capture.
 
 ## Completion Objective
 
@@ -59,26 +67,34 @@ How:
   - `cargo test -p claudeth --release test_suicide_storage_check_v_create_ -- --nocapture`
   - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture` (capture next frontier)
 
-### Task 2 (P0, FIRST): Fix `callcodeOutput3partial` State Root Mismatch
+### Task 2 (P0, DONE): Fix `callcodeOutput3partial` Partial Return-Data Memory Semantics
 
 Why:
-- It is the next deterministic frontier immediately after `suicideStorageCheckVCreate`.
+- It is the current deterministic frontier in the ignored release sweep.
+- Failure is state-root only with matching gas usage, which is consistent with memory/state mutation drift rather than gas accounting.
 
 What:
-- Match post-state semantics for both Cancun and Prague fixture variants.
+- Match `CALL*` output copy semantics from execution-spec for both Cancun and Prague:
+  - copy only returned bytes into output memory;
+  - leave the remaining output range unchanged (no forced zero-fill).
+- Ensure memory-size side effects still follow precharged expansion behavior.
 
 How:
 - Add focused fixture regressions for `callcodeOutput3partial`.
-- Trace CALLCODE state/accounting behavior versus execution-spec references.
-- Apply minimal state-transition correction and rerun focused + ignored sweep.
+- Patch active interpreter output-copy helper used by `CALL`/`CALLCODE`/`DELEGATECALL`/`STATICCALL`.
+- Keep helper behavior in `src/evm/opcodes/utils.rs` aligned with interpreter helper for consistency across dispatch paths.
+- Validate with:
+  - `cargo test -p claudeth --release test_callcode_output3partial_ -- --nocapture`
+  - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture` (capture next frontier)
 
-### Task 3 (P0): Burn Down Remaining Deterministic EELS Failures to Zero
+### Task 3 (P0, FIRST): Capture Next Frontier and Burn Down Remaining Deterministic EELS Failures
 
 Why:
 - README compatibility claims remain false while any deterministic fixture fails.
+- After Task 2, the next deterministic failing family has not yet been captured in a completed post-fix sweep.
 
 What:
-- Continue frontier-by-frontier until ignored full blockchain suite reaches zero failures/errors.
+- Re-establish the first failing family after the `callcodeOutput3partial` fix, then continue frontier-by-frontier until ignored full blockchain suite reaches zero failures/errors.
 
 How:
 - Repeat loop:

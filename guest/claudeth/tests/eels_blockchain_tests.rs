@@ -1868,6 +1868,33 @@ fn test_suicide_storage_check_v_create_prague_fixture() {
     );
 }
 
+fn assert_callcode_output3partial_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("callcodeOutput3partial fixture should execute without state-root mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("callcodeOutput3partial post-state should match fixture");
+}
+
+#[test]
+fn test_callcode_output3partial_cancun_fixture() {
+    // Why: this fixture (historical name) executes DELEGATECALL with
+    // out_size > return_data_len. CALL-family output copy must preserve the
+    // untouched output-memory tail instead of force-zeroing it.
+    assert_callcode_output3partial_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::callcodeOutput3partial_Cancun",
+    );
+}
+
+#[test]
+fn test_callcode_output3partial_prague_fixture() {
+    assert_callcode_output3partial_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::callcodeOutput3partial_Prague",
+    );
+}
+
 fn assert_opcode_a0_log_case(case_name: &str) {
     let fixture_path =
         Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/testOpcode_a0.json");

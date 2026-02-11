@@ -26,6 +26,7 @@
 - Do charge caller-side call gas as `max(child_gas_used - stipend, 0)` and credit unused stipend back.
 - Do transfer ETH only for `CALL`/`CALLCODE`; never for `DELEGATECALL`/`STATICCALL`.
 - Do preserve `CALLVALUE` context through `DELEGATECALL` without moving balances.
+- Do copy only `min(out_size, return_data_len)` bytes for `CALL*` output memory writes; preserve the untouched tail bytes in the output slice.
 - Do propagate successful child-frame logs into parent receipt logs.
 - Do propagate successful child-frame gas refunds into the parent frame refund counter.
 - Do implement `LT`/`GT`/`SLT`/`SGT` using execution-spec operand order.
@@ -60,6 +61,7 @@
 - Don't validate Prague tx gas only against intrinsic gas; include calldata-floor rule.
 - Don't charge call stipend as caller-consumed gas.
 - Don't use `msg.value != 0` alone to decide ETH transfer in host calls.
+- Don't zero-fill `CALL`/`CALLCODE`/`DELEGATECALL`/`STATICCALL` output ranges when child return data is shorter than `out_size`.
 - Don't drop successful child warm accesses/logs at call boundaries.
 - Don't carry refund deltas from reverted/errored child frames into the parent frame.
 - Don't map recursive `REVERT` to full forwarded-gas burn.

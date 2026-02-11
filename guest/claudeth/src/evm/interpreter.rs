@@ -445,9 +445,20 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         data: &[u8],
         size: usize,
     ) -> Result<(), EvmError> {
-        for i in 0..size {
-            let byte = if i < data.len() { data[i] } else { 0 };
-            self.memory.mstore8(offset + i, byte)?;
+        if size == 0 {
+            return Ok(());
+        }
+
+        // Why: CALL-family output copy must preserve untouched tail bytes in the
+        // output slice; only returned bytes are written. We still expand memory
+        // to the precharged output range so MSIZE/stateful expansion stays correct.
+        self.expand_memory_range(offset, size)?;
+        let copy_size = size.min(data.len());
+        for (i, byte) in data.iter().take(copy_size).enumerate() {
+            let pos = offset
+                .checked_add(i)
+                .ok_or(EvmError::MemoryError(MemoryError::Overflow))?;
+            self.memory.mstore8(pos, *byte)?;
         }
         Ok(())
     }
@@ -3150,6 +3161,57 @@ mod tests {
         assert_eq!(recorded.code_address, to);
         assert_eq!(recorded.input, vec![0x01]);
         assert_eq!(recorded.gas, 0x10);
+    }
+
+    #[test]
+    fn test_call_opcode_preserves_output_tail_when_return_data_is_shorter() {
+        let host_state = TestHost {
+            call_result: CallResult {
+                success: true,
+                return_data: Vec::new(),
+                gas_used: 5,
+                ..CallResult::default()
+            },
+            ..Default::default()
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let mut to_bytes = [0u8; 20];
+        to_bytes[19] = 0x02;
+        let to = Address::from_slice(&to_bytes).unwrap();
+
+        let mut code = vec![
+            0x60, 0xAA, // PUSH1 0xAA
+            0x60, 0x20, // PUSH1 0x20
+            0x53, // MSTORE8
+            0x60, 0xBB, // PUSH1 0xBB
+            0x60, 0x21, // PUSH1 0x21
+            0x53, // MSTORE8
+            0x60, 0xCC, // PUSH1 0xCC
+            0x60, 0x22, // PUSH1 0x22
+            0x53, // MSTORE8
+            0x60, 0x03, // PUSH1 0x03 (out_size)
+            0x60, 0x20, // PUSH1 0x20 (out_offset)
+            0x60, 0x00, // PUSH1 0x00 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x60, 0x00, // PUSH1 0x00 (value)
+            0x73, // PUSH20
+        ];
+        code.extend_from_slice(&to.to_bytes());
+        code.extend_from_slice(&[
+            0x60, 0x10, // PUSH1 0x10 (gas)
+            0xF1, // CALL
+            0x00, // STOP
+        ]);
+
+        let (result, _state) =
+            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host).unwrap();
+        assert!(result.success);
+        // Why: execution-spec CALL-family output copying writes only returned
+        // bytes; the untouched tail of the output range must remain unchanged.
+        let mut memory = result.memory;
+        let word = memory.mload(0x20).unwrap().to_be_bytes();
+        assert_eq!(&word[0..3], &[0xAA, 0xBB, 0xCC]);
     }
 
     #[test]
