@@ -4,26 +4,26 @@ Last reviewed: 2026-02-11
 
 ## Ground Truth Snapshot
 
-- `README.md` still claims:
-  - full EELS compatibility;
-  - release tests as the primary verification path;
-  - no caveats about ignored compatibility gaps.
-- The full blockchain EELS runner is still non-gating:
-  - `tests/eels_blockchain_tests.rs::test_execute_all_blockchain_tests` remains `#[ignore]`.
-  - `run_all_blockchain_tests_impl()` still prints totals without asserting `failed == 0 && errors == 0`.
-- Fresh release re-baseline (partial full sweep, halted after deterministic frontier capture):
+- `README.md` still claims full EELS compatibility, but full blockchain compatibility is not yet a hard gate.
+- Full blockchain sweep is still `#[ignore]` and non-fatal:
+  - `tests/eels_blockchain_tests.rs::test_execute_all_blockchain_tests` remains ignored.
+  - `run_all_blockchain_tests_impl()` still reports totals without asserting `failed == 0 && errors == 0`.
+- Release verification re-baseline (ignored sweep, deterministic frontier capture):
   - Command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
-  - First deterministic failing families observed in order:
-    1. `BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json::{blockhashTests_Cancun,blockhashTests_Prague}`
-       - `Block 3: GasUsedMismatch(expected=45352, computed=65252)` (`+19900`)
-    2. `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::{..._Cancun,..._Prague}`
+  - First deterministic failing families observed:
+    1. `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::{..._Cancun,..._Prague}`
        - `Block 0: GasUsedMismatch(expected=468193, computed=184878)`
-    3. `BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::{..._Cancun,..._Prague}`
+    2. `BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json::{..._Cancun,..._Prague}`
        - `Block 0: StateRootMismatch(...)`
-- Root-cause diagnosis for the first failure is already identified in code:
-  - `src/evm/host.rs::blockhash()` truncates the requested `U256` with `as_u64()`.
-  - Values above `u64::MAX` wrap/truncate and can incorrectly resolve to historical hashes instead of zero.
-  - This exactly matches `blockhashTests` gas overcharge behavior (`+19900` via unexpected non-zero `SSTORE`).
+- Execution-spec analysis for the first failing family points to CREATE-message setup mismatch:
+  - In execution-specs, create-message processing increments the created account nonce *before* init-code execution.
+  - Claudeth top-level create path in `src/stf/executor.rs::execute_create()` was patched to align with this behavior.
+- Task 1 implementation status (this pass):
+  - Added focused regressions:
+    - `test_suicide_storage_check_vcreate_cancun_fixture`
+    - `test_suicide_storage_check_vcreate_prague_fixture`
+  - Verified with `cargo test -p claudeth --release test_suicide_storage_check_vcreate_ -- --nocapture` (both pass).
+  - Full ignored sweep has not yet been rerun to completion post-fix in this pass; next recorded deterministic frontier remains `callcodeOutput3partial`.
 
 ## Completion Objective
 
@@ -31,108 +31,96 @@ Make implementation truthfully match `README.md` by:
 
 - eliminating deterministic EELS fixture failures;
 - making full EELS execution a default release gate;
-- validating native/RV32 parity with an enforced gate;
-- removing explicit compatibility caveats in behavior (including remaining precompile gaps).
+- enforcing native/RV32 parity checks;
+- closing remaining semantic gaps that still require fixture-specific caveats.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix `blockhashTests` U256 Handling
+### Task 1 (P0, DONE): Fix `suicideStorageCheckVCreate` CREATE Message Semantics
 
 Why:
-- It is the current first deterministic frontier.
-- The root cause is concrete and isolated (`U256` truncation in host `BLOCKHASH` lookup).
+- It is the first current deterministic failing family in the ignored release sweep.
+- The failure signature (large gas undercount) matches nested CREATE address/collision drift caused by created-account nonce initialization timing.
 
 What:
-- Ensure `BLOCKHASH` only resolves when the stack argument is representable and in-range per execution-spec behavior; otherwise return zero.
-- Add focused Cancun/Prague fixture regressions for `blockhashTests`.
+- Align top-level create-message initialization with execution-spec behavior so nested CREATE observes the correct caller nonce and collision path.
+- Add focused fixture regressions for both Cancun and Prague `suicideStorageCheckVCreate` cases.
 
 How:
-- Update `src/evm/host.rs::blockhash()` to avoid `as_u64()` truncation for request values.
-- Use checked conversion (`u64::try_from`) semantics for the requested block number.
-- Keep existing window logic (`< current`, max distance 256) intact after safe conversion.
-- Add fixture-specific tests in `tests/eels_blockchain_tests.rs` for:
-  - `blockhashTests_Cancun`
-  - `blockhashTests_Prague`
+- In `src/stf/executor.rs::execute_create()`:
+  - increment created-account nonce before executing init code (create-message setup);
+  - preserve rollback behavior for failed top-level creation paths;
+  - avoid double-increment on successful deployment by removing/adjusting late nonce bump.
+- In `tests/eels_blockchain_tests.rs`:
+  - add focused tests for:
+    - `suicideStorageCheckVCreate_Cancun`
+    - `suicideStorageCheckVCreate_Prague`
 - Validate with:
-  - `cargo test -p claudeth --release test_blockhash_tests_ -- --nocapture`
-  - `cargo test -p claudeth --release test_random_statetest241_ -- --nocapture`
-  - `cargo test -p claudeth --release`
+  - `cargo test -p claudeth --release test_suicide_storage_check_vcreate_ -- --nocapture`
+  - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture` (capture next frontier)
 
-### Task 2 (P0): Fix `suicideStorageCheckVCreate` Gas Mismatch
-
-Why:
-- This is the next deterministic family immediately after `blockhashTests`.
-
-What:
-- Align gas accounting/state semantics for both Cancun and Prague cases.
-
-How:
-- Reproduce with focused fixture tests.
-- Diff behavior against `execution-specs` transaction/create semantics.
-- Patch minimal gas/state delta and lock with focused regressions.
-
-### Task 3 (P0): Fix `callcodeOutput3partial` State Root Mismatch
+### Task 2 (P0, FIRST): Fix `callcodeOutput3partial` State Root Mismatch
 
 Why:
-- This is already confirmed as the next deterministic state-root divergence.
+- It is the next deterministic frontier immediately after `suicideStorageCheckVCreate`.
 
 What:
-- Match fixture post-state for both forks.
+- Match post-state semantics for both Cancun and Prague fixture variants.
 
 How:
-- Add focused fixture regressions.
-- Trace storage/balance side effects under `CALLCODE` path versus execution-spec.
-- Apply minimal state-transition correction and rerun focused suite.
+- Add focused fixture regressions for `callcodeOutput3partial`.
+- Trace CALLCODE state/accounting behavior versus execution-spec references.
+- Apply minimal state-transition correction and rerun focused + ignored sweep.
 
-### Task 4 (P0): Burn Down Remaining Deterministic Failures to Zero
+### Task 3 (P0): Burn Down Remaining Deterministic EELS Failures to Zero
 
 Why:
-- README compatibility remains false while any deterministic fixture still fails.
+- README compatibility claims remain false while any deterministic fixture fails.
 
 What:
-- Continue family-by-family until all deterministic failures in full blockchain suite are zero.
+- Continue frontier-by-frontier until ignored full blockchain suite reaches zero failures/errors.
 
 How:
-- Iterative loop:
+- Repeat loop:
   - run ignored release sweep;
-  - capture next frontier;
+  - capture first failing family;
   - add focused regression;
   - patch minimal semantic delta;
-  - rerun focused + release suite.
+  - rerun focused and full ignored sweep.
 
-### Task 5 (P0): Make Full EELS Sweep a Default Hard Gate
-
-Why:
-- Ignored/non-fatal full-suite behavior permits silent regressions and conflicts with README claims.
-
-What:
-- Full blockchain EELS compatibility must fail CI/test runs on any failure.
-
-How:
-- Remove ignore posture (or provide a default path that always runs in release checks).
-- Enforce `failed == 0 && errors == 0` assertions in runner.
-
-### Task 6 (P1): Add Enforced Native vs RV32 Parity Gate
+### Task 4 (P0): Make Full EELS Sweep a Default Hard Gate
 
 Why:
-- README claims both native and RV32 paths are validated, but parity is not currently enforced as a deterministic gate.
+- Ignored/non-fatal behavior allows silent compatibility regressions and contradicts README claims.
 
 What:
-- Add curated parity fixtures and fail on divergence.
+- Full blockchain EELS compatibility must fail test/CI runs on any failure.
 
 How:
-- Execute identical fixture subset on native + runner targets.
-- Compare gas used, logs, receipts root, state root.
+- Remove ignore posture (or run the full suite in default release validation path).
+- Enforce `failed == 0 && errors == 0` in test harness assertions.
 
-### Task 7 (P1): Close Remaining Precompile Completeness Gaps
+### Task 5 (P1): Enforce Native vs RV32 Parity Gate
 
 Why:
-- Full compatibility claims require all relevant precompile semantics to match execution-spec behavior.
+- README states both native and RV32 execution are validated, but parity is not yet an enforced pass/fail gate.
 
 What:
-- Resolve remaining intentionally incomplete precompile behavior and cover malformed/success/OOG cases.
+- Add deterministic parity checks on a curated fixture subset.
 
 How:
-- Port semantics from execution-spec references.
-- Add focused regressions.
-- Re-run full release suite and ignored blockchain compatibility sweep.
+- Execute identical fixtures on native and runner targets.
+- Compare gas used, receipts root, logs bloom, and state root.
+
+### Task 6 (P1): Close Remaining Compatibility Gaps (Including Precompiles)
+
+Why:
+- Full compatibility claims require complete fork-accurate behavior for all relevant execution paths.
+
+What:
+- Resolve remaining known semantic gaps and lock them with focused regressions.
+
+How:
+- Use execution-spec references for each gap.
+- Add targeted tests for success/failure/OOG/malformed cases.
+- Re-run release + ignored full-suite validation after each fix.

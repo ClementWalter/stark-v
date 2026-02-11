@@ -17,7 +17,8 @@
 - Do prewarm recursive child frames with parent warm addresses/storage keys (EIP-2929 continuity).
 - Do prewarm CREATE/CREATE2 destination addresses before init-code execution.
 - Do increment creator nonce for CREATE/CREATE2 attempts that pass prechecks, even when creation later fails.
-- Do set created-account nonce to `1` only on successful creation commit.
+- Do initialize created-account nonce before init-code execution so nested CREATE address derivation matches execution-spec behavior.
+- Do roll back created-account nonce changes on failed top-level CREATE paths while keeping `mark_account_created` semantics.
 - Do return `contract_address = None` for failed top-level CREATE paths.
 - Do short-circuit CREATE collisions on code/nonce/non-empty-storage and burn forwarded gas.
 - Do compute Prague calldata floor as `21000 + calldata_tokens * 10` and apply it as a floor on post-refund gas-used.
@@ -49,6 +50,7 @@
 - Don't compute CREATE address from `caller_nonce - 1`.
 - Don't report contract addresses for failed top-level CREATE execution.
 - Don't leak failed top-level CREATE side effects.
+- Don't defer top-level created-account nonce initialization until after successful code-deposit commit.
 - Don't use `account_exists` alone as CREATE collision predicate (balance-only accounts are not collisions).
 - Don't execute top-level create init code on colliding destinations.
 - Don't stop triage after one gas fix; the next deterministic mismatch often appears immediately.

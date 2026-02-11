@@ -227,12 +227,14 @@ words:
   - transpiling
   - tstore
   - ttext
+  - undercount
   - underflowed
   - unimp
   - uninlined
   - usize
   - usizes
   - vaddr
+  - vcreate
   - venv
   - virt
   - vitalik

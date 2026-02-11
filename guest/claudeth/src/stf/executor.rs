@@ -540,6 +540,11 @@ fn execute_create<S: State + Clone>(
     }
 
     state.mark_account_created(&contract_address);
+    let state_before_exec = state.clone();
+    // Why: execution-spec create-message processing increments the created
+    // account nonce before init-code runs. Nested CREATE address derivation
+    // depends on this nonce being visible during init-code execution.
+    state.increment_nonce(&contract_address);
 
     // Execute init code
     let init_code = tx.data().to_vec();
@@ -598,7 +603,6 @@ fn execute_create<S: State + Clone>(
         _ => Vec::new(),
     };
 
-    let state_before_exec = state.clone();
     let result = execute_bytecode_with_host_contexts_and_access_list(
         &init_code,
         gas_available,
@@ -650,10 +654,9 @@ fn execute_create<S: State + Clone>(
                 if gas_remaining >= code_deposit_cost {
                     // Charge the code deposit gas and deploy the contract
                     final_gas_used = final_gas_used.saturating_add(code_deposit_cost);
-                    // Why: newly created accounts must have nonce=1 after a
-                    // successful creation. This happens only on the successful
-                    // commit path and must not leak into failed creations.
-                    returned_state.increment_nonce(&contract_address);
+                    // Why: nonce was already initialized before init-code per
+                    // create-message semantics; successful deployment only
+                    // needs to commit code bytes.
                     returned_state.set_code(&contract_address, exec_result.return_data.clone());
                 } else {
                     // Out of gas during code deposit - consume all remaining gas

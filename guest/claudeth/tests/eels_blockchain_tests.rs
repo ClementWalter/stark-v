@@ -1841,6 +1841,33 @@ fn test_suicide_storage_check_prague_fixture() {
     );
 }
 
+fn assert_suicide_storage_check_vcreate_case(case_name: &str) {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json",
+    );
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("suicideStorageCheckVCreate fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("suicideStorageCheckVCreate post-state should match fixture");
+}
+
+#[test]
+fn test_suicide_storage_check_vcreate_cancun_fixture() {
+    // Why: execution-spec initializes created-account nonce before init-code;
+    // nested CREATE address derivation in this fixture depends on that timing.
+    assert_suicide_storage_check_vcreate_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::suicideStorageCheckVCreate_Cancun",
+    );
+}
+
+#[test]
+fn test_suicide_storage_check_vcreate_prague_fixture() {
+    assert_suicide_storage_check_vcreate_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::suicideStorageCheckVCreate_Prague",
+    );
+}
+
 fn assert_opcode_a0_log_case(case_name: &str) {
     let fixture_path =
         Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/testOpcode_a0.json");
