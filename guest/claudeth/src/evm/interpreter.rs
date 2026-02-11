@@ -36,11 +36,12 @@ use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
 #[cfg(feature = "evm-trace")]
-use crate::evm::trace::{opcode_name, GasTracer};
+use crate::evm::trace::{GasTracer, opcode_name};
+use crate::evm::gas::{GAS_SELFDESTRUCT_COLD, GAS_SELFDESTRUCT_NEW_ACCOUNT};
 use crate::evm::{
-    create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost, opcode_gas_cost,
-    sstore_gas_cost, GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER,
-    GAS_SSTORE_SENTRY, MAX_INIT_CODE_SIZE,
+    GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER, GAS_SSTORE_SENTRY,
+    MAX_INIT_CODE_SIZE, create2_hash_cost, init_code_gas_cost, log_gas_cost, memory_expansion_cost,
+    opcode_gas_cost, sstore_gas_cost,
 };
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -203,7 +204,7 @@ pub struct Evm<S, H> {
     stack: Stack,
     memory: Memory,
     gas_remaining: u64,
-    gas_refund: u64,      // Accumulated gas refund (from SSTORE clearing storage)
+    gas_refund: u64, // Accumulated gas refund (from SSTORE clearing storage)
     pc: usize,
     code: Vec<u8>,
     stopped: bool,
@@ -213,8 +214,8 @@ pub struct Evm<S, H> {
     call_ctx: CallContext,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
     logs: Vec<LogEntry>,
-    state: S,             // State interface for account/storage access
-    host: H,              // Host interface for calls/creates
+    state: S, // State interface for account/storage access
+    host: H,  // Host interface for calls/creates
     // EIP-2929: Warm/cold access tracking
     accessed_addresses: BTreeSet<Address>,
     accessed_storage: BTreeSet<(Address, U256)>,
@@ -657,7 +658,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             }
             0x3D => {
                 // RETURNDATASIZE
-                self.stack.push(U256::from_u64(self.return_data.len() as u64))?;
+                self.stack
+                    .push(U256::from_u64(self.return_data.len() as u64))?;
             }
             0x3E => {
                 // RETURNDATACOPY
@@ -681,7 +683,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.consume_gas(3 * words as u64)?;
 
                 for i in 0..size {
-                    self.memory.mstore8(dest + i, self.return_data[offset + i])?;
+                    self.memory
+                        .mstore8(dest + i, self.return_data[offset + i])?;
                 }
             }
             0x3F => {
@@ -820,21 +823,17 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 // Check if warm BEFORE marking as accessed (EIP-2929)
                 let is_warm = self.access_storage(&address, &key);
 
-                let sstore_gas = sstore_gas_cost(
-                    original_value,
-                    current_value,
-                    new_value,
-                    !is_warm,
-                );
+                let sstore_gas =
+                    sstore_gas_cost(original_value, current_value, new_value, !is_warm);
                 self.consume_gas(sstore_gas.cost)?;
                 if sstore_gas.refund_delta >= 0 {
-                    self.gas_refund = self.gas_refund.saturating_add(
-                        sstore_gas.refund_delta as u64,
-                    );
+                    self.gas_refund = self
+                        .gas_refund
+                        .saturating_add(sstore_gas.refund_delta as u64);
                 } else {
-                    self.gas_refund = self.gas_refund.saturating_sub(
-                        (-sstore_gas.refund_delta) as u64,
-                    );
+                    self.gas_refund = self
+                        .gas_refund
+                        .saturating_sub((-sstore_gas.refund_delta) as u64);
                 }
 
                 self.state.sstore(&address, &key, new_value);
@@ -866,7 +865,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             }
             0x59 => {
                 // MSIZE
-                self.stack.push(U256::from_u64(self.memory.msize() as u64))?;
+                self.stack
+                    .push(U256::from_u64(self.memory.msize() as u64))?;
             }
             0x5A => {
                 // GAS
@@ -1061,7 +1061,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
                 self.return_data = result.return_data.clone();
                 self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
-                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+                self.stack.push(if result.success {
+                    U256::ONE
+                } else {
+                    U256::ZERO
+                })?;
             }
 
             // 0xF2: CALLCODE (EIP-2929 warm/cold)
@@ -1121,7 +1125,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
                 self.return_data = result.return_data.clone();
                 self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
-                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+                self.stack.push(if result.success {
+                    U256::ONE
+                } else {
+                    U256::ZERO
+                })?;
             }
 
             // 0xF3: RETURN
@@ -1186,7 +1194,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
                 self.return_data = result.return_data.clone();
                 self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
-                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+                self.stack.push(if result.success {
+                    U256::ONE
+                } else {
+                    U256::ZERO
+                })?;
             }
 
             // 0xF5: CREATE2
@@ -1280,7 +1292,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
 
                 self.return_data = result.return_data.clone();
                 self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
-                self.stack.push(if result.success { U256::ONE } else { U256::ZERO })?;
+                self.stack.push(if result.success {
+                    U256::ONE
+                } else {
+                    U256::ZERO
+                })?;
             }
 
             // 0xFD: REVERT
@@ -1310,11 +1326,26 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 let originator = self.call_ctx.address;
                 let originator_balance = self.state.get_balance(&originator);
 
+                // execution-specs charges an additional cold-access cost the
+                // first time the beneficiary is touched in this transaction.
+                let beneficiary_warm = self.access_address(&beneficiary);
+                if !beneficiary_warm {
+                    self.consume_gas(GAS_SELFDESTRUCT_COLD)?;
+                }
+
+                // When the beneficiary is not alive and the originator sends a
+                // non-zero balance, SELFDESTRUCT pays the new-account surcharge.
+                if !originator_balance.is_zero() && !self.state.account_exists(&beneficiary) {
+                    self.consume_gas(GAS_SELFDESTRUCT_NEW_ACCOUNT)?;
+                }
+
                 if !originator_balance.is_zero() && beneficiary != originator {
                     let beneficiary_balance = self.state.get_balance(&beneficiary);
                     self.state.set_balance(&originator, U256::ZERO);
-                    self.state
-                        .set_balance(&beneficiary, beneficiary_balance.saturating_add(originator_balance));
+                    self.state.set_balance(
+                        &beneficiary,
+                        beneficiary_balance.saturating_add(originator_balance),
+                    );
                 }
 
                 if self.state.account_created_in_tx(&originator) {
@@ -1336,7 +1367,14 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             let gas_after = self.gas_remaining;
             let gas_cost = gas_before.saturating_sub(gas_after);
             if let Some(ref mut tracer) = self.tracer {
-                tracer.trace(pc, opcode, opcode_name(opcode), gas_before, gas_cost, gas_after);
+                tracer.trace(
+                    pc,
+                    opcode,
+                    opcode_name(opcode),
+                    gas_before,
+                    gas_cost,
+                    gas_after,
+                );
             }
         }
 
@@ -1546,8 +1584,8 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::evm::host::{CallResult, CreateResult};
     use crate::evm::MAX_INIT_CODE_SIZE;
+    use crate::evm::host::{CallResult, CreateResult};
     use crate::state::{InMemoryState, State};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -1578,16 +1616,12 @@ mod tests {
 
         fn blockhash(&self, number: &U256) -> Option<Hash> {
             let inner = self.borrow();
-            inner
-                .blockhash
-                .filter(|_| *number != U256::ZERO)
+            inner.blockhash.filter(|_| *number != U256::ZERO)
         }
 
         fn blobhash(&self, index: &U256) -> Option<Hash> {
             let inner = self.borrow();
-            inner
-                .blobhash
-                .filter(|_| *index != U256::ZERO)
+            inner.blobhash.filter(|_| *index != U256::ZERO)
         }
 
         fn blobbasefee(&self) -> U256 {
@@ -1804,13 +1838,7 @@ mod tests {
         };
 
         let (result, _state) = execute_bytecode_with_host_and_contexts(
-            &code,
-            10_000,
-            state,
-            NullHost,
-            block_ctx,
-            tx_ctx,
-            call_ctx,
+            &code, 10_000, state, NullHost, block_ctx, tx_ctx, call_ctx,
         )
         .unwrap();
 
@@ -1849,13 +1877,7 @@ mod tests {
         };
 
         let (result, _state) = execute_bytecode_with_host_and_contexts(
-            &code,
-            10_000,
-            state,
-            NullHost,
-            block_ctx,
-            tx_ctx,
-            call_ctx,
+            &code, 10_000, state, NullHost, block_ctx, tx_ctx, call_ctx,
         )
         .unwrap();
 
@@ -1873,11 +1895,11 @@ mod tests {
         let code = vec![
             0x60, 0x01, // PUSH1 1 (value)
             0x60, 0x00, // PUSH1 0 (key)
-            0x55,       // SSTORE (cold: 20000 + 2100 = 22100)
+            0x55, // SSTORE (cold: 20000 + 2100 = 22100)
             0x60, 0x02, // PUSH1 2 (value)
             0x60, 0x00, // PUSH1 0 (key)
-            0x55,       // SSTORE (warm: 20000 + 100 = 20100)
-            0x00,       // STOP
+            0x55, // SSTORE (warm: 20000 + 100 = 20100)
+            0x00, // STOP
         ];
 
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
@@ -1939,12 +1961,12 @@ mod tests {
         let code = vec![
             0x60, 0x01, // PUSH1 1
             0x60, 0x01, // PUSH1 1
-            0x01,       // ADD (result: 2)
-            0x80,       // DUP1 (stack: 2, 2)
-            0x01,       // ADD (result: 4)
-            0x80,       // DUP1 (stack: 4, 4)
-            0x01,       // ADD (result: 8)
-            0x00,       // STOP
+            0x01, // ADD (result: 2)
+            0x80, // DUP1 (stack: 2, 2)
+            0x01, // ADD (result: 4)
+            0x80, // DUP1 (stack: 4, 4)
+            0x01, // ADD (result: 8)
+            0x00, // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -1965,7 +1987,9 @@ mod tests {
     fn test_codecopy() {
         // Copy 3 bytes of code to memory at offset 0
         // PUSH1 0x03 PUSH1 0x00 PUSH1 0x00 CODECOPY PUSH1 0x00 MLOAD STOP
-        let code = vec![0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0x39, 0x60, 0x00, 0x51, 0x00];
+        let code = vec![
+            0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0x39, 0x60, 0x00, 0x51, 0x00,
+        ];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         // Memory should contain first 3 bytes of code (0x60, 0x03, 0x60)
@@ -1997,14 +2021,8 @@ mod tests {
 
         let result = evm.run().unwrap();
         assert!(result.success);
-        assert_eq!(
-            result.stack.peek(2).unwrap(),
-            &address_to_u256(&address)
-        );
-        assert_eq!(
-            result.stack.peek(1).unwrap(),
-            &address_to_u256(&caller)
-        );
+        assert_eq!(result.stack.peek(2).unwrap(), &address_to_u256(&address));
+        assert_eq!(result.stack.peek(1).unwrap(), &address_to_u256(&caller));
         assert_eq!(result.stack.peek(0).unwrap(), &call_value);
     }
 
@@ -2208,7 +2226,10 @@ mod tests {
         code.push(0x00); // STOP
 
         let result = execute_bytecode(&code, 1000000, InMemoryState::new());
-        assert!(matches!(result, Err(EvmError::StackError(StackError::Overflow))));
+        assert!(matches!(
+            result,
+            Err(EvmError::StackError(StackError::Overflow))
+        ));
     }
 
     #[test]
@@ -2216,7 +2237,10 @@ mod tests {
         // Try to POP from empty stack
         let code = vec![0x50]; // POP
         let result = execute_bytecode(&code, 1000, InMemoryState::new());
-        assert!(matches!(result, Err(EvmError::StackError(StackError::Underflow))));
+        assert!(matches!(
+            result,
+            Err(EvmError::StackError(StackError::Underflow))
+        ));
     }
 
     // =============================================================================
@@ -2229,12 +2253,12 @@ mod tests {
         // Store a value to memory, then return it
         // PUSH1 0x42 PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
         let code = vec![
-            0x60, 0x42,       // PUSH1 0x42
-            0x60, 0x00,       // PUSH1 0x00
-            0x52,             // MSTORE
-            0x60, 0x20,       // PUSH1 0x20 (size)
-            0x60, 0x00,       // PUSH1 0x00 (offset)
-            0xF3,             // RETURN
+            0x60, 0x42, // PUSH1 0x42
+            0x60, 0x00, // PUSH1 0x00
+            0x52, // MSTORE
+            0x60, 0x20, // PUSH1 0x20 (size)
+            0x60, 0x00, // PUSH1 0x00 (offset)
+            0xF3, // RETURN
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -2247,18 +2271,18 @@ mod tests {
         // If-else using JUMPI: if x > 5 then push 1 else push 0
         // PUSH1 0x06 PUSH1 0x05 GT PUSH1 0x0D JUMPI PUSH1 0x00 PUSH1 0x11 JUMP JUMPDEST PUSH1 0x01 JUMPDEST STOP
         let code = vec![
-            0x60, 0x06,       // PUSH1 6
-            0x60, 0x05,       // PUSH1 5
-            0x11,             // GT (6 > 5 = true)
-            0x60, 0x0D,       // PUSH1 13 (jump target)
-            0x57,             // JUMPI
-            0x60, 0x00,       // PUSH1 0 (else branch)
-            0x60, 0x11,       // PUSH1 17 (skip to end)
-            0x56,             // JUMP
-            0x5B,             // JUMPDEST (offset 13)
-            0x60, 0x01,       // PUSH1 1 (then branch)
-            0x5B,             // JUMPDEST (offset 17)
-            0x00,             // STOP
+            0x60, 0x06, // PUSH1 6
+            0x60, 0x05, // PUSH1 5
+            0x11, // GT (6 > 5 = true)
+            0x60, 0x0D, // PUSH1 13 (jump target)
+            0x57, // JUMPI
+            0x60, 0x00, // PUSH1 0 (else branch)
+            0x60, 0x11, // PUSH1 17 (skip to end)
+            0x56, // JUMP
+            0x5B, // JUMPDEST (offset 13)
+            0x60, 0x01, // PUSH1 1 (then branch)
+            0x5B, // JUMPDEST (offset 17)
+            0x00, // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -2270,12 +2294,12 @@ mod tests {
         // Simple counter loop: push 3 values and add them
         // PUSH1 1 PUSH1 2 PUSH1 3 ADD ADD STOP
         let code = vec![
-            0x60, 0x01,       // PUSH1 1
-            0x60, 0x02,       // PUSH1 2
-            0x60, 0x03,       // PUSH1 3
-            0x01,             // ADD (2+3=5)
-            0x01,             // ADD (1+5=6)
-            0x00,             // STOP
+            0x60, 0x01, // PUSH1 1
+            0x60, 0x02, // PUSH1 2
+            0x60, 0x03, // PUSH1 3
+            0x01, // ADD (2+3=5)
+            0x01, // ADD (1+5=6)
+            0x00, // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -2288,16 +2312,16 @@ mod tests {
         // Store 0x42 at offset 0, then copy to offset 32
         // PUSH1 0x42 PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 PUSH1 0x20 MCOPY PUSH1 0x20 MLOAD STOP
         let code = vec![
-            0x60, 0x42,       // PUSH1 0x42
-            0x60, 0x00,       // PUSH1 0x00
-            0x52,             // MSTORE
-            0x60, 0x20,       // PUSH1 32 (size)
-            0x60, 0x00,       // PUSH1 0 (src)
-            0x60, 0x20,       // PUSH1 32 (dest)
-            0x5E,             // MCOPY
-            0x60, 0x20,       // PUSH1 32
-            0x51,             // MLOAD
-            0x00,             // STOP
+            0x60, 0x42, // PUSH1 0x42
+            0x60, 0x00, // PUSH1 0x00
+            0x52, // MSTORE
+            0x60, 0x20, // PUSH1 32 (size)
+            0x60, 0x00, // PUSH1 0 (src)
+            0x60, 0x20, // PUSH1 32 (dest)
+            0x5E, // MCOPY
+            0x60, 0x20, // PUSH1 32
+            0x51, // MLOAD
+            0x00, // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
@@ -2310,13 +2334,16 @@ mod tests {
         // PUSH2 0x1234 PUSH1 0x56 ADD STOP
         let code = vec![
             0x61, 0x12, 0x34, // PUSH2 0x1234
-            0x60, 0x56,       // PUSH1 0x56
-            0x01,             // ADD
-            0x00,             // STOP
+            0x60, 0x56, // PUSH1 0x56
+            0x01, // ADD
+            0x00, // STOP
         ];
         let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
         assert!(result.success);
-        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_u64(0x1234 + 0x56));
+        assert_eq!(
+            result.stack.peek(0).unwrap(),
+            &U256::from_u64(0x1234 + 0x56)
+        );
     }
 
     #[test]
@@ -2328,17 +2355,21 @@ mod tests {
         code.extend_from_slice(&[0x60, 0x0A]); // PUSH1 10
         code.extend_from_slice(&[0x60, 0x05]); // PUSH1 5
         code.push(0x01); // ADD
-        code.push(0x60); code.push(0x02); // PUSH1 2
+        code.push(0x60);
+        code.push(0x02); // PUSH1 2
         code.push(0x02); // MUL
-        code.push(0x60); code.push(0x03); // PUSH1 3
+        code.push(0x60);
+        code.push(0x03); // PUSH1 3
         code.push(0x04); // DIV
 
         // Bitwise
-        code.push(0x60); code.push(0xFF); // PUSH1 0xFF
+        code.push(0x60);
+        code.push(0xFF); // PUSH1 0xFF
         code.push(0x16); // AND
 
         // Comparison
-        code.push(0x60); code.push(0x00); // PUSH1 0
+        code.push(0x60);
+        code.push(0x00); // PUSH1 0
         code.push(0x14); // EQ
 
         // Stack manipulation
@@ -2416,14 +2447,14 @@ mod tests {
             0x60, 0x04, // PUSH1 4 (size)
             0x60, 0x00, // PUSH1 0 (offset in code)
             0x60, 0x00, // PUSH1 0 (dest in memory)
-            0x73,       // PUSH20
+            0x73, // PUSH20
         ];
         code.extend_from_slice(&test_addr.to_bytes());
         code.extend_from_slice(&[
-            0x3C,       // EXTCODECOPY
+            0x3C, // EXTCODECOPY
             0x60, 0x00, // PUSH1 0
-            0x51,       // MLOAD
-            0x00,       // STOP
+            0x51, // MLOAD
+            0x00, // STOP
         ]);
 
         let mut state = InMemoryState::new();
@@ -2482,10 +2513,10 @@ mod tests {
         let code = vec![
             0x60, 0x99, // PUSH1 0x99 (value)
             0x60, 0x42, // PUSH1 0x42 (key)
-            0x55,       // SSTORE
+            0x55, // SSTORE
             0x60, 0x42, // PUSH1 0x42 (key)
-            0x54,       // SLOAD
-            0x00,       // STOP
+            0x54, // SLOAD
+            0x00, // STOP
         ];
 
         let state = InMemoryState::new();
@@ -2511,10 +2542,10 @@ mod tests {
         let code = vec![
             0x60, 0x77, // PUSH1 0x77 (value)
             0x60, 0x33, // PUSH1 0x33 (key)
-            0x5D,       // TSTORE
+            0x5D, // TSTORE
             0x60, 0x33, // PUSH1 0x33 (key)
-            0x5C,       // TLOAD
-            0x00,       // STOP
+            0x5C, // TLOAD
+            0x00, // STOP
         ];
 
         let state = InMemoryState::new();
@@ -2574,7 +2605,75 @@ mod tests {
         assert_eq!(selfdestructs[0].0, contract_addr);
         assert_eq!(selfdestructs[0].1, beneficiary);
         assert_eq!(created_evm.state.get_balance(&contract_addr), U256::ZERO);
-        assert_eq!(created_evm.state.get_balance(&beneficiary), U256::from_u64(1000));
+        assert_eq!(
+            created_evm.state.get_balance(&beneficiary),
+            U256::from_u64(1000)
+        );
+    }
+
+    #[test]
+    fn test_selfdestruct_gas_cold_empty_beneficiary_non_zero_balance() {
+        // PUSH20 <beneficiary> SELFDESTRUCT
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let beneficiary = Address::new([0xAB; 20]);
+        code.extend_from_slice(&beneficiary.to_bytes());
+        code.push(0xFF); // SELFDESTRUCT
+
+        let mut state = InMemoryState::new();
+        let contract_addr = Address::new([0xCD; 20]);
+        state.set_balance(&contract_addr, U256::from_u64(1000));
+
+        let mut evm = Evm::new(code, 100000, state, NullHost);
+        evm.call_ctx.address = contract_addr;
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        // PUSH20 (3) + SELFDESTRUCT base (5000) + cold access (2600) + new account (25000)
+        assert_eq!(result.gas_used, 32_603);
+    }
+
+    #[test]
+    fn test_selfdestruct_gas_cold_empty_beneficiary_zero_balance_skips_new_account_cost() {
+        // PUSH20 <beneficiary> SELFDESTRUCT
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let beneficiary = Address::new([0xBC; 20]);
+        code.extend_from_slice(&beneficiary.to_bytes());
+        code.push(0xFF); // SELFDESTRUCT
+
+        let state = InMemoryState::new();
+        let contract_addr = Address::new([0xCE; 20]);
+
+        let mut evm = Evm::new(code, 100000, state, NullHost);
+        evm.call_ctx.address = contract_addr;
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        // PUSH20 (3) + SELFDESTRUCT base (5000) + cold access (2600)
+        assert_eq!(result.gas_used, 7_603);
+    }
+
+    #[test]
+    fn test_selfdestruct_gas_warm_beneficiary_skips_cold_access_cost() {
+        // PUSH20 <beneficiary> SELFDESTRUCT
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        let beneficiary = Address::new([0xAD; 20]);
+        code.extend_from_slice(&beneficiary.to_bytes());
+        code.push(0xFF); // SELFDESTRUCT
+
+        let mut state = InMemoryState::new();
+        let contract_addr = Address::new([0xCF; 20]);
+        state.set_balance(&contract_addr, U256::from_u64(1000));
+
+        let mut evm = Evm::new(code, 100000, state, NullHost).warm_addresses(&[beneficiary]);
+        evm.call_ctx.address = contract_addr;
+
+        let result = evm.run().unwrap();
+        assert!(result.success);
+        // PUSH20 (3) + SELFDESTRUCT base (5000) + new account (25000), no cold surcharge.
+        assert_eq!(result.gas_used, 30_003);
     }
 
     #[test]
@@ -2583,15 +2682,15 @@ mod tests {
         let code = vec![
             0x60, 0x11, // PUSH1 0x11
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55,       // SSTORE
+            0x55, // SSTORE
             0x60, 0x22, // PUSH1 0x22
             0x60, 0x02, // PUSH1 0x02 (key)
-            0x55,       // SSTORE
+            0x55, // SSTORE
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x54,       // SLOAD
+            0x54, // SLOAD
             0x60, 0x02, // PUSH1 0x02 (key)
-            0x54,       // SLOAD
-            0x00,       // STOP
+            0x54, // SLOAD
+            0x00, // STOP
         ];
 
         let state = InMemoryState::new();
@@ -2607,15 +2706,15 @@ mod tests {
         let code = vec![
             0x60, 0xAA, // PUSH1 0xAA
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x5D,       // TSTORE (transient)
+            0x5D, // TSTORE (transient)
             0x60, 0xBB, // PUSH1 0xBB
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x55,       // SSTORE (permanent)
+            0x55, // SSTORE (permanent)
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x5C,       // TLOAD (transient)
+            0x5C, // TLOAD (transient)
             0x60, 0x10, // PUSH1 0x10 (key)
-            0x54,       // SLOAD (permanent)
-            0x00,       // STOP
+            0x54, // SLOAD (permanent)
+            0x00, // STOP
         ];
 
         let state = InMemoryState::new();
@@ -2639,11 +2738,11 @@ mod tests {
         let host = Rc::new(RefCell::new(host_state));
         let code = vec![
             0x60, 0x01, // PUSH1 0x01
-            0x40,       // BLOCKHASH
+            0x40, // BLOCKHASH
             0x60, 0x02, // PUSH1 0x02
-            0x49,       // BLOBHASH
-            0x4A,       // BLOBBASEFEE
-            0x00,       // STOP
+            0x49, // BLOBHASH
+            0x4A, // BLOBBASEFEE
+            0x00, // STOP
         ];
 
         let (result, _state) =
@@ -2673,23 +2772,23 @@ mod tests {
         let mut code = vec![
             0x60, 0x01, // PUSH1 0x01
             0x60, 0x00, // PUSH1 0x00
-            0x53,       // MSTORE8 (memory[0] = 0x01)
+            0x53, // MSTORE8 (memory[0] = 0x01)
             0x60, 0x03, // PUSH1 0x03 (out_size)
             0x60, 0x20, // PUSH1 0x20 (out_offset)
             0x60, 0x01, // PUSH1 0x01 (in_size)
             0x60, 0x00, // PUSH1 0x00 (in_offset)
             0x60, 0x00, // PUSH1 0x00 (value)
-            0x73,       // PUSH20
+            0x73, // PUSH20
         ];
         code.extend_from_slice(&to.to_bytes());
         code.extend_from_slice(&[
             0x60, 0x10, // PUSH1 0x10 (gas)
-            0xF1,       // CALL
-            0x00,       // STOP
+            0xF1, // CALL
+            0x00, // STOP
         ]);
 
-        let (result, _state) = execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
-            .unwrap();
+        let (result, _state) =
+            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
         assert_eq!(result.return_data, vec![0xAA, 0xBB]);
@@ -2723,19 +2822,22 @@ mod tests {
         let code = vec![
             0x60, 0xAA, // PUSH1 0xAA
             0x60, 0x00, // PUSH1 0x00
-            0x53,       // MSTORE8 (init code byte)
+            0x53, // MSTORE8 (init code byte)
             0x61, 0x12, 0x34, // PUSH2 0x1234 (salt)
             0x60, 0x01, // PUSH1 0x01 (size)
             0x60, 0x00, // PUSH1 0x00 (offset)
             0x60, 0x00, // PUSH1 0x00 (value)
-            0xF5,       // CREATE2
-            0x00,       // STOP
+            0xF5, // CREATE2
+            0x00, // STOP
         ];
 
-        let (result, _state) = execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
-            .unwrap();
+        let (result, _state) =
+            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone()).unwrap();
         assert!(result.success);
-        assert_eq!(result.stack.peek(0).unwrap(), &address_to_u256(&created_addr));
+        assert_eq!(
+            result.stack.peek(0).unwrap(),
+            &address_to_u256(&created_addr)
+        );
 
         let recorded = host.borrow().last_create.clone().unwrap();
         assert_eq!(recorded.salt, Some(U256::from_u64(0x1234)));
@@ -2748,11 +2850,15 @@ mod tests {
         let size = (MAX_INIT_CODE_SIZE + 1) as u16;
 
         let code = vec![
-            0x61, (size >> 8) as u8, size as u8, // PUSH2 size
-            0x60, 0x00, // PUSH1 0x00 (offset)
-            0x60, 0x00, // PUSH1 0x00 (value)
-            0xF0,       // CREATE
-            0x00,       // STOP
+            0x61,
+            (size >> 8) as u8,
+            size as u8, // PUSH2 size
+            0x60,
+            0x00, // PUSH1 0x00 (offset)
+            0x60,
+            0x00, // PUSH1 0x00 (value)
+            0xF0, // CREATE
+            0x00, // STOP
         ];
 
         let (result, _state) =
@@ -2784,13 +2890,13 @@ mod tests {
             0x60, 0x00, // PUSH1 0x00 (out_offset)
             0x60, 0x00, // PUSH1 0x00 (in_size)
             0x60, 0x00, // PUSH1 0x00 (in_offset)
-            0x73,       // PUSH20
+            0x73, // PUSH20
         ];
         code.extend_from_slice(&to.to_bytes());
         code.extend_from_slice(&[
             0x60, 0x20, // PUSH1 0x20 (gas)
-            0xF4,       // DELEGATECALL
-            0x00,       // STOP
+            0xF4, // DELEGATECALL
+            0x00, // STOP
         ]);
 
         let mut evm = Evm::new(code, 100000, InMemoryState::new(), host.clone());
