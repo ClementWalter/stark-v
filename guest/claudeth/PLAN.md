@@ -4,119 +4,105 @@ Last reviewed: 2026-02-11
 
 ## Ground Truth Snapshot
 
-- `README.md` claims:
-  - full `execution-spec-tests` compatibility;
-  - optimized minimal-dependency STF/EVM behavior;
-  - native + RV32 test coverage.
-- `cargo test -p claudeth --release` currently passes, but this is **not** a full conformance guarantee.
-- Full blockchain-fixture sweep is still non-gating (`test_execute_all_blockchain_tests` remains `#[ignore]`).
-- Focused regressions now pass for:
-  - `BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json::{..._Cancun,..._Prague}`
-  - `BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json::{..._Cancun,..._Prague}`
-- The next full-suite deterministic frontier after this turn is **not yet re-run** end-to-end.
-- `BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json::{..._Cancun,..._Prague}` now passes.
-- Explicit known feature gaps still present:
-  - precompile `0x0a` point-evaluation not implemented;
+- `README.md` claims full `execution-spec-tests` compatibility and native + RV32 parity.
+- `cargo test -p claudeth --release` passes locally.
+- The full blockchain fixture sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
+- Post-fix ignored-suite probe (`cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`) now shows this first deterministic failure family:
+  - `BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json::{StrangeContractCreation_Cancun, StrangeContractCreation_Prague}`
+  - error: `GasUsedMismatch(expected=764553, computed=724753)`
+- After that first failure, the same probe also reports later failures (for example `reentrencySuicide`), but those are not the current frontier.
+- Explicit known conformance gaps still present in code:
+  - precompile `0x0a` point-evaluation unimplemented;
   - precompile `0x08` non-trivial pairing intentionally unsupported.
 
-## Completed Baseline Work
+## Completed This Turn
 
-- Branch-accurate fixture parent header/state selection by `parent_hash`.
-- Trie/withdrawal root conformance fixes (child ref threshold + withdrawal index keying).
-- Prague EIP-7623 calldata floor gas support.
-- Top-level CREATE success/failure state semantics alignment.
-- Withdrawal-family gas fixes (stipend accounting, warm-set propagation, recursive revert gas).
-- LOG base gas double-charge fix:
-  - `log_gas_cost` now returns dynamic-only (`topics + data`), with base still charged in opcode dispatch.
-  - Added Cancun/Prague regression tests for:
-    - `bcInvalidHeaderTest/DifficultyIsZero`
-    - `bcInvalidHeaderTest/timeDiff0`
-  - Full release test suite and `prek run -a` pass.
-- `bcEIP1559/baseFee` state-root fix:
-  - Root cause: `RecursiveHost::call` transferred value for all call kinds when `msg.value != 0`.
-  - Correct behavior restored: value transfer now gated to `CALL`/`CALLCODE` only (matches execution-spec `should_transfer_value` semantics; `DELEGATECALL`/`STATICCALL` never transfer).
-  - Added host-level regressions for delegatecall value invariants:
-    - with code
-    - without code
-    - to precompile
-  - Added Cancun/Prague fixture regressions:
-    - `bcEIP1559/baseFee.json::{baseFee_Cancun, baseFee_Prague}`
-  - Ignored-suite frontier moved to `bcEIP1559/valCausesOOF`.
-- `bcEIP1559/valCausesOOF` gas-used fix:
-  - Root cause: comparison opcodes `LT/GT/SLT/SGT` used reversed operand order.
-  - Consequence: fixture loop guarded by `GT(calldataload(4), 0)` was skipped, undercharging gas.
-  - Fix: aligned comparison semantics to execution-spec operand order (top-of-stack compared against next).
-  - Updated opcode/interpreter tests to enforce correct ordering.
-  - Added Cancun/Prague fixture regressions:
-    - `bcEIP1559/valCausesOOF.json::{valCausesOOF_Cancun, valCausesOOF_Prague}`
+- Re-baselined ignored-suite frontier and identified `mergeExample` as first deterministic failure.
+- Fixed post-merge opcode `0x44` context wiring:
+  - `src/stf/block.rs` now maps EVM block-context `difficulty` to header `mix_hash` when `header.difficulty == 0` (PREVRANDAO semantics).
+- Added focused regressions:
+  - `tests/eels_blockchain_tests.rs::{test_merge_example_cancun_fixture,test_merge_example_prague_fixture}`
+- Re-ran ignored-suite probe and confirmed `mergeExample` now passes; frontier moved to `StrangeContractCreation`.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Re-Baseline Ignored Full-Suite Frontier
+### Task 1 (P0, FIRST): Fix `StrangeContractCreation` Gas Mismatch
 
 Why:
-- Priority must always follow the first deterministic full-suite failure after each fix.
-- The previous frontier (`valCausesOOF`) is now fixed; the next blocker must be identified before further implementation.
+- It is the current first deterministic failure family after the latest re-baseline.
+- Until this is fixed, full-suite conformance cannot progress in a deterministic order.
 
 What:
-- Run the ignored blockchain suite and capture the new first deterministic failing family (fixture + error type + deltas).
+- Align gas accounting for `BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation` (Cancun + Prague), removing `expected 764553 / computed 724753` mismatch.
+
+How:
+- Reproduce with focused fixture tests for both forks.
+- Compare opcode-level gas flow against execution-spec behavior for the exact creation path exercised by this fixture.
+- Patch the narrowest root-cause logic (no broad refactors), add dedicated regressions, and re-run focused tests.
+
+### Task 2 (P0): Re-Baseline Ignored Full-Suite Frontier After Task 1
+
+Why:
+- Deterministic conformance work must always follow the first failing family after each fix.
+
+What:
+- Re-run ignored suite and capture the next first deterministic `✗` family with compact tx-level deltas.
 
 How:
 - Execute `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`.
-- Record the first deterministic `✗` with compact tx-level summary.
-- Add/adjust focused regression test(s) for the new frontier.
+- Stop analysis at first deterministic mismatch and prioritize that family next.
 
-### Task 2 (P0): Fix the New First Deterministic Failure Family
-
-Why:
-- Full-suite hard gating requires clearing deterministic failures one family at a time.
-
-What:
-- Remove the next frontier mismatch identified in Task 1.
-
-How:
-- Iterate by first deterministic failure family, patch narrowly, add fixture regressions, then rerun ignored suite.
-
-### Task 3 (P0): Implement Precompile `0x0a` Point Evaluation
+### Task 3 (P0): Iterate Failure-Family Burn-Down to Zero
 
 Why:
-- Cancun/Prague coverage is incomplete without EIP-4844 point-evaluation precompile.
+- README compatibility claim cannot be considered true until deterministic blockchain fixture mismatches are eliminated.
 
 What:
-- Implement full semantics, input validation, output, and gas behavior.
+- Resolve remaining deterministic failure families one by one (for example currently observed later family: `reentrencySuicide`).
 
 How:
-- Port execution-spec behavior and add success/failure/malformed/OOG vectors.
+- For each frontier: root-cause -> minimal patch -> focused Cancun/Prague regressions -> re-baseline.
 
-### Task 4 (P0): Implement Full BN254 Pairing (`0x08`)
+### Task 4 (P0): Make Full Blockchain Suite a Hard Gate
 
 Why:
-- Current implementation rejects non-trivial tuples, preventing full conformance.
+- `#[ignore]` leaves the key compatibility claim unenforced.
 
 What:
-- Support complete pairing product verification for all valid tuple sets.
+- Remove ignore/non-gating behavior and fail on any `failed > 0 || errors > 0`.
 
 How:
-- Implement parsing/validation/execution for arbitrary tuple counts; add fixture vectors.
+- After deterministic failures are cleared, tighten assertions in `run_all_blockchain_tests_impl` and enable in normal CI/local path.
 
-### Task 5 (P0): Make Full EELS Blockchain Suite a Hard Gate
+### Task 5 (P1): Implement Precompile `0x0a` Point Evaluation
 
 Why:
-- README “full compatibility” claim is not true while full-suite test is ignored.
+- Cancun/Prague precompile coverage remains incomplete.
 
 What:
-- Remove `#[ignore]` and enforce zero failures/errors in CI/local gating path.
+- Implement full semantics, validation, and gas metering for point-evaluation precompile.
 
 How:
-- After conformance blockers are removed, fail test on any `failed > 0 || errors > 0`.
+- Port execution-spec behavior and add malformed/success/OOG vectors.
 
-### Task 6 (P1): Enforce Native vs RV32 Deterministic Parity Gate
+### Task 6 (P1): Implement Full BN254 Pairing (`0x08`)
 
 Why:
-- README promises dual-target behavior; parity must be executable and deterministic.
+- Non-trivial pairing tuples currently fail by design, blocking full conformance.
 
 What:
-- Add curated fixture parity checks between native and RV32 runner.
+- Support complete pairing product verification for arbitrary valid tuple sets.
 
 How:
-- Build deterministic parity harness in release mode and gate once stable.
+- Implement full tuple parsing + arithmetic path; add fixture and unit coverage.
+
+### Task 7 (P1): Enforce Native vs RV32 Deterministic Parity Gate
+
+Why:
+- README promises native + RV32 execution parity.
+
+What:
+- Add deterministic parity checks on a curated high-signal fixture set.
+
+How:
+- Execute identical vectors through native and runner paths in release mode and gate once stable.

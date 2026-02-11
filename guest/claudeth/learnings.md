@@ -35,6 +35,8 @@
 - Do rerun ignored full-suite probes after each fix and re-prioritize against the new first deterministic failure family.
 - Do implement `LT`/`GT`/`SLT`/`SGT` with execution-spec operand order (`top` stack item compared against `next`), not reversed order.
 - Do validate comparison-opcode behavior with compiler-generated control flow (for example, `gt(calldataload(4), 0)` loop guards), not only isolated opcode pushes.
+- Do map opcode `0x44` context to `mix_hash` (`PREVRANDAO`) when block `difficulty == 0` on post-merge forks; execution-spec block env uses `prev_randao`, not legacy PoW difficulty.
+- Do treat a deterministic `-19900` gas delta in post-merge creation fixtures as a high-signal indicator that `PREVRANDAO` returned zero and turned an expected `SSTORE` set-cost into a warm no-op-cost path.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -63,3 +65,4 @@
 - Don't treat solved failure families as the current bottleneck without rerunning the ignored suite to confirm the frontier moved.
 - Don't treat non-commutative comparison opcodes as if operands were symmetric; reversed operand order silently corrupts branch behavior.
 - Don't trust opcode-only micro-tests as sufficient when full-fixture gas deltas indicate skipped/extra control-flow paths.
+- Don't feed post-merge EVM `0x44` from header `difficulty`; that value is consensus-constant zero and breaks `PREVRANDAO`-dependent contract logic and gas accounting.

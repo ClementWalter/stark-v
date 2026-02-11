@@ -1748,6 +1748,31 @@ fn test_eip1559_base_fee_prague_fixture() {
     );
 }
 
+fn assert_merge_example_case(case_name: &str) {
+    let fixture_path = Path::new("tests/eels/BlockchainTests/ValidBlocks/bcExample/mergeExample.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("mergeExample fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("mergeExample post-state should match fixture");
+}
+
+#[test]
+fn test_merge_example_cancun_fixture() {
+    // Why: opcode 0x44 is PREVRANDAO on post-merge forks and must read the
+    // header's mix-hash value, not legacy PoW difficulty.
+    assert_merge_example_case(
+        "BlockchainTests/ValidBlocks/bcExample/mergeExample.json::mergeExample_Cancun",
+    );
+}
+
+#[test]
+fn test_merge_example_prague_fixture() {
+    assert_merge_example_case(
+        "BlockchainTests/ValidBlocks/bcExample/mergeExample.json::mergeExample_Prague",
+    );
+}
+
 fn assert_eip1559_val_causes_oof_case(case_name: &str) {
     let fixture_path =
         Path::new("tests/eels/BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json");

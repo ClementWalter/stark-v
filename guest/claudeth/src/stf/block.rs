@@ -160,6 +160,16 @@ impl From<ExecutionError> for BlockProcessingError {
 // Helper Functions
 // =============================================================================
 
+fn evm_difficulty_or_prevrandao(block: &BlockHeader) -> U256 {
+    if block.difficulty.is_zero() {
+        // Why: post-merge headers carry PREVRANDAO in the legacy mix-hash
+        // field, and opcode 0x44 must expose that value instead of 0.
+        U256::from_be_bytes(*block.mix_hash.as_bytes())
+    } else {
+        block.difficulty
+    }
+}
+
 /// Computes the transactions root from a list of transactions
 ///
 /// The transactions root is the root of a Merkle Patricia Trie where:
@@ -604,7 +614,7 @@ pub fn process_block<S: State + Clone>(
         number: U256::from_u64(block.number),
         timestamp: U256::from_u64(block.timestamp),
         coinbase: block.coinbase,
-        difficulty: block.difficulty,
+        difficulty: evm_difficulty_or_prevrandao(block),
         gas_limit: U256::from_u64(block.gas_limit),
         chain_id,
         base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),

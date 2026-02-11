@@ -12,6 +12,7 @@ words:
   - andn
   - auipc
   - basefee
+  - baselined
   - beac
   - bgeu
   - bitmask
@@ -161,6 +162,7 @@ words:
   - randao
   - readelf
   - recid
+  - reentrency
   - regs
   - remu
   - repr
