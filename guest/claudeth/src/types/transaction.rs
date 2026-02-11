@@ -22,7 +22,7 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{keccak256, recover_address, rlp, RlpError, Secp256k1Error};
+use crate::crypto::{RlpError, Secp256k1Error, keccak256, recover_address, rlp};
 use crate::types::{Address, Bytes, Hash, U256};
 
 // =============================================================================
@@ -30,17 +30,13 @@ use crate::types::{Address, Bytes, Hash, U256};
 // =============================================================================
 
 const SECP256K1N_BYTES: [u8; 32] = [
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
-    0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b,
-    0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+    0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41,
 ];
 
 const SECP256K1N_HALF_BYTES: [u8; 32] = [
-    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d,
-    0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
+    0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46, 0x68, 0x1b, 0x20, 0xa0,
 ];
 
 fn secp256k1n() -> U256 {
@@ -81,11 +77,7 @@ impl AccessListEntry {
     /// Encodes the access list entry as RLP.
     pub fn encode_rlp(&self) -> Vec<u8> {
         let address_encoded = rlp::encode_address(&self.address);
-        let keys_encoded: Vec<Vec<u8>> = self
-            .storage_keys
-            .iter()
-            .map(rlp::encode_hash)
-            .collect();
+        let keys_encoded: Vec<Vec<u8>> = self.storage_keys.iter().map(rlp::encode_hash).collect();
         let keys_list = rlp::encode_list(&keys_encoded);
 
         rlp::encode_list(&[address_encoded, keys_list])
@@ -2068,8 +2060,8 @@ mod tests {
         };
 
         let signing_hash = tx.signing_hash();
-        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key)
-            .expect("sign legacy transaction");
+        let (r, s, recid) =
+            sign_recoverable(&signing_hash, secret_key).expect("sign legacy transaction");
         tx.r = r;
         tx.s = s;
         tx.v = U256::from_u64(27 + recid as u64);
@@ -2099,8 +2091,8 @@ mod tests {
         };
 
         let signing_hash = tx.signing_hash();
-        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key)
-            .expect("sign eip1559 transaction");
+        let (r, s, recid) =
+            sign_recoverable(&signing_hash, secret_key).expect("sign eip1559 transaction");
         tx.r = r;
         tx.s = s;
         tx.v = U256::from_u64(recid as u64);

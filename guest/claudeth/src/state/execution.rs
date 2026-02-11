@@ -16,8 +16,8 @@ use alloc::collections::{BTreeMap as HashMap, BTreeSet};
 #[cfg(target_arch = "riscv32")]
 use alloc::vec::Vec;
 
-use crate::state::{Account, Storage, Trie, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT};
 use crate::crypto::keccak256;
+use crate::state::{Account, EMPTY_CODE_HASH, EMPTY_TRIE_ROOT, Storage, Trie};
 use crate::types::{Address, Hash, U256};
 
 /// EVM execution state interface
@@ -166,10 +166,18 @@ impl InMemoryState {
     /// Gets a reference to an account, or returns a default empty account
     fn get_account(&self, address: &Address) -> Account {
         #[cfg(not(target_arch = "riscv32"))]
-        return self.accounts.get(address).cloned().unwrap_or_else(Account::empty);
+        return self
+            .accounts
+            .get(address)
+            .cloned()
+            .unwrap_or_else(Account::empty);
 
         #[cfg(target_arch = "riscv32")]
-        return self.accounts.get(address).cloned().unwrap_or_else(Account::empty);
+        return self
+            .accounts
+            .get(address)
+            .cloned()
+            .unwrap_or_else(Account::empty);
     }
 
     /// Gets the storage trie for an account, creating an empty one if needed
@@ -297,10 +305,18 @@ impl State for InMemoryState {
 
     fn sload(&self, address: &Address, key: &U256) -> U256 {
         #[cfg(not(target_arch = "riscv32"))]
-        return self.storage.get(address).map(|s| s.get(key)).unwrap_or(U256::ZERO);
+        return self
+            .storage
+            .get(address)
+            .map(|s| s.get(key))
+            .unwrap_or(U256::ZERO);
 
         #[cfg(target_arch = "riscv32")]
-        return self.storage.get(address).map(|s| s.get(key)).unwrap_or(U256::ZERO);
+        return self
+            .storage
+            .get(address)
+            .map(|s| s.get(key))
+            .unwrap_or(U256::ZERO);
     }
 
     fn sstore(&mut self, address: &Address, key: &U256, value: U256) {
@@ -333,10 +349,16 @@ impl State for InMemoryState {
 
     fn tload(&self, address: &Address, key: &U256) -> U256 {
         #[cfg(not(target_arch = "riscv32"))]
-        return *self.transient_storage.get(&(*address, *key)).unwrap_or(&U256::ZERO);
+        return *self
+            .transient_storage
+            .get(&(*address, *key))
+            .unwrap_or(&U256::ZERO);
 
         #[cfg(target_arch = "riscv32")]
-        return *self.transient_storage.get(&(*address, *key)).unwrap_or(&U256::ZERO);
+        return *self
+            .transient_storage
+            .get(&(*address, *key))
+            .unwrap_or(&U256::ZERO);
     }
 
     fn tstore(&mut self, address: &Address, key: &U256, value: U256) {
@@ -359,7 +381,10 @@ impl State for InMemoryState {
 
     fn has_storage(&self, address: &Address) -> bool {
         #[cfg(not(target_arch = "riscv32"))]
-        return self.storage.get(address).is_some_and(|storage| !storage.is_empty());
+        return self
+            .storage
+            .get(address)
+            .is_some_and(|storage| !storage.is_empty());
 
         #[cfg(target_arch = "riscv32")]
         return self
@@ -421,7 +446,9 @@ impl State for InMemoryState {
                 None => continue,
             };
             let mut account = account.clone();
-            account.storage_root = self.storage.get(&address)
+            account.storage_root = self
+                .storage
+                .get(&address)
                 .map(Storage::compute_root)
                 .unwrap_or(EMPTY_TRIE_ROOT);
 
@@ -1118,7 +1145,12 @@ mod tests {
 
         let mut storage = Storage::new();
         storage.set(&U256::from(1u64), U256::from(2u64));
-        let account = Account::new(U256::ZERO, U256::ZERO, storage.compute_root(), EMPTY_CODE_HASH);
+        let account = Account::new(
+            U256::ZERO,
+            U256::ZERO,
+            storage.compute_root(),
+            EMPTY_CODE_HASH,
+        );
 
         let mut trie = Trie::new();
         // State trie uses keccak256(address) as key

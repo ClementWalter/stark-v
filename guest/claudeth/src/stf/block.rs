@@ -621,7 +621,11 @@ pub fn process_block<S: State + Clone>(
         excess_blob_gas: block.excess_blob_gas.map(U256::from_u64),
         // Why: Prague fixtures enable `requests_hash`, and execution-specs
         // treat precompiles `0x01..0x11` as transaction-warm at that fork.
-        max_precompile_address: if block.requests_hash.is_some() { 0x11 } else { 0x0a },
+        max_precompile_address: if block.requests_hash.is_some() {
+            0x11
+        } else {
+            0x0a
+        },
     };
 
     // Step 3: Apply EIP-4788 beacon root system call (before executing transactions)

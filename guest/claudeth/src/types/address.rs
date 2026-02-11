@@ -17,8 +17,8 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::str::FromStr;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::crypto::keccak256;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A 20-byte Ethereum address.
 ///
@@ -260,8 +260,8 @@ impl FromStr for Address {
         let mut bytes = [0u8; 20];
         for i in 0..20 {
             let hex_byte = &s[i * 2..i * 2 + 2];
-            bytes[i] = u8::from_str_radix(hex_byte, 16)
-                .map_err(|_| ParseAddressError::InvalidHex)?;
+            bytes[i] =
+                u8::from_str_radix(hex_byte, 16).map_err(|_| ParseAddressError::InvalidHex)?;
         }
 
         Ok(Address(bytes))
@@ -304,7 +304,9 @@ impl fmt::Display for ParseAddressError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseAddressError::InvalidHex => write!(f, "invalid hex character in address"),
-            ParseAddressError::InvalidLength => write!(f, "invalid address length (must be 40 hex characters)"),
+            ParseAddressError::InvalidLength => {
+                write!(f, "invalid address length (must be 40 hex characters)")
+            }
         }
     }
 }
@@ -321,7 +323,6 @@ fn hex_encode(bytes: &[u8]) -> String {
     }
     result
 }
-
 
 // =============================================================================
 // Tests

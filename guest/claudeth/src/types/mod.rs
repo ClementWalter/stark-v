@@ -18,7 +18,7 @@ pub mod withdrawal;
 pub use address::Address;
 pub use block::{BlockHeader, EMPTY_OMMERS_HASH, ValidationError};
 pub use bytes::Bytes;
-pub use hash::{Hash, H256};
+pub use hash::{H256, Hash};
 pub use transaction::{
     AccessListEntry, Eip1559Transaction, Eip2930Transaction, LegacyTransaction, Transaction,
 };

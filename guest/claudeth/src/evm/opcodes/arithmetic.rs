@@ -96,11 +96,7 @@ pub fn sub(stack: &mut Stack) -> Result<(), EvmError> {
 pub fn div(stack: &mut Stack) -> Result<(), EvmError> {
     let a = stack.pop()?;
     let b = stack.pop()?;
-    let result = if b.is_zero() {
-        U256::ZERO
-    } else {
-        a / b
-    };
+    let result = if b.is_zero() { U256::ZERO } else { a / b };
     stack.push(result)?;
     Ok(())
 }
@@ -154,11 +150,7 @@ pub fn sdiv(stack: &mut Stack) -> Result<(), EvmError> {
 pub fn modulo(stack: &mut Stack) -> Result<(), EvmError> {
     let a = stack.pop()?;
     let b = stack.pop()?;
-    let result = if b.is_zero() {
-        U256::ZERO
-    } else {
-        a % b
-    };
+    let result = if b.is_zero() { U256::ZERO } else { a % b };
     stack.push(result)?;
     Ok(())
 }
@@ -202,9 +194,9 @@ pub fn smod(stack: &mut Stack) -> Result<(), EvmError> {
 /// If N is zero, pushes 0. Otherwise, computes (a + b) mod N and pushes the result.
 /// The addition is performed modulo 2^512 before the modulo N operation.
 pub fn addmod(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top (first operand)
-    let b = stack.pop()?;  // Second (second operand)
-    let n = stack.pop()?;  // Third (modulus)
+    let a = stack.pop()?; // Top (first operand)
+    let b = stack.pop()?; // Second (second operand)
+    let n = stack.pop()?; // Third (modulus)
 
     if n.is_zero() {
         stack.push(U256::ZERO)?;
@@ -230,9 +222,9 @@ pub fn addmod(stack: &mut Stack) -> Result<(), EvmError> {
 /// If N is zero, pushes 0. Otherwise, computes (a * b) mod N and pushes the result.
 /// The multiplication is performed modulo 2^512 before the modulo N operation.
 pub fn mulmod(stack: &mut Stack) -> Result<(), EvmError> {
-    let a = stack.pop()?;  // Top (first operand)
-    let b = stack.pop()?;  // Second (second operand)
-    let n = stack.pop()?;  // Third (modulus)
+    let a = stack.pop()?; // Top (first operand)
+    let b = stack.pop()?; // Second (second operand)
+    let n = stack.pop()?; // Third (modulus)
 
     if n.is_zero() {
         stack.push(U256::ZERO)?;
@@ -257,8 +249,8 @@ pub fn mulmod(stack: &mut Stack) -> Result<(), EvmError> {
 /// Pops two values from the stack: base (top) and exponent (second).
 /// Computes base^exponent mod 2^256 and pushes the result.
 pub fn exp(stack: &mut Stack) -> Result<(), EvmError> {
-    let base = stack.pop()?;      // Top
-    let exponent = stack.pop()?;  // Second
+    let base = stack.pop()?; // Top
+    let exponent = stack.pop()?; // Second
 
     // Fast path for common cases
     if exponent.is_zero() {
@@ -293,8 +285,8 @@ pub fn exp(stack: &mut Stack) -> Result<(), EvmError> {
 /// Extends the sign bit at position (b + 1) * 8 - 1 to fill all higher bits.
 /// If b >= 31, the value is unchanged.
 pub fn signextend(stack: &mut Stack) -> Result<(), EvmError> {
-    let b = stack.pop()?;  // Top (byte position)
-    let x = stack.pop()?;  // Second (value)
+    let b = stack.pop()?; // Top (byte position)
+    let x = stack.pop()?; // Second (value)
 
     // If b >= 31, no extension needed (already full 256 bits)
     if b >= U256::from(31u64) {
@@ -460,8 +452,8 @@ pub fn not(stack: &mut Stack) -> Result<(), EvmError> {
 /// Pushes the i-th byte of x, where byte 0 is the most significant byte.
 /// If i >= 32, pushes 0.
 pub fn byte(stack: &mut Stack) -> Result<(), EvmError> {
-    let i = stack.pop()?;  // Top (byte index)
-    let x = stack.pop()?;  // Second (value)
+    let i = stack.pop()?; // Top (byte index)
+    let x = stack.pop()?; // Second (value)
 
     // If i >= 32, result is 0
     if i >= U256::from(32u64) {
@@ -482,8 +474,8 @@ pub fn byte(stack: &mut Stack) -> Result<(), EvmError> {
 /// Shifts the value left by the shift amount and pushes the result.
 /// If shift >= 256, the result is 0.
 pub fn shl(stack: &mut Stack) -> Result<(), EvmError> {
-    let shift = stack.pop()?;  // Top (shift amount)
-    let value = stack.pop()?;  // Second (value)
+    let shift = stack.pop()?; // Top (shift amount)
+    let value = stack.pop()?; // Second (value)
 
     // If shift >= 256, result is 0
     if shift >= U256::from(256u64) {
@@ -503,8 +495,8 @@ pub fn shl(stack: &mut Stack) -> Result<(), EvmError> {
 /// Shifts the value right by the shift amount (logical) and pushes the result.
 /// If shift >= 256, the result is 0.
 pub fn shr(stack: &mut Stack) -> Result<(), EvmError> {
-    let shift = stack.pop()?;  // Top (shift amount)
-    let value = stack.pop()?;  // Second (value)
+    let shift = stack.pop()?; // Top (shift amount)
+    let value = stack.pop()?; // Second (value)
 
     // If shift >= 256, result is 0
     if shift >= U256::from(256u64) {
@@ -524,14 +516,18 @@ pub fn shr(stack: &mut Stack) -> Result<(), EvmError> {
 /// Shifts the value right by the shift amount (arithmetic, sign-extending) and pushes the result.
 /// If shift >= 256, the result is 0 (for non-negative) or -1 (for negative).
 pub fn sar(stack: &mut Stack) -> Result<(), EvmError> {
-    let shift = stack.pop()?;  // Top (shift amount)
-    let value = stack.pop()?;  // Second (value)
+    let shift = stack.pop()?; // Top (shift amount)
+    let value = stack.pop()?; // Second (value)
 
     let is_negative_val = is_negative(value);
 
     // If shift >= 256
     if shift >= U256::from(256u64) {
-        let result = if is_negative_val { U256::MAX } else { U256::ZERO };
+        let result = if is_negative_val {
+            U256::MAX
+        } else {
+            U256::ZERO
+        };
         stack.push(result)?;
         return Ok(());
     }
@@ -562,7 +558,10 @@ pub fn sar(stack: &mut Stack) -> Result<(), EvmError> {
 ///
 /// Pops offset and size from stack, reads data from memory,
 /// computes the hash, and pushes the result.
-pub fn keccak256(stack: &mut Stack, memory: &mut crate::evm::memory::Memory) -> Result<(), EvmError> {
+pub fn keccak256(
+    stack: &mut Stack,
+    memory: &mut crate::evm::memory::Memory,
+) -> Result<(), EvmError> {
     use crate::crypto::keccak256 as keccak;
 
     let offset = stack.pop()?;
@@ -677,8 +676,8 @@ mod tests {
     #[test]
     fn test_add_large_values() {
         let mut stack = Stack::new();
-        stack.push(U256::MAX - U256::from(10u64)).unwrap();  // MAX-10
-        stack.push(U256::from(15u64)).unwrap();               // 15
+        stack.push(U256::MAX - U256::from(10u64)).unwrap(); // MAX-10
+        stack.push(U256::from(15u64)).unwrap(); // 15
         add(&mut stack).unwrap();
         // (MAX-10) + 15 = MAX + 5 = 2^256 + 4 ≡ 4 (mod 2^256)
         assert_eq!(stack.pop().unwrap(), U256::from(4u64));
@@ -847,9 +846,9 @@ mod tests {
     #[test]
     fn test_addmod_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(5u64)).unwrap();   // Will be N (modulus)
-        stack.push(U256::from(3u64)).unwrap();   // Will be b
-        stack.push(U256::from(8u64)).unwrap();   // Will be a (top)
+        stack.push(U256::from(5u64)).unwrap(); // Will be N (modulus)
+        stack.push(U256::from(3u64)).unwrap(); // Will be b
+        stack.push(U256::from(8u64)).unwrap(); // Will be a (top)
         addmod(&mut stack).unwrap();
         // (8 + 3) % 5 = 11 % 5 = 1
         assert_eq!(stack.pop().unwrap(), U256::ONE);
@@ -858,9 +857,9 @@ mod tests {
     #[test]
     fn test_addmod_overflow() {
         let mut stack = Stack::new();
-        stack.push(U256::from(7u64)).unwrap();   // N (modulus)
-        stack.push(U256::from(10u64)).unwrap();  // b
-        stack.push(U256::MAX).unwrap();           // a (top)
+        stack.push(U256::from(7u64)).unwrap(); // N (modulus)
+        stack.push(U256::from(10u64)).unwrap(); // b
+        stack.push(U256::MAX).unwrap(); // a (top)
         addmod(&mut stack).unwrap();
         // (MAX + 10) % 7 = (2^256 - 1 + 10) % 7 = (2^256 + 9) % 7
         // 2^256 % 7 = (2^3)^85 * 2 % 7 = 8^85 * 2 % 7 = 1^85 * 2 % 7 = 2
@@ -871,9 +870,9 @@ mod tests {
     #[test]
     fn test_addmod_by_zero() {
         let mut stack = Stack::new();
-        stack.push(U256::ZERO).unwrap();         // N = 0 (modulus)
-        stack.push(U256::from(3u64)).unwrap();   // b
-        stack.push(U256::from(5u64)).unwrap();   // a (top)
+        stack.push(U256::ZERO).unwrap(); // N = 0 (modulus)
+        stack.push(U256::from(3u64)).unwrap(); // b
+        stack.push(U256::from(5u64)).unwrap(); // a (top)
         addmod(&mut stack).unwrap();
         // ADDMOD with N=0 returns 0
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
@@ -882,9 +881,9 @@ mod tests {
     #[test]
     fn test_mulmod_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();  // N (modulus)
-        stack.push(U256::from(7u64)).unwrap();   // b
-        stack.push(U256::from(6u64)).unwrap();   // a (top)
+        stack.push(U256::from(10u64)).unwrap(); // N (modulus)
+        stack.push(U256::from(7u64)).unwrap(); // b
+        stack.push(U256::from(6u64)).unwrap(); // a (top)
         mulmod(&mut stack).unwrap();
         // (6 * 7) % 10 = 42 % 10 = 2
         assert_eq!(stack.pop().unwrap(), U256::from(2u64));
@@ -960,8 +959,8 @@ mod tests {
     #[test]
     fn test_signextend_byte_0() {
         let mut stack = Stack::new();
-        stack.push(U256::from(0x7Fu64)).unwrap();  // value (positive in byte 0)
-        stack.push(U256::ZERO).unwrap();            // byte position 0 (top)
+        stack.push(U256::from(0x7Fu64)).unwrap(); // value (positive in byte 0)
+        stack.push(U256::ZERO).unwrap(); // byte position 0 (top)
         signextend(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(0x7Fu64));
     }
@@ -969,8 +968,8 @@ mod tests {
     #[test]
     fn test_signextend_byte_0_negative() {
         let mut stack = Stack::new();
-        stack.push(U256::from(0x80u64)).unwrap();  // value (negative in byte 0)
-        stack.push(U256::ZERO).unwrap();            // byte position 0 (top)
+        stack.push(U256::from(0x80u64)).unwrap(); // value (negative in byte 0)
+        stack.push(U256::ZERO).unwrap(); // byte position 0 (top)
         signextend(&mut stack).unwrap();
         // Should extend sign bit - 0x80 has bit 7 set, so extend to all 1s
         let expected = U256::MAX - U256::from(0x7Fu64);
@@ -980,8 +979,8 @@ mod tests {
     #[test]
     fn test_signextend_byte_1() {
         let mut stack = Stack::new();
-        stack.push(U256::from(0x7FFFu64)).unwrap();  // value (positive in bytes 0-1)
-        stack.push(U256::ONE).unwrap();               // byte position 1 (top)
+        stack.push(U256::from(0x7FFFu64)).unwrap(); // value (positive in bytes 0-1)
+        stack.push(U256::ONE).unwrap(); // byte position 1 (top)
         signextend(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(0x7FFFu64));
     }
@@ -989,8 +988,8 @@ mod tests {
     #[test]
     fn test_signextend_large_index() {
         let mut stack = Stack::new();
-        stack.push(U256::from(0x80u64)).unwrap();   // value
-        stack.push(U256::from(100u64)).unwrap();    // byte position >= 31 (top)
+        stack.push(U256::from(0x80u64)).unwrap(); // value
+        stack.push(U256::from(100u64)).unwrap(); // byte position >= 31 (top)
         signextend(&mut stack).unwrap();
         // No change when index >= 31
         assert_eq!(stack.pop().unwrap(), U256::from(0x80u64));
@@ -1205,8 +1204,10 @@ mod tests {
     fn test_byte_first() {
         let mut stack = Stack::new();
         // Create value with 0xFF in the most significant byte (byte 0)
-        stack.push(U256::from(0xFF00000000000000u64) << 192).unwrap();  // value
-        stack.push(U256::ZERO).unwrap();                                 // index 0 (top)
+        stack
+            .push(U256::from(0xFF00000000000000u64) << 192)
+            .unwrap(); // value
+        stack.push(U256::ZERO).unwrap(); // index 0 (top)
         byte(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(0xFFu64));
     }
@@ -1216,8 +1217,8 @@ mod tests {
         let mut stack = Stack::new();
         let mut bytes = [0u8; 32];
         bytes[15] = 0xAB; // Byte 15 (big-endian)
-        stack.push(U256::from_be_bytes(bytes)).unwrap();  // value
-        stack.push(U256::from(15u64)).unwrap();            // index 15 (top)
+        stack.push(U256::from_be_bytes(bytes)).unwrap(); // value
+        stack.push(U256::from(15u64)).unwrap(); // index 15 (top)
         byte(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::from(0xABu64));
     }
@@ -1234,8 +1235,8 @@ mod tests {
     #[test]
     fn test_shl_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(0b1010u64)).unwrap();  // value
-        stack.push(U256::from(1u64)).unwrap();        // shift amount (top)
+        stack.push(U256::from(0b1010u64)).unwrap(); // value
+        stack.push(U256::from(1u64)).unwrap(); // shift amount (top)
         shl(&mut stack).unwrap();
         // SHL pops shift (1), then value (0b1010), computes value << shift = 0b1010 << 1 = 0b10100
         assert_eq!(stack.pop().unwrap(), U256::from(0b10100u64));
@@ -1244,8 +1245,8 @@ mod tests {
     #[test]
     fn test_shl_large_shift() {
         let mut stack = Stack::new();
-        stack.push(U256::from(42u64)).unwrap();   // value
-        stack.push(U256::from(256u64)).unwrap();  // shift amount (top)
+        stack.push(U256::from(42u64)).unwrap(); // value
+        stack.push(U256::from(256u64)).unwrap(); // shift amount (top)
         shl(&mut stack).unwrap();
         // 42 << 256 = 0 (shift >= 256 results in 0)
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
@@ -1264,8 +1265,8 @@ mod tests {
     #[test]
     fn test_shr_basic() {
         let mut stack = Stack::new();
-        stack.push(U256::from(0b1010u64)).unwrap();  // value
-        stack.push(U256::from(1u64)).unwrap();        // shift amount (top)
+        stack.push(U256::from(0b1010u64)).unwrap(); // value
+        stack.push(U256::from(1u64)).unwrap(); // shift amount (top)
         shr(&mut stack).unwrap();
         // 0b1010 >> 1 = 0b101
         assert_eq!(stack.pop().unwrap(), U256::from(0b101u64));
@@ -1283,8 +1284,8 @@ mod tests {
     #[test]
     fn test_sar_positive() {
         let mut stack = Stack::new();
-        stack.push(U256::from(8u64)).unwrap();   // value
-        stack.push(U256::from(2u64)).unwrap();   // shift amount (top)
+        stack.push(U256::from(8u64)).unwrap(); // value
+        stack.push(U256::from(2u64)).unwrap(); // shift amount (top)
         sar(&mut stack).unwrap();
         // 8 >> 2 = 2 (arithmetic right shift, but positive so same as logical)
         assert_eq!(stack.pop().unwrap(), U256::from(2u64));
@@ -1294,8 +1295,8 @@ mod tests {
     fn test_sar_negative() {
         let mut stack = Stack::new();
         // -8 >> 2 should be -2 (sign-extended)
-        stack.push(twos_complement(U256::from(8u64))).unwrap();  // value = -8
-        stack.push(U256::from(2u64)).unwrap();                     // shift = 2 (top)
+        stack.push(twos_complement(U256::from(8u64))).unwrap(); // value = -8
+        stack.push(U256::from(2u64)).unwrap(); // shift = 2 (top)
         sar(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), twos_complement(U256::from(2u64)));
     }
@@ -1303,8 +1304,8 @@ mod tests {
     #[test]
     fn test_sar_negative_large_shift() {
         let mut stack = Stack::new();
-        stack.push(twos_complement(U256::from(1u64))).unwrap();  // value = -1
-        stack.push(U256::from(256u64)).unwrap();                   // shift = 256 (top)
+        stack.push(twos_complement(U256::from(1u64))).unwrap(); // value = -1
+        stack.push(U256::from(256u64)).unwrap(); // shift = 256 (top)
         sar(&mut stack).unwrap();
         // -1 >> 256 should be all 1s (sign extension fills with 1s)
         assert_eq!(stack.pop().unwrap(), U256::MAX);

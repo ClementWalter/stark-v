@@ -29,8 +29,7 @@ use crate::crypto::secp256k1_math::{mod_add, mod_inv, mod_mul, mod_sub};
 use crate::crypto::{ripemd160, sha256};
 use crate::evm::gas::{
     GAS_BLAKE2F_ROUND, GAS_BN256_ADD, GAS_BN256_MUL, GAS_BN256_PAIRING_BASE,
-    GAS_BN256_PAIRING_POINT, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD,
-    GAS_MODEXP_BASE,
+    GAS_BN256_PAIRING_POINT, GAS_ECRECOVER, GAS_IDENTITY_BASE, GAS_IDENTITY_WORD, GAS_MODEXP_BASE,
 };
 use crate::evm::gas::{GAS_RIPEMD160_BASE, GAS_RIPEMD160_WORD, GAS_SHA256_BASE, GAS_SHA256_WORD};
 use crate::types::{Address, Hash, U256};
@@ -325,7 +324,10 @@ fn ecmul_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult
     })
 }
 
-fn pairing_precompile(input: &[u8], available_gas: u64) -> Result<PrecompileResult, PrecompileError> {
+fn pairing_precompile(
+    input: &[u8],
+    available_gas: u64,
+) -> Result<PrecompileResult, PrecompileError> {
     let tuple_count = input.len() / 192;
     let tuple_count_u64 = u64::try_from(tuple_count).unwrap_or(u64::MAX);
     let gas_used = GAS_BN256_PAIRING_BASE
@@ -601,7 +603,11 @@ fn bn254_fq2_inv(value: Bn254Fq2, modulus: U256) -> Option<Bn254Fq2> {
 
     Some(Bn254Fq2 {
         c0: mod_mul(value.c0, inv_denominator, modulus),
-        c1: mod_mul(mod_sub(U256::ZERO, value.c1, modulus), inv_denominator, modulus),
+        c1: mod_mul(
+            mod_sub(U256::ZERO, value.c1, modulus),
+            inv_denominator,
+            modulus,
+        ),
     })
 }
 

@@ -489,12 +489,7 @@ pub fn sstore_eip2929<S: State>(
         return Err(EvmError::OutOfGas);
     }
 
-    let sstore_gas = sstore_gas_cost(
-        original_value,
-        current_value,
-        new_value,
-        !is_warm,
-    );
+    let sstore_gas = sstore_gas_cost(original_value, current_value, new_value, !is_warm);
     super::utils::consume_gas(gas_remaining, sstore_gas.cost)?;
     if sstore_gas.refund_delta >= 0 {
         *gas_refund = (*gas_refund).saturating_add(sstore_gas.refund_delta as u64);

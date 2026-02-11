@@ -66,9 +66,7 @@ pub fn read_memory_bytes(
     for i in 0..size {
         let pos = offset.checked_add(i).ok_or(EvmError::OutOfGas)?;
         let byte = if pos < memory.msize() {
-            let value = memory
-                .mload(pos & !31)
-                .map_err(EvmError::MemoryError)?;
+            let value = memory.mload(pos & !31).map_err(EvmError::MemoryError)?;
             let byte_offset = pos % 32;
             value.to_be_bytes()[byte_offset]
         } else {

@@ -48,8 +48,13 @@ pub enum StackError {
 impl fmt::Display for StackError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StackError::Overflow => write!(f, "Stack overflow: maximum size of {MAX_STACK_SIZE} items reached"),
-            StackError::Underflow => write!(f, "Stack underflow: attempted to pop from empty stack"),
+            StackError::Overflow => write!(
+                f,
+                "Stack overflow: maximum size of {MAX_STACK_SIZE} items reached"
+            ),
+            StackError::Underflow => {
+                write!(f, "Stack underflow: attempted to pop from empty stack")
+            }
             StackError::InvalidIndex => write!(f, "Invalid index: position is out of bounds"),
         }
     }
@@ -72,9 +77,7 @@ pub struct Stack {
 impl Stack {
     /// Create a new empty stack
     pub fn new() -> Self {
-        Stack {
-            items: Vec::new(),
-        }
+        Stack { items: Vec::new() }
     }
 
     /// Push a value onto the stack
@@ -423,7 +426,10 @@ mod tests {
         }
 
         // Verify we can still perform read operations
-        assert_eq!(stack.peek(0), Ok(&U256::from_u64((MAX_STACK_SIZE - 1) as u64)));
+        assert_eq!(
+            stack.peek(0),
+            Ok(&U256::from_u64((MAX_STACK_SIZE - 1) as u64))
+        );
         assert_eq!(stack.len(), MAX_STACK_SIZE);
 
         // Verify we can swap on full stack

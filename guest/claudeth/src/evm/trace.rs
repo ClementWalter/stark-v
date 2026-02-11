@@ -57,8 +57,12 @@ impl GasTrace {
         output.push_str(&format!(
             "Gas Trace (initial: {}, used: {})\n",
             self.initial_gas,
-            self.initial_gas
-                .saturating_sub(self.entries.last().map(|e| e.gas_after).unwrap_or(self.initial_gas))
+            self.initial_gas.saturating_sub(
+                self.entries
+                    .last()
+                    .map(|e| e.gas_after)
+                    .unwrap_or(self.initial_gas)
+            )
         ));
         output.push_str(&format!(
             "{:>6} {:>12} {:>10} {:>10} {:>10} {:>12}\n",
@@ -135,8 +139,12 @@ impl GasTracer {
 
     /// Get total gas used
     pub fn total_gas_used(&self) -> u64 {
-        self.initial_gas
-            .saturating_sub(self.entries.last().map(|e| e.gas_after).unwrap_or(self.initial_gas))
+        self.initial_gas.saturating_sub(
+            self.entries
+                .last()
+                .map(|e| e.gas_after)
+                .unwrap_or(self.initial_gas),
+        )
     }
 
     /// Format trace as human-readable string

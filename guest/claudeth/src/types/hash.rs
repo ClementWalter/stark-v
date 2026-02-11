@@ -212,8 +212,7 @@ impl FromStr for Hash {
         let mut bytes = [0u8; 32];
         for i in 0..32 {
             let hex_byte = &s[i * 2..i * 2 + 2];
-            bytes[i] = u8::from_str_radix(hex_byte, 16)
-                .map_err(|_| ParseHashError::InvalidHex)?;
+            bytes[i] = u8::from_str_radix(hex_byte, 16).map_err(|_| ParseHashError::InvalidHex)?;
         }
 
         Ok(Hash(bytes))
@@ -256,7 +255,9 @@ impl fmt::Display for ParseHashError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ParseHashError::InvalidHex => write!(f, "invalid hex character in hash"),
-            ParseHashError::InvalidLength => write!(f, "invalid hash length (must be 64 hex characters)"),
+            ParseHashError::InvalidLength => {
+                write!(f, "invalid hash length (must be 64 hex characters)")
+            }
         }
     }
 }
@@ -368,47 +369,58 @@ mod tests {
 
     #[test]
     fn test_from_str_with_prefix() {
-        let hash = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap();
+        let hash =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+                .unwrap();
         assert_eq!(hash.0[0], 0x12);
         assert_eq!(hash.0[31], 0xef);
     }
 
     #[test]
     fn test_from_str_without_prefix() {
-        let hash = Hash::from_str("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap();
+        let hash =
+            Hash::from_str("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+                .unwrap();
         assert_eq!(hash.0[0], 0x12);
         assert_eq!(hash.0[31], 0xef);
     }
 
     #[test]
     fn test_from_str_uppercase() {
-        let hash = Hash::from_str("0x1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF").unwrap();
+        let hash =
+            Hash::from_str("0x1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF")
+                .unwrap();
         assert_eq!(hash.0[0], 0x12);
         assert_eq!(hash.0[31], 0xef);
     }
 
     #[test]
     fn test_from_str_mixed_case() {
-        let hash = Hash::from_str("0x1234567890AbCdEf1234567890aBcDeF1234567890AbCdEf1234567890aBcDeF").unwrap();
+        let hash =
+            Hash::from_str("0x1234567890AbCdEf1234567890aBcDeF1234567890AbCdEf1234567890aBcDeF")
+                .unwrap();
         assert_eq!(hash.0[0], 0x12);
         assert_eq!(hash.0[31], 0xef);
     }
 
     #[test]
     fn test_from_str_too_short() {
-        let result = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd");
+        let result =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd");
         assert_eq!(result, Err(ParseHashError::InvalidLength));
     }
 
     #[test]
     fn test_from_str_too_long() {
-        let result = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00");
+        let result =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00");
         assert_eq!(result, Err(ParseHashError::InvalidLength));
     }
 
     #[test]
     fn test_from_str_invalid_hex() {
-        let result = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdez");
+        let result =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdez");
         assert_eq!(result, Err(ParseHashError::InvalidHex));
     }
 
@@ -432,7 +444,10 @@ mod tests {
     fn test_to_hex_string_zero() {
         let hash = Hash::ZERO;
         let s = hash.to_hex_string();
-        assert_eq!(s, "0x0000000000000000000000000000000000000000000000000000000000000000");
+        assert_eq!(
+            s,
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        );
     }
 
     #[test]
@@ -440,7 +455,10 @@ mod tests {
         let bytes = [0x42; 32];
         let hash = Hash::from(bytes);
         let s = hash.to_hex_string();
-        assert_eq!(s, "0x4242424242424242424242424242424242424242424242424242424242424242");
+        assert_eq!(
+            s,
+            "0x4242424242424242424242424242424242424242424242424242424242424242"
+        );
     }
 
     #[test]
@@ -567,7 +585,9 @@ mod tests {
 
     #[test]
     fn test_serialize() {
-        let hash = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap();
+        let hash =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+                .unwrap();
         let json = serde_json::to_string(&hash).unwrap();
         assert!(json.starts_with("\"0x"));
         assert!(json.ends_with("\""));
@@ -583,7 +603,9 @@ mod tests {
 
     #[test]
     fn test_roundtrip_serialize() {
-        let hash1 = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap();
+        let hash1 =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+                .unwrap();
         let json = serde_json::to_string(&hash1).unwrap();
         let hash2: Hash = serde_json::from_str(&json).unwrap();
         assert_eq!(hash1, hash2);
@@ -597,14 +619,20 @@ mod tests {
     fn test_all_zeros() {
         let hash = Hash::from([0x00; 32]);
         let s = hash.to_string();
-        assert_eq!(s, "0x0000000000000000000000000000000000000000000000000000000000000000");
+        assert_eq!(
+            s,
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        );
     }
 
     #[test]
     fn test_all_ones() {
         let hash = Hash::from([0xff; 32]);
         let s = hash.to_string();
-        assert_eq!(s, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        assert_eq!(
+            s,
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        );
     }
 
     #[test]
@@ -631,7 +659,9 @@ mod tests {
 
     #[test]
     fn test_h256_roundtrip() {
-        let h256: H256 = H256::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap();
+        let h256: H256 =
+            H256::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+                .unwrap();
         let hash: Hash = h256;
         assert_eq!(hash.0[0], 0x12);
         assert_eq!(hash.0[31], 0xef);
@@ -658,9 +688,15 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_parsing() {
-        let lower = Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef").unwrap();
-        let upper = Hash::from_str("0x1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF").unwrap();
-        let mixed = Hash::from_str("0x1234567890AbCdEf1234567890aBcDeF1234567890AbCdEf1234567890aBcDeF").unwrap();
+        let lower =
+            Hash::from_str("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+                .unwrap();
+        let upper =
+            Hash::from_str("0x1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF")
+                .unwrap();
+        let mixed =
+            Hash::from_str("0x1234567890AbCdEf1234567890aBcDeF1234567890AbCdEf1234567890aBcDeF")
+                .unwrap();
 
         assert_eq!(lower, upper);
         assert_eq!(upper, mixed);

@@ -12,12 +12,10 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::{vec, vec::Vec};
 
-use claudeth::crypto::{keccak256, rlp};
 use claudeth::crypto::rlp::RlpError;
-use claudeth::state::{
-    Account, InMemoryState, Proof, State, EMPTY_CODE_HASH, verify_proof,
-};
-use claudeth::stf::{process_block, BlockProcessingError, ExecutionError};
+use claudeth::crypto::{keccak256, rlp};
+use claudeth::state::{Account, EMPTY_CODE_HASH, InMemoryState, Proof, State, verify_proof};
+use claudeth::stf::{BlockProcessingError, ExecutionError, process_block};
 use claudeth::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
 
 const ERROR_INVALID_HEADER: u64 = 1;
@@ -180,7 +178,7 @@ fn decode_and_execute(input: &[u8]) -> Result<claudeth::stf::BlockProcessingResu
         &mut state,
         chain_id,
     )
-        .map_err(GuestError::Block)
+    .map_err(GuestError::Block)
 }
 
 fn decode_transactions(input: &[u8]) -> Result<Vec<Transaction>, GuestError> {
@@ -254,7 +252,10 @@ fn decode_witness_items(version: u64, items: &[Vec<u8>]) -> Result<WitnessState,
     }
 
     let accounts = decode_witness_accounts(&items[2])?;
-    Ok(WitnessState { state_root, accounts })
+    Ok(WitnessState {
+        state_root,
+        accounts,
+    })
 }
 
 fn decode_witness_accounts(input: &[u8]) -> Result<Vec<WitnessAccount>, GuestError> {
@@ -443,8 +444,7 @@ fn apply_witness_state(state: &mut InMemoryState, witness: WitnessState) -> Resu
             return Err(GuestError::InvalidInput);
         }
 
-        let decoded_account =
-            Account::decode_rlp(&account.account_rlp).map_err(GuestError::Rlp)?;
+        let decoded_account = Account::decode_rlp(&account.account_rlp).map_err(GuestError::Rlp)?;
         let computed_code_hash = if account.code.is_empty() {
             EMPTY_CODE_HASH
         } else {
@@ -592,24 +592,31 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
                 ExecutionError::ValidationError(_) => 1u64,
                 ExecutionError::ExecutionFailed => 2u64,
             };
-            (
-                ERROR_TX_EXECUTION,
-                rlp::encode_list(&[encode_u64(detail)]),
-            )
+            (ERROR_TX_EXECUTION, rlp::encode_list(&[encode_u64(detail)]))
         }
-        BlockProcessingError::GasLimitExceeded { gas_limit, gas_used, .. } => (
+        BlockProcessingError::GasLimitExceeded {
+            gas_limit,
+            gas_used,
+            ..
+        } => (
             ERROR_GAS_LIMIT_EXCEEDED,
             rlp::encode_list(&[encode_u64(gas_limit), encode_u64(gas_used)]),
         ),
-        BlockProcessingError::ReceiptsRootMismatch { expected, computed, .. } => (
+        BlockProcessingError::ReceiptsRootMismatch {
+            expected, computed, ..
+        } => (
             ERROR_RECEIPTS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::StateRootMismatch { expected, computed, .. } => (
+        BlockProcessingError::StateRootMismatch {
+            expected, computed, ..
+        } => (
             ERROR_STATE_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::GasUsedMismatch { expected, computed, .. } => (
+        BlockProcessingError::GasUsedMismatch {
+            expected, computed, ..
+        } => (
             ERROR_GAS_USED_MISMATCH,
             rlp::encode_list(&[encode_u64(expected), encode_u64(computed)]),
         ),
@@ -621,15 +628,21 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
             ERROR_BLOB_GAS_LIMIT_EXCEEDED,
             rlp::encode_list(&[encode_u64(blob_gas_limit), encode_u64(blob_gas_used)]),
         ),
-        BlockProcessingError::BlobGasUsedMismatch { expected, computed, .. } => (
+        BlockProcessingError::BlobGasUsedMismatch {
+            expected, computed, ..
+        } => (
             ERROR_BLOB_GAS_USED_MISMATCH,
             rlp::encode_list(&[encode_u64(expected), encode_u64(computed)]),
         ),
-        BlockProcessingError::TransactionsRootMismatch { expected, computed, .. } => (
+        BlockProcessingError::TransactionsRootMismatch {
+            expected, computed, ..
+        } => (
             ERROR_TRANSACTIONS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
-        BlockProcessingError::LogsBloomMismatch { expected, computed, .. } => (
+        BlockProcessingError::LogsBloomMismatch {
+            expected, computed, ..
+        } => (
             ERROR_LOGS_BLOOM_MISMATCH,
             rlp::encode_list(&[
                 rlp::encode_bytes(expected.as_ref()),
@@ -640,7 +653,9 @@ fn encode_block_error(err: BlockProcessingError) -> (u64, Vec<u8>) {
             ERROR_UNEXPECTED_WITHDRAWALS,
             rlp::encode_list(&[encode_u64(count as u64)]),
         ),
-        BlockProcessingError::WithdrawalsRootMismatch { expected, computed, .. } => (
+        BlockProcessingError::WithdrawalsRootMismatch {
+            expected, computed, ..
+        } => (
             ERROR_WITHDRAWALS_ROOT_MISMATCH,
             rlp::encode_list(&[encode_hash(expected), encode_hash(computed)]),
         ),
@@ -695,8 +710,8 @@ enum GuestError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claudeth::types::Hash;
     use claudeth::state::{Storage, Trie};
+    use claudeth::types::Hash;
 
     #[test]
     fn test_withdrawals_presence_allows_empty_list() {
@@ -750,11 +765,7 @@ mod tests {
         header.number = 2;
         let parent = BlockHeader::default();
         let parent_hash = parent.compute_hash();
-        let hashes = vec![
-            Hash::from([0x22; 32]),
-            Hash::from([0x33; 32]),
-            parent_hash,
-        ];
+        let hashes = vec![Hash::from([0x22; 32]), Hash::from([0x33; 32]), parent_hash];
 
         let result = validate_block_hashes(&header, &parent, &hashes);
         assert!(matches!(result, Err(GuestError::InvalidInput)));
@@ -873,11 +884,8 @@ mod tests {
 
         let mutated_account = rlp::encode_list(&mutated_fields);
         let mutated_accounts = rlp::encode_list(&[mutated_account]);
-        let mutated_witness = rlp::encode_list(&[
-            items[0].clone(),
-            items[1].clone(),
-            mutated_accounts,
-        ]);
+        let mutated_witness =
+            rlp::encode_list(&[items[0].clone(), items[1].clone(), mutated_accounts]);
         witness = mutated_witness;
 
         let state_source = decode_state_source(&witness).expect("decode witness");

@@ -17,7 +17,9 @@ use alloc::vec::Vec;
 use crate::crypto::keccak::keccak256;
 use crate::evm::error::EvmError;
 use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host};
-use crate::evm::{GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER, MAX_INIT_CODE_SIZE};
+use crate::evm::{
+    GAS_CALL_NEW_ACCOUNT, GAS_CALL_STIPEND, GAS_CALL_VALUE_TRANSFER, MAX_INIT_CODE_SIZE,
+};
 use crate::evm::{Memory, Stack};
 use crate::state::State;
 use crate::types::{Address, Hash, U256};
@@ -143,7 +145,6 @@ fn address_to_u256(addr: &Address) -> U256 {
     bytes[12..32].copy_from_slice(addr.as_bytes());
     U256::from_be_bytes(bytes)
 }
-
 
 // =============================================================================
 // Block Information Opcodes
@@ -974,7 +975,10 @@ pub fn execute_selfdestruct<S: State>(
     if !originator_balance.is_zero() && beneficiary != self_address {
         let beneficiary_balance = state.get_balance(&beneficiary);
         state.set_balance(&self_address, U256::ZERO);
-        state.set_balance(&beneficiary, beneficiary_balance.saturating_add(originator_balance));
+        state.set_balance(
+            &beneficiary,
+            beneficiary_balance.saturating_add(originator_balance),
+        );
     }
 
     if state.account_created_in_tx(&self_address) {
