@@ -25,6 +25,7 @@
 - Do transfer ETH only for `CALL`/`CALLCODE`; never for `DELEGATECALL`/`STATICCALL`.
 - Do preserve `CALLVALUE` context through `DELEGATECALL` without moving balances.
 - Do propagate successful child-frame logs into parent receipt logs.
+- Do propagate successful child-frame gas refunds into the parent frame refund counter.
 - Do implement `LT`/`GT`/`SLT`/`SGT` using execution-spec operand order.
 - Do map opcode `0x44` to `PREVRANDAO` (`mix_hash`) on post-merge forks.
 - Do implement `EXP` with execution-spec operand order (`base`, then `exponent`).
@@ -55,6 +56,7 @@
 - Don't charge call stipend as caller-consumed gas.
 - Don't use `msg.value != 0` alone to decide ETH transfer in host calls.
 - Don't drop successful child warm accesses/logs at call boundaries.
+- Don't carry refund deltas from reverted/errored child frames into the parent frame.
 - Don't map recursive `REVERT` to full forwarded-gas burn.
 - Don't double-charge LOG base gas in both opcode base and dynamic helper.
 - Don't compute memory expansion from `offset + size` when `size == 0`.

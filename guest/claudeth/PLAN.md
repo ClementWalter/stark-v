@@ -4,158 +4,100 @@ Last reviewed: 2026-02-11
 
 ## Ground Truth Snapshot
 
-- `README.md` still claims full EELS compatibility and no caveats.
-- Non-ignored release suite is green:
+- `README.md` claims full EELS compatibility and no caveats.
+- Default release suite is green:
   - `cargo test -p claudeth --release`
-- Ignored full-suite probe (`test_execute_all_blockchain_tests`) is still non-gating and currently failing on deterministic fixture families.
-- Deterministic failing families observed in the latest ignored sweep (before interruption):
-  - `BlockchainTests/ValidBlocks/bcStateTests/logRevert.json::{logRevert_Cancun,logRevert_Prague}`
-    - `GasUsedMismatch(expected=3627978, computed=3627993)` (`+15`)
-  - `BlockchainTests/ValidBlocks/bcStateTests/refundReset.json::{refundReset_Cancun,refundReset_Prague}`
-    - `GasUsedMismatch(expected=712850, computed=734258)` (`+21408`)
-  - `BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json::{randomStatetest241_Cancun,randomStatetest241_Prague}`
-    - `GasUsedMismatch(expected=43138, computed=400000)` (`+356862`)
-  - `BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json::{blockhashTests_Cancun,blockhashTests_Prague}`
-    - `GasUsedMismatch(expected=45352, computed=65252)` (`+19900`)
-  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::{suicideStorageCheckVCreate_Cancun,suicideStorageCheckVCreate_Prague}`
-    - `GasUsedMismatch(expected=468193, computed=184878)` (`-283315`)
-- Full-suite harness status still conflicts with README claim:
+- Full EELS sweep is still non-gating:
   - `test_execute_all_blockchain_tests` remains `#[ignore]`
-  - `run_all_blockchain_tests_impl` reports totals but does not assert `failed == 0 && errors == 0`
+  - `run_all_blockchain_tests_impl` still reports totals without asserting `failed == 0 && errors == 0`
+- Fresh ignored sweep baseline (run on 2026-02-11) confirms the first unresolved deterministic frontier is:
+  - `BlockchainTests/ValidBlocks/bcStateTests/refundReset.json::{refundReset_Cancun,refundReset_Prague}`
+  - `GasUsedMismatch(expected=712850, computed=734258)` (`+21408`)
+- Source audit highlights one explicit compatibility gap that still conflicts with README:
+  - `src/evm/precompiles.rs` has non-trivial bn254 pairing pending and precompile `0x0a` intentionally unimplemented.
 
-## Recently Completed (This Cycle)
+## Recently Confirmed
 
-- Fixed `logRevert` deterministic drift by making charged memory expansion persist for read-only ranges in the active interpreter path:
-  - Added persistent range expansion helper in `src/evm/interpreter.rs`
-  - Applied it to KECCAK (`0x20`) and all byte-range reads via `read_memory_bytes`
-- Added focused regression coverage:
-  - `test_log_revert_cancun_fixture`
-  - `test_log_revert_prague_fixture`
-- Verification completed in release mode:
-  - `cargo test -p claudeth --release test_log_revert_ -- --nocapture`
-  - `cargo test -p claudeth --release`
-  - `prek run --all-files`
+- `logRevert` is fixed and now passes in both forks during ignored-sweep execution.
+- `refundReset` is fixed in focused regressions:
+  - `cargo test -p claudeth --release test_refund_reset_ -- --nocapture`
+  - Cancun + Prague now pass.
+- The next unresolved deterministic frontier must be re-baselined from a fresh ignored full-suite run.
 
 ## Completion Objective
 
 Make implementation truthfully match `README.md` by:
 
 - eliminating deterministic EELS fixture failures;
-- enforcing full-suite EELS compatibility as a default release gate;
-- enforcing native/RV32 deterministic parity on representative fixtures.
+- turning full EELS execution into a default release gate;
+- enforcing native/RV32 parity gates;
+- closing remaining spec-semantic gaps (including precompile completeness).
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Re-Baseline the New First Unresolved Frontier
+### Task 1 (P0, FIRST): Re-Baseline the Next Frontier After `refundReset`
 
 Why:
-- `logRevert` was fixed in this cycle, so priority must move to the next deterministic failing family.
+- `refundReset` focused failures are fixed, so the first unresolved family has moved.
 
 What:
-- Re-run ignored full-suite probe and capture the first unresolved failing case after the `logRevert` fix.
+- Capture the next first unresolved failing family with exact mismatch numbers.
 
 How:
 - Run `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`.
-- Record the first `✗` fixture pair and mismatch numbers.
-- If `refundReset` remains first, keep Task 2 as immediate implementation target.
+- Record the first `✗` family and numbers in `PLAN.md` and `learnings.md`.
 
-### Task 2 (P0): Fix `refundReset` Gas Drift (`+21408`)
-
-Why:
-- Large deterministic gas drift indicates incorrect gas accounting in a high-signal state-transition path.
-
-What:
-- Match fixture gas-used for both Cancun and Prague `refundReset` cases.
-
-How:
-- Add/confirm focused Cancun + Prague fixture regressions.
-- Diff per-tx gas with execution-spec behavior (`system.py`/`gas.py`) around refund and memory-extension side effects.
-- Patch minimal logic in active interpreter/host/STF accounting path.
-
-### Task 3 (P0): Fix `randomStatetest241` Full-Gas Burn Mismatch (`400000` vs `43138`)
-
-Why:
-- This delta suggests a control-flow/error-path bug where forwarded gas is burned incorrectly.
-
-What:
-- Restore spec-accurate gas used for the fixture on both Cancun and Prague.
-
-How:
-- Add focused regression first.
-- Trace call/revert/invalid handling and gas propagation against execution-spec semantics.
-- Patch minimal failing branch.
-
-### Task 4 (P0): Fix `blockhashTests` Gas Drift (`+19900`)
-
-Why:
-- `BLOCKHASH` fixtures are deterministic and sensitive to memory/call-accounting interactions.
-
-What:
-- Eliminate gas mismatch for Cancun + Prague `blockhashTests`.
-
-How:
-- Add focused regressions.
-- Diff opcode-level gas and memory-extension behavior against execution-spec.
-- Patch minimal accounting bug.
-
-### Task 5 (P0): Fix `suicideStorageCheckVCreate` Gas Drift (`-283315`)
-
-Why:
-- Large undercharge indicates missing gas components in CREATE/SELFDESTRUCT-related flow.
-
-What:
-- Match fixture gas semantics for both forks.
-
-How:
-- Add focused regression first.
-- Diff create/collision/selfdestruct branch behavior against execution-spec.
-- Patch missing charge points with minimal scope.
-
-### Task 6 (P0): Continue Deterministic Frontier Burn-Down to Zero
+### Task 2 (P0): Burn Down Remaining Deterministic Fixture Failures to Zero
 
 Why:
 - README compatibility remains false while any deterministic fixture family fails.
 
 What:
-- Iteratively eliminate all remaining deterministic failing families.
+- Eliminate every remaining deterministic mismatch family-by-family.
 
 How:
-- Repeat cycle: baseline -> focused regression -> execution-spec diff -> minimal fix -> rerun.
+- Repeat fixed cycle:
+  - capture frontier;
+  - add focused regression;
+  - diff behavior against execution-spec references;
+  - apply minimal patch;
+  - rerun focused + release suite.
 
-### Task 7 (P0): Make Full EELS Sweep a Default Hard Gate
+### Task 3 (P0): Make Full EELS Sweep a Default Hard Gate
 
 Why:
-- Ignored/non-fatal full-suite behavior allows silent regressions and contradicts README claims.
+- Ignored/non-fatal full-suite behavior permits silent regressions and contradicts README claims.
 
 What:
-- Fail default verification whenever full-suite reports any fixture failure or error.
+- Default verification must fail when any EELS fixture fails/errors.
 
 How:
-- Remove ignore posture for full-suite verification path.
-- Assert `failed == 0 && errors == 0` in the runner.
-- Keep release-mode execution path for this gate.
+- Remove ignore posture for default gate path.
+- Enforce `failed == 0 && errors == 0` in full-suite runner.
+- Keep release-mode execution for this gate.
 
-### Task 8 (P1): Close Remaining Spec-Semantics Gaps Not Yet Proven by Current Fixture Set
+### Task 4 (P1): Add Deterministic Native-vs-RV32 Parity Gate
 
 Why:
-- Source still contains explicitly incomplete precompile behavior (`0x08` non-trivial pairing, `0x0a` point-evaluation), which is a latent compatibility risk.
+- README states both native and RV32 paths are validated, but there is no hard deterministic parity gate yet.
 
 What:
-- Implement missing execution-spec semantics for those precompiles.
+- Add a curated parity suite that must match across both execution targets.
 
 How:
-- Port execution-spec behavior exactly from reference files.
+- Run the same fixture set on native and runner paths.
+- Fail on divergence in state root, receipts, gas used, and logs.
+
+### Task 5 (P1): Complete Outstanding Precompile Semantics
+
+Why:
+- `src/evm/precompiles.rs` still documents intentionally incomplete behavior (`0x08` non-trivial pairing and `0x0a` point-evaluation).
+- This is incompatible with README’s full-compatibility claim.
+
+What:
+- Implement remaining precompile semantics to match execution-spec behavior.
+
+How:
+- Port logic from execution-spec references exactly.
 - Add malformed/success/OOG regressions.
-- Validate against relevant fixture families.
-
-### Task 9 (P1): Add Native-vs-RV32 Deterministic Parity Gate
-
-Why:
-- README claims parity but no hard gate currently enforces it.
-
-What:
-- Add deterministic parity checks over curated high-signal fixtures.
-
-How:
-- Execute the same fixture set on native and runner paths in release mode.
-- Fail on state root, receipts, gas-used, and logs divergence.
+- Re-run relevant fixture families and full release suite.

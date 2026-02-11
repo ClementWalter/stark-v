@@ -55,6 +55,8 @@ pub struct CallResult {
     pub return_data: Vec<u8>,
     /// Gas used by the callee.
     pub gas_used: u64,
+    /// Gas refund accrued by the callee on successful execution.
+    pub gas_refund: u64,
     /// Logs emitted by the callee on successful execution.
     pub logs: Vec<LogEntry>,
     /// Addresses accessed by a successful callee frame.
@@ -83,6 +85,8 @@ pub struct CreateResult {
     pub return_data: Vec<u8>,
     /// Gas used by init code execution (including code deposit if applicable).
     pub gas_used: u64,
+    /// Gas refund accrued by init-code execution on successful creation.
+    pub gas_refund: u64,
 }
 
 /// Host interface for external calls and block/tx data access.
@@ -104,6 +108,7 @@ impl<S: State> Host<S> for NullHost {
             success: false,
             return_data: Vec::new(),
             gas_used: 0,
+            gas_refund: 0,
             logs: Vec::new(),
             accessed_addresses: Vec::new(),
             accessed_storage: Vec::new(),
@@ -116,6 +121,7 @@ impl<S: State> Host<S> for NullHost {
             address: None,
             return_data: Vec::new(),
             gas_used: 0,
+            gas_refund: 0,
         }
     }
 
@@ -235,6 +241,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: false,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
                 logs: Vec::new(),
                 accessed_addresses: Vec::new(),
                 accessed_storage: Vec::new(),
@@ -252,6 +259,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                                 success: false,
                                 return_data: Vec::new(),
                                 gas_used: 0,
+                                gas_refund: 0,
                                 logs: Vec::new(),
                                 accessed_addresses: Vec::new(),
                                 accessed_storage: Vec::new(),
@@ -268,6 +276,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: true,
                         return_data: result.output,
                         gas_used: result.gas_used,
+                        gas_refund: 0,
                         logs: Vec::new(),
                         accessed_addresses: Vec::new(),
                         accessed_storage: Vec::new(),
@@ -279,6 +288,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: false,
                         return_data: Vec::new(),
                         gas_used: msg.gas,
+                        gas_refund: 0,
                         logs: Vec::new(),
                         accessed_addresses: Vec::new(),
                         accessed_storage: Vec::new(),
@@ -301,6 +311,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: false,
                         return_data: Vec::new(),
                         gas_used: 0,
+                        gas_refund: 0,
                         logs: Vec::new(),
                         accessed_addresses: Vec::new(),
                         accessed_storage: Vec::new(),
@@ -317,6 +328,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: true,
                 return_data: Vec::new(),
                 gas_used: 0,
+                gas_refund: 0,
                 logs: Vec::new(),
                 accessed_addresses: Vec::new(),
                 accessed_storage: Vec::new(),
@@ -336,6 +348,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     success: false,
                     return_data: Vec::new(),
                     gas_used: 0,
+                    gas_refund: 0,
                     logs: Vec::new(),
                     accessed_addresses: Vec::new(),
                     accessed_storage: Vec::new(),
@@ -418,6 +431,13 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     success: exec_result.success,
                     return_data: exec_result.return_data,
                     gas_used: exec_result.gas_used,
+                    // Why: execution-spec incorporates child refund counters
+                    // into the parent only when the child frame succeeds.
+                    gas_refund: if exec_result.success {
+                        exec_result.gas_refund
+                    } else {
+                        0
+                    },
                     // Why: child-frame logs become part of the parent
                     // transaction receipt only when the child succeeded.
                     logs: if exec_result.success {
@@ -433,6 +453,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: false,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
                 logs: Vec::new(),
                 accessed_addresses: Vec::new(),
                 accessed_storage: Vec::new(),
@@ -441,6 +462,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: false,
                 return_data: data,
                 gas_used: msg.gas.saturating_sub(evm.gas_remaining()),
+                gas_refund: 0,
                 logs: Vec::new(),
                 accessed_addresses: Vec::new(),
                 accessed_storage: Vec::new(),
@@ -449,6 +471,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: false,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
                 logs: Vec::new(),
                 accessed_addresses: Vec::new(),
                 accessed_storage: Vec::new(),
@@ -464,6 +487,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 address: None,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
             };
         };
 
@@ -477,6 +501,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     address: None,
                     return_data: Vec::new(),
                     gas_used: 0,
+                    gas_refund: 0,
                 };
             }
         }
@@ -503,6 +528,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 address: None,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
             };
         }
 
@@ -579,6 +605,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                             address: None,
                             return_data: Vec::new(),
                             gas_used: msg.gas,
+                            gas_refund: 0,
                         };
                     }
 
@@ -591,6 +618,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                             address: None,
                             return_data: Vec::new(),
                             gas_used: msg.gas,
+                            gas_refund: 0,
                         };
                     }
 
@@ -604,6 +632,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                             address: None,
                             return_data: Vec::new(),
                             gas_used: msg.gas,
+                            gas_refund: 0,
                         };
                     }
 
@@ -616,6 +645,9 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         address: Some(contract_address),
                         return_data: exec_result.return_data,
                         gas_used: exec_result.gas_used.saturating_add(code_deposit),
+                        // Why: successful CREATE/CREATE2 must propagate child
+                        // init-code refunds to the parent frame.
+                        gas_refund: exec_result.gas_refund,
                     }
                 } else {
                     // Discard failed create state
@@ -625,6 +657,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         address: None,
                         return_data: exec_result.return_data,
                         gas_used: exec_result.gas_used,
+                        gas_refund: 0,
                     }
                 }
             }
@@ -633,18 +666,21 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 address: None,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
             },
             Err(EvmError::Revert(data)) => CreateResult {
                 success: false,
                 address: None,
                 return_data: data,
                 gas_used: msg.gas.saturating_sub(evm.gas_remaining()),
+                gas_refund: 0,
             },
             Err(_) => CreateResult {
                 success: false,
                 address: None,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                gas_refund: 0,
             },
         }
     }

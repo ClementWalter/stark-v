@@ -1972,6 +1972,32 @@ fn test_log_revert_prague_fixture() {
     );
 }
 
+fn assert_refund_reset_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/refundReset.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("refundReset fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("refundReset post-state should match fixture");
+}
+
+#[test]
+fn test_refund_reset_cancun_fixture() {
+    // Why: this fixture verifies refund-counter lifecycle across nested
+    // CALL/CREATE paths where only successful child frames propagate refunds.
+    assert_refund_reset_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/refundReset.json::refundReset_Cancun",
+    );
+}
+
+#[test]
+fn test_refund_reset_prague_fixture() {
+    assert_refund_reset_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/refundReset.json::refundReset_Prague",
+    );
+}
+
 #[test]
 fn test_random_statetest324_cancun_fixture() {
     // Why: this fixture catches zero-length memory-range gas accounting drift.

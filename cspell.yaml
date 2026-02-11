@@ -12,6 +12,7 @@ words:
   - andn
   - auipc
   - basefee
+  - baselined
   - beac
   - bgeu
   - bitmask

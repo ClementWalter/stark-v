@@ -1072,6 +1072,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                         return Err(EvmError::OutOfGas);
                     }
                     self.consume_gas(result.gas_used)?;
+                    // Why: successful CREATE child frames propagate refund
+                    // counters to the parent frame per execution-spec.
+                    if result.success {
+                        self.gas_refund = self.gas_refund.saturating_add(result.gas_refund);
+                    }
                     self.return_data = result.return_data.clone();
 
                     if result.success {
@@ -1147,6 +1152,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     return Err(EvmError::OutOfGas);
                 }
                 if result.success {
+                    // Why: only successful child frames contribute refunds to
+                    // the parent frame; failed child refunds are discarded.
+                    self.gas_refund = self.gas_refund.saturating_add(result.gas_refund);
                     for address in &result.accessed_addresses {
                         self.access_address(address);
                     }
@@ -1235,6 +1243,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     return Err(EvmError::OutOfGas);
                 }
                 if result.success {
+                    // Why: CALLCODE uses the same child-refund propagation
+                    // semantics as CALL on successful execution.
+                    self.gas_refund = self.gas_refund.saturating_add(result.gas_refund);
                     for address in &result.accessed_addresses {
                         self.access_address(address);
                     }
@@ -1321,6 +1332,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     return Err(EvmError::OutOfGas);
                 }
                 if result.success {
+                    // Why: DELEGATECALL successful child frames must also
+                    // contribute their refund counter to the parent frame.
+                    self.gas_refund = self.gas_refund.saturating_add(result.gas_refund);
                     for address in &result.accessed_addresses {
                         self.access_address(address);
                     }
@@ -1380,6 +1394,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                         return Err(EvmError::OutOfGas);
                     }
                     self.consume_gas(result.gas_used)?;
+                    // Why: CREATE2 follows the same successful child-refund
+                    // propagation semantics as CREATE.
+                    if result.success {
+                        self.gas_refund = self.gas_refund.saturating_add(result.gas_refund);
+                    }
                     self.return_data = result.return_data.clone();
 
                     if result.success {
@@ -1437,6 +1456,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     return Err(EvmError::OutOfGas);
                 }
                 if result.success {
+                    // Why: STATICCALL successful child frames still contribute
+                    // refund deltas from read-only sub-execution paths.
+                    self.gas_refund = self.gas_refund.saturating_add(result.gas_refund);
                     for address in &result.accessed_addresses {
                         self.access_address(address);
                     }
@@ -3238,6 +3260,7 @@ mod tests {
             address: Some(created_addr),
             return_data: Vec::new(),
             gas_used: 7,
+            gas_refund: 0,
         };
         let host = Rc::new(RefCell::new(host_state));
 
