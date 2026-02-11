@@ -521,6 +521,24 @@ fn execute_create<S: State + Clone>(
     // Compute contract address
     let nonce = state.get_nonce(sender);
     let contract_address = compute_create_address(sender, nonce.saturating_sub(U256::ONE));
+
+    let has_code_or_nonce = state.get_nonce(&contract_address) != U256::ZERO
+        || !state.get_code(&contract_address).is_empty();
+    if has_code_or_nonce || state.has_storage(&contract_address) {
+        // Why: execution-spec top-level create transactions short-circuit on
+        // destination collisions and burn all execution gas (`AddressCollision`).
+        return Ok((
+            false,
+            gas_available,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            state,
+        ));
+    }
+
     state.mark_account_created(&contract_address);
 
     // Execute init code
@@ -1400,6 +1418,63 @@ mod tests {
 
         let expected_address = compute_create_address(&sender, U256::ZERO);
         assert!(state.get_code(&expected_address).is_empty());
+    }
+
+    #[test]
+    fn test_execute_create_collision_with_existing_storage_consumes_all_gas() {
+        let mut state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            tx_ctx: &tx_ctx,
+        };
+
+        let sender = Address::from([0x01; 20]);
+        state.set_balance(&sender, U256::from_u64(1_000_000));
+        // Why: execute_create computes the destination from the sender's
+        // pre-increment nonce (`nonce - 1`), matching transaction execution.
+        state.increment_nonce(&sender);
+
+        let contract_address = compute_create_address(&sender, U256::ZERO);
+        // Why: execution-spec treats non-empty storage at the destination as a
+        // CREATE collision even when code/nonce are empty.
+        state.sstore(&contract_address, &U256::ONE, U256::from_u64(0x2a));
+
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(100000),
+            to: None,
+            value: U256::ZERO,
+            data: Bytes::from(vec![0x60, 0x00, 0x60, 0x00, 0xF3]),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let gas_available = 75_000;
+        let result = execute_create(&tx, state, &sender, contexts, gas_available)
+            .expect("execute create with collision");
+
+        assert!(!result.0);
+        assert_eq!(result.1, gas_available);
+        assert_eq!(result.2, 0);
+        assert!(result.3.is_empty());
+        assert!(result.4.is_empty());
+        assert!(result.5.is_none());
+
+        let returned_state = result.7;
+        assert_eq!(
+            returned_state.sload(&contract_address, &U256::ONE),
+            U256::from_u64(0x2a)
+        );
+        assert!(returned_state.get_code(&contract_address).is_empty());
+        assert_eq!(returned_state.get_nonce(&contract_address), U256::ZERO);
+        assert!(!returned_state.account_created_in_tx(&contract_address));
+        assert_eq!(returned_state.get_nonce(&sender), U256::ONE);
     }
 
     #[test]

@@ -4,137 +4,130 @@ Last reviewed: 2026-02-11
 
 ## Ground Truth Snapshot
 
-- `README.md` claims full `execution-spec-tests` compatibility and native + RV32 parity.
-- `cargo test -p claudeth --release` passes locally.
-- The full blockchain fixture sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
-- `reentrencySuicide` Cancun/Prague now pass with focused regressions in release mode.
-- Post-fix ignored-suite baseline rerun (stopped after first deterministic failures) now surfaces this frontier:
-  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::suicideStorageCheck_Cancun`
-  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::suicideStorageCheck_Prague`
-  - error: `GasUsedMismatch(expected=473109, computed=172603)` (`-300506`)
-- Immediate next deterministic family observed right after frontier:
-  - CREATE2 + selfdestruct same-block collision fixture (Cancun/Prague)
-  - gas undercharge on block 0 tx pair (`~ -64886`).
-- Explicit known conformance gaps still present in code:
-  - precompile `0x0a` point-evaluation unimplemented;
-  - precompile `0x08` non-trivial pairing intentionally unsupported;
-  - Prague BLS12 precompile execution (`0x0b..0x11`) unimplemented.
+- `README.md` claims full EELS compatibility and native/RV32 parity.
+- `test_execute_all_blockchain_tests` is still `#[ignore]`, so that claim is not hard-gated.
+- `cargo test -p claudeth --release` currently passes for the non-ignored suite.
+- `src/evm/precompiles.rs` still intentionally leaves major conformance gaps:
+  - `0x0a` point-evaluation precompile returns failure;
+  - `0x08` pairing supports only identity/infinity shortcuts;
+  - Prague BLS12 precompiles `0x0b..0x11` are not executed.
+- Targeted analysis of `suicideStorageCheck` + execution-spec references shows a concrete mismatch:
+  top-level create transactions must fail on destination collision by burning all remaining execution gas (`AddressCollision` path), while current `src/stf/executor.rs::execute_create` does not implement that short-circuit.
 
 ## Completion Objective
 
-Make the implementation actually match `README.md` claims:
-- pass the full `execution-spec-tests` blockchain fixture sweep;
-- keep native and RV32 deterministic parity on the supported fixture set;
-- keep this conformance enforced by default test gates.
+Make implementation truthfully match `README.md`:
 
-## Completed This Turn
-
-- Implemented fork-aware precompile warm-set propagation:
-  - `src/evm/interpreter.rs`: added `BlockContext.max_precompile_address` and used it for top-level warm initialization.
-  - `src/evm/host.rs`: applied the same warm range to recursive `CALL*` and `CREATE*` child frames.
-  - `src/stf/block.rs`: set warm range from block fork signal (`requests_hash`: Prague `0x11`, otherwise `0x0a`).
-- Added focused regression tests:
-  - `src/evm/interpreter.rs`: `test_extcodesize_precompile_0x0b_cold_before_prague`, `test_extcodesize_precompile_0x0b_warm_at_prague`.
-  - `tests/eels_blockchain_tests.rs`: Cancun/Prague `reentrencySuicide` fixture tests.
-- Validation completed in release mode:
-  - focused new unit + fixture tests pass;
-  - `cargo test -p claudeth --release` passes;
-  - `prek run -a` passes.
+- pass the full EELS blockchain fixture sweep (no ignored compatibility gate);
+- preserve deterministic native/RV32 behavior for supported fixtures;
+- keep that coverage enforced by default.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix `suicideStorageCheck` Gas Undercharge (`-300506`)
+### Task 1 (P0, FIRST): Fix Top-Level CREATE Collision Semantics (`suicideStorageCheck`)
 
 Why:
-- It is now the first deterministic failure family after fixing `reentrencySuicide`.
-- Until this is fixed, full-suite conformance cannot progress in a deterministic order.
+- Current deterministic frontier is `suicideStorageCheck` Cancun/Prague gas mismatch.
+- Collision handling for top-level create is currently inconsistent with execution-spec `process_message_call` `AddressCollision` behavior.
 
 What:
-- Align gas accounting and state-transition behavior for:
-  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::{..._Cancun,..._Prague}`
-  - remove `expected 473109 / computed 172603` block gas mismatch.
+- In `execute_create`, detect destination collision (`code/nonce` or non-empty storage) before init-code execution.
+- On collision:
+  - do not mutate destination account/storage/code;
+  - report failed creation;
+  - consume full execution gas (`gas_used = gas_available`).
 
 How:
-- Add dedicated Cancun/Prague focused fixture tests for `suicideStorageCheck`.
-- Diff expected-vs-computed tx-level gas and isolate missing charged paths in tx0/tx1.
-- Cross-check with execution-spec `SELFDESTRUCT` + `CREATE/CREATE2` collision/deletion semantics and patch narrow root cause.
+- Add focused Cancun/Prague fixture regressions for:
+  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::..._Cancun`
+  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::..._Prague`
+- Implement top-level collision short-circuit in `src/stf/executor.rs`.
+- Validate with release-mode tests and ensure post-state parity.
 
-### Task 2 (P0): Re-Baseline Ignored Full-Suite Frontier After Task 1
+### Task 2 (P0): Re-Baseline Full Ignored Frontier
 
 Why:
-- Deterministic conformance work must always follow the first failing family after each fix.
+- After each deterministic fix, the first failing family can move immediately.
 
 What:
-- Re-run ignored suite and capture the next first deterministic `✗` family with compact tx-level deltas.
+- Re-run the ignored full suite and capture the new first deterministic failing family.
 
 How:
-- Execute `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`.
-- Stop analysis at first deterministic mismatch and prioritize that family next.
+- Run:
+  - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
+- Stop prioritization at the first stable mismatch family.
 
-### Task 3 (P0): Iterate Failure-Family Burn-Down to Zero
+### Task 3 (P0): Burn Down Deterministic Failure Families to Zero
 
 Why:
-- README compatibility claim cannot be considered true until deterministic blockchain fixture mismatches are eliminated.
+- README compatibility is false until deterministic fixture failures are eliminated.
 
 What:
-- Resolve remaining deterministic failure families one by one (for example the currently observed later selfdestruct valid-block family).
+- Resolve first-failure family iteratively until full-suite pass.
 
 How:
-- For each frontier: root-cause -> minimal patch -> focused Cancun/Prague regressions -> re-baseline.
+- For each frontier:
+  - reproduce with focused fixture test;
+  - map behavior to execution-spec;
+  - implement minimal fix;
+  - re-baseline frontier.
 
-### Task 4 (P0): Make Full Blockchain Suite a Hard Gate
+### Task 4 (P0): Make Full Blockchain Sweep a Hard Gate
 
 Why:
-- `#[ignore]` leaves the key compatibility claim unenforced.
+- Ignored compatibility test allows regressions behind a non-default path.
 
 What:
-- Remove ignore/non-gating behavior and fail on any `failed > 0 || errors > 0`.
+- Remove non-gating behavior for the full EELS blockchain sweep once failures are cleared.
 
 How:
-- After deterministic failures are cleared, tighten assertions in `run_all_blockchain_tests_impl` and enable in normal CI/local path.
+- Tighten assertions in `run_all_blockchain_tests_impl` (`failed == 0 && errors == 0`).
+- Remove/adjust `#[ignore]` so this runs in normal CI/default verification.
 
-### Task 5 (P1): Implement Precompile `0x0a` Point Evaluation
+### Task 5 (P1): Implement Point-Evaluation Precompile (`0x0a`)
 
 Why:
-- Cancun/Prague precompile coverage remains incomplete.
+- Required for Cancun/Prague conformance completeness.
 
 What:
-- Implement full semantics, validation, and gas metering for point-evaluation precompile.
+- Add full validation/gas/output behavior for precompile `0x0a`.
 
 How:
-- Port execution-spec behavior and add malformed/success/OOG vectors.
+- Port execution-spec behavior.
+- Add malformed/success/OOG vectors plus fixture coverage.
 
 ### Task 6 (P1): Implement Full BN254 Pairing (`0x08`)
 
 Why:
-- Non-trivial pairing tuples currently fail by design, blocking full conformance.
+- Current implementation intentionally rejects non-trivial tuples.
 
 What:
-- Support complete pairing product verification for arbitrary valid tuple sets.
+- Implement full pairing product verification for valid tuple sets.
 
 How:
-- Implement full tuple parsing + arithmetic path; add fixture and unit coverage.
+- Implement tuple parsing + full arithmetic path + gas-correct behavior.
+- Add execution-spec vector coverage.
 
-### Task 7 (P1): Enforce Native vs RV32 Deterministic Parity Gate
+### Task 7 (P1): Implement Prague BLS12 Precompiles (`0x0b..0x11`)
 
 Why:
-- README promises native + RV32 execution parity.
+- Prague warm-set handling exists, but execution support is missing.
 
 What:
-- Add deterministic parity checks on a curated high-signal fixture set.
+- Implement execution and gas semantics for BLS12 precompile range.
 
 How:
-- Execute identical vectors through native and runner paths in release mode and gate once stable.
+- Port execution-spec rules for each address.
+- Add malformed/success/OOG tests and representative fixtures.
 
-### Task 8 (P1): Implement Prague BLS12 Precompile Execution (`0x0b..0x11`)
+### Task 8 (P1): Enforce Native vs RV32 Deterministic Parity Gate
 
 Why:
-- Prague execution-spec includes BLS12 precompile addresses in the precompile map.
-- Warm-set parity alone fixes current frontier gas, but execution correctness for direct calls remains incomplete.
+- README promises parity, but parity checks are not currently hard-gated.
 
 What:
-- Implement functional + gas-correct handling for BLS12 precompile addresses (`G1 add/msm`, `G2 add/msm`, pairing, map ops).
+- Add deterministic parity assertions on a curated high-signal fixture subset.
 
 How:
-- Port execution-spec behavior first for validation/error/gas rules.
-- Add targeted vectors for malformed input, OOG, and success cases before enabling broad fixture gates.
+- Run identical vectors through native and runner paths in release mode.
+- Gate after stabilization.
