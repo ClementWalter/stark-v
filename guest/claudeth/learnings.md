@@ -15,6 +15,8 @@
 - Do mark CREATE/CREATE2 destination addresses warm before executing init code so immediate post-create account opcodes are charged warm.
 - Do increment creator nonce for recursive CREATE/CREATE2 attempts that pass prechecks, and set created-account nonce to `1` on the successful creation path.
 - Do add focused fixture regressions for each failing family before broader suite reruns.
+- Do summarize `BlockProcessingError` with bounded, high-signal fields (expected/computed deltas + compact tx gas summaries) during full-suite fixture loops.
+- Do execute the ignored full EELS sweep in a dedicated large-stack thread so deep fixture paths can finish and report actionable failures.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -29,3 +31,5 @@
 - Don't assume top-level warm initialization automatically carries into child recursive executions.
 - Don't compute recursive CREATE addresses with `caller_nonce - 1`; use the caller nonce before increment for CREATE address derivation.
 - Don't stop at the first `GasUsedMismatch`: fixing gas can expose the next deterministic layer (`StateRootMismatch`) immediately.
+- Don't dump full `{:?}` transaction payloads (especially large `return_data`) inside fixture failure messages.
+- Don't assume default Rust test-thread stack is sufficient for the largest historical blockchain fixtures.

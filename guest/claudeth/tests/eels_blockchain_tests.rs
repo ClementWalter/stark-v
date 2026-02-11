@@ -7,6 +7,7 @@
 // Run scripts/fetch_eels_tests.py to download the test fixtures.
 
 use claudeth::evm::format_disassembly;
+use claudeth::stf::{BlockProcessingError, TransactionExecutionResult};
 use claudeth::state::{InMemoryState, State};
 use claudeth::types::{Address, Bytes, U256};
 use serde::{Deserialize, Serialize};
@@ -1179,6 +1180,130 @@ fn test_recent_block_hash_window_orders_from_oldest_to_newest() {
 
 type CaseExecutionOutput = (InMemoryState, Vec<claudeth::stf::BlockProcessingResult>);
 
+const TX_FAILURE_SUMMARY_LIMIT: usize = 3;
+
+fn summarize_transaction_results(transaction_results: &[TransactionExecutionResult]) -> String {
+    if transaction_results.is_empty() {
+        return "tx_count=0".to_string();
+    }
+
+    let mut tx_summaries = Vec::new();
+    for (idx, tx_result) in transaction_results
+        .iter()
+        .take(TX_FAILURE_SUMMARY_LIMIT)
+        .enumerate()
+    {
+        let contract = tx_result
+            .contract_address
+            .map_or_else(|| "<none>".to_string(), |address| address.to_string());
+        tx_summaries.push(format!(
+            "#{idx}: success={} gas_used={} cumulative_gas={} contract={contract}",
+            tx_result.success, tx_result.gas_used, tx_result.cumulative_gas_used
+        ));
+    }
+
+    if transaction_results.len() > TX_FAILURE_SUMMARY_LIMIT {
+        tx_summaries.push(format!(
+            "... +{} more",
+            transaction_results.len() - TX_FAILURE_SUMMARY_LIMIT
+        ));
+    }
+
+    format!(
+        "tx_count={} [{}]",
+        transaction_results.len(),
+        tx_summaries.join(", ")
+    )
+}
+
+fn summarize_block_processing_error(error: &BlockProcessingError) -> String {
+    match error {
+        BlockProcessingError::InvalidHeader(message) => {
+            format!("InvalidHeader({message})")
+        }
+        BlockProcessingError::TransactionExecutionError(execution_error) => {
+            format!("TransactionExecutionError({execution_error:?})")
+        }
+        BlockProcessingError::GasLimitExceeded {
+            gas_limit,
+            gas_used,
+            transaction_results,
+        } => format!(
+            "GasLimitExceeded(expected_limit={gas_limit}, computed={gas_used}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::ReceiptsRootMismatch {
+            expected,
+            computed,
+            transaction_results,
+        } => format!(
+            "ReceiptsRootMismatch(expected={expected}, computed={computed}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::StateRootMismatch {
+            expected,
+            computed,
+            transaction_results,
+        } => format!(
+            "StateRootMismatch(expected={expected}, computed={computed}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::GasUsedMismatch {
+            expected,
+            computed,
+            transaction_results,
+        } => format!(
+            "GasUsedMismatch(expected={expected}, computed={computed}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::BlobGasLimitExceeded {
+            blob_gas_limit,
+            blob_gas_used,
+            transaction_results,
+        } => format!(
+            "BlobGasLimitExceeded(limit={blob_gas_limit}, computed={blob_gas_used}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::BlobGasUsedMismatch {
+            expected,
+            computed,
+            transaction_results,
+        } => format!(
+            "BlobGasUsedMismatch(expected={expected}, computed={computed}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::TransactionsRootMismatch {
+            expected,
+            computed,
+            transaction_results,
+        } => format!(
+            "TransactionsRootMismatch(expected={expected}, computed={computed}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::LogsBloomMismatch {
+            transaction_results, ..
+        } => format!(
+            "LogsBloomMismatch {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::UnexpectedWithdrawals {
+            count,
+            transaction_results,
+        } => format!(
+            "UnexpectedWithdrawals(count={count}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+        BlockProcessingError::WithdrawalsRootMismatch {
+            expected,
+            computed,
+            transaction_results,
+        } => format!(
+            "WithdrawalsRootMismatch(expected={expected}, computed={computed}) {}",
+            summarize_transaction_results(transaction_results)
+        ),
+    }
+}
+
 fn execute_blockchain_case(
     test_name: &str,
     test_case: &BlockchainTest,
@@ -1358,7 +1483,10 @@ fn execute_blockchain_case(
                     }
                 }
 
-                return Err(format!("Block {block_idx}: Execution failed: {e:?}"));
+                return Err(format!(
+                    "Block {block_idx}: Execution failed: {}",
+                    summarize_block_processing_error(&e)
+                ));
             }
         }
     }
@@ -1421,8 +1549,49 @@ fn test_extcodehash_deleted_account_dynamic_prague_fixture() {
 }
 
 #[test]
+fn test_block_processing_error_summary_omits_large_return_data_payloads() {
+    let transaction_results = vec![TransactionExecutionResult {
+        sender: Address::from([0x11; 20]),
+        success: true,
+        gas_used: 1,
+        effective_gas_price: U256::ONE,
+        cumulative_gas_used: 1,
+        logs: Vec::new(),
+        return_data: vec![0xff; 200_000],
+        contract_address: None,
+        gas_trace: None,
+    }];
+
+    let summary = summarize_block_processing_error(&BlockProcessingError::GasUsedMismatch {
+        expected: 1,
+        computed: 2,
+        transaction_results,
+    });
+
+    // Why: the full ignored suite must not abort while formatting failures
+    // from transactions that return very large byte vectors.
+    assert!(summary.len() < 512);
+    assert!(!summary.contains("255, 255"));
+}
+
+#[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {
+    // Why: some large historical fixtures trigger deep recursion paths that
+    // exceed the default test-thread stack before we can collect full-suite
+    // totals. Running the harness in an explicitly larger stack keeps the
+    // execution deterministic and lets us complete the baseline run.
+    let join_handle = std::thread::Builder::new()
+        .name("eels-full-suite".to_string())
+        .stack_size(128 * 1024 * 1024)
+        .spawn(run_all_blockchain_tests_impl)
+        .expect("spawn full-suite thread");
+
+    let joined = join_handle.join();
+    assert!(joined.is_ok(), "full-suite runner panicked: {joined:?}");
+}
+
+fn run_all_blockchain_tests_impl() {
     let tests = discover_blockchain_tests();
     if tests.is_empty() {
         eprintln!("No EELS tests found - skipping test");
