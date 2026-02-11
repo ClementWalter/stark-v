@@ -31,7 +31,10 @@ use std::collections::BTreeSet;
 #[cfg(target_arch = "riscv32")]
 use alloc::collections::BTreeSet;
 
-use crate::evm::host::{CallKind, CallMessage, CreateMessage, Host, NullHost};
+use crate::evm::host::{
+    CallKind, CallMessage, CreateMessage, Host, NullHost, compute_create2_address,
+    compute_create_address,
+};
 use crate::evm::memory::{Memory, MemoryError};
 use crate::evm::opcodes::arithmetic::EvmError as OpcodeError;
 use crate::evm::stack::{Stack, StackError};
@@ -982,6 +985,13 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.return_data.clear();
                     self.stack.push(U256::ZERO)?;
                 } else {
+                    // Why: execution-spec marks the CREATE destination warm
+                    // before executing init code; this affects subsequent
+                    // cold/warm charging in the same transaction.
+                    let caller_nonce = self.state.get_nonce(&self.call_ctx.address);
+                    let create_address = compute_create_address(&self.call_ctx.address, caller_nonce);
+                    self.access_address(&create_address);
+
                     let max_gas = self.gas_remaining - (self.gas_remaining / 64);
                     let msg = CreateMessage {
                         gas: max_gas,
@@ -1225,6 +1235,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     self.return_data.clear();
                     self.stack.push(U256::ZERO)?;
                 } else {
+                    // Why: CREATE2 destination is warm for the remainder of
+                    // the transaction, even before the create result is known.
+                    let create_address =
+                        compute_create2_address(&self.call_ctx.address, &salt, &init_code);
+                    self.access_address(&create_address);
+
                     let max_gas = self.gas_remaining - (self.gas_remaining / 64);
                     let msg = CreateMessage {
                         gas: max_gas,

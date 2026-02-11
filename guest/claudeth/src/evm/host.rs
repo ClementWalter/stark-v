@@ -321,11 +321,27 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             call_data: msg.input.clone(),
         };
 
+        // Why: execution-spec child messages inherit the transaction warm-set
+        // baseline (origin/current target/coinbase/precompiles). Without this,
+        // nested execution can overcharge cold access costs.
+        let mut warm_addresses = Vec::with_capacity(15);
+        warm_addresses.push(self.tx_ctx.origin);
+        warm_addresses.push(msg.address);
+        warm_addresses.push(msg.caller);
+        warm_addresses.push(msg.code_address);
+        warm_addresses.push(self.block_ctx.coinbase);
+        for i in 1u8..=10u8 {
+            let mut addr_bytes = [0u8; 20];
+            addr_bytes[19] = i;
+            warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());
+        }
+
         // Create EVM with proper context
         let mut evm = Evm::new(code, msg.gas, call_state, child_host)
             .with_block_context(self.block_ctx.clone())
             .with_tx_context(self.tx_ctx.clone())
-            .with_call_context(call_ctx);
+            .with_call_context(call_ctx)
+            .warm_addresses(&warm_addresses);
 
         // Execute
         let result = evm.run();
@@ -370,27 +386,11 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             };
         };
 
-        // Compute contract address
-        let nonce = state.get_nonce(&msg.caller);
-        let contract_address = if let Some(salt) = msg.salt {
-            // CREATE2
-            compute_create2_address(&msg.caller, &salt, &msg.init_code)
-        } else {
-            // CREATE
-            compute_create_address(&msg.caller, nonce.saturating_sub(U256::ONE))
-        };
-
-        state.mark_account_created(&contract_address);
-
-        // Clone state
-        let mut create_state = state.clone();
-
-        // Handle value transfer in the cloned state
+        // CREATE/CREATE2 fail without incrementing caller nonce when balance is
+        // insufficient for the endowment transfer.
         if !msg.value.is_zero() {
-            // Check sufficient balance
-            let caller_balance = create_state.get_balance(&msg.caller);
+            let caller_balance = state.get_balance(&msg.caller);
             if caller_balance < msg.value {
-                // Insufficient balance
                 return CreateResult {
                     success: false,
                     address: None,
@@ -398,8 +398,34 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     gas_used: 0,
                 };
             }
+        }
 
-            // Deduct from caller
+        // Compute contract address
+        let nonce = state.get_nonce(&msg.caller);
+        let contract_address = if let Some(salt) = msg.salt {
+            // CREATE2
+            compute_create2_address(&msg.caller, &salt, &msg.init_code)
+        } else {
+            // CREATE
+            compute_create_address(&msg.caller, nonce)
+        };
+
+        // Why: execution-spec increments creator nonce before init-code
+        // execution, and this increment persists even if creation reverts.
+        state.increment_nonce(&msg.caller);
+        state.mark_account_created(&contract_address);
+
+        // Clone state
+        let mut create_state = state.clone();
+
+        // Why: successful creations materialize with nonce=1.
+        // Keeping this in the cloned state ensures failed creations do not
+        // leak nonce changes to the parent state.
+        create_state.increment_nonce(&contract_address);
+
+        // Handle value transfer in the cloned state
+        if !msg.value.is_zero() {
+            let caller_balance = create_state.get_balance(&msg.caller);
             create_state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
 
             // Add to new contract address
@@ -420,11 +446,25 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             call_data: Vec::new(), // Init code has no call data
         };
 
+        // Why: CREATE init code should observe the same tx-level warm
+        // baseline as other frames, plus its own destination.
+        let mut warm_addresses = Vec::with_capacity(14);
+        warm_addresses.push(self.tx_ctx.origin);
+        warm_addresses.push(contract_address);
+        warm_addresses.push(msg.caller);
+        warm_addresses.push(self.block_ctx.coinbase);
+        for i in 1u8..=10u8 {
+            let mut addr_bytes = [0u8; 20];
+            addr_bytes[19] = i;
+            warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());
+        }
+
         // Create EVM with proper context
         let mut evm = Evm::new(msg.init_code.clone(), msg.gas, create_state, child_host)
             .with_block_context(self.block_ctx.clone())
             .with_tx_context(self.tx_ctx.clone())
-            .with_call_context(call_ctx);
+            .with_call_context(call_ctx)
+            .warm_addresses(&warm_addresses);
 
         // Execute
         let result = evm.run();

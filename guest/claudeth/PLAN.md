@@ -10,6 +10,9 @@ Last reviewed: 2026-02-11
   - command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
   - totals: `Total: 1142`, `Passed: 898`, `Failed: 244`, `Errors: 0`
 - A partial rerun on 2026-02-11 confirms `GasUsedMismatch` remains the dominant failure class (examples observed in logs: `extCodeHashOfDeletedAccountDynamic_*`, `randomStatetest123_*`, `ZeroValue_TransactionCALLwithData_OOGRevert_Prague`).
+- Focused rerun on 2026-02-11:
+  - `test_extcodehash_deleted_account_dynamic_{cancun,prague}_fixture` now passes in `--release`.
+  - Previous `GasUsedMismatch` on this fixture family has been removed.
 - Deterministic implementation gaps still visible in code:
   - precompile `0x0a` (point evaluation) is unimplemented;
   - precompile `0x08` pairing still rejects non-trivial tuples;
@@ -102,35 +105,56 @@ How:
 - Followed execution-spec `environment.py::extcodehash` behavior (`account == EMPTY_ACCOUNT` => `0`).
 - Patched `src/evm/interpreter.rs` and `src/evm/opcodes/environment.rs` with shared liveness-based behavior.
 
-## Priority Backlog (Why / What / How)
-
-### Task 8 (P0, FIRST): Eliminate Remaining `SELFDESTRUCT`/Account-Liveness Gas Divergences
+### Task 8 (DONE): Propagate Warm-Set and CREATE Nonce Semantics in Recursive Execution
 
 Why:
-- `extCodeHashOfDeletedAccountDynamic_*` still fails with `GasUsedMismatch` after the `EXTCODEHASH` semantics fix, so at least one delete/liveness path is still off-spec.
+- execution-spec child messages inherit tx-level warm context; missing this caused nested cold overcharges.
+- `extCodeHashOfDeletedAccountDynamic_*` also exposed missing CREATE/CREATE2 nonce transitions in recursive execution.
 
 What:
-- Align post-`SELFDESTRUCT` account liveness and subsequent gas/account-access behavior across same-block transaction sequences.
+- Warmed recursive `CALL*`/`CREATE*` frames with tx-level baseline addresses.
+- Marked CREATE/CREATE2 destinations warm before execution in the parent interpreter.
+- Aligned recursive CREATE nonce transitions (creator nonce increment + created account nonce=1 on successful path semantics).
+- Added non-ignored EELS regressions for Cancun and Prague dynamic deleted-account EXTCODEHASH fixtures.
+
+How:
+- Patched `src/evm/host.rs` and `src/evm/interpreter.rs` to mirror execution-spec warm/nonce behavior.
+- Added fixture-backed tests in `tests/eels_blockchain_tests.rs`.
+- Verified with `cargo test -p claudeth --release` and `prek run --all-files`.
+
+## Priority Backlog (Why / What / How)
+
+### Task 9 (P0, FIRST): Eliminate Remaining `SELFDESTRUCT`/Account-Liveness Gas Divergences
+
+Why:
+- After warm-set propagation, `SELFDESTRUCT` gas/liveness edge cases may still
+  remain; these are consensus-critical and appear in known failing buckets.
+
+What:
+- Align post-`SELFDESTRUCT` account liveness and subsequent gas/account-access
+  behavior across same-block transaction sequences.
 
 How:
 - Reproduce with the smallest failing fixture subset.
-- Compare step-by-step against execution-spec `system.py` and account/state helpers.
-- Add regression tests for cross-transaction delete/liveness behavior in block execution.
+- Compare step-by-step against execution-spec `system.py` and state helpers.
+- Add regression tests for cross-transaction delete/liveness behavior in block
+  execution.
 
-### Task 9 (P0): Systematically Close Remaining CALL-Family Gas Rule Deltas
+### Task 10 (P0): Systematically Close Remaining CALL-Family Gas Rule Deltas
 
 Why:
 - `GasUsedMismatch` remains dominant and blocks full fixture parity.
 
 What:
-- Close remaining deltas in CALL/CALLCODE/DELEGATECALL/STATICCALL accounting (cold/warm access, new-account surcharge, stipend/forwarded gas boundaries).
+- Close remaining deltas in CALL/CALLCODE/DELEGATECALL/STATICCALL accounting
+  (cold/warm access, new-account surcharge, stipend/forwarded gas boundaries).
 
 How:
 - Bucket failing fixtures by gas delta signature.
 - Patch one rule family at a time with execution-spec cross-checks.
 - Add targeted regressions for each corrected family.
 
-### Task 10 (P0): Resolve `StateRootMismatch` on Valid Fixtures
+### Task 11 (P0): Resolve `StateRootMismatch` on Valid Fixtures
 
 Why:
 - Any valid-block state root mismatch is a consensus-level STF deviation.
@@ -143,7 +167,7 @@ How:
 - Diff account/storage/code transitions against execution-spec expectations.
 - Add deterministic post-state-root regressions.
 
-### Task 11 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
+### Task 12 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
 
 Why:
 - Cancun/Prague conformance requires this precompile.
@@ -155,7 +179,7 @@ How:
 - Follow execution-spec `point_evaluation.py` semantics exactly.
 - Add tests for valid proof, invalid proof, malformed input, and OOG paths.
 
-### Task 12 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
+### Task 13 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
 
 Why:
 - Current implementation intentionally fails non-trivial tuples, breaking pairing coverage.
@@ -167,7 +191,7 @@ How:
 - Port execution-spec-compatible pairing checks and arithmetic flow.
 - Add multi-tuple valid and invalid regression vectors.
 
-### Task 13 (P0): Make Full EELS Blockchain Execution a Hard Gate
+### Task 14 (P0): Make Full EELS Blockchain Execution a Hard Gate
 
 Why:
 - Compatibility claims are not defensible while full-suite execution is ignored.
@@ -179,7 +203,7 @@ How:
 - Remove `#[ignore]` once P0 functional gaps are closed.
 - Enforce `failed == 0 && errors == 0` in assertions.
 
-### Task 14 (P1): Enforce Native vs RV32 Parity on Curated Fixtures
+### Task 15 (P1): Enforce Native vs RV32 Parity on Curated Fixtures
 
 Why:
 - README claims dual-target execution, but parity is not auto-verified.
@@ -191,7 +215,7 @@ How:
 - Add a `uv run` PEP 723 Python driver that runs both targets and diffs outcomes.
 - Gate the parity command in CI when stable.
 
-### Task 15 (P1): Align README Claims with Enforced Guarantees
+### Task 16 (P1): Align README Claims with Enforced Guarantees
 
 Why:
 - Public claims must match hard-gated behavior.

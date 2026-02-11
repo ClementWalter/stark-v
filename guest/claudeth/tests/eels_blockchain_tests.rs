@@ -1391,6 +1391,35 @@ fn test_multi_chain_fixture_state_selection_uses_parent_hash_not_linear_order() 
         .expect("branching fixture should execute with hash-indexed parent state");
 }
 
+fn assert_extcodehash_deleted_account_dynamic_case(case_name: &str) {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/ValidBlocks/bcStateTests/extCodeHashOfDeletedAccountDynamic.json",
+    );
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("extCodeHashOfDeletedAccountDynamic fixture should execute");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("extCodeHashOfDeletedAccountDynamic post-state should match fixture");
+}
+
+#[test]
+fn test_extcodehash_deleted_account_dynamic_cancun_fixture() {
+    // Why: this fixture combines CREATE2 + SELFDESTRUCT + EXTCODEHASH across
+    // transactions and is a high-signal regression for warm/cold gas parity.
+    assert_extcodehash_deleted_account_dynamic_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/extCodeHashOfDeletedAccountDynamic.json::extCodeHashOfDeletedAccountDynamic_Cancun",
+    );
+}
+
+#[test]
+fn test_extcodehash_deleted_account_dynamic_prague_fixture() {
+    // Why: Prague coverage keeps the same semantic edge case under the latest
+    // fixture fork and prevents Cancun-only overfitting.
+    assert_extcodehash_deleted_account_dynamic_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/extCodeHashOfDeletedAccountDynamic.json::extCodeHashOfDeletedAccountDynamic_Prague",
+    );
+}
+
 #[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {

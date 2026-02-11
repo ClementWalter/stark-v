@@ -11,6 +11,10 @@
 - Do implement `SELFDESTRUCT` dynamic gas from pre-transfer state: base + cold beneficiary surcharge + conditional new-account surcharge.
 - Do return `0` from `EXTCODEHASH` when the target account is empty/non-existent (execution-spec `EMPTY_ACCOUNT` behavior).
 - Do return `keccak256("")` from `EXTCODEHASH` only for alive accounts whose code is empty.
+- Do warm recursive `CALL*`/`CREATE*` frames with tx-level baseline addresses (origin, coinbase, precompiles, frame addresses) before execution.
+- Do mark CREATE/CREATE2 destination addresses warm before executing init code so immediate post-create account opcodes are charged warm.
+- Do increment creator nonce for recursive CREATE/CREATE2 attempts that pass prechecks, and set created-account nonce to `1` on the successful creation path.
+- Do add focused fixture regressions for each failing family before broader suite reruns.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -22,3 +26,6 @@
 - Don't treat `SELFDESTRUCT` as a fixed `5000` gas opcode in Cancun/Prague.
 - Don't skip `SELFDESTRUCT` new-account surcharge just because the beneficiary is warm.
 - Don't treat `EXTCODEHASH` of a dead account as `keccak256("")`.
+- Don't assume top-level warm initialization automatically carries into child recursive executions.
+- Don't compute recursive CREATE addresses with `caller_nonce - 1`; use the caller nonce before increment for CREATE address derivation.
+- Don't stop at the first `GasUsedMismatch`: fixing gas can expose the next deterministic layer (`StateRootMismatch`) immediately.

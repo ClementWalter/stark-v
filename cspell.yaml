@@ -144,10 +144,12 @@ words:
   - ommers
   - openvm
   - optionstest
+  - overfitting
   - pairable
   - parseable
   - popcount
   - precharge
+  - prechecks
   - precomputation
   - prehash
   - prehashed
