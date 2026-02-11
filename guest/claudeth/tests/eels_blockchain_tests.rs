@@ -1489,8 +1489,22 @@ fn execute_blockchain_case(
                     }
                 }
 
+                let post_state_diagnostic =
+                    match validate_post_state(&candidate_state, &test_case.pre, &test_case.post_state)
+                    {
+                        Ok(()) => {
+                            // Why: when account-level expectations match but
+                            // state-root validation fails, the mismatch likely
+                            // sits in trie encoding/account inclusion details.
+                            "account-level post-state matches fixture".to_string()
+                        }
+                        Err(post_state_err) => {
+                            format!("account-level post-state mismatch: {post_state_err}")
+                        }
+                    };
+
                 return Err(format!(
-                    "Block {block_idx}: Execution failed: {}",
+                    "Block {block_idx}: Execution failed: {}; {post_state_diagnostic}",
                     summarize_block_processing_error(&e)
                 ));
             }
@@ -1974,6 +1988,17 @@ fn assert_random_statetest_324_case(case_name: &str) {
         .expect("randomStatetest324 post-state should match fixture");
 }
 
+fn assert_random_statetest_99bc_case(case_name: &str) {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/ValidBlocks/bcRandomBlockhashTest/randomStatetest99BC.json",
+    );
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("randomStatetest99BC fixture should execute without state-root mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("randomStatetest99BC post-state should match fixture");
+}
+
 fn assert_random_statetest_241_case(case_name: &str) {
     let fixture_path =
         Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json");
@@ -2100,6 +2125,22 @@ fn test_random_statetest241_cancun_fixture() {
 fn test_random_statetest241_prague_fixture() {
     assert_random_statetest_241_case(
         "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json::randomStatetest241_Prague",
+    );
+}
+
+#[test]
+fn test_random_statetest99bc_cancun_fixture() {
+    // Why: this random blockhash fixture exercises EIP-4788 system-call state
+    // handling with zero parent beacon roots and catches root-only drifts.
+    assert_random_statetest_99bc_case(
+        "BlockchainTests/ValidBlocks/bcRandomBlockhashTest/randomStatetest99BC.json::randomStatetest99BC_Cancun",
+    );
+}
+
+#[test]
+fn test_random_statetest99bc_prague_fixture() {
+    assert_random_statetest_99bc_case(
+        "BlockchainTests/ValidBlocks/bcRandomBlockhashTest/randomStatetest99BC.json::randomStatetest99BC_Prague",
     );
 }
 

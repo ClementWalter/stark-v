@@ -36,6 +36,8 @@
 - Do enforce static-context write protection in the active interpreter path (`SSTORE` must fail under static context).
 - Do propagate static-context flags across recursive `CALL*` frames.
 - Do make charged memory expansion stateful for read-only ranges (LOG/KECCAK/RETURN/REVERT/call-input reads) so the same range is not re-charged later.
+- Do treat `CODECOPY` source offsets as full-width `U256`; offsets above `usize` are out-of-range reads that must yield zero bytes.
+- Do include account-level post-state diagnostics when chasing state-root mismatches; they separate trie/root drift from actual state-transition drift.
 
 ## Don't
 - Don't treat fixture iteration order as canonical chain order in multi-branch tests.
@@ -74,3 +76,4 @@
 - Don't treat truncated PUSH immediates as exceptional halts (`InvalidPush`) in runtime execution.
 - Don't hardcode Prague precompile warm range to `0x01..0x0a`; Prague includes `0x01..0x11`.
 - Don't allow static child frames to execute state-changing opcodes.
+- Don't use lossy `as_usize()` truncation for copy-opcode source offsets; large offsets must not wrap to low-bit indices.

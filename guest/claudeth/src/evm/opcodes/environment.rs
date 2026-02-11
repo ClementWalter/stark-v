@@ -146,6 +146,13 @@ fn address_to_u256(addr: &Address) -> U256 {
     U256::from_be_bytes(bytes)
 }
 
+fn u256_to_usize_checked(value: U256) -> Option<usize> {
+    if value > U256::from_u64(usize::MAX as u64) {
+        return None;
+    }
+    Some(value.as_u64() as usize)
+}
+
 // =============================================================================
 // Block Information Opcodes
 // =============================================================================
@@ -306,13 +313,17 @@ pub fn codecopy(
     memory: &mut Memory,
     contract_ctx: &ContractContext,
 ) -> Result<(), OpcodeError> {
-    let dest_offset = stack.pop()?.as_usize();
-    let offset = stack.pop()?.as_usize();
-    let size = stack.pop()?.as_usize();
+    let dest_offset_word = stack.pop()?;
+    let offset_word = stack.pop()?;
+    let size_word = stack.pop()?;
 
-    if size == 0 {
+    if size_word.is_zero() {
         return Ok(());
     }
+
+    let dest_offset = u256_to_usize_checked(dest_offset_word).ok_or(OpcodeError::InvalidOffset)?;
+    let size = u256_to_usize_checked(size_word).ok_or(OpcodeError::InvalidOffset)?;
+    let code_offset = u256_to_usize_checked(offset_word);
 
     let dest_end = dest_offset
         .checked_add(size)
@@ -320,11 +331,13 @@ pub fn codecopy(
     memory.expand(dest_end)?;
 
     for i in 0..size {
-        let byte = if offset + i < contract_ctx.code.len() {
-            contract_ctx.code[offset + i]
-        } else {
-            0
-        };
+        // Why: source offsets above usize must remain out-of-range reads
+        // instead of wrapping/truncating to low-bit offsets.
+        let source_index = code_offset.and_then(|base| base.checked_add(i));
+        let byte = source_index
+            .filter(|index| *index < contract_ctx.code.len())
+            .map(|index| contract_ctx.code[index])
+            .unwrap_or(0);
         memory.mstore8(dest_offset + i, byte)?;
     }
 

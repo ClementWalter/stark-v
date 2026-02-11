@@ -260,6 +260,13 @@ fn u256_to_hash(value: &U256) -> Hash {
     Hash::from(value.to_be_bytes())
 }
 
+fn u256_to_usize_checked(value: U256) -> Option<usize> {
+    if value > U256::from_u64(usize::MAX as u64) {
+        return None;
+    }
+    Some(value.as_u64() as usize)
+}
+
 fn memory_range_end(offset: usize, size: usize) -> usize {
     if size == 0 {
         0
@@ -648,26 +655,35 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             }
             0x39 => {
                 // CODECOPY
-                let dest = self.stack.pop()?.as_usize();
-                let offset = self.stack.pop()?.as_usize();
-                let size = self.stack.pop()?.as_usize();
+                let dest_word = self.stack.pop()?;
+                let offset_word = self.stack.pop()?;
+                let size_word = self.stack.pop()?;
 
-                // Memory expansion
-                let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), dest, size);
-                self.consume_gas(mem_cost)?;
+                if !size_word.is_zero() {
+                    let dest = u256_to_usize_checked(dest_word).ok_or(EvmError::OutOfGas)?;
+                    let size = u256_to_usize_checked(size_word).ok_or(EvmError::OutOfGas)?;
+                    let code_offset = u256_to_usize_checked(offset_word);
 
-                // Copy cost
-                let words = size.div_ceil(32);
-                self.consume_gas(3 * words as u64)?;
+                    // Memory expansion
+                    let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), dest, size);
+                    self.consume_gas(mem_cost)?;
 
-                // Copy code to memory
-                for i in 0..size {
-                    let byte = if offset + i < self.code.len() {
-                        self.code[offset + i]
-                    } else {
-                        0
-                    };
-                    self.memory.mstore8(dest + i, byte)?;
+                    // Copy cost
+                    let words = size.div_ceil(32);
+                    self.consume_gas(3 * words as u64)?;
+
+                    // Copy code to memory
+                    for i in 0..size {
+                        // Why: execution-spec treats source offsets as full-width
+                        // integers; offsets above usize are out-of-range reads and
+                        // must not wrap to low bits.
+                        let source_index = code_offset.and_then(|base| base.checked_add(i));
+                        let byte = source_index
+                            .filter(|index| *index < self.code.len())
+                            .map(|index| self.code[index])
+                            .unwrap_or(0);
+                        self.memory.mstore8(dest + i, byte)?;
+                    }
                 }
             }
             0x3A => {
@@ -2286,6 +2302,29 @@ mod tests {
         assert_eq!(bytes[0], 0x60);
         assert_eq!(bytes[1], 0x03);
         assert_eq!(bytes[2], 0x60);
+    }
+
+    #[test]
+    fn test_codecopy_with_huge_source_offset_does_not_wrap() {
+        // Why: source offsets are full-width U256 values. A huge offset must
+        // behave as out-of-range (zero bytes), not wrap to low usize bits.
+        let code = vec![
+            0x60, 0x20, // PUSH1 0x20 (size)
+            0x7F, // PUSH32 (source offset = 1 << 160)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x60, 0x00, // PUSH1 0x00 (dest)
+            0x39, // CODECOPY
+            0x60, 0x00, // PUSH1 0x00
+            0x51, // MLOAD
+            0x00, // STOP
+        ];
+
+        let (result, _state) = execute_bytecode(&code, 200_000, InMemoryState::new()).unwrap();
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).copied(), Ok(U256::ZERO));
     }
 
     // =============================================================================
