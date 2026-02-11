@@ -411,17 +411,30 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         Ok(())
     }
 
+    fn expand_memory_range(&mut self, offset: usize, size: usize) -> Result<(), EvmError> {
+        if size == 0 {
+            return Ok(());
+        }
+
+        // Why: execution-spec memory-extension gas has stateful effects. After
+        // charging expansion gas, memory length must be updated so subsequent
+        // opcodes do not re-charge for the same range.
+        let end = offset
+            .checked_add(size)
+            .ok_or(EvmError::MemoryError(MemoryError::Overflow))?;
+        let _ = self.memory.expand(end)?;
+        Ok(())
+    }
+
     fn read_memory_bytes(&mut self, offset: usize, size: usize) -> Result<Vec<u8>, EvmError> {
+        self.expand_memory_range(offset, size)?;
+
         let mut out = Vec::with_capacity(size);
         for i in 0..size {
-            if offset + i < self.memory.msize() {
-                let value = self.memory.mload((offset + i) & !31)?;
-                let byte_offset = (offset + i) % 32;
-                let bytes = value.to_be_bytes();
-                out.push(bytes[byte_offset]);
-            } else {
-                out.push(0);
-            }
+            let value = self.memory.mload((offset + i) & !31)?;
+            let byte_offset = (offset + i) % 32;
+            let bytes = value.to_be_bytes();
+            out.push(bytes[byte_offset]);
         }
         Ok(out)
     }
@@ -526,6 +539,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 // Memory expansion
                 let mem_cost = memory_expansion_cost_for_range(self.memory.msize(), offset, size);
                 self.consume_gas(mem_cost)?;
+                self.expand_memory_range(offset, size)?;
 
                 // Hash cost
                 let words = size.div_ceil(32);

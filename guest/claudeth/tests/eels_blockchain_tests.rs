@@ -1946,10 +1946,35 @@ fn test_opcode_f0_fa_prague_fixture() {
     );
 }
 
+fn assert_log_revert_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/logRevert.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("logRevert fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("logRevert post-state should match fixture");
+}
+
+#[test]
+fn test_log_revert_cancun_fixture() {
+    // Why: this fixture repeatedly executes LOG* followed by REVERT paths and
+    // catches memory-expansion side effects that must persist across opcodes.
+    assert_log_revert_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/logRevert.json::logRevert_Cancun",
+    );
+}
+
+#[test]
+fn test_log_revert_prague_fixture() {
+    assert_log_revert_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/logRevert.json::logRevert_Prague",
+    );
+}
+
 #[test]
 fn test_random_statetest324_cancun_fixture() {
-    // Why: this fixture is the current first deterministic full-suite failure
-    // and catches +3 gas drift from zero-length memory range accounting.
+    // Why: this fixture catches zero-length memory-range gas accounting drift.
     assert_random_statetest_324_case(
         "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest324.json::randomStatetest324_Cancun",
     );
