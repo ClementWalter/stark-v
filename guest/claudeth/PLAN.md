@@ -20,9 +20,9 @@ Last reviewed: 2026-02-11
   - Claudeth top-level create path in `src/stf/executor.rs::execute_create()` was patched to align with this behavior.
 - Task 1 implementation status (this pass):
   - Added focused regressions:
-    - `test_suicide_storage_check_vcreate_cancun_fixture`
-    - `test_suicide_storage_check_vcreate_prague_fixture`
-  - Verified with `cargo test -p claudeth --release test_suicide_storage_check_vcreate_ -- --nocapture` (both pass).
+    - `test_suicide_storage_check_v_create_cancun_fixture`
+    - `test_suicide_storage_check_v_create_prague_fixture`
+  - Verified with `cargo test -p claudeth --release test_suicide_storage_check_v_create_ -- --nocapture` (both pass).
   - Full ignored sweep has not yet been rerun to completion post-fix in this pass; next recorded deterministic frontier remains `callcodeOutput3partial`.
 
 ## Completion Objective
@@ -40,7 +40,7 @@ Make implementation truthfully match `README.md` by:
 
 Why:
 - It is the first current deterministic failing family in the ignored release sweep.
-- The failure signature (large gas undercount) matches nested CREATE address/collision drift caused by created-account nonce initialization timing.
+- The failure signature (large gas deficit) matches nested CREATE address/collision drift caused by created-account nonce initialization timing.
 
 What:
 - Align top-level create-message initialization with execution-spec behavior so nested CREATE observes the correct caller nonce and collision path.
@@ -56,7 +56,7 @@ How:
     - `suicideStorageCheckVCreate_Cancun`
     - `suicideStorageCheckVCreate_Prague`
 - Validate with:
-  - `cargo test -p claudeth --release test_suicide_storage_check_vcreate_ -- --nocapture`
+  - `cargo test -p claudeth --release test_suicide_storage_check_v_create_ -- --nocapture`
   - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture` (capture next frontier)
 
 ### Task 2 (P0, FIRST): Fix `callcodeOutput3partial` State Root Mismatch
