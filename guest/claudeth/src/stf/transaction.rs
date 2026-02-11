@@ -270,6 +270,12 @@ const BLOB_COUNT_LIMIT: usize = 6;
 const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
 /// Maximum blob gas per block (Cancun).
 pub const MAX_BLOB_GAS_PER_BLOCK: u64 = 786_432;
+/// EIP-7623 floor gas charged per calldata token (Prague+).
+const FLOOR_CALLDATA_COST_PER_TOKEN: u64 = 10;
+/// Standard calldata token price used for intrinsic gas accounting.
+const STANDARD_CALLDATA_TOKEN_COST: u64 = 4;
+/// Token multiplier for non-zero calldata bytes.
+const CALLDATA_NON_ZERO_TOKENS: u64 = 4;
 
 // =============================================================================
 // Validation Functions
@@ -351,15 +357,37 @@ pub fn validate_nonce(tx: &Transaction, account_nonce: U256) -> Result<(), Valid
 ///
 /// Returns `Ok(())` if gas parameters are valid, or an error otherwise.
 pub fn validate_gas(tx: &Transaction, block_gas_limit: U256) -> Result<(), ValidationError> {
+    validate_gas_with_calldata_floor(tx, block_gas_limit, false)
+}
+
+/// Validates transaction gas parameters with optional EIP-7623 calldata floor rules.
+///
+/// When `enforce_calldata_floor` is true, this requires:
+/// `gas_limit >= max(intrinsic_gas, calldata_floor_gas_cost)`.
+pub fn validate_gas_with_calldata_floor(
+    tx: &Transaction,
+    block_gas_limit: U256,
+    enforce_calldata_floor: bool,
+) -> Result<(), ValidationError> {
     let gas_limit = tx.gas_limit();
     let intrinsic_gas = calculate_intrinsic_gas(tx);
+    let required_gas = if enforce_calldata_floor {
+        let floor_gas = calculate_calldata_floor_gas(tx);
+        if floor_gas > intrinsic_gas {
+            floor_gas
+        } else {
+            intrinsic_gas
+        }
+    } else {
+        intrinsic_gas
+    };
 
     if tx.to().is_none() && tx.data().len() > MAX_INIT_CODE_SIZE {
         return Err(ValidationError::InitCodeSizeExceeded);
     }
 
     // Check gas limit >= intrinsic gas
-    if gas_limit < intrinsic_gas {
+    if gas_limit < required_gas {
         return Err(ValidationError::GasLimitTooLow);
     }
 
@@ -394,12 +422,8 @@ pub fn validate_base_fee(tx: &Transaction, base_fee: U256) -> Result<(), Validat
     }
 
     match tx {
-        Transaction::Legacy(tx) if tx.gas_price < base_fee => {
-            Err(ValidationError::GasPriceTooLow)
-        }
-        Transaction::Eip2930(tx) if tx.gas_price < base_fee => {
-            Err(ValidationError::GasPriceTooLow)
-        }
+        Transaction::Legacy(tx) if tx.gas_price < base_fee => Err(ValidationError::GasPriceTooLow),
+        Transaction::Eip2930(tx) if tx.gas_price < base_fee => Err(ValidationError::GasPriceTooLow),
         Transaction::Eip1559(tx) if tx.max_fee_per_gas < base_fee => {
             Err(ValidationError::MaxFeePerGasTooLow)
         }
@@ -441,15 +465,11 @@ pub fn calculate_intrinsic_gas(tx: &Transaction) -> U256 {
     // Base transaction cost
     let mut gas = U256::from(21000u64);
 
-    // Data cost
+    // Data cost: EIP-2028-equivalent accounting represented through calldata
+    // tokens so Prague floor-gas logic can share the same tokenization.
     let data = tx.data();
-    for &byte in data {
-        if byte == 0 {
-            gas = gas.saturating_add(U256::from(4u64));
-        } else {
-            gas = gas.saturating_add(U256::from(16u64));
-        }
-    }
+    let data_cost = calldata_tokens(tx).saturating_mul(U256::from(STANDARD_CALLDATA_TOKEN_COST));
+    gas = gas.saturating_add(data_cost);
 
     // Access list cost (EIP-2930, EIP-1559, EIP-4844)
     let access_list = tx.access_list();
@@ -472,6 +492,28 @@ pub fn calculate_intrinsic_gas(tx: &Transaction) -> U256 {
     }
 
     gas
+}
+
+/// Calculates the EIP-7623 calldata floor gas cost (Prague+).
+///
+/// The floor depends only on calldata tokenization and transaction base cost:
+/// `21000 + tokens_in_calldata * 10`.
+pub fn calculate_calldata_floor_gas(tx: &Transaction) -> U256 {
+    U256::from(21000u64).saturating_add(
+        calldata_tokens(tx).saturating_mul(U256::from(FLOOR_CALLDATA_COST_PER_TOKEN)),
+    )
+}
+
+fn calldata_tokens(tx: &Transaction) -> U256 {
+    let mut tokens = U256::ZERO;
+    for &byte in tx.data() {
+        if byte == 0 {
+            tokens = tokens.saturating_add(U256::ONE);
+        } else {
+            tokens = tokens.saturating_add(U256::from(CALLDATA_NON_ZERO_TOKENS));
+        }
+    }
+    tokens
 }
 
 /// Validates that the sender has sufficient balance to cover the transaction cost.
@@ -614,10 +656,7 @@ pub fn blob_data_fee(
 /// # Ok(())
 /// # }
 /// ```
-pub fn validate_chain_id(
-    tx: &Transaction,
-    expected_chain_id: U256,
-) -> Result<(), ValidationError> {
+pub fn validate_chain_id(tx: &Transaction, expected_chain_id: U256) -> Result<(), ValidationError> {
     match tx.chain_id() {
         Some(chain_id) => {
             if chain_id != expected_chain_id {
@@ -717,11 +756,11 @@ pub fn validate_transaction(
 mod tests {
     use super::*;
     use crate::crypto::{address_from_secret_key, sign_recoverable};
+    use crate::evm::gas::MAX_INIT_CODE_SIZE;
     use crate::types::transaction::{
         BlobTransaction, Eip1559Transaction, Eip2930Transaction, LegacyTransaction,
     };
     use crate::types::{Bytes, Hash};
-    use crate::evm::gas::MAX_INIT_CODE_SIZE;
 
     // Helper to create a valid signed transaction for testing
     fn create_signed_legacy_tx() -> (LegacyTransaction, Address) {
@@ -739,8 +778,8 @@ mod tests {
         };
 
         let signing_hash = tx.signing_hash();
-        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key)
-            .expect("sign legacy transaction");
+        let (r, s, recid) =
+            sign_recoverable(&signing_hash, secret_key).expect("sign legacy transaction");
         tx.r = r;
         tx.s = s;
         tx.v = U256::from_u64(27 + recid as u64);
@@ -768,8 +807,8 @@ mod tests {
         };
 
         let signing_hash = tx.signing_hash();
-        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key)
-            .expect("sign eip1559 transaction");
+        let (r, s, recid) =
+            sign_recoverable(&signing_hash, secret_key).expect("sign eip1559 transaction");
         tx.r = r;
         tx.s = s;
         tx.v = U256::from_u64(recid as u64);
@@ -1089,6 +1128,28 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_validate_gas_with_calldata_floor_prague_rejects_below_floor() {
+        let (mut tx, _) = create_signed_legacy_tx();
+        tx.data = Bytes::from_slice(&[0x34, 0x53, 0x45, 0x40]); // 4 non-zero bytes
+        tx.gas_limit = U256::from(21_064u64); // intrinsic, but below Prague floor
+        let tx = Transaction::Legacy(tx);
+
+        let result = validate_gas_with_calldata_floor(&tx, U256::from(30_000_000u64), true);
+        assert_eq!(result, Err(ValidationError::GasLimitTooLow));
+    }
+
+    #[test]
+    fn test_validate_gas_with_calldata_floor_prague_accepts_floor_limit() {
+        let (mut tx, _) = create_signed_legacy_tx();
+        tx.data = Bytes::from_slice(&[0x34, 0x53, 0x45, 0x40]); // 4 non-zero bytes
+        tx.gas_limit = U256::from(21_160u64); // Prague floor: 21000 + (4*4 tokens)*10
+        let tx = Transaction::Legacy(tx);
+
+        let result = validate_gas_with_calldata_floor(&tx, U256::from(30_000_000u64), true);
+        assert!(result.is_ok());
+    }
+
     // =========================================================================
     // Intrinsic Gas Tests
     // =========================================================================
@@ -1136,14 +1197,23 @@ mod tests {
     }
 
     #[test]
+    fn test_calculate_calldata_floor_gas_with_non_zero_bytes() {
+        let (mut tx, _) = create_signed_legacy_tx();
+        tx.data = Bytes::from_slice(&[0x34, 0x53, 0x45, 0x40]); // 4 non-zero bytes
+        let tx = Transaction::Legacy(tx);
+
+        let floor_gas = calculate_calldata_floor_gas(&tx);
+        // tokens = 4 non-zero * 4 = 16; floor = 21000 + 16 * 10 = 21160
+        assert_eq!(floor_gas, U256::from(21160u64));
+    }
+
+    #[test]
     fn test_calculate_intrinsic_gas_with_access_list() {
         let (mut tx, _) = create_signed_eip1559_tx();
-        tx.access_list = vec![
-            AccessListEntry {
-                address: Address::from([0x11; 20]),
-                storage_keys: vec![crate::types::Hash::from([0x22; 32])],
-            },
-        ];
+        tx.access_list = vec![AccessListEntry {
+            address: Address::from([0x11; 20]),
+            storage_keys: vec![crate::types::Hash::from([0x22; 32])],
+        }];
         let tx = Transaction::Eip1559(tx);
 
         let gas = calculate_intrinsic_gas(&tx);
@@ -1263,8 +1333,7 @@ mod tests {
         let tx = Transaction::Blob(blob_tx.clone());
 
         let gas_cost = blob_tx.gas_limit.saturating_mul(blob_tx.max_fee_per_gas);
-        let blob_gas_used =
-            U256::from_u64(GAS_PER_BLOB).saturating_mul(U256::from_u64(1u64));
+        let blob_gas_used = U256::from_u64(GAS_PER_BLOB).saturating_mul(U256::from_u64(1u64));
         let blob_fee_cap = blob_gas_used.saturating_mul(blob_tx.max_fee_per_blob_gas);
         let expected_cost = gas_cost.saturating_add(blob_fee_cap);
 
@@ -1498,30 +1567,34 @@ mod tests {
         // Test Legacy
         let (legacy_tx, _) = create_signed_legacy_tx();
         let legacy = Transaction::Legacy(legacy_tx);
-        assert!(validate_transaction(
-            &legacy,
-            U256::from(0u64),
-            U256::from(1_000_000_000_000_000u64),
-            &[],
-            U256::from(30_000_000u64),
-            U256::from(10u64),
-            U256::from(1u64),
-        )
-        .is_ok());
+        assert!(
+            validate_transaction(
+                &legacy,
+                U256::from(0u64),
+                U256::from(1_000_000_000_000_000u64),
+                &[],
+                U256::from(30_000_000u64),
+                U256::from(10u64),
+                U256::from(1u64),
+            )
+            .is_ok()
+        );
 
         // Test EIP-1559
         let (eip1559_tx, _) = create_signed_eip1559_tx();
         let eip1559 = Transaction::Eip1559(eip1559_tx);
-        assert!(validate_transaction(
-            &eip1559,
-            U256::from(0u64),
-            U256::from(1_000_000_000_000_000u64),
-            &[],
-            U256::from(30_000_000u64),
-            U256::from(10u64),
-            U256::from(1u64),
-        )
-        .is_ok());
+        assert!(
+            validate_transaction(
+                &eip1559,
+                U256::from(0u64),
+                U256::from(1_000_000_000_000_000u64),
+                &[],
+                U256::from(30_000_000u64),
+                U256::from(10u64),
+                U256::from(1u64),
+            )
+            .is_ok()
+        );
     }
 
     #[test]

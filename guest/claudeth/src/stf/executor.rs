@@ -28,15 +28,16 @@ use alloc::vec::Vec;
 
 use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{
-    execute_bytecode_with_host_contexts_and_access_list, BlockContext, CallContext, LogEntry,
-    TxContext,
+    BlockContext, CallContext, LogEntry, TxContext,
+    execute_bytecode_with_host_contexts_and_access_list,
 };
 use crate::state::State;
 use crate::stf::receipt::{Log, TransactionReceipt};
 use crate::stf::transaction::{
-    blob_data_fee, calculate_intrinsic_gas, validate_balance, validate_base_fee,
-    validate_blob_fee, validate_blob_structure, validate_chain_id, validate_gas, validate_nonce,
-    validate_sender_is_eoa, validate_signature, ValidationError,
+    ValidationError, blob_data_fee, calculate_calldata_floor_gas, calculate_intrinsic_gas,
+    validate_balance, validate_base_fee, validate_blob_fee, validate_blob_structure,
+    validate_chain_id, validate_gas_with_calldata_floor, validate_nonce, validate_sender_is_eoa,
+    validate_signature,
 };
 use crate::types::{Address, Hash, Transaction, U256};
 
@@ -109,6 +110,8 @@ pub struct TransactionExecutionContext<'a> {
     pub block_hashes: &'a [Hash],
     pub chain_id: U256,
     pub block_gas_limit: U256,
+    /// Enables EIP-7623 calldata floor gas rules (Prague+).
+    pub enforce_calldata_floor: bool,
 }
 
 /// Executes a transaction and returns the execution result
@@ -149,6 +152,7 @@ pub struct TransactionExecutionContext<'a> {
 /// //     block_hashes: &[],
 /// //     chain_id: U256::ONE,
 /// //     block_gas_limit: U256::from_u64(30_000_000),
+/// //     enforce_calldata_floor: false,
 /// // };
 /// // let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 /// ```
@@ -162,7 +166,11 @@ pub fn execute_transaction<S: State + Clone>(
     let sender = validate_signature(tx)?;
     validate_chain_id(tx, exec_ctx.chain_id)?;
     validate_nonce(tx, state.get_nonce(&sender))?;
-    validate_gas(tx, exec_ctx.block_gas_limit)?;
+    validate_gas_with_calldata_floor(
+        tx,
+        exec_ctx.block_gas_limit,
+        exec_ctx.enforce_calldata_floor,
+    )?;
     validate_base_fee(tx, exec_ctx.block_ctx.base_fee)?;
     validate_blob_structure(tx)?;
     validate_blob_fee(tx, exec_ctx.block_ctx.excess_blob_gas)?;
@@ -170,6 +178,11 @@ pub fn execute_transaction<S: State + Clone>(
 
     let intrinsic_gas = calculate_intrinsic_gas(tx).as_u64();
     let gas_limit = tx.gas_limit().as_u64();
+    let calldata_floor_gas_cost = if exec_ctx.enforce_calldata_floor {
+        Some(calculate_calldata_floor_gas(tx).as_u64())
+    } else {
+        None
+    };
 
     // Ensure gas limit covers intrinsic gas
     if gas_limit < intrinsic_gas {
@@ -260,7 +273,16 @@ pub fn execute_transaction<S: State + Clone>(
         execute_call(tx, exec_state, &sender, &to, exec_ctx, gas_available)
     };
 
-    let (success, gas_used_execution, gas_refund_raw, return_data, logs, contract_address, gas_trace, returned_state) = match exec_result {
+    let (
+        success,
+        gas_used_execution,
+        gas_refund_raw,
+        return_data,
+        logs,
+        contract_address,
+        gas_trace,
+        returned_state,
+    ) = match exec_result {
         Ok(result) => result,
         Err(err) => {
             state.clear_transient_storage();
@@ -283,7 +305,12 @@ pub fn execute_transaction<S: State + Clone>(
     let max_refund = total_gas_used / 5;
     let refund = gas_refund_raw.min(max_refund);
 
-    let final_gas_used = total_gas_used - refund;
+    let mut final_gas_used = total_gas_used - refund;
+    if let Some(calldata_floor_gas_cost) = calldata_floor_gas_cost {
+        // Why: EIP-7623 requires transactions to pay at least the calldata
+        // floor even when execution/refunds would otherwise reduce gas below it.
+        final_gas_used = final_gas_used.max(calldata_floor_gas_cost);
+    }
 
     // Refund unused gas to sender
     let gas_refund = U256::from_u64(gas_limit - final_gas_used).saturating_mul(effective_gas_price);
@@ -324,8 +351,16 @@ pub fn execute_transaction<S: State + Clone>(
 }
 
 // Type alias for execution result to avoid clippy::type_complexity warning
-type ExecutionResultWithState<S> =
-    (bool, u64, u64, Vec<u8>, Vec<Log>, Option<Address>, Option<crate::evm::GasTrace>, S);
+type ExecutionResultWithState<S> = (
+    bool,
+    u64,
+    u64,
+    Vec<u8>,
+    Vec<Log>,
+    Option<Address>,
+    Option<crate::evm::GasTrace>,
+    S,
+);
 
 #[derive(Clone, Copy)]
 struct ExecutionContexts<'a> {
@@ -577,7 +612,7 @@ fn execute_create<S: State + Clone>(
                     ));
                 }
 
-                use crate::evm::gas::{code_deposit_cost, MAX_CODE_SIZE};
+                use crate::evm::gas::{MAX_CODE_SIZE, code_deposit_cost};
                 let code_size = exec_result.return_data.len();
                 if code_size > MAX_CODE_SIZE {
                     // EIP-170: reject oversized code and consume all remaining gas.
@@ -741,6 +776,7 @@ mod tests {
             block_hashes: &[],
             chain_id: U256::ONE,
             block_gas_limit: U256::from_u64(30_000_000),
+            enforce_calldata_floor: false,
         };
         let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 
@@ -775,6 +811,7 @@ mod tests {
             block_hashes: &[],
             chain_id: U256::ONE,
             block_gas_limit: U256::from_u64(30_000_000),
+            enforce_calldata_floor: false,
         };
         let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 
@@ -816,6 +853,7 @@ mod tests {
             block_hashes: &[],
             chain_id: U256::ONE,
             block_gas_limit: U256::from_u64(30_000_000),
+            enforce_calldata_floor: false,
         };
         let result = execute_transaction(&tx, &mut state, &exec_ctx, 0);
 
@@ -876,10 +914,11 @@ mod tests {
             block_hashes: &[],
             chain_id: U256::ONE,
             block_gas_limit: U256::from_u64(30_000_000),
+            enforce_calldata_floor: false,
         };
 
-        let result = execute_transaction(&tx, &mut state, &exec_ctx, 0)
-            .expect("execute transaction");
+        let result =
+            execute_transaction(&tx, &mut state, &exec_ctx, 0).expect("execute transaction");
         assert!(result.success);
 
         let gas_fee = U256::from_u64(21000);
@@ -894,6 +933,68 @@ mod tests {
         assert_eq!(state.get_balance(&sender), expected_sender_balance);
         assert_eq!(state.get_balance(&recipient), value);
         assert_eq!(state.get_balance(&coinbase), U256::ZERO);
+    }
+
+    #[test]
+    fn test_execute_transaction_prague_calldata_floor_gas_applies_after_refund() {
+        let secret_key = U256::from_u64(1);
+        let recipient = Address::from([0x22; 20]);
+        let mut legacy = LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(21_160),
+            to: Some(recipient),
+            value: U256::ZERO,
+            data: Bytes::from_slice(&[0x34, 0x53, 0x45, 0x40]),
+            v: U256::ZERO,
+            r: U256::ZERO,
+            s: U256::ZERO,
+        };
+        let signing_hash = legacy.signing_hash();
+        let (r, s, recid) = sign_recoverable(&signing_hash, secret_key).expect("sign transaction");
+        legacy.r = r;
+        legacy.s = s;
+        legacy.v = U256::from_u64(27 + recid as u64);
+        let tx = Transaction::Legacy(legacy);
+        let sender = address_from_secret_key(secret_key).expect("address from secret");
+
+        let mut state_with_floor = InMemoryState::new();
+        state_with_floor.set_balance(&sender, U256::from_u64(1_000_000));
+
+        let block_ctx = BlockContext {
+            base_fee: U256::from_u64(1),
+            ..BlockContext::default()
+        };
+        let exec_ctx_with_floor = TransactionExecutionContext {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            chain_id: U256::ONE,
+            block_gas_limit: U256::from_u64(30_000_000),
+            enforce_calldata_floor: true,
+        };
+        let result_with_floor =
+            execute_transaction(&tx, &mut state_with_floor, &exec_ctx_with_floor, 0)
+                .expect("execute with Prague floor");
+        assert!(result_with_floor.success);
+        // Why: 4 non-zero bytes => 16 calldata tokens, so Prague floor is
+        // 21000 + 16 * 10 = 21160.
+        assert_eq!(result_with_floor.gas_used, 21_160);
+
+        let mut state_without_floor = InMemoryState::new();
+        state_without_floor.set_balance(&sender, U256::from_u64(1_000_000));
+        let exec_ctx_without_floor = TransactionExecutionContext {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            chain_id: U256::ONE,
+            block_gas_limit: U256::from_u64(30_000_000),
+            enforce_calldata_floor: false,
+        };
+        let result_without_floor =
+            execute_transaction(&tx, &mut state_without_floor, &exec_ctx_without_floor, 0)
+                .expect("execute without Prague floor");
+        assert_eq!(result_without_floor.gas_used, 21_064);
     }
 
     #[test]
@@ -937,12 +1038,19 @@ mod tests {
         });
 
         // Execute call directly (bypassing signature validation)
-        let result =
-            execute_call(&tx, state, &sender, &recipient, contexts, 21000);
+        let result = execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _gas_refund, return_data, logs, contract_address, _gas_trace, _state) =
-            result.unwrap();
+        let (
+            success,
+            gas_used,
+            _gas_refund,
+            return_data,
+            logs,
+            contract_address,
+            _gas_trace,
+            _state,
+        ) = result.unwrap();
 
         assert!(success);
         assert_eq!(gas_used, 0); // No code execution
@@ -978,8 +1086,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result =
-            execute_call(&tx, state, &sender, &recipient, contexts, 21000);
+        let result = execute_call(&tx, state, &sender, &recipient, contexts, 21000);
 
         assert!(result.is_ok());
     }
@@ -1055,8 +1162,7 @@ mod tests {
             s: U256::ONE,
         });
 
-        let result =
-            execute_call(&tx, state, &sender, &contract, contexts, 100000);
+        let result = execute_call(&tx, state, &sender, &contract, contexts, 100000);
 
         assert!(result.is_ok());
         let (success, gas_used, _gas_refund, return_data, logs, _, _gas_trace, _state) =
@@ -1103,8 +1209,16 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, gas_used, _gas_refund, _return_data, logs, contract_address, _gas_trace, _state) =
-            result.unwrap();
+        let (
+            success,
+            gas_used,
+            _gas_refund,
+            _return_data,
+            logs,
+            contract_address,
+            _gas_trace,
+            _state,
+        ) = result.unwrap();
 
         assert!(success);
         assert!(gas_used > 0);
@@ -1149,7 +1263,8 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, _state) = result.unwrap();
+        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, _state) =
+            result.unwrap();
 
         assert!(success);
         assert!(logs.is_empty());
@@ -1180,10 +1295,10 @@ mod tests {
         let init_code = vec![
             0x60, 0xEF, // PUSH1 0xEF
             0x60, 0x00, // PUSH1 0x00
-            0x53,       // MSTORE8
+            0x53, // MSTORE8
             0x60, 0x01, // PUSH1 0x01
             0x60, 0x00, // PUSH1 0x00
-            0xF3,       // RETURN
+            0xF3, // RETURN
         ];
 
         let tx = Transaction::Legacy(LegacyTransaction {
@@ -1373,11 +1488,11 @@ mod tests {
         let code = vec![
             0x60, 0x42, // PUSH1 0x42 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55,       // SSTORE (set storage[1] = 0x42)
+            0x55, // SSTORE (set storage[1] = 0x42)
             0x60, 0x00, // PUSH1 0x00 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55,       // SSTORE (set storage[1] = 0, restore original)
-            0x00,       // STOP
+            0x55, // SSTORE (set storage[1] = 0, restore original)
+            0x00, // STOP
         ];
 
         let mut state = InMemoryState::new();
@@ -1392,26 +1507,34 @@ mod tests {
             tx_ctx: &tx_ctx,
         };
 
-        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
-            execute_call(
-                &Transaction::Legacy(LegacyTransaction {
-                    nonce: U256::ZERO,
-                    gas_price: U256::from_u64(1),
-                    gas_limit: U256::from_u64(100000),
-                    to: Some(to_addr),
-                    value: U256::ZERO,
-                    data: Bytes::new(),
-                    v: U256::ZERO,
-                    r: U256::ZERO,
-                    s: U256::ZERO,
-                }),
-                state,
-                &Address::from([0x11; 20]),
-                &to_addr,
-                contexts,
-                100000,
-            )
-            .unwrap();
+        let (
+            success,
+            _gas_used,
+            gas_refund,
+            _return_data,
+            _logs,
+            _contract_address,
+            _gas_trace,
+            _state,
+        ) = execute_call(
+            &Transaction::Legacy(LegacyTransaction {
+                nonce: U256::ZERO,
+                gas_price: U256::from_u64(1),
+                gas_limit: U256::from_u64(100000),
+                to: Some(to_addr),
+                value: U256::ZERO,
+                data: Bytes::new(),
+                v: U256::ZERO,
+                r: U256::ZERO,
+                s: U256::ZERO,
+            }),
+            state,
+            &Address::from([0x11; 20]),
+            &to_addr,
+            contexts,
+            100000,
+        )
+        .unwrap();
 
         assert!(success);
         assert_eq!(gas_refund, 19_900); // EIP-2200 refund for restoring original value
@@ -1424,8 +1547,8 @@ mod tests {
         let code = vec![
             0x60, 0x42, // PUSH1 0x42 (value)
             0x60, 0x01, // PUSH1 0x01 (key)
-            0x55,       // SSTORE (set storage[1] = 0x42)
-            0x00,       // STOP
+            0x55, // SSTORE (set storage[1] = 0x42)
+            0x00, // STOP
         ];
 
         let mut state = InMemoryState::new();
@@ -1440,26 +1563,34 @@ mod tests {
             tx_ctx: &tx_ctx,
         };
 
-        let (success, _gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
-            execute_call(
-                &Transaction::Legacy(LegacyTransaction {
-                    nonce: U256::ZERO,
-                    gas_price: U256::from_u64(1),
-                    gas_limit: U256::from_u64(100000),
-                    to: Some(to_addr),
-                    value: U256::ZERO,
-                    data: Bytes::new(),
-                    v: U256::ZERO,
-                    r: U256::ZERO,
-                    s: U256::ZERO,
-                }),
-                state,
-                &Address::from([0x11; 20]),
-                &to_addr,
-                contexts,
-                100000,
-            )
-            .unwrap();
+        let (
+            success,
+            _gas_used,
+            gas_refund,
+            _return_data,
+            _logs,
+            _contract_address,
+            _gas_trace,
+            _state,
+        ) = execute_call(
+            &Transaction::Legacy(LegacyTransaction {
+                nonce: U256::ZERO,
+                gas_price: U256::from_u64(1),
+                gas_limit: U256::from_u64(100000),
+                to: Some(to_addr),
+                value: U256::ZERO,
+                data: Bytes::new(),
+                v: U256::ZERO,
+                r: U256::ZERO,
+                s: U256::ZERO,
+            }),
+            state,
+            &Address::from([0x11; 20]),
+            &to_addr,
+            contexts,
+            100000,
+        )
+        .unwrap();
 
         assert!(success);
         assert_eq!(gas_refund, 0); // No refund for setting storage
@@ -1474,7 +1605,7 @@ mod tests {
             0x60, 0x00, 0x60, 0x01, 0x55, // Clear slot 1 (+19_900 refund)
             0x60, 0x42, 0x60, 0x02, 0x55, // Set slot 2 = 0x42
             0x60, 0x00, 0x60, 0x02, 0x55, // Clear slot 2 (+19_900 refund)
-            0x00,                         // STOP
+            0x00, // STOP
         ];
 
         let mut state = InMemoryState::new();
@@ -1489,26 +1620,34 @@ mod tests {
             tx_ctx: &tx_ctx,
         };
 
-        let (success, gas_used, gas_refund, _return_data, _logs, _contract_address, _gas_trace, _state) =
-            execute_call(
-                &Transaction::Legacy(LegacyTransaction {
-                    nonce: U256::ZERO,
-                    gas_price: U256::from_u64(1),
-                    gas_limit: U256::from_u64(100000),
-                    to: Some(to_addr),
-                    value: U256::ZERO,
-                    data: Bytes::new(),
-                    v: U256::ZERO,
-                    r: U256::ZERO,
-                    s: U256::ZERO,
-                }),
-                state,
-                &Address::from([0x11; 20]),
-                &to_addr,
-                contexts,
-                100000,
-            )
-            .unwrap();
+        let (
+            success,
+            gas_used,
+            gas_refund,
+            _return_data,
+            _logs,
+            _contract_address,
+            _gas_trace,
+            _state,
+        ) = execute_call(
+            &Transaction::Legacy(LegacyTransaction {
+                nonce: U256::ZERO,
+                gas_price: U256::from_u64(1),
+                gas_limit: U256::from_u64(100000),
+                to: Some(to_addr),
+                value: U256::ZERO,
+                data: Bytes::new(),
+                v: U256::ZERO,
+                r: U256::ZERO,
+                s: U256::ZERO,
+            }),
+            state,
+            &Address::from([0x11; 20]),
+            &to_addr,
+            contexts,
+            100000,
+        )
+        .unwrap();
 
         assert!(success);
         assert_eq!(gas_refund, 39_800); // Raw refund = 2 * 19_900

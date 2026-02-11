@@ -4,184 +4,143 @@ Last reviewed: 2026-02-11
 
 ## Ground Truth Snapshot
 
-- `cargo test -p claudeth --release` passes (unit, integration, and doc tests).
-- Full EELS blockchain execution is still non-gating (`test_execute_all_blockchain_tests` remains `#[ignore]`).
-- Latest full-suite attempt (2026-02-11):
-  - command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
-  - status: **manually interrupted** after crossing the previous crash point (`bcExploitTest/StrangeContractCreation`) without stack overflow.
-- Deterministic failures observed in the latest run include (examples):
-  - `BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json::UncleFromSideChain_Prague` (`GasUsedMismatch`, expected `42160`, computed `42064`)
-  - `BlockchainTests/InvalidBlocks/bc4895-withdrawals/accountInteractions.json::{..._Cancun,..._Prague}` (`GasUsedMismatch`, expected `77427`, computed `79727`)
-  - `BlockchainTests/InvalidBlocks/bc4895-withdrawals/warmup.json::{..._Cancun,..._Prague}` (`GasUsedMismatch`, expected `1186133`, computed `1242533`)
-  - `BlockchainTests/InvalidBlocks/bcStateTests/CreateTransactionReverted.json::{..._Cancun,..._Prague}` (`StateRootMismatch`)
-  - `BlockchainTests/ValidBlocks/bcExample/mergeExample.json::{..._Cancun,..._Prague}` (`GasUsedMismatch`, expected `82839`, computed `62939`)
-  - `BlockchainTests/ValidBlocks/bcExploitTest/SuicideIssue.json::{..._Cancun,..._Prague}` (`GasUsedMismatch`, expected `4700000`, computed `75973`)
-- Known explicit code gaps remain:
-  - precompile `0x0a` point evaluation is intentionally unimplemented;
-  - precompile `0x08` pairing intentionally rejects non-trivial tuples.
+- `cargo test -p claudeth --release` passes.
+- Full EELS blockchain sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
+- Latest ignored full-suite probe (2026-02-11) confirms an immediate deterministic Prague mismatch:
+  - `BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json::UncleFromSideChain_Prague`
+  - `GasUsedMismatch`: expected `42160`, computed `42064` (delta `96`).
+- Execution-spec reference (`execution-specs/src/ethereum/forks/prague`) requires EIP-7623 calldata floor charging:
+  - validation requires `tx.gas >= max(intrinsic_gas, calldata_floor_gas_cost)`;
+  - post-execution gas used is floored with `max(gas_used_after_refund, calldata_floor_gas_cost)`.
+- Known explicit implementation gaps still present:
+  - precompile `0x0a` point-evaluation not implemented;
+  - precompile `0x08` non-trivial pairing still intentionally unsupported.
 
-## Completed
+## Completed Before This Turn
 
-### Task A (DONE): Canonical Parent Selection and `BLOCKHASH` Inputs in EELS Harness
+### A. Branch-Accurate Parent Header/State Selection in EELS Harness
 
 Why:
-- Multi-branch fixtures cannot be processed by loop order.
+- Forked fixture chains cannot be executed with linear loop-order parent/state selection.
 
 What:
-- Parent resolution switched to hash-indexed ancestry.
-- `BLOCKHASH` history order aligned to execution-spec expectations.
+- Parent header and parent state are both resolved by `parent_hash`.
 
 How:
-- Added parent-hash keyed lookup for headers and ancestry windows.
+- Added hash-indexed header/state maps and canonical lookup by header `parent_hash`.
 
-### Task B (DONE): Parent State Selection for Forked Fixtures
+### B. Trie / Withdrawal Root Conformance Fixes
 
 Why:
-- Header parent correctness alone is insufficient; state snapshots must also follow branch parents.
+- Root mismatches occurred from non-canonical trie child-reference behavior and withdrawal keying.
 
 What:
-- Added per-hash state snapshots and parent-state lookup by `parent_hash`.
+- Aligned trie child reference and withdrawal trie indexing behavior with execution-spec expectations.
 
 How:
-- Indexed executed states by block hash and selected state roots from that index.
+- Updated trie reference encoding threshold behavior and withdrawal key construction.
 
-### Task C (DONE): Trie and Withdrawal Root Conformance Fixes
+### C. Baseline EELS Harness Stability
 
 Why:
-- MPT short-node and withdrawals trie encoding mismatches caused deterministic root drift.
+- Full ignored runs previously aborted before yielding useful failure diagnostics.
 
 What:
-- Removed short-node pseudo-hash behavior.
-- Matched execution-spec child reference encoding and withdrawals trie keying.
+- Bounded block-error summaries and increased full-suite runner stack.
 
 How:
-- Updated trie hashing/reference logic and withdrawals root construction with regressions.
-
-### Task D (DONE): `SELFDESTRUCT`/`EXTCODEHASH`/Recursive Warm-Set Baseline Fixes
-
-Why:
-- These were high-frequency consensus divergences in fixture runs.
-
-What:
-- Implemented Cancun/Prague `SELFDESTRUCT` dynamic gas components.
-- Corrected `EXTCODEHASH` dead-account behavior.
-- Propagated recursive warm-set and CREATE nonce semantics.
-
-How:
-- Patched interpreter/host behavior and added targeted EELS fixture regressions.
-
-### Task E (DONE): Stabilize Full EELS Failure Reporting and Stack Budget
-
-Why:
-- Full-suite fixture runs were aborting before actionable totals due stack overflow in the ignored harness flow.
-
-What:
-- Replaced unbounded `BlockProcessingError` debug dumping with bounded summaries.
-- Ran full-suite logic on an explicitly large-stack thread in the ignored test harness.
-
-How:
-- Added `summarize_block_processing_error`/`summarize_transaction_results` in `tests/eels_blockchain_tests.rs`.
-- Added a regression that verifies large `return_data` payloads do not explode summary output.
-- Wrapped full-suite execution in `std::thread::Builder::stack_size(...)`.
+- Added compact transaction-summary formatting and ran ignored sweep in large-stack thread.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix CREATE/CREATE-Transaction State Semantics (Revert/Failure Paths)
+### Task 1 (P0, FIRST): Implement Prague EIP-7623 Calldata Floor Gas Rules
 
 Why:
-- `CreateTransactionReverted` currently yields `StateRootMismatch` on both Cancun and Prague.
-- CREATE path mistakes commonly cascade into many state-root and gas mismatches.
+- Current first deterministic failure is Prague-only and exactly matches missing floor-gas semantics (`+96` on 4 non-zero calldata bytes).
+- Without this, Prague gas accounting diverges across many fixtures.
 
 What:
-- Align failed/reverted contract-creation state transitions with execution-spec behavior.
+- Implement EIP-7623 calldata floor gas behavior in transaction validation and final gas accounting.
 
 How:
-- Reproduce with minimal failing fixture subset.
-- Compare transaction lifecycle against execution-spec contract creation flow.
-- Add focused regression tests for nonce, code/account persistence, and touched-account outcomes.
+- Add calldata-token/floor-gas helpers.
+- Enforce `gas_limit >= max(intrinsic_gas, calldata_floor_gas_cost)` for Prague blocks.
+- Apply post-refund floor: `final_gas_used = max(final_gas_used, calldata_floor_gas_cost)`.
+- Add focused regression tests, including `UncleFromSideChain_Prague`.
 
-### Task 2 (P0): Close Remaining Gas Accounting Deltas in Call/Access/Warmth Rules
+### Task 2 (P0): Fix Remaining CREATE Transaction State Semantics
 
 Why:
-- `GasUsedMismatch` remains the dominant pre-abort failure class.
-- Mismatches span invalid and valid fixture families (`bc4895-withdrawals`, `bcExample`, `bcEIP1559`).
+- Prior full-suite baselines include deterministic CREATE-related root mismatches (`CreateTransactionReverted` family).
 
 What:
-- Resolve residual differences in CALL-family dynamic gas and access-list/warmness accounting.
+- Align contract-creation nonce/account persistence semantics on all success/failure paths.
 
 How:
-- Bucket failures by gas delta signature and fixture family.
-- Patch one rule family at a time with execution-spec cross-checks.
-- Add dedicated regression fixtures per corrected rule.
+- Reproduce with targeted fixtures, diff against execution-spec state transitions, and add focused nonce/account regression tests.
 
-### Task 3 (P0): Resolve State-Root Mismatches on Valid Fixture Families
+### Task 3 (P0): Close Residual Gas Deltas in Cancun/Prague Fixtures
 
 Why:
-- Any valid-block root mismatch is consensus-critical and invalidates README compatibility claims.
+- `GasUsedMismatch` remains the dominant unresolved class after branch-handling fixes.
 
 What:
-- Eliminate remaining post-state transition divergences once gas accounting is aligned.
+- Eliminate remaining discrepancies in per-tx gas accounting beyond EIP-7623.
 
 How:
-- Start with smallest valid failing fixtures (`bcExample/*`).
-- Diff account/storage/code transitions against execution-spec expected outcomes.
-- Add deterministic root regression tests.
+- Cluster failures by delta signature and fixture family, patch one rule-family at a time, and add fixture regressions per patch.
 
-### Task 4 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
+### Task 4 (P0): Resolve Remaining Valid-Block State Root Mismatches
 
 Why:
-- Cancun/Prague conformance is incomplete while point evaluation remains intentionally unimplemented.
+- Any valid-block root mismatch is consensus-critical.
 
 What:
-- Implement full input validation, gas charge, and verification semantics.
+- Remove remaining state-transition divergences after gas alignment.
 
 How:
-- Follow execution-spec point-evaluation behavior exactly.
-- Add success/failure/malformed/OOG regression vectors.
+- Start from smallest failing valid fixtures and compare per-account/storage/code deltas against execution-spec outcomes.
 
-### Task 5 (P0): Implement Full Non-Trivial BN254 Pairing (`0x08`)
+### Task 5 (P0): Implement Precompile `0x0a` Point Evaluation
 
 Why:
-- Current pairing implementation intentionally fails non-trivial tuples.
+- Cancun/Prague conformance remains incomplete while this precompile is intentionally unimplemented.
 
 What:
-- Implement full pairing product equation checks and canonical return encoding.
+- Implement full point-evaluation semantics with validation and gas behavior.
 
 How:
-- Port execution-spec-compatible pairing arithmetic/validation path.
-- Add multi-tuple valid/invalid test vectors.
+- Port execution-spec behavior and add success/failure/malformed/OOG vectors.
 
-### Task 6 (P0): Make Full EELS Blockchain Execution a Hard Gate
+### Task 6 (P0): Implement Full Non-Trivial BN254 Pairing (`0x08`)
 
 Why:
-- README states full compatibility, but the only test that can validate this is currently ignored and non-fatal.
+- Current implementation intentionally rejects non-trivial tuples.
 
 What:
-- Remove `#[ignore]` and enforce zero failures/errors for the full fixture run.
+- Implement full pairing product verification and canonical outputs.
 
 How:
-- Enable only after Tasks 1-5 are complete.
-- Turn summary counters into hard assertions (`failed == 0 && errors == 0`).
+- Implement complete tuple handling/validation and add multi-tuple conformance vectors.
 
-### Task 7 (P1): Enforce Native vs RV32 Deterministic Parity on Curated Fixtures
+### Task 7 (P0): Make Full EELS Blockchain Suite a Hard Gate
 
 Why:
-- README claims dual-target execution, but parity is not automatically validated.
+- README claims full EELS compatibility, but the only global compatibility check is still ignored.
 
 What:
-- Add automated native-vs-RV32 parity checks over stable fixture subsets.
+- Turn ignored full-suite runner into a mandatory zero-failure test.
 
 How:
-- Add a `uv run` PEP 723 Python driver that executes both targets and diffs outcomes.
-- Add command to CI once deterministic.
+- After Tasks 1-6 land, remove `#[ignore]` and assert `failed == 0 && errors == 0`.
 
-### Task 8 (P1): Align README Claims with Enforced Guarantees
+### Task 8 (P1): Enforce Native vs RV32 Deterministic Parity Gate
 
 Why:
-- Public claims must only state what test gates currently prove.
+- Dual-target claim needs automated parity enforcement.
 
 What:
-- Update README wording to match measured, hard-gated behavior.
+- Add deterministic native/RV32 parity checks over curated fixtures.
 
 How:
-- Finalize text only after full-suite gating and parity checks land.
+- Add reproducible driver and gate in CI once stable.

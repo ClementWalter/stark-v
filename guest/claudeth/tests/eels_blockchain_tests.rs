@@ -7,8 +7,8 @@
 // Run scripts/fetch_eels_tests.py to download the test fixtures.
 
 use claudeth::evm::format_disassembly;
-use claudeth::stf::{BlockProcessingError, TransactionExecutionResult};
 use claudeth::state::{InMemoryState, State};
+use claudeth::stf::{BlockProcessingError, TransactionExecutionResult};
 use claudeth::types::{Address, Bytes, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1281,7 +1281,8 @@ fn summarize_block_processing_error(error: &BlockProcessingError) -> String {
             summarize_transaction_results(transaction_results)
         ),
         BlockProcessingError::LogsBloomMismatch {
-            transaction_results, ..
+            transaction_results,
+            ..
         } => format!(
             "LogsBloomMismatch {}",
             summarize_transaction_results(transaction_results)
@@ -1396,7 +1397,9 @@ fn execute_blockchain_case(
             .enumerate()
             .map(|(wd_idx, wd)| {
                 convert_test_withdrawal(wd).map_err(|e| {
-                    format!("Block {block_idx}, withdrawal {wd_idx}: Failed to convert withdrawal: {e}")
+                    format!(
+                        "Block {block_idx}, withdrawal {wd_idx}: Failed to convert withdrawal: {e}"
+                    )
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -1493,12 +1496,15 @@ fn execute_blockchain_case(
 
     let expected_head_hash = claudeth::types::Hash::from_str(&test_case.last_block_hash)
         .map_err(|err| format!("invalid lastblockhash {}: {err}", test_case.last_block_hash))?;
-    let final_state = states_by_hash.get(&expected_head_hash).cloned().ok_or_else(|| {
-        format!(
-            "final state for expected last block hash {} not found",
-            test_case.last_block_hash
-        )
-    })?;
+    let final_state = states_by_hash
+        .get(&expected_head_hash)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "final state for expected last block hash {} not found",
+                test_case.last_block_hash
+            )
+        })?;
 
     Ok((final_state, block_results))
 }
@@ -1517,6 +1523,22 @@ fn test_multi_chain_fixture_state_selection_uses_parent_hash_not_linear_order() 
     // tracked linearly by loop order, chain B block 1 fails with NonceTooLow.
     execute_blockchain_case("UncleFromSideChain_Cancun", &case)
         .expect("branching fixture should execute with hash-indexed parent state");
+}
+
+#[test]
+fn test_multi_chain_fixture_prague_gas_accounting_matches_fixture() {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json",
+    );
+    let case = load_single_blockchain_case(
+        fixture_path,
+        "BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json::UncleFromSideChain_Prague",
+    );
+
+    // Why: this fixture has calldata-bearing transactions on Prague where
+    // EIP-7623 floor gas applies and must be reflected in block gas used.
+    execute_blockchain_case("UncleFromSideChain_Prague", &case)
+        .expect("Prague multi-chain fixture should execute without gas mismatch");
 }
 
 fn assert_extcodehash_deleted_account_dynamic_case(case_name: &str) {
@@ -1619,15 +1641,15 @@ fn run_all_blockchain_tests_impl() {
 
         for (test_name, test_case) in test_cases {
             total_tests += 1;
-            let (final_state, block_results) =
-                match execute_blockchain_case(&test_name, &test_case) {
-                    Ok(result) => result,
-                    Err(e) => {
-                        eprintln!("✗ {test_name}: {e}");
-                        failed += 1;
-                        continue;
-                    }
-                };
+            let (final_state, block_results) = match execute_blockchain_case(&test_name, &test_case)
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("✗ {test_name}: {e}");
+                    failed += 1;
+                    continue;
+                }
+            };
             #[cfg(not(feature = "evm-trace"))]
             let _ = &block_results;
 

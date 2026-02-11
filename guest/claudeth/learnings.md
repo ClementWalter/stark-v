@@ -17,6 +17,9 @@
 - Do add focused fixture regressions for each failing family before broader suite reruns.
 - Do summarize `BlockProcessingError` with bounded, high-signal fields (expected/computed deltas + compact tx gas summaries) during full-suite fixture loops.
 - Do execute the ignored full EELS sweep in a dedicated large-stack thread so deep fixture paths can finish and report actionable failures.
+- Do implement Prague EIP-7623 as a calldata-floor rule (`max(gas_used_after_refund, calldata_floor_gas_cost)`), not as a replacement for intrinsic gas.
+- Do compute Prague calldata floor from calldata tokens (`zero=1`, `non-zero=4`) with floor formula `21000 + tokens * 10`.
+- Do keep execution gas available as `gas_limit - intrinsic_gas`; apply the floor only in gas-limit validation and final gas-used accounting.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -33,3 +36,5 @@
 - Don't stop at the first `GasUsedMismatch`: fixing gas can expose the next deterministic layer (`StateRootMismatch`) immediately.
 - Don't dump full `{:?}` transaction payloads (especially large `return_data`) inside fixture failure messages.
 - Don't assume default Rust test-thread stack is sufficient for the largest historical blockchain fixtures.
+- Don't model Prague EIP-7623 as a flat increase of non-zero calldata byte price (for example `16 -> 40`); execution-spec keeps tokenized intrinsic pricing and adds a post-refund floor.
+- Don't validate Prague transaction gas against intrinsic gas alone; use `max(intrinsic_gas, calldata_floor_gas_cost)`.
