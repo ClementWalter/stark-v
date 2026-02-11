@@ -143,6 +143,9 @@ pub struct BlockContext {
     pub chain_id: U256,
     pub base_fee: U256,
     pub excess_blob_gas: Option<U256>,
+    /// Highest precompile address considered transaction-warm by default.
+    /// Cancun uses `0x0a`; Prague and later include BLS12 precompiles up to `0x11`.
+    pub max_precompile_address: u8,
 }
 
 impl Default for BlockContext {
@@ -156,6 +159,7 @@ impl Default for BlockContext {
             chain_id: U256::ONE,
             base_fee: U256::ZERO,
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         }
     }
 }
@@ -1620,8 +1624,9 @@ pub fn execute_bytecode_with_host_contexts_and_access_list<S: State, H: Host<S>>
     warm_addresses.push(tx_ctx.origin); // Sender
     warm_addresses.push(call_ctx.address); // Recipient/contract being called
     warm_addresses.push(block_ctx.coinbase); // EIP-3651: Warm COINBASE
-    // Precompile addresses (0x01-0x0a for Prague)
-    for i in 1..=10 {
+    // Why: the warm precompile set is fork-dependent. Prague extends the
+    // canonical precompile range to include BLS12 addresses (`0x0b..0x11`).
+    for i in 1..=block_ctx.max_precompile_address {
         let mut addr_bytes = [0u8; 20];
         addr_bytes[19] = i;
         warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());
@@ -1987,6 +1992,98 @@ mod tests {
 
         assert!(result.success);
         // Gas: PUSH20 (3) + BALANCE warm (100)
+        assert_eq!(result.gas_used, 103);
+    }
+
+    #[test]
+    fn test_extcodesize_precompile_0x0b_cold_before_prague() {
+        let mut target_bytes = [0u8; 20];
+        target_bytes[19] = 0x0b;
+        let target = Address::from(target_bytes);
+        let origin = Address::from([0x55; 20]);
+        let call_address = Address::from([0x66; 20]);
+
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        code.extend_from_slice(&target.to_bytes());
+        code.push(0x3B); // EXTCODESIZE
+        code.push(0x00); // STOP
+
+        let mut block_ctx = BlockContext::default();
+        // Why: Cancun warm precompile range ends at 0x0a, so touching 0x0b
+        // should still be charged as a cold account access.
+        block_ctx.max_precompile_address = 0x0a;
+        let tx_ctx = TxContext {
+            origin,
+            gas_price: U256::ONE,
+            blob_versioned_hashes: Vec::new(),
+        };
+        let call_ctx = CallContext {
+            address: call_address,
+            caller: origin,
+            call_value: U256::ZERO,
+            call_data: Vec::new(),
+        };
+
+        let (result, _state) = execute_bytecode_with_host_and_contexts(
+            &code,
+            10_000,
+            InMemoryState::new(),
+            NullHost,
+            block_ctx,
+            tx_ctx,
+            call_ctx,
+        )
+        .unwrap();
+
+        assert!(result.success);
+        // Gas: PUSH20 (3) + EXTCODESIZE cold (2600)
+        assert_eq!(result.gas_used, 2603);
+    }
+
+    #[test]
+    fn test_extcodesize_precompile_0x0b_warm_at_prague() {
+        let mut target_bytes = [0u8; 20];
+        target_bytes[19] = 0x0b;
+        let target = Address::from(target_bytes);
+        let origin = Address::from([0x55; 20]);
+        let call_address = Address::from([0x66; 20]);
+
+        let mut code = Vec::new();
+        code.push(0x73); // PUSH20
+        code.extend_from_slice(&target.to_bytes());
+        code.push(0x3B); // EXTCODESIZE
+        code.push(0x00); // STOP
+
+        let mut block_ctx = BlockContext::default();
+        // Why: Prague extends precompile warming through 0x11, so touching
+        // 0x0b must be charged as warm instead of cold.
+        block_ctx.max_precompile_address = 0x11;
+        let tx_ctx = TxContext {
+            origin,
+            gas_price: U256::ONE,
+            blob_versioned_hashes: Vec::new(),
+        };
+        let call_ctx = CallContext {
+            address: call_address,
+            caller: origin,
+            call_value: U256::ZERO,
+            call_data: Vec::new(),
+        };
+
+        let (result, _state) = execute_bytecode_with_host_and_contexts(
+            &code,
+            10_000,
+            InMemoryState::new(),
+            NullHost,
+            block_ctx,
+            tx_ctx,
+            call_ctx,
+        )
+        .unwrap();
+
+        assert!(result.success);
+        // Gas: PUSH20 (3) + EXTCODESIZE warm (100)
         assert_eq!(result.gas_used, 103);
     }
 

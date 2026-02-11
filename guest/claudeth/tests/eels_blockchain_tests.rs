@@ -1786,6 +1786,33 @@ fn assert_strange_contract_creation_case(case_name: &str) {
         .expect("StrangeContractCreation post-state should match fixture");
 }
 
+fn assert_reentrency_suicide_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("reentrencySuicide fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("reentrencySuicide post-state should match fixture");
+}
+
+#[test]
+fn test_reentrency_suicide_cancun_fixture() {
+    // Why: this fixture uses reentrant SELFDESTRUCT flows that touch
+    // precompile-adjacent beneficiary addresses and is highly sensitive to
+    // fork-specific warm-set initialization.
+    assert_reentrency_suicide_case(
+        "BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json::reentrencySuicide_Cancun",
+    );
+}
+
+#[test]
+fn test_reentrency_suicide_prague_fixture() {
+    assert_reentrency_suicide_case(
+        "BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json::reentrencySuicide_Prague",
+    );
+}
+
 #[test]
 fn test_strange_contract_creation_cancun_fixture() {
     // Why: this historical exploit fixture stresses recursive CREATE failure

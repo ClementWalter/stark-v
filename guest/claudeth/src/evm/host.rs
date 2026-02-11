@@ -352,13 +352,16 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         // Why: execution-spec child messages inherit the transaction warm-set
         // baseline (origin/current target/coinbase/precompiles). Without this,
         // nested execution can overcharge cold access costs.
-        let mut warm_addresses = Vec::with_capacity(15 + msg.accessed_addresses.len());
+        let mut warm_addresses =
+            Vec::with_capacity(5 + self.block_ctx.max_precompile_address as usize + msg.accessed_addresses.len());
         warm_addresses.push(self.tx_ctx.origin);
         warm_addresses.push(msg.address);
         warm_addresses.push(msg.caller);
         warm_addresses.push(msg.code_address);
         warm_addresses.push(self.block_ctx.coinbase);
-        for i in 1u8..=10u8 {
+        // Why: child frames must inherit the same fork-specific precompile
+        // warm range as top-level execution to keep EIP-2929 charging aligned.
+        for i in 1u8..=self.block_ctx.max_precompile_address {
             let mut addr_bytes = [0u8; 20];
             addr_bytes[19] = i;
             warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());
@@ -516,12 +519,14 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
         // Why: CREATE init code should observe the same tx-level warm
         // baseline as other frames, plus its own destination.
-        let mut warm_addresses = Vec::with_capacity(14);
+        let mut warm_addresses = Vec::with_capacity(4 + self.block_ctx.max_precompile_address as usize);
         warm_addresses.push(self.tx_ctx.origin);
         warm_addresses.push(contract_address);
         warm_addresses.push(msg.caller);
         warm_addresses.push(self.block_ctx.coinbase);
-        for i in 1u8..=10u8 {
+        // Why: CREATE init-code frames use the same fork-specific warm
+        // precompile set as CALL frames in execution-spec.
+        for i in 1u8..=self.block_ctx.max_precompile_address {
             let mut addr_bytes = [0u8; 20];
             addr_bytes[19] = i;
             warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());

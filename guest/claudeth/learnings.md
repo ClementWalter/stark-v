@@ -40,6 +40,7 @@
 - Do implement `EXP` with execution-spec operand order (`base` = top stack item, `exponent` = next item), or constructor bitmask/packing logic will silently corrupt state and gas.
 - Do short-circuit recursive `CREATE`/`CREATE2` on destination collision (`code/nonce` or non-empty storage): increment creator nonce, burn forwarded gas, and skip init-code execution.
 - Do detect CREATE collision storage explicitly (for example via `has_storage`) instead of inferring from balance-sensitive account existence checks.
+- Do treat precompile warm initialization as fork-dependent (`0x01..0x0a` before Prague, `0x01..0x11` from Prague) and propagate the same range to recursive child frames.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -71,3 +72,4 @@
 - Don't feed post-merge EVM `0x44` from header `difficulty`; that value is consensus-constant zero and breaks `PREVRANDAO`-dependent contract logic and gas accounting.
 - Don't reverse `EXP` operands; treating top-of-stack as exponent instead of base turns common `0x100 ** n` masks into zeros and causes deterministic storage/gas mismatches.
 - Don't use `account_exists` as a CREATE collision predicate; balance-only accounts are not collisions in execution-spec semantics.
+- Don't hardcode the warm precompile set to `0x01..0x0a` for Prague fixtures; that overcharges first touches to BLS12 precompile addresses by `2600`.

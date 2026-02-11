@@ -619,6 +619,9 @@ pub fn process_block<S: State + Clone>(
         chain_id,
         base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
         excess_blob_gas: block.excess_blob_gas.map(U256::from_u64),
+        // Why: Prague fixtures enable `requests_hash`, and execution-specs
+        // treat precompiles `0x01..0x11` as transaction-warm at that fork.
+        max_precompile_address: if block.requests_hash.is_some() { 0x11 } else { 0x0a },
     };
 
     // Step 3: Apply EIP-4788 beacon root system call (before executing transactions)
@@ -1451,6 +1454,7 @@ mod tests {
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1480,6 +1484,7 @@ mod tests {
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1565,6 +1570,7 @@ mod tests {
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         };
 
         let calldata = beacon_root.as_bytes().to_vec();
@@ -1720,6 +1726,7 @@ mod tests {
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1763,6 +1770,7 @@ mod tests {
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         };
         let parent_hash = parent.compute_hash();
 
@@ -1801,6 +1809,7 @@ mod tests {
             chain_id: U256::ONE,
             base_fee: U256::from_u64(block.base_fee_per_gas.unwrap_or(0)),
             excess_blob_gas: None,
+            max_precompile_address: 0x0a,
         };
         let parent_hash = parent.compute_hash();
         apply_beacon_root_system_call(&mut expected_state, &block, &block_ctx, parent_hash, &[]);

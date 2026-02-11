@@ -7,44 +7,57 @@ Last reviewed: 2026-02-11
 - `README.md` claims full `execution-spec-tests` compatibility and native + RV32 parity.
 - `cargo test -p claudeth --release` passes locally.
 - The full blockchain fixture sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
-- Post-fix ignored-suite probe (`cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`) now shows this first deterministic failure family:
-  - `BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json::reentrencySuicide_Prague`
-  - error: `GasUsedMismatch(expected=109012, computed=111612)` (`+2600`)
-- Cancun for the same fixture currently passes; the frontier is Prague-specific.
+- `reentrencySuicide` Cancun/Prague now pass with focused regressions in release mode.
+- Post-fix ignored-suite baseline rerun (stopped after first deterministic failures) now surfaces this frontier:
+  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::suicideStorageCheck_Cancun`
+  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::suicideStorageCheck_Prague`
+  - error: `GasUsedMismatch(expected=473109, computed=172603)` (`-300506`)
+- Immediate next deterministic family observed right after frontier:
+  - CREATE2 + selfdestruct same-block collision fixture (Cancun/Prague)
+  - gas undercharge on block 0 tx pair (`~ -64886`).
 - Explicit known conformance gaps still present in code:
   - precompile `0x0a` point-evaluation unimplemented;
-  - precompile `0x08` non-trivial pairing intentionally unsupported.
+  - precompile `0x08` non-trivial pairing intentionally unsupported;
+  - Prague BLS12 precompile execution (`0x0b..0x11`) unimplemented.
+
+## Completion Objective
+
+Make the implementation actually match `README.md` claims:
+- pass the full `execution-spec-tests` blockchain fixture sweep;
+- keep native and RV32 deterministic parity on the supported fixture set;
+- keep this conformance enforced by default test gates.
 
 ## Completed This Turn
 
-- Added focused regression coverage for:
-  - `tests/eels_blockchain_tests.rs::{test_strange_contract_creation_cancun_fixture,test_strange_contract_creation_prague_fixture}`
-- Fixed `StrangeContractCreation` root cause:
-  - `src/evm/opcodes/arithmetic.rs`: corrected `EXP` operand order to execution-spec semantics (`base=top`, `exponent=next`).
-- Hardened recursive CREATE collision semantics:
-  - `src/evm/host.rs`: immediate collision failure now increments creator nonce, burns forwarded gas, and skips init-code execution.
-  - `src/state/execution.rs`: added explicit `has_storage` to distinguish storage-collision from balance-only accounts.
-- Added host-level regression tests for CREATE collision/non-collision edge cases:
-  - `src/evm/host.rs::{test_recursive_host_create_collision_burns_forwarded_gas,test_recursive_host_create_balance_only_target_is_not_collision}`
-- Re-ran ignored-suite frontier probe and confirmed `StrangeContractCreation` now passes; frontier moved to `reentrencySuicide_Prague`.
+- Implemented fork-aware precompile warm-set propagation:
+  - `src/evm/interpreter.rs`: added `BlockContext.max_precompile_address` and used it for top-level warm initialization.
+  - `src/evm/host.rs`: applied the same warm range to recursive `CALL*` and `CREATE*` child frames.
+  - `src/stf/block.rs`: set warm range from block fork signal (`requests_hash`: Prague `0x11`, otherwise `0x0a`).
+- Added focused regression tests:
+  - `src/evm/interpreter.rs`: `test_extcodesize_precompile_0x0b_cold_before_prague`, `test_extcodesize_precompile_0x0b_warm_at_prague`.
+  - `tests/eels_blockchain_tests.rs`: Cancun/Prague `reentrencySuicide` fixture tests.
+- Validation completed in release mode:
+  - focused new unit + fixture tests pass;
+  - `cargo test -p claudeth --release` passes;
+  - `prek run -a` passes.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix `reentrencySuicide_Prague` Gas Mismatch (`+2600`)
+### Task 1 (P0, FIRST): Fix `suicideStorageCheck` Gas Undercharge (`-300506`)
 
 Why:
-- It is the current first deterministic failure family after the latest re-baseline.
+- It is now the first deterministic failure family after fixing `reentrencySuicide`.
 - Until this is fixed, full-suite conformance cannot progress in a deterministic order.
 
 What:
-- Align Prague gas accounting for:
-  - `BlockchainTests/ValidBlocks/bcValidBlockTest/reentrencySuicide.json::reentrencySuicide_Prague`
-  - remove `expected 109012 / computed 111612` mismatch.
+- Align gas accounting and state-transition behavior for:
+  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheck.json::{..._Cancun,..._Prague}`
+  - remove `expected 473109 / computed 172603` block gas mismatch.
 
 How:
-- Add focused Cancun/Prague fixture regressions for `reentrencySuicide`.
-- Compare Prague-vs-Cancun opcode-level gas flow; treat `+2600` as a likely single cold-account overcharge signal.
-- Patch the narrowest root-cause logic, validate fixture post-state, and re-run focused tests.
+- Add dedicated Cancun/Prague focused fixture tests for `suicideStorageCheck`.
+- Diff expected-vs-computed tx-level gas and isolate missing charged paths in tx0/tx1.
+- Cross-check with execution-spec `SELFDESTRUCT` + `CREATE/CREATE2` collision/deletion semantics and patch narrow root cause.
 
 ### Task 2 (P0): Re-Baseline Ignored Full-Suite Frontier After Task 1
 
@@ -112,3 +125,16 @@ What:
 
 How:
 - Execute identical vectors through native and runner paths in release mode and gate once stable.
+
+### Task 8 (P1): Implement Prague BLS12 Precompile Execution (`0x0b..0x11`)
+
+Why:
+- Prague execution-spec includes BLS12 precompile addresses in the precompile map.
+- Warm-set parity alone fixes current frontier gas, but execution correctness for direct calls remains incomplete.
+
+What:
+- Implement functional + gas-correct handling for BLS12 precompile addresses (`G1 add/msm`, `G2 add/msm`, pairing, map ops).
+
+How:
+- Port execution-spec behavior first for validation/error/gas rules.
+- Add targeted vectors for malformed input, OOG, and success cases before enabling broad fixture gates.
