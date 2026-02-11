@@ -1920,6 +1920,32 @@ fn assert_random_statetest_324_case(case_name: &str) {
         .expect("randomStatetest324 post-state should match fixture");
 }
 
+fn assert_opcode_f0_fa_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/testOpcode_f0.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("testOpcode_fa fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("testOpcode_fa post-state should match fixture");
+}
+
+#[test]
+fn test_opcode_f0_fa_cancun_fixture() {
+    // Why: this vector checks that STATICCALL cannot perform SSTORE and must
+    // fail as an exceptional child halt with spec-accurate gas accounting.
+    assert_opcode_f0_fa_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/testOpcode_f0.json::testOpcode_fa_Cancun",
+    );
+}
+
+#[test]
+fn test_opcode_f0_fa_prague_fixture() {
+    assert_opcode_f0_fa_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/testOpcode_f0.json::testOpcode_fa_Prague",
+    );
+}
+
 #[test]
 fn test_random_statetest324_cancun_fixture() {
     // Why: this fixture is the current first deterministic full-suite failure

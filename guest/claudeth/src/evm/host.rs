@@ -363,8 +363,9 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         // Why: execution-spec child messages inherit the transaction warm-set
         // baseline (origin/current target/coinbase/precompiles). Without this,
         // nested execution can overcharge cold access costs.
-        let mut warm_addresses =
-            Vec::with_capacity(5 + self.block_ctx.max_precompile_address as usize + msg.accessed_addresses.len());
+        let mut warm_addresses = Vec::with_capacity(
+            5 + self.block_ctx.max_precompile_address as usize + msg.accessed_addresses.len(),
+        );
         warm_addresses.push(self.tx_ctx.origin);
         warm_addresses.push(msg.address);
         warm_addresses.push(msg.caller);
@@ -384,6 +385,9 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             .with_block_context(self.block_ctx.clone())
             .with_tx_context(self.tx_ctx.clone())
             .with_call_context(call_ctx)
+            // Why: STATICCALL semantics are frame-local and must be carried
+            // into nested execution to reject state-changing opcodes.
+            .with_static(msg.is_static)
             .warm_addresses(&warm_addresses)
             .warm_storage_slots(&msg.accessed_storage);
 
@@ -540,7 +544,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
         // Why: CREATE init code should observe the same tx-level warm
         // baseline as other frames, plus its own destination.
-        let mut warm_addresses = Vec::with_capacity(4 + self.block_ctx.max_precompile_address as usize);
+        let mut warm_addresses =
+            Vec::with_capacity(4 + self.block_ctx.max_precompile_address as usize);
         warm_addresses.push(self.tx_ctx.origin);
         warm_addresses.push(contract_address);
         warm_addresses.push(msg.caller);

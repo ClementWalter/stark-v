@@ -72,6 +72,8 @@ pub enum EvmError {
     PcOutOfBounds,
     /// Invalid PUSH data (not enough bytes)
     InvalidPush,
+    /// State-changing opcode attempted in STATICCALL context
+    WriteInStaticContext,
 }
 
 impl From<StackError> for EvmError {
@@ -219,6 +221,7 @@ pub struct Evm<S, H> {
     block_ctx: BlockContext,
     tx_ctx: TxContext,
     call_ctx: CallContext,
+    is_static: bool,
     jumpdests: Vec<bool>, // Valid JUMPDEST positions
     logs: Vec<LogEntry>,
     state: S, // State interface for account/storage access
@@ -281,6 +284,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             block_ctx: BlockContext::default(),
             tx_ctx: TxContext::default(),
             call_ctx: CallContext::default(),
+            is_static: false,
             jumpdests,
             logs: Vec::new(),
             state,
@@ -307,6 +311,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
     /// Set the call context (for ADDRESS, CALLER, CALLVALUE, CALLDATALOAD, etc.)
     pub fn with_call_context(mut self, call_ctx: CallContext) -> Self {
         self.call_ctx = call_ctx;
+        self
+    }
+
+    /// Set whether the current frame executes in static context.
+    pub fn with_static(mut self, is_static: bool) -> Self {
+        self.is_static = is_static;
         self
     }
 
@@ -849,6 +859,12 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 self.stack.push(value)?;
             }
             0x55 => {
+                // Why: STATICCALL frames must reject state writes as an
+                // exceptional halt, which consumes the child frame gas.
+                if self.is_static {
+                    return Err(EvmError::WriteInStaticContext);
+                }
+
                 // SSTORE: store to permanent storage (EIP-2929 warm/cold)
                 let key = self.stack.pop()?;
                 let new_value = self.stack.pop()?;
@@ -1107,7 +1123,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     value,
                     code_address: to,
                     input,
-                    is_static: false,
+                    // Why: child CALL frames inherit parent static status.
+                    is_static: self.is_static,
                     accessed_addresses: self.accessed_addresses_snapshot(),
                     accessed_storage: self.accessed_storage_snapshot(),
                 };
@@ -1194,7 +1211,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     value,
                     code_address: to,
                     input,
-                    is_static: false,
+                    // Why: CALLCODE cannot escape static execution context.
+                    is_static: self.is_static,
                     accessed_addresses: self.accessed_addresses_snapshot(),
                     accessed_storage: self.accessed_storage_snapshot(),
                 };
@@ -1279,7 +1297,8 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     value: self.call_ctx.call_value,
                     code_address: to,
                     input,
-                    is_static: false,
+                    // Why: DELEGATECALL inherits static context from parent.
+                    is_static: self.is_static,
                     accessed_addresses: self.accessed_addresses_snapshot(),
                     accessed_storage: self.accessed_storage_snapshot(),
                 };
