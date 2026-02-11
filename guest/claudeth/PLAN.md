@@ -10,7 +10,7 @@ Last reviewed: 2026-02-11
 - Post-fix ignored-suite probe (`cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`) now shows this first deterministic failure family:
   - `BlockchainTests/ValidBlocks/bcExploitTest/StrangeContractCreation.json::{StrangeContractCreation_Cancun, StrangeContractCreation_Prague}`
   - error: `GasUsedMismatch(expected=764553, computed=724753)`
-- After that first failure, the same probe also reports later failures (for example `reentrencySuicide`), but those are not the current frontier.
+- After that first failure, the same probe also reports later failures (for example a valid-block selfdestruct edge-case fixture), but those are not the current frontier.
 - Explicit known conformance gaps still present in code:
   - precompile `0x0a` point-evaluation unimplemented;
   - precompile `0x08` non-trivial pairing intentionally unsupported.
@@ -58,7 +58,7 @@ Why:
 - README compatibility claim cannot be considered true until deterministic blockchain fixture mismatches are eliminated.
 
 What:
-- Resolve remaining deterministic failure families one by one (for example the currently observed later reentrancy + selfdestruct valid-block family).
+- Resolve remaining deterministic failure families one by one (for example the currently observed later selfdestruct valid-block family).
 
 How:
 - For each frontier: root-cause -> minimal patch -> focused Cancun/Prague regressions -> re-baseline.
