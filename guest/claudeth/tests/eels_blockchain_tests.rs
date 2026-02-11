@@ -1748,6 +1748,33 @@ fn test_eip1559_base_fee_prague_fixture() {
     );
 }
 
+fn assert_eip1559_val_causes_oof_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("valCausesOOF fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("valCausesOOF post-state should match fixture");
+}
+
+#[test]
+fn test_eip1559_val_causes_oof_cancun_fixture() {
+    // Why: this fixture uses a loop guarded by GT(calldataload(4), 0) and
+    // catches reversed operand order in LT/GT/SLT/SGT through deterministic
+    // block gas mismatches.
+    assert_eip1559_val_causes_oof_case(
+        "BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json::valCausesOOF_Cancun",
+    );
+}
+
+#[test]
+fn test_eip1559_val_causes_oof_prague_fixture() {
+    assert_eip1559_val_causes_oof_case(
+        "BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json::valCausesOOF_Prague",
+    );
+}
+
 #[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {

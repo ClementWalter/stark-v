@@ -334,7 +334,7 @@ pub fn signextend(stack: &mut Stack) -> Result<(), EvmError> {
 pub fn lt(stack: &mut Stack) -> Result<(), EvmError> {
     let a = stack.pop()?;
     let b = stack.pop()?;
-    stack.push(if b < a { U256::ONE } else { U256::ZERO })?;
+    stack.push(if a < b { U256::ONE } else { U256::ZERO })?;
     Ok(())
 }
 
@@ -344,7 +344,7 @@ pub fn lt(stack: &mut Stack) -> Result<(), EvmError> {
 pub fn gt(stack: &mut Stack) -> Result<(), EvmError> {
     let a = stack.pop()?;
     let b = stack.pop()?;
-    stack.push(if b > a { U256::ONE } else { U256::ZERO })?;
+    stack.push(if a > b { U256::ONE } else { U256::ZERO })?;
     Ok(())
 }
 
@@ -361,10 +361,10 @@ pub fn slt(stack: &mut Stack) -> Result<(), EvmError> {
 
     let result = if a_negative == b_negative {
         // Same sign: compare as unsigned
-        if b < a { U256::ONE } else { U256::ZERO }
+        if a < b { U256::ONE } else { U256::ZERO }
     } else {
         // Different signs: negative is less than positive
-        if b_negative { U256::ONE } else { U256::ZERO }
+        if a_negative { U256::ONE } else { U256::ZERO }
     };
 
     stack.push(result)?;
@@ -384,10 +384,10 @@ pub fn sgt(stack: &mut Stack) -> Result<(), EvmError> {
 
     let result = if a_negative == b_negative {
         // Same sign: compare as unsigned
-        if b > a { U256::ONE } else { U256::ZERO }
+        if a > b { U256::ONE } else { U256::ZERO }
     } else {
         // Different signs: positive is greater than negative
-        if a_negative { U256::ONE } else { U256::ZERO }
+        if !a_negative { U256::ONE } else { U256::ZERO }
     };
 
     stack.push(result)?;
@@ -1005,8 +1005,8 @@ mod tests {
     #[test]
     fn test_lt_true() {
         let mut stack = Stack::new();
-        stack.push(U256::from(5u64)).unwrap();
         stack.push(U256::from(10u64)).unwrap();
+        stack.push(U256::from(5u64)).unwrap();
         lt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -1014,8 +1014,8 @@ mod tests {
     #[test]
     fn test_lt_false() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(5u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         lt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
@@ -1032,8 +1032,8 @@ mod tests {
     #[test]
     fn test_gt_true() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(5u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         gt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -1041,8 +1041,8 @@ mod tests {
     #[test]
     fn test_gt_false() {
         let mut stack = Stack::new();
-        stack.push(U256::from(5u64)).unwrap();
         stack.push(U256::from(10u64)).unwrap();
+        stack.push(U256::from(5u64)).unwrap();
         gt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ZERO);
     }
@@ -1050,8 +1050,8 @@ mod tests {
     #[test]
     fn test_slt_positive_true() {
         let mut stack = Stack::new();
-        stack.push(U256::from(5u64)).unwrap();
         stack.push(U256::from(10u64)).unwrap();
+        stack.push(U256::from(5u64)).unwrap();
         slt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -1060,8 +1060,8 @@ mod tests {
     fn test_slt_negative_comparison() {
         let mut stack = Stack::new();
         // -5 < 10 = true
-        stack.push(twos_complement(U256::from(5u64))).unwrap();
         stack.push(U256::from(10u64)).unwrap();
+        stack.push(twos_complement(U256::from(5u64))).unwrap();
         slt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -1070,8 +1070,8 @@ mod tests {
     fn test_slt_both_negative() {
         let mut stack = Stack::new();
         // -10 < -5 = true
-        stack.push(twos_complement(U256::from(10u64))).unwrap();
         stack.push(twos_complement(U256::from(5u64))).unwrap();
+        stack.push(twos_complement(U256::from(10u64))).unwrap();
         slt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -1079,8 +1079,8 @@ mod tests {
     #[test]
     fn test_sgt_positive_true() {
         let mut stack = Stack::new();
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(U256::from(5u64)).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         sgt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }
@@ -1089,8 +1089,8 @@ mod tests {
     fn test_sgt_negative_comparison() {
         let mut stack = Stack::new();
         // 10 > -5 = true
-        stack.push(U256::from(10u64)).unwrap();
         stack.push(twos_complement(U256::from(5u64))).unwrap();
+        stack.push(U256::from(10u64)).unwrap();
         sgt(&mut stack).unwrap();
         assert_eq!(stack.pop().unwrap(), U256::ONE);
     }

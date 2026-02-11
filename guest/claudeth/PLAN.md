@@ -10,9 +10,10 @@ Last reviewed: 2026-02-11
   - native + RV32 test coverage.
 - `cargo test -p claudeth --release` currently passes, but this is **not** a full conformance guarantee.
 - Full blockchain-fixture sweep is still non-gating (`test_execute_all_blockchain_tests` remains `#[ignore]`).
-- Fresh ignored-suite probe after this turn’s `baseFee` fix now first reports:
+- Focused regressions now pass for:
   - `BlockchainTests/InvalidBlocks/bcEIP1559/valCausesOOF.json::{..._Cancun,..._Prague}`
-  - `GasUsedMismatch expected=323796 computed=247996` on block 10.
+  - `BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json::{..._Cancun,..._Prague}`
+- The next full-suite deterministic frontier after this turn is **not yet re-run** end-to-end.
 - `BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json::{..._Cancun,..._Prague}` now passes.
 - Explicit known feature gaps still present:
   - precompile `0x0a` point-evaluation not implemented;
@@ -41,28 +42,37 @@ Last reviewed: 2026-02-11
   - Added Cancun/Prague fixture regressions:
     - `bcEIP1559/baseFee.json::{baseFee_Cancun, baseFee_Prague}`
   - Ignored-suite frontier moved to `bcEIP1559/valCausesOOF`.
+- `bcEIP1559/valCausesOOF` gas-used fix:
+  - Root cause: comparison opcodes `LT/GT/SLT/SGT` used reversed operand order.
+  - Consequence: fixture loop guarded by `GT(calldataload(4), 0)` was skipped, undercharging gas.
+  - Fix: aligned comparison semantics to execution-spec operand order (top-of-stack compared against next).
+  - Updated opcode/interpreter tests to enforce correct ordering.
+  - Added Cancun/Prague fixture regressions:
+    - `bcEIP1559/valCausesOOF.json::{valCausesOOF_Cancun, valCausesOOF_Prague}`
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Fix `bcEIP1559/valCausesOOF` GasUsed Mismatch (Cancun/Prague)
+### Task 1 (P0, FIRST): Re-Baseline Ignored Full-Suite Frontier
 
 Why:
-- This is now the first deterministic full-suite failure after `baseFee` was fixed.
+- Priority must always follow the first deterministic full-suite failure after each fix.
+- The previous frontier (`valCausesOOF`) is now fixed; the next blocker must be identified before further implementation.
 
 What:
-- Remove the `323796 vs 247996` gas-used divergence on block 10.
+- Run the ignored blockchain suite and capture the new first deterministic failing family (fixture + error type + deltas).
 
 How:
-- Decompose tx-level gas on the failing block and compare call OOG semantics with execution-spec behavior.
-- Add fixture regressions for both forks once the accounting rule is corrected.
+- Execute `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`.
+- Record the first deterministic `✗` with compact tx-level summary.
+- Add/adjust focused regression test(s) for the new frontier.
 
-### Task 2 (P0): Continue State Root / Gas Mismatch Burn-Down After Task 1
+### Task 2 (P0): Fix the New First Deterministic Failure Family
 
 Why:
-- Full-suite hard gating requires clearing all deterministic mismatch families, not isolated fixes.
+- Full-suite hard gating requires clearing deterministic failures one family at a time.
 
 What:
-- Eliminate remaining state-root and gas-used divergences exposed after `valCausesOOF`.
+- Remove the next frontier mismatch identified in Task 1.
 
 How:
 - Iterate by first deterministic failure family, patch narrowly, add fixture regressions, then rerun ignored suite.

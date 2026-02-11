@@ -33,6 +33,8 @@
 - Do keep opcode-gas layering consistent: if dispatcher charges opcode base gas up front, dynamic helpers must return only dynamic components.
 - Do verify deterministic gas deltas against opcode-level decomposition (for example, `+375` mapping to one extra LOG base charge) before patching.
 - Do rerun ignored full-suite probes after each fix and re-prioritize against the new first deterministic failure family.
+- Do implement `LT`/`GT`/`SLT`/`SGT` with execution-spec operand order (`top` stack item compared against `next`), not reversed order.
+- Do validate comparison-opcode behavior with compiler-generated control flow (for example, `gt(calldataload(4), 0)` loop guards), not only isolated opcode pushes.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -59,3 +61,5 @@
 - Don't map recursive `REVERT` to full forwarded gas burn; that conflates revert semantics with out-of-gas.
 - Don't charge LOG base gas in both opcode dispatch and `log_gas_cost`; that deterministically overcharges every LOG by `375`.
 - Don't treat solved failure families as the current bottleneck without rerunning the ignored suite to confirm the frontier moved.
+- Don't treat non-commutative comparison opcodes as if operands were symmetric; reversed operand order silently corrupts branch behavior.
+- Don't trust opcode-only micro-tests as sufficient when full-fixture gas deltas indicate skipped/extra control-flow paths.

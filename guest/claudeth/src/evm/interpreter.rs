@@ -2248,10 +2248,10 @@ mod tests {
 
     #[test]
     fn test_comparison_operations() {
-        // PUSH1 0x03 PUSH1 0x05 LT STOP
-        // Stack after PUSHes: [3, 5] (top is 5)
-        // LT pops a=5, then b=3, compares b < a: 3 < 5 = true = 1
-        let code = vec![0x60, 0x03, 0x60, 0x05, 0x10, 0x00];
+        // PUSH1 0x05 PUSH1 0x03 LT STOP
+        // Stack after PUSHes: [5, 3] (top is 3)
+        // LT pops a=3, then b=5, compares a < b: 3 < 5 = true = 1
+        let code = vec![0x60, 0x05, 0x60, 0x03, 0x10, 0x00];
         let (result, _state) = execute_bytecode(&code, 1000, InMemoryState::new()).unwrap();
         assert!(result.success);
         assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
@@ -2373,10 +2373,10 @@ mod tests {
     #[test]
     fn test_conditional_logic() {
         // If-else using JUMPI: if x > 5 then push 1 else push 0
-        // PUSH1 0x06 PUSH1 0x05 GT PUSH1 0x0D JUMPI PUSH1 0x00 PUSH1 0x11 JUMP JUMPDEST PUSH1 0x01 JUMPDEST STOP
+        // PUSH1 0x05 PUSH1 0x06 GT PUSH1 0x0D JUMPI PUSH1 0x00 PUSH1 0x11 JUMP JUMPDEST PUSH1 0x01 JUMPDEST STOP
         let code = vec![
-            0x60, 0x06, // PUSH1 6
             0x60, 0x05, // PUSH1 5
+            0x60, 0x06, // PUSH1 6
             0x11, // GT (6 > 5 = true)
             0x60, 0x0D, // PUSH1 13 (jump target)
             0x57, // JUMPI
