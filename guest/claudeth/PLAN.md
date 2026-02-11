@@ -10,9 +10,12 @@ Last reviewed: 2026-02-11
 - Full EELS sweep is still non-gating:
   - `test_execute_all_blockchain_tests` remains `#[ignore]`
   - `run_all_blockchain_tests_impl` still reports totals without asserting `failed == 0 && errors == 0`
-- Fresh ignored sweep baseline (run on 2026-02-11) confirms the first unresolved deterministic frontier is:
-  - `BlockchainTests/ValidBlocks/bcStateTests/refundReset.json::{refundReset_Cancun,refundReset_Prague}`
-  - `GasUsedMismatch(expected=712850, computed=734258)` (`+21408`)
+- Fresh ignored sweep re-baseline after the `randomStatetest241` fix confirms the current first unresolved deterministic frontier is:
+  - `BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json::{blockhashTests_Cancun,blockhashTests_Prague}`
+  - `Block 3: GasUsedMismatch(expected=45352, computed=65252)` (`+19900`)
+- Next observed unresolved deterministic family in the same probe:
+  - `BlockchainTests/ValidBlocks/bcStateTests/suicideStorageCheckVCreate.json::{suicideStorageCheckVCreate_Cancun,suicideStorageCheckVCreate_Prague}`
+  - `Block 0: GasUsedMismatch(expected=468193, computed=184878)` (`-283315`)
 - Source audit highlights one explicit compatibility gap that still conflicts with README:
   - `src/evm/precompiles.rs` has non-trivial bn254 pairing pending and precompile `0x0a` intentionally unimplemented.
 
@@ -22,7 +25,11 @@ Last reviewed: 2026-02-11
 - `refundReset` is fixed in focused regressions:
   - `cargo test -p claudeth --release test_refund_reset_ -- --nocapture`
   - Cancun + Prague now pass.
-- The next unresolved deterministic frontier must be re-baselined from a fresh ignored full-suite run.
+- `randomStatetest241` is fixed in focused regressions:
+  - `cargo test -p claudeth --release test_random_statetest241_ -- --nocapture`
+  - Cancun + Prague now pass.
+- Root cause for `randomStatetest241` was closed:
+  - PUSH immediates now follow execution-spec `buffer_read` semantics (right-pad with zeros at EOF) instead of halting with `InvalidPush`.
 
 ## Completion Objective
 
@@ -35,17 +42,24 @@ Make implementation truthfully match `README.md` by:
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Re-Baseline the Next Frontier After `refundReset`
+### Task 1 (P0, FIRST): Fix `blockhashTests` Gas Mismatch
 
 Why:
-- `refundReset` focused failures are fixed, so the first unresolved family has moved.
+- This is now the first deterministic failure family after fixing `randomStatetest241`.
+- Its `+19900` gas delta indicates a reproducible semantic mismatch that blocks full EELS parity.
 
 What:
-- Capture the next first unresolved failing family with exact mismatch numbers.
+- Make `blockhashTests_Cancun` and `blockhashTests_Prague` match expected gas used.
+- Add focused regression coverage that protects against recurrence.
 
 How:
-- Run `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`.
-- Record the first `✗` family and numbers in `PLAN.md` and `learnings.md`.
+- Read `execution-specs` references for `BLOCKHASH` and any related historical-hash plumbing used in this fixture.
+- Reproduce with focused fixture tests and (when needed) trace output to isolate the first divergent opcode-level charge.
+- Patch the minimum semantic delta in host/interpreter/state plumbing.
+- Validate with:
+  - `cargo test -p claudeth --release test_blockhash_ -- --nocapture` (or equivalent focused case names)
+  - `cargo test -p claudeth --release test_random_statetest241_ -- --nocapture`
+  - `cargo test -p claudeth --release`
 
 ### Task 2 (P0): Burn Down Remaining Deterministic Fixture Failures to Zero
 
@@ -62,6 +76,9 @@ How:
   - diff behavior against execution-spec references;
   - apply minimal patch;
   - rerun focused + release suite.
+
+Initial known post-Task-1 candidate (already observed):
+- `suicideStorageCheckVCreate` gas mismatch family.
 
 ### Task 3 (P0): Make Full EELS Sweep a Default Hard Gate
 

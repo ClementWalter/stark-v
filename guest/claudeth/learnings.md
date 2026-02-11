@@ -29,6 +29,7 @@
 - Do implement `LT`/`GT`/`SLT`/`SGT` using execution-spec operand order.
 - Do map opcode `0x44` to `PREVRANDAO` (`mix_hash`) on post-merge forks.
 - Do implement `EXP` with execution-spec operand order (`base`, then `exponent`).
+- Do implement PUSH immediate decoding with execution-spec buffer-read behavior: truncated EOF immediates are right-padded with zeros.
 - Do enforce static-context write protection in the active interpreter path (`SSTORE` must fail under static context).
 - Do propagate static-context flags across recursive `CALL*` frames.
 - Do make charged memory expansion stateful for read-only ranges (LOG/KECCAK/RETURN/REVERT/call-input reads) so the same range is not re-charged later.
@@ -64,5 +65,6 @@
 - Don't treat non-commutative comparison opcodes as symmetric.
 - Don't feed post-merge opcode `0x44` from header `difficulty`.
 - Don't reverse `EXP` operands.
+- Don't treat truncated PUSH immediates as exceptional halts (`InvalidPush`) in runtime execution.
 - Don't hardcode Prague precompile warm range to `0x01..0x0a`; Prague includes `0x01..0x11`.
 - Don't allow static child frames to execute state-changing opcodes.

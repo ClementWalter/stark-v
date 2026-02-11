@@ -460,14 +460,17 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         Ok(self.code[self.pc])
     }
 
-    /// Read immediate bytes for PUSH
-    fn read_push_data(&mut self, n: usize) -> Result<Vec<u8>, EvmError> {
+    /// Read immediate bytes for PUSH.
+    fn read_push_data(&self, n: usize) -> Vec<u8> {
         let start = self.pc + 1;
-        let end = start + n;
-        if end > self.code.len() {
-            return Err(EvmError::InvalidPush);
+        let mut data = vec![0u8; n];
+        // Why: execution-spec PUSH uses buffer_read semantics, so immediate
+        // bytes past EOF must be right-padded with zeros instead of trapping.
+        if start < self.code.len() {
+            let available = (self.code.len() - start).min(n);
+            data[..available].copy_from_slice(&self.code[start..start + available]);
         }
-        Ok(self.code[start..end].to_vec())
+        data
     }
 
     /// Execute a single step
@@ -986,7 +989,7 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             // 0x60-0x7F: PUSH1-PUSH32
             0x60..=0x7F => {
                 let n = (opcode - 0x5F) as usize;
-                let data = self.read_push_data(n)?;
+                let data = self.read_push_data(n);
                 let mut bytes = [0u8; 32];
                 bytes[32 - n..].copy_from_slice(&data);
                 let value = U256::from_be_bytes(bytes);
@@ -2618,6 +2621,37 @@ mod tests {
             result.stack.peek(0).unwrap(),
             &U256::from_u64(0x1234 + 0x56)
         );
+    }
+
+    #[test]
+    fn test_push32_truncated_immediate_is_zero_padded() {
+        // Why: execution-spec PUSH reads immediates with buffer-read semantics,
+        // so bytes missing at EOF must decode as trailing zeros.
+        let code = vec![0x7f, 0xaa, 0x00];
+        let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
+        assert!(result.success);
+
+        let mut expected = [0u8; 32];
+        expected[0] = 0xaa;
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::from_be_bytes(expected));
+    }
+
+    #[test]
+    fn test_push32_truncated_immediate_consumes_remaining_code_as_data() {
+        // Why: when PUSH reaches EOF, the remaining bytecode is still part of
+        // the immediate payload and must not execute as opcodes.
+        let code = vec![0x7f, 0xbb, 0x60, 0x01, 0x01, 0x00];
+        let (result, _state) = execute_bytecode(&code, 100000, InMemoryState::new()).unwrap();
+        assert!(result.success);
+
+        let mut expected_push = [0u8; 32];
+        expected_push[0] = 0xbb;
+        expected_push[1] = 0x60;
+        expected_push[2] = 0x01;
+        expected_push[3] = 0x01;
+        expected_push[4] = 0x00;
+        let expected = U256::from_be_bytes(expected_push);
+        assert_eq!(result.stack.peek(0).unwrap(), &expected);
     }
 
     #[test]

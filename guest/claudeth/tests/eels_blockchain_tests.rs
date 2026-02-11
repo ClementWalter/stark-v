@@ -1920,6 +1920,16 @@ fn assert_random_statetest_324_case(case_name: &str) {
         .expect("randomStatetest324 post-state should match fixture");
 }
 
+fn assert_random_statetest_241_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("randomStatetest241 fixture should execute without gas mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("randomStatetest241 post-state should match fixture");
+}
+
 fn assert_opcode_f0_fa_case(case_name: &str) {
     let fixture_path =
         Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/testOpcode_f0.json");
@@ -2010,6 +2020,22 @@ fn test_random_statetest324_cancun_fixture() {
 fn test_random_statetest324_prague_fixture() {
     assert_random_statetest_324_case(
         "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest324.json::randomStatetest324_Prague",
+    );
+}
+
+#[test]
+fn test_random_statetest241_cancun_fixture() {
+    // Why: this fixture executes a truncated PUSH32 immediate, which must be
+    // right-padded with zeros rather than treated as an exceptional halt.
+    assert_random_statetest_241_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json::randomStatetest241_Cancun",
+    );
+}
+
+#[test]
+fn test_random_statetest241_prague_fixture() {
+    assert_random_statetest_241_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json::randomStatetest241_Prague",
     );
 }
 
