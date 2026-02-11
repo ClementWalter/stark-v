@@ -725,8 +725,13 @@ pub fn execute_call<S: State, H: Host<S>>(
     if gas_to_forward > max_forward {
         gas_to_forward = max_forward;
     }
+    let stipend = if is_value_transfer {
+        GAS_CALL_STIPEND
+    } else {
+        0
+    };
     if is_value_transfer {
-        gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+        gas_to_forward = gas_to_forward.saturating_add(stipend);
     }
 
     let msg = CallMessage {
@@ -738,12 +743,18 @@ pub fn execute_call<S: State, H: Host<S>>(
         code_address: to,
         input,
         is_static: false,
+        accessed_addresses: Vec::new(),
+        accessed_storage: Vec::new(),
     };
     let result = host.call(state, msg);
     if result.gas_used > gas_to_forward {
         return Err(EvmError::OutOfGas);
     }
-    utils::consume_gas(gas_remaining, result.gas_used)?;
+    // Why: stipend increases child-call budget but must not be billed to caller.
+    let charged_call_gas = result.gas_used.saturating_sub(stipend);
+    let stipend_credit = stipend.saturating_sub(result.gas_used);
+    *gas_remaining = (*gas_remaining).saturating_add(stipend_credit);
+    utils::consume_gas(gas_remaining, charged_call_gas)?;
     *return_data = result.return_data.clone();
     utils::write_memory_bytes(memory, out_offset, &result.return_data, out_size)?;
     stack
@@ -791,8 +802,13 @@ pub fn execute_callcode<S: State, H: Host<S>>(
     if gas_to_forward > max_forward {
         gas_to_forward = max_forward;
     }
+    let stipend = if is_value_transfer {
+        GAS_CALL_STIPEND
+    } else {
+        0
+    };
     if is_value_transfer {
-        gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+        gas_to_forward = gas_to_forward.saturating_add(stipend);
     }
 
     let msg = CallMessage {
@@ -804,12 +820,17 @@ pub fn execute_callcode<S: State, H: Host<S>>(
         code_address: to,
         input,
         is_static: false,
+        accessed_addresses: Vec::new(),
+        accessed_storage: Vec::new(),
     };
     let result = host.call(state, msg);
     if result.gas_used > gas_to_forward {
         return Err(EvmError::OutOfGas);
     }
-    utils::consume_gas(gas_remaining, result.gas_used)?;
+    let charged_call_gas = result.gas_used.saturating_sub(stipend);
+    let stipend_credit = stipend.saturating_sub(result.gas_used);
+    *gas_remaining = (*gas_remaining).saturating_add(stipend_credit);
+    utils::consume_gas(gas_remaining, charged_call_gas)?;
     *return_data = result.return_data.clone();
     utils::write_memory_bytes(memory, out_offset, &result.return_data, out_size)?;
     stack
@@ -862,6 +883,8 @@ pub fn execute_delegatecall<S: State, H: Host<S>>(
         code_address: to,
         input,
         is_static: false,
+        accessed_addresses: Vec::new(),
+        accessed_storage: Vec::new(),
     };
     let result = host.call(state, msg);
     if result.gas_used > gas_to_forward {
@@ -920,6 +943,8 @@ pub fn execute_staticcall<S: State, H: Host<S>>(
         code_address: to,
         input,
         is_static: true,
+        accessed_addresses: Vec::new(),
+        accessed_storage: Vec::new(),
     };
     let result = host.call(state, msg);
     if result.gas_used > gas_to_forward {

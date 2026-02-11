@@ -303,6 +303,11 @@ impl<S: State, H: Host<S>> Evm<S, H> {
         self.state
     }
 
+    /// Returns the currently remaining gas in this frame.
+    pub fn gas_remaining(&self) -> u64 {
+        self.gas_remaining
+    }
+
     /// Mark an address as accessed (EIP-2929)
     /// Returns true if the address was already warm (accessed before)
     fn access_address(&mut self, address: &Address) -> bool {
@@ -321,6 +326,24 @@ impl<S: State, H: Host<S>> Evm<S, H> {
             self.accessed_addresses.insert(*addr);
         }
         self
+    }
+
+    /// Pre-warm storage slots (EIP-2929).
+    pub fn warm_storage_slots(mut self, slots: &[(Address, U256)]) -> Self {
+        for (address, key) in slots {
+            self.accessed_storage.insert((*address, *key));
+        }
+        self
+    }
+
+    /// Snapshot accessed addresses for parent-frame warm-set propagation.
+    pub fn accessed_addresses_snapshot(&self) -> Vec<Address> {
+        self.accessed_addresses.iter().copied().collect()
+    }
+
+    /// Snapshot accessed storage keys for parent-frame warm-set propagation.
+    pub fn accessed_storage_snapshot(&self) -> Vec<(Address, U256)> {
+        self.accessed_storage.iter().copied().collect()
     }
 
     /// Enable gas tracing (only available with evm-trace feature)
@@ -1054,8 +1077,13 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 if gas_to_forward > max_forward {
                     gas_to_forward = max_forward;
                 }
+                let stipend = if is_value_transfer {
+                    GAS_CALL_STIPEND
+                } else {
+                    0
+                };
                 if is_value_transfer {
-                    gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+                    gas_to_forward = gas_to_forward.saturating_add(stipend);
                 }
 
                 let msg = CallMessage {
@@ -1067,12 +1095,28 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     code_address: to,
                     input,
                     is_static: false,
+                    accessed_addresses: self.accessed_addresses_snapshot(),
+                    accessed_storage: self.accessed_storage_snapshot(),
                 };
                 let result = self.host.call(&mut self.state, msg);
                 if result.gas_used > gas_to_forward {
                     return Err(EvmError::OutOfGas);
                 }
-                self.consume_gas(result.gas_used)?;
+                if result.success {
+                    for address in &result.accessed_addresses {
+                        self.access_address(address);
+                    }
+                    for (address, key) in &result.accessed_storage {
+                        self.access_storage(address, key);
+                    }
+                }
+                // Why: execution-spec call gas accounting separates caller cost
+                // from child budget. The stipend is available to the callee but
+                // must not be charged to the caller.
+                let charged_call_gas = result.gas_used.saturating_sub(stipend);
+                let stipend_credit = stipend.saturating_sub(result.gas_used);
+                self.gas_remaining = self.gas_remaining.saturating_add(stipend_credit);
+                self.consume_gas(charged_call_gas)?;
 
                 self.return_data = result.return_data.clone();
                 self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
@@ -1118,8 +1162,13 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                 if gas_to_forward > max_forward {
                     gas_to_forward = max_forward;
                 }
+                let stipend = if is_value_transfer {
+                    GAS_CALL_STIPEND
+                } else {
+                    0
+                };
                 if is_value_transfer {
-                    gas_to_forward = gas_to_forward.saturating_add(GAS_CALL_STIPEND);
+                    gas_to_forward = gas_to_forward.saturating_add(stipend);
                 }
 
                 let msg = CallMessage {
@@ -1131,12 +1180,26 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     code_address: to,
                     input,
                     is_static: false,
+                    accessed_addresses: self.accessed_addresses_snapshot(),
+                    accessed_storage: self.accessed_storage_snapshot(),
                 };
                 let result = self.host.call(&mut self.state, msg);
                 if result.gas_used > gas_to_forward {
                     return Err(EvmError::OutOfGas);
                 }
-                self.consume_gas(result.gas_used)?;
+                if result.success {
+                    for address in &result.accessed_addresses {
+                        self.access_address(address);
+                    }
+                    for (address, key) in &result.accessed_storage {
+                        self.access_storage(address, key);
+                    }
+                }
+                // Why: CALLCODE follows the same stipend semantics as CALL.
+                let charged_call_gas = result.gas_used.saturating_sub(stipend);
+                let stipend_credit = stipend.saturating_sub(result.gas_used);
+                self.gas_remaining = self.gas_remaining.saturating_add(stipend_credit);
+                self.consume_gas(charged_call_gas)?;
 
                 self.return_data = result.return_data.clone();
                 self.write_memory_bytes(out_offset, &result.return_data, out_size)?;
@@ -1200,10 +1263,20 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     code_address: to,
                     input,
                     is_static: false,
+                    accessed_addresses: self.accessed_addresses_snapshot(),
+                    accessed_storage: self.accessed_storage_snapshot(),
                 };
                 let result = self.host.call(&mut self.state, msg);
                 if result.gas_used > gas_to_forward {
                     return Err(EvmError::OutOfGas);
+                }
+                if result.success {
+                    for address in &result.accessed_addresses {
+                        self.access_address(address);
+                    }
+                    for (address, key) in &result.accessed_storage {
+                        self.access_storage(address, key);
+                    }
                 }
                 self.consume_gas(result.gas_used)?;
 
@@ -1304,10 +1377,20 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                     code_address: to,
                     input,
                     is_static: true,
+                    accessed_addresses: self.accessed_addresses_snapshot(),
+                    accessed_storage: self.accessed_storage_snapshot(),
                 };
                 let result = self.host.call(&mut self.state, msg);
                 if result.gas_used > gas_to_forward {
                     return Err(EvmError::OutOfGas);
+                }
+                if result.success {
+                    for address in &result.accessed_addresses {
+                        self.access_address(address);
+                    }
+                    for (address, key) in &result.accessed_storage {
+                        self.access_storage(address, key);
+                    }
                 }
                 self.consume_gas(result.gas_used)?;
 
@@ -2817,6 +2900,7 @@ mod tests {
                 success: true,
                 return_data: vec![0xAA, 0xBB],
                 gas_used: 5,
+                ..CallResult::default()
             },
             ..Default::default()
         };
@@ -2862,6 +2946,139 @@ mod tests {
         assert_eq!(recorded.code_address, to);
         assert_eq!(recorded.input, vec![0x01]);
         assert_eq!(recorded.gas, 0x10);
+    }
+
+    #[test]
+    fn test_call_value_stipend_is_not_charged_to_caller() {
+        let host_state = TestHost {
+            call_result: CallResult {
+                success: true,
+                return_data: Vec::new(),
+                gas_used: GAS_CALL_STIPEND,
+                ..CallResult::default()
+            },
+            ..Default::default()
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let mut to_bytes = [0u8; 20];
+        to_bytes[0] = 0x55;
+        let to = Address::from_slice(&to_bytes).unwrap();
+
+        let mut code = vec![
+            0x60, 0x00, // PUSH1 0x00 (out_size)
+            0x60, 0x00, // PUSH1 0x00 (out_offset)
+            0x60, 0x00, // PUSH1 0x00 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x60, 0x01, // PUSH1 0x01 (value)
+            0x73, // PUSH20 <to>
+        ];
+        code.extend_from_slice(&to.to_bytes());
+        code.extend_from_slice(&[
+            0x60, 0x00, // PUSH1 0x00 (requested gas)
+            0xF1, // CALL
+            0x00, // STOP
+        ]);
+
+        let mut state = InMemoryState::new();
+        state.set_balance(&to, U256::ONE);
+
+        let (result, _state) = execute_bytecode_with_host(&code, 100000, state, host.clone())
+            .expect("execute call with value");
+
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
+        assert_eq!(result.gas_used, 11_621);
+
+        let recorded = host.borrow().last_call.clone().unwrap();
+        assert_eq!(recorded.gas, GAS_CALL_STIPEND);
+    }
+
+    #[test]
+    fn test_call_value_stipend_credits_caller_when_callee_uses_less_than_stipend() {
+        let host_state = TestHost {
+            call_result: CallResult {
+                success: true,
+                return_data: Vec::new(),
+                gas_used: 0,
+                ..CallResult::default()
+            },
+            ..Default::default()
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let mut to_bytes = [0u8; 20];
+        to_bytes[0] = 0x57;
+        let to = Address::from_slice(&to_bytes).unwrap();
+
+        let mut code = vec![
+            0x60, 0x00, // PUSH1 0x00 (out_size)
+            0x60, 0x00, // PUSH1 0x00 (out_offset)
+            0x60, 0x00, // PUSH1 0x00 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x60, 0x01, // PUSH1 0x01 (value)
+            0x73, // PUSH20 <to>
+        ];
+        code.extend_from_slice(&to.to_bytes());
+        code.extend_from_slice(&[
+            0x60, 0x00, // PUSH1 0x00 (requested gas)
+            0xF1, // CALL
+            0x00, // STOP
+        ]);
+
+        let mut state = InMemoryState::new();
+        state.set_balance(&to, U256::ONE);
+
+        let (result, _state) = execute_bytecode_with_host(&code, 100000, state, host)
+            .expect("execute value call that consumes no child gas");
+
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
+        assert_eq!(result.gas_used, 9_321);
+    }
+
+    #[test]
+    fn test_callcode_value_stipend_is_not_charged_to_caller() {
+        let host_state = TestHost {
+            call_result: CallResult {
+                success: true,
+                return_data: Vec::new(),
+                gas_used: GAS_CALL_STIPEND,
+                ..CallResult::default()
+            },
+            ..Default::default()
+        };
+        let host = Rc::new(RefCell::new(host_state));
+
+        let mut to_bytes = [0u8; 20];
+        to_bytes[0] = 0x66;
+        let to = Address::from_slice(&to_bytes).unwrap();
+
+        let mut code = vec![
+            0x60, 0x00, // PUSH1 0x00 (out_size)
+            0x60, 0x00, // PUSH1 0x00 (out_offset)
+            0x60, 0x00, // PUSH1 0x00 (in_size)
+            0x60, 0x00, // PUSH1 0x00 (in_offset)
+            0x60, 0x01, // PUSH1 0x01 (value)
+            0x73, // PUSH20 <to>
+        ];
+        code.extend_from_slice(&to.to_bytes());
+        code.extend_from_slice(&[
+            0x60, 0x00, // PUSH1 0x00 (requested gas)
+            0xF2, // CALLCODE
+            0x00, // STOP
+        ]);
+
+        let (result, _state) =
+            execute_bytecode_with_host(&code, 100000, InMemoryState::new(), host.clone())
+                .expect("execute callcode with value");
+
+        assert!(result.success);
+        assert_eq!(result.stack.peek(0).unwrap(), &U256::ONE);
+        assert_eq!(result.gas_used, 11_621);
+
+        let recorded = host.borrow().last_call.clone().unwrap();
+        assert_eq!(recorded.gas, GAS_CALL_STIPEND);
     }
 
     #[test]
@@ -2933,6 +3150,7 @@ mod tests {
                 success: true,
                 return_data: Vec::new(),
                 gas_used: 1,
+                ..CallResult::default()
             },
             ..Default::default()
         };

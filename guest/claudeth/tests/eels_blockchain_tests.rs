@@ -1599,6 +1599,59 @@ fn test_create_transaction_reverted_prague_fixture() {
     );
 }
 
+fn assert_withdrawal_account_interactions_case(case_name: &str) {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/InvalidBlocks/bc4895-withdrawals/accountInteractions.json",
+    );
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("accountInteractions fixture should execute");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("accountInteractions post-state should match fixture");
+}
+
+#[test]
+fn test_withdrawal_account_interactions_cancun_fixture() {
+    // Why: this fixture exercises withdrawal-funded account touches and call
+    // gas accounting, including value-call stipend edge cases.
+    assert_withdrawal_account_interactions_case(
+        "BlockchainTests/InvalidBlocks/bc4895-withdrawals/accountInteractions.json::accountInteractions_Cancun",
+    );
+}
+
+#[test]
+fn test_withdrawal_account_interactions_prague_fixture() {
+    assert_withdrawal_account_interactions_case(
+        "BlockchainTests/InvalidBlocks/bc4895-withdrawals/accountInteractions.json::accountInteractions_Prague",
+    );
+}
+
+fn assert_withdrawal_warmup_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/InvalidBlocks/bc4895-withdrawals/warmup.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) =
+        execute_blockchain_case(case_name, &case).expect("warmup fixture should execute");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("warmup post-state should match fixture");
+}
+
+#[test]
+fn test_withdrawal_warmup_cancun_fixture() {
+    // Why: this warmup vector contains repeated CALL/CALLCODE patterns where
+    // stipend charging bugs accumulate into large GasUsed mismatches.
+    assert_withdrawal_warmup_case(
+        "BlockchainTests/InvalidBlocks/bc4895-withdrawals/warmup.json::warmup_Cancun",
+    );
+}
+
+#[test]
+fn test_withdrawal_warmup_prague_fixture() {
+    assert_withdrawal_warmup_case(
+        "BlockchainTests/InvalidBlocks/bc4895-withdrawals/warmup.json::warmup_Prague",
+    );
+}
+
 #[test]
 fn test_block_processing_error_summary_omits_large_return_data_payloads() {
     let transaction_results = vec![TransactionExecutionResult {

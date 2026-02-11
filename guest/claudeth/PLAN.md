@@ -6,13 +6,14 @@ Last reviewed: 2026-02-11
 
 - `cargo test -p claudeth --release` passes.
 - Full EELS blockchain sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
-- Fresh ignored-suite probe after this turn’s CREATE fix shows:
-  - `CreateTransactionReverted` Cancun/Prague now pass.
-  - first remaining deterministic failures are gas deltas in withdrawal fixtures:
-    - `BlockchainTests/InvalidBlocks/bc4895-withdrawals/accountInteractions.json::{..._Cancun,..._Prague}`
-      - `GasUsedMismatch`: expected `77427`, computed `79727` (delta `+2300`)
-    - `BlockchainTests/InvalidBlocks/bc4895-withdrawals/warmup.json::{..._Cancun,..._Prague}`
-      - `GasUsedMismatch`: expected `1186133`, computed `1242533` (delta `+56400`)
+- Fresh ignored-suite probe after this turn’s stipend/warm-set/revert-gas fixes shows:
+  - withdrawal family now passes:
+    - `bc4895-withdrawals/accountInteractions` Cancun/Prague
+    - `bc4895-withdrawals/warmup` Cancun/Prague
+  - first remaining deterministic failures are now:
+    - `BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/DifficultyIsZero.json::{..._Cancun,..._Prague}`
+    - `BlockchainTests/InvalidBlocks/bcInvalidHeaderTest/timeDiff0.json::{..._Cancun,..._Prague}`
+    - both with `GasUsedMismatch`: expected `22027`, computed `22402` (delta `+375`)
 - Known explicit implementation gaps still present:
   - precompile `0x0a` point-evaluation not implemented;
   - precompile `0x08` non-trivial pairing still intentionally unsupported.
@@ -66,26 +67,44 @@ How:
 - Ensured failed create paths return pre-execution state snapshot.
 - Added Cancun/Prague fixture regressions for `CreateTransactionReverted`.
 
-## Priority Backlog (Why / What / How)
-
-### Task 1 (P0, FIRST): Fix Withdrawal-Family Gas Deltas (`accountInteractions`, `warmup`)
+### E. Withdrawal Family Gas Conformance (`accountInteractions`, `warmup`)
 
 Why:
-- This is the first deterministic failure family in the latest ignored-suite probe.
-- `+2300`/`+56400` deltas indicate systemic gas-accounting divergence, not fixture noise.
+- First deterministic ignored-suite failures were gas deltas `+2300` and `+56400`.
+- Deltas were rooted in three coupled call-path issues: stipend billing, warm-set propagation, and revert gas accounting in recursive host paths.
 
 What:
-- Eliminate gas overcharge in `bc4895-withdrawals` failing cases for Cancun/Prague.
+- Aligned call stipend billing semantics for `CALL`/`CALLCODE`.
+- Propagated EIP-2929 warm sets across successful child frames.
+- Corrected recursive host revert gas accounting for `CALL` and `CREATE`.
 
 How:
-- Read fixture transactions and execution-spec reference gas paths for touched opcodes.
-- Diff per-transaction gas components against expected deltas.
-- Patch one coherent rule family (warm/cold/touch/access interaction) and add focused regressions for both fixtures.
+- Charged caller by `child_gas_used - stipend` and credited unused stipend when applicable.
+- Extended call messages/results with accessed addresses/storage and merged successful child warm sets into parent frame.
+- Handled `EvmError::Revert` as non-OOG failure with gas used based on remaining child gas (`msg.gas - evm.gas_remaining()`).
+- Added fixture regressions for withdrawal `accountInteractions` and `warmup` (Cancun/Prague).
+- Added interpreter-level stipend unit tests.
+
+## Priority Backlog (Why / What / How)
+
+### Task 1 (P0, FIRST): Fix `bcInvalidHeaderTest` `+375` Gas Delta (`DifficultyIsZero`, `timeDiff0`)
+
+Why:
+- This is now the first deterministic failure family in the latest ignored-suite probe.
+- Same delta appears in two fixtures and both Cancun/Prague forks, indicating a single shared gas accounting edge case.
+
+What:
+- Eliminate the `+375` overcharge in `bcInvalidHeaderTest` `DifficultyIsZero` and `timeDiff0` for Cancun/Prague.
+
+How:
+- Read both fixture transactions and the matching execution-spec gas path for every touched opcode and transaction-level gas component.
+- Build a transaction-level gas decomposition to isolate the exact `375` discrepancy source.
+- Patch one coherent rule in STF/EVM gas accounting and add focused Cancun/Prague fixture regressions for both files.
 
 ### Task 2 (P0): Close Remaining GasUsedMismatch Families After Task 1
 
 Why:
-- Gas mismatches are still the dominant blocker before hard-gating full-suite conformance.
+- Gas accounting remains the dominant blocker before hard-gating full-suite conformance.
 
 What:
 - Remove residual gas accounting divergences outside the withdrawal family.

@@ -23,6 +23,11 @@
 - Do implement Prague EIP-7623 as a calldata-floor rule (`max(gas_used_after_refund, calldata_floor_gas_cost)`), not as a replacement for intrinsic gas.
 - Do compute Prague calldata floor from calldata tokens (`zero=1`, `non-zero=4`) with floor formula `21000 + tokens * 10`.
 - Do keep execution gas available as `gas_limit - intrinsic_gas`; apply the floor only in gas-limit validation and final gas-used accounting.
+- Do bill value-bearing `CALL`/`CALLCODE` to the caller as `max(child_gas_used - stipend, 0)` and credit unused stipend back to caller gas.
+- Do propagate child-frame accessed addresses/storage back to the parent warm set only on successful child execution.
+- Do pre-warm recursive child EVM frames with the parent frame's accessed addresses and storage keys to preserve EIP-2929 warm continuity.
+- Do treat recursive `EvmError::Revert` as a non-OOG failure with `gas_used = forwarded_gas - child_gas_remaining`.
+- Do add dedicated Cancun/Prague fixture regressions for each newly fixed failing family before rerunning the full ignored suite.
 
 ## Don't
 - Don't use fixture iteration order as canonical chain order in multi-branch tests.
@@ -43,3 +48,6 @@
 - Don't assume default Rust test-thread stack is sufficient for the largest historical blockchain fixtures.
 - Don't model Prague EIP-7623 as a flat increase of non-zero calldata byte price (for example `16 -> 40`); execution-spec keeps tokenized intrinsic pricing and adds a post-refund floor.
 - Don't validate Prague transaction gas against intrinsic gas alone; use `max(intrinsic_gas, calldata_floor_gas_cost)`.
+- Don't charge call stipend as caller-consumed gas; stipend extends child budget only.
+- Don't drop successful child warm accesses when returning to the parent frame; later accesses will be overcharged as cold.
+- Don't map recursive `REVERT` to full forwarded gas burn; that conflates revert semantics with out-of-gas.

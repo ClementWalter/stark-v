@@ -41,6 +41,10 @@ pub struct CallMessage {
     pub input: Vec<u8>,
     /// Whether the call is static.
     pub is_static: bool,
+    /// Accessed addresses from the caller frame (EIP-2929 warm set).
+    pub accessed_addresses: Vec<Address>,
+    /// Accessed storage keys from the caller frame (EIP-2929 warm set).
+    pub accessed_storage: Vec<(Address, U256)>,
 }
 
 /// Result of a call execution.
@@ -50,6 +54,10 @@ pub struct CallResult {
     pub return_data: Vec<u8>,
     /// Gas used by the callee.
     pub gas_used: u64,
+    /// Addresses accessed by a successful callee frame.
+    pub accessed_addresses: Vec<Address>,
+    /// Storage keys accessed by a successful callee frame.
+    pub accessed_storage: Vec<(Address, U256)>,
 }
 
 /// Create message for CREATE/CREATE2.
@@ -93,6 +101,8 @@ impl<S: State> Host<S> for NullHost {
             success: false,
             return_data: Vec::new(),
             gas_used: 0,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
         }
     }
 
@@ -215,6 +225,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: false,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                accessed_addresses: Vec::new(),
+                accessed_storage: Vec::new(),
             };
         };
 
@@ -229,6 +241,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                                 success: false,
                                 return_data: Vec::new(),
                                 gas_used: 0,
+                                accessed_addresses: Vec::new(),
+                                accessed_storage: Vec::new(),
                             };
                         }
                         state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
@@ -242,6 +256,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: true,
                         return_data: result.output,
                         gas_used: result.gas_used,
+                        accessed_addresses: Vec::new(),
+                        accessed_storage: Vec::new(),
                     };
                 }
                 // Precompile OOG is a sub-call failure that consumes forwarded gas.
@@ -250,6 +266,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: false,
                         return_data: Vec::new(),
                         gas_used: msg.gas,
+                        accessed_addresses: Vec::new(),
+                        accessed_storage: Vec::new(),
                     };
                 }
             }
@@ -271,6 +289,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                         success: false,
                         return_data: Vec::new(),
                         gas_used: 0,
+                        accessed_addresses: Vec::new(),
+                        accessed_storage: Vec::new(),
                     };
                 }
                 state.set_balance(&msg.caller, caller_balance.saturating_sub(msg.value));
@@ -284,6 +304,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 success: true,
                 return_data: Vec::new(),
                 gas_used: 0,
+                accessed_addresses: Vec::new(),
+                accessed_storage: Vec::new(),
             };
         }
 
@@ -300,6 +322,8 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     success: false,
                     return_data: Vec::new(),
                     gas_used: 0,
+                    accessed_addresses: Vec::new(),
+                    accessed_storage: Vec::new(),
                 };
             }
 
@@ -324,7 +348,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         // Why: execution-spec child messages inherit the transaction warm-set
         // baseline (origin/current target/coinbase/precompiles). Without this,
         // nested execution can overcharge cold access costs.
-        let mut warm_addresses = Vec::with_capacity(15);
+        let mut warm_addresses = Vec::with_capacity(15 + msg.accessed_addresses.len());
         warm_addresses.push(self.tx_ctx.origin);
         warm_addresses.push(msg.address);
         warm_addresses.push(msg.caller);
@@ -335,19 +359,31 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
             addr_bytes[19] = i;
             warm_addresses.push(Address::from_slice(&addr_bytes).unwrap());
         }
+        warm_addresses.extend(msg.accessed_addresses.iter().copied());
 
         // Create EVM with proper context
         let mut evm = Evm::new(code, msg.gas, call_state, child_host)
             .with_block_context(self.block_ctx.clone())
             .with_tx_context(self.tx_ctx.clone())
             .with_call_context(call_ctx)
-            .warm_addresses(&warm_addresses);
+            .warm_addresses(&warm_addresses)
+            .warm_storage_slots(&msg.accessed_storage);
 
         // Execute
         let result = evm.run();
 
         match result {
             Ok(exec_result) => {
+                let accessed_addresses = if exec_result.success {
+                    evm.accessed_addresses_snapshot()
+                } else {
+                    Vec::new()
+                };
+                let accessed_storage = if exec_result.success {
+                    evm.accessed_storage_snapshot()
+                } else {
+                    Vec::new()
+                };
                 // Merge state changes back if call succeeded
                 if exec_result.success {
                     *state = evm.into_state();
@@ -360,17 +396,30 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                     success: exec_result.success,
                     return_data: exec_result.return_data,
                     gas_used: exec_result.gas_used,
+                    accessed_addresses,
+                    accessed_storage,
                 }
             }
             Err(EvmError::OutOfGas) => CallResult {
                 success: false,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                accessed_addresses: Vec::new(),
+                accessed_storage: Vec::new(),
+            },
+            Err(EvmError::Revert(data)) => CallResult {
+                success: false,
+                return_data: data,
+                gas_used: msg.gas.saturating_sub(evm.gas_remaining()),
+                accessed_addresses: Vec::new(),
+                accessed_storage: Vec::new(),
             },
             Err(_) => CallResult {
                 success: false,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+                accessed_addresses: Vec::new(),
+                accessed_storage: Vec::new(),
             },
         }
     }
@@ -534,6 +583,12 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
                 address: None,
                 return_data: Vec::new(),
                 gas_used: msg.gas,
+            },
+            Err(EvmError::Revert(data)) => CreateResult {
+                success: false,
+                address: None,
+                return_data: data,
+                gas_used: msg.gas.saturating_sub(evm.gas_remaining()),
             },
             Err(_) => CreateResult {
                 success: false,
@@ -760,6 +815,8 @@ mod tests {
             code_address: precompile,
             input,
             is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
         };
 
         let result = host.call(&mut state, msg);
@@ -790,6 +847,8 @@ mod tests {
             code_address: precompile,
             input: Vec::new(),
             is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
         };
 
         let result = host.call(&mut state, msg);
@@ -820,6 +879,8 @@ mod tests {
             code_address: precompile,
             input: vec![0u8; 191],
             is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
         };
 
         let result = host.call(&mut state, msg);
@@ -850,6 +911,8 @@ mod tests {
             code_address: precompile,
             input: Vec::new(),
             is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
         };
 
         let result = host.call(&mut state, msg);
