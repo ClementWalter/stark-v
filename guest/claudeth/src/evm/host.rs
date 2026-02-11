@@ -219,6 +219,12 @@ impl RecursiveHost {
 
 impl<S: State + Clone> Host<S> for RecursiveHost {
     fn call(&mut self, state: &mut S, msg: CallMessage) -> CallResult {
+        // Why: execution-specs models value transfer through an explicit
+        // `should_transfer_value` flag. Only CALL and CALLCODE move value;
+        // DELEGATECALL/STATICCALL must never transfer funds.
+        let should_transfer_value =
+            matches!(msg.kind, CallKind::Call | CallKind::CallCode) && !msg.value.is_zero();
+
         // Check call depth
         let Some(child_host) = self.child() else {
             return CallResult {
@@ -234,7 +240,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         {
             match precompile_result {
                 Ok(result) => {
-                    if !msg.value.is_zero() {
+                    if should_transfer_value {
                         let caller_balance = state.get_balance(&msg.caller);
                         if caller_balance < msg.value {
                             return CallResult {
@@ -278,9 +284,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
 
         // If no code, handle value transfer and return
         if code.is_empty() {
-            // For CALL and CALLCODE, transfer value from caller to address
-            // For DELEGATECALL and STATICCALL, no value transfer (already U256::ZERO)
-            if !msg.value.is_zero() {
+            if should_transfer_value {
                 // Deduct value from caller
                 let caller_balance = state.get_balance(&msg.caller);
                 if caller_balance < msg.value {
@@ -313,7 +317,7 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         let mut call_state = state.clone();
 
         // Handle value transfer in the cloned state
-        if !msg.value.is_zero() {
+        if should_transfer_value {
             // Check sufficient balance
             let caller_balance = call_state.get_balance(&msg.caller);
             if caller_balance < msg.value {
@@ -923,6 +927,97 @@ mod tests {
         // Reserved precompile failures must not transfer value.
         assert_eq!(state.get_balance(&caller), U256::from_u64(10));
         assert_eq!(state.get_balance(&precompile), U256::from_u64(1));
+    }
+
+    #[test]
+    fn test_recursive_host_delegatecall_with_code_does_not_transfer_value() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x22; 20]);
+        let target = Address::from([0x33; 20]);
+        let code_address = Address::from([0x44; 20]);
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&target, U256::from_u64(1));
+        state.set_code(&code_address, vec![0x00]); // STOP
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::DelegateCall,
+            gas: 5000,
+            address: target,
+            caller,
+            value: U256::from_u64(5),
+            code_address,
+            input: Vec::new(),
+            is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(result.success);
+        // Why: DELEGATECALL carries msg.value in context but does not move ETH.
+        assert_eq!(state.get_balance(&caller), U256::from_u64(10));
+        assert_eq!(state.get_balance(&target), U256::from_u64(1));
+    }
+
+    #[test]
+    fn test_recursive_host_delegatecall_without_code_does_not_transfer_value() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x22; 20]);
+        let target = Address::from([0x33; 20]);
+        let code_address = Address::from([0x45; 20]); // Empty code path
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&target, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::DelegateCall,
+            gas: 5000,
+            address: target,
+            caller,
+            value: U256::from_u64(5),
+            code_address,
+            input: Vec::new(),
+            is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(result.success);
+        assert_eq!(state.get_balance(&caller), U256::from_u64(10));
+        assert_eq!(state.get_balance(&target), U256::from_u64(1));
+    }
+
+    #[test]
+    fn test_recursive_host_delegatecall_to_precompile_does_not_transfer_value() {
+        let mut state = InMemoryState::new();
+        let caller = Address::from([0x22; 20]);
+        let target = Address::from([0x33; 20]);
+        let precompile = precompile_address(8);
+        state.set_balance(&caller, U256::from_u64(10));
+        state.set_balance(&target, U256::from_u64(1));
+
+        let mut host = RecursiveHost::new();
+        let msg = CallMessage {
+            kind: CallKind::DelegateCall,
+            gas: 50_000,
+            address: target,
+            caller,
+            value: U256::from_u64(5),
+            code_address: precompile,
+            input: Vec::new(),
+            is_static: false,
+            accessed_addresses: Vec::new(),
+            accessed_storage: Vec::new(),
+        };
+
+        let result = host.call(&mut state, msg);
+        assert!(result.success);
+        assert_eq!(result.return_data, U256::ONE.to_be_bytes().to_vec());
+        assert_eq!(result.gas_used, GAS_BN256_PAIRING_BASE);
+        assert_eq!(state.get_balance(&caller), U256::from_u64(10));
+        assert_eq!(state.get_balance(&target), U256::from_u64(1));
     }
 
     #[test]

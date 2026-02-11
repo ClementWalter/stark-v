@@ -1723,6 +1723,31 @@ fn test_block_processing_error_summary_omits_large_return_data_payloads() {
     assert!(!summary.contains("255, 255"));
 }
 
+fn assert_eip1559_base_fee_case(case_name: &str) {
+    let fixture_path = Path::new("tests/eels/BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("baseFee fixture should execute without state-root mismatches");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("baseFee post-state should match fixture");
+}
+
+#[test]
+fn test_eip1559_base_fee_cancun_fixture() {
+    // Why: this fixture contains a value-bearing CALL followed by DELEGATECALL.
+    // DELEGATECALL must preserve msg.value in context without transferring ETH.
+    assert_eip1559_base_fee_case(
+        "BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json::baseFee_Cancun",
+    );
+}
+
+#[test]
+fn test_eip1559_base_fee_prague_fixture() {
+    assert_eip1559_base_fee_case(
+        "BlockchainTests/InvalidBlocks/bcEIP1559/baseFee.json::baseFee_Prague",
+    );
+}
+
 #[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {
