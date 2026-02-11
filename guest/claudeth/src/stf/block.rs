@@ -227,7 +227,7 @@ fn calculate_withdrawals_root(withdrawals: &[Withdrawal]) -> Hash {
         return EMPTY_TRIE_ROOT;
     }
 
-    // Why: execution-specs inlines child node RLP when it is <32 bytes; always
+    // Why: execution-specs embeds child node RLP when it is <32 bytes; always
     // hashing children changes trie structure and diverges from fixture roots.
     #[derive(Clone)]
     struct WithdrawalTrieEntry {
