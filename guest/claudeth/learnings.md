@@ -28,7 +28,7 @@
 - Do pre-warm recursive child EVM frames with the parent frame's accessed addresses and storage keys to preserve EIP-2929 warm continuity.
 - Do treat recursive `EvmError::Revert` as a non-OOG failure with `gas_used = forwarded_gas - child_gas_remaining`.
 - Do add dedicated Cancun/Prague fixture regressions for each newly fixed failing family before rerunning the full ignored suite.
-- Do keep opcode-gas layering consistent: if dispatcher precharges opcode base gas, dynamic helpers must return only dynamic components.
+- Do keep opcode-gas layering consistent: if dispatcher charges opcode base gas up front, dynamic helpers must return only dynamic components.
 - Do verify deterministic gas deltas against opcode-level decomposition (for example, `+375` mapping to one extra LOG base charge) before patching.
 - Do rerun ignored full-suite probes after each fix and re-prioritize against the new first deterministic failure family.
 
