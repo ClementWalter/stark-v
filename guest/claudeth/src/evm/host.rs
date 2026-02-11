@@ -685,8 +685,10 @@ impl<S: State + Clone> Host<S> for RecursiveHost {
         }
     }
 
-    fn blockhash(&self, _number: &U256) -> Option<Hash> {
-        let requested = _number.as_u64();
+    fn blockhash(&self, number: &U256) -> Option<Hash> {
+        // Why: execution-spec treats BLOCKHASH operands as full-width integers.
+        // Truncating to u64 would let values like 2^64+1 alias to block 1.
+        let requested = u64::try_from(*number).ok()?;
         if requested >= self.block_number {
             return None;
         }
@@ -852,6 +854,26 @@ mod tests {
         );
         assert_eq!(
             Host::<InMemoryState>::blockhash(&host, &U256::from_u64(97)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_recursive_host_blockhash_rejects_values_above_u64() {
+        let block_ctx = BlockContext {
+            number: U256::from_u64(100),
+            ..BlockContext::default()
+        };
+        let hash_1 = Hash::from([0x44; 32]);
+        let recent_hashes = vec![hash_1];
+        let host = RecursiveHost::new()
+            .with_block_context(block_ctx)
+            .with_recent_block_hashes(&recent_hashes);
+
+        // Why: BLOCKHASH arguments above u64 must not wrap to low 64 bits.
+        let huge_block_number = (U256::ONE << 64) + U256::ONE;
+        assert_eq!(
+            Host::<InMemoryState>::blockhash(&host, &huge_block_number),
             None
         );
     }

@@ -1930,6 +1930,16 @@ fn assert_random_statetest_241_case(case_name: &str) {
         .expect("randomStatetest241 post-state should match fixture");
 }
 
+fn assert_blockhash_tests_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) =
+        execute_blockchain_case(case_name, &case).expect("blockhashTests fixture should execute");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("blockhashTests post-state should match fixture");
+}
+
 fn assert_opcode_f0_fa_case(case_name: &str) {
     let fixture_path =
         Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/testOpcode_f0.json");
@@ -2036,6 +2046,22 @@ fn test_random_statetest241_cancun_fixture() {
 fn test_random_statetest241_prague_fixture() {
     assert_random_statetest_241_case(
         "BlockchainTests/ValidBlocks/bcStateTests/randomStatetest241.json::randomStatetest241_Prague",
+    );
+}
+
+#[test]
+fn test_blockhash_tests_cancun_fixture() {
+    // Why: this fixture includes BLOCKHASH operands above u64 range. The host
+    // must not truncate these operands when resolving historical hashes.
+    assert_blockhash_tests_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json::blockhashTests_Cancun",
+    );
+}
+
+#[test]
+fn test_blockhash_tests_prague_fixture() {
+    assert_blockhash_tests_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json::blockhashTests_Prague",
     );
 }
 

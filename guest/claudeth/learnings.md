@@ -3,6 +3,7 @@
 - Do exclude expected-invalid blocks from canonical header/state indexes.
 - Do validate fixture post-state at `lastblockhash`, not at the last iterated block.
 - Do pass `BLOCKHASH` ancestry oldest -> newest with direct parent last.
+- Do treat `BLOCKHASH` arguments as full-width `U256` values; reject out-of-range values instead of narrowing.
 - Do bound fixture error summaries; avoid printing full tx payloads or massive return-data blobs.
 - Do run EELS baselines in release mode with `cargo test -p claudeth --release ... --ignored --nocapture`.
 - Do add a focused regression for each failing fixture family before broad reruns.
@@ -38,6 +39,7 @@
 - Don't treat fixture iteration order as canonical chain order in multi-branch tests.
 - Don't execute forked branches on a single linear mutable state.
 - Don't pass an empty recent-hash list when `BLOCKHASH` can be reached.
+- Don't convert `BLOCKHASH` stack operands with lossy `as_u64()` truncation.
 - Don't index ancestry with headers from expected-invalid blocks.
 - Don't synthesize trie references by zero-padding short RLP payloads.
 - Don't assume generic trie helpers are spec-compatible for all roots without validating encoding thresholds.
