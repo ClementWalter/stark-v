@@ -1114,6 +1114,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                         self.access_storage(address, key);
                     }
                 }
+                // Why: successful child-frame logs are part of the parent
+                // transaction receipt and must be preserved in execution order.
+                self.logs.extend(result.logs.iter().cloned());
                 // Why: execution-spec call gas accounting separates caller cost
                 // from child budget. The stipend is available to the callee but
                 // must not be charged to the caller.
@@ -1199,6 +1202,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                         self.access_storage(address, key);
                     }
                 }
+                // Why: successful child-frame logs are part of the parent
+                // transaction receipt and must be preserved in execution order.
+                self.logs.extend(result.logs.iter().cloned());
                 // Why: CALLCODE follows the same stipend semantics as CALL.
                 let charged_call_gas = result.gas_used.saturating_sub(stipend);
                 let stipend_credit = stipend.saturating_sub(result.gas_used);
@@ -1282,6 +1288,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                         self.access_storage(address, key);
                     }
                 }
+                // Why: successful child-frame logs are part of the parent
+                // transaction receipt and must be preserved in execution order.
+                self.logs.extend(result.logs.iter().cloned());
                 self.consume_gas(result.gas_used)?;
 
                 self.return_data = result.return_data.clone();
@@ -1396,6 +1405,9 @@ impl<S: State, H: Host<S>> Evm<S, H> {
                         self.access_storage(address, key);
                     }
                 }
+                // Why: successful child-frame logs are part of the parent
+                // transaction receipt and must be preserved in execution order.
+                self.logs.extend(result.logs.iter().cloned());
                 self.consume_gas(result.gas_used)?;
 
                 self.return_data = result.return_data.clone();

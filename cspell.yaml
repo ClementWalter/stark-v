@@ -160,6 +160,7 @@ words:
   - pycache
   - randao
   - readelf
+  - rebaseline
   - recid
   - reentrency
   - regs

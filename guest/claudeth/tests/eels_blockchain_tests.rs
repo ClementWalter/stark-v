@@ -1839,6 +1839,32 @@ fn test_suicide_storage_check_prague_fixture() {
     );
 }
 
+fn assert_opcode_a0_log_case(case_name: &str) {
+    let fixture_path =
+        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/testOpcode_a0.json");
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("testOpcode_a0 fixture should execute without receipts mismatch");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("testOpcode_a0 post-state should match fixture");
+}
+
+#[test]
+fn test_opcode_a0_a2_cancun_fixture() {
+    // Why: this vector emits LOG2 from a sub-call; missing child-log
+    // propagation produces deterministic receipts-root mismatches.
+    assert_opcode_a0_log_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/testOpcode_a0.json::testOpcode_a2_Cancun",
+    );
+}
+
+#[test]
+fn test_opcode_a0_a2_prague_fixture() {
+    assert_opcode_a0_log_case(
+        "BlockchainTests/ValidBlocks/bcStateTests/testOpcode_a0.json::testOpcode_a2_Prague",
+    );
+}
+
 #[test]
 fn test_strange_contract_creation_cancun_fixture() {
     // Why: this historical exploit fixture stresses recursive CREATE failure

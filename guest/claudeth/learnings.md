@@ -27,11 +27,13 @@
 - Do gate host-side ETH transfer by call kind (`CALL`/`CALLCODE` only); `DELEGATECALL`/`STATICCALL` must keep balances unchanged even when `msg.value` is non-zero in context.
 - Do preserve `DELEGATECALL` value context (`CALLVALUE`) without coupling it to balance movement; fixtures that combine value-bearing `CALL` then `DELEGATECALL` rely on this.
 - Do propagate child-frame accessed addresses/storage back to the parent warm set only on successful child execution.
+- Do propagate successful child-frame logs from host call results into parent interpreter log buffers so nested `CALL*` logs land in the transaction receipt.
 - Do pre-warm recursive child EVM frames with the parent frame's accessed addresses and storage keys to preserve EIP-2929 warm continuity.
 - Do treat recursive `EvmError::Revert` as a non-OOG failure with `gas_used = forwarded_gas - child_gas_remaining`.
 - Do add dedicated Cancun/Prague fixture regressions for each newly fixed failing family before rerunning the full ignored suite.
 - Do keep opcode-gas layering consistent: if dispatcher charges opcode base gas up front, dynamic helpers must return only dynamic components.
 - Do verify deterministic gas deltas against opcode-level decomposition (for example, `+375` mapping to one extra LOG base charge) before patching.
+- Do treat stable small deltas (for example `+3`) in first-failure fixtures as high-signal micro-accounting bugs and prioritize a focused opcode-level trace diff.
 - Do rerun ignored full-suite probes after each fix and re-prioritize against the new first deterministic failure family.
 - Do implement `LT`/`GT`/`SLT`/`SGT` with execution-spec operand order (`top` stack item compared against `next`), not reversed order.
 - Do validate comparison-opcode behavior with compiler-generated control flow (for example, `gt(calldataload(4), 0)` loop guards), not only isolated opcode pushes.
@@ -65,6 +67,7 @@
 - Don't charge call stipend as caller-consumed gas; stipend extends child budget only.
 - Don't treat `msg.value != 0` as sufficient to transfer ETH in host calls; call semantics require an explicit transfer flag.
 - Don't drop successful child warm accesses when returning to the parent frame; later accesses will be overcharged as cold.
+- Don't drop successful child-frame logs at call boundaries; return-data propagation alone is insufficient for receipt-root correctness.
 - Don't map recursive `REVERT` to full forwarded gas burn; that conflates revert semantics with out-of-gas.
 - Don't charge LOG base gas in both opcode dispatch and `log_gas_cost`; that deterministically overcharges every LOG by `375`.
 - Don't treat solved failure families as the current bottleneck without rerunning the ignored suite to confirm the frontier moved.
