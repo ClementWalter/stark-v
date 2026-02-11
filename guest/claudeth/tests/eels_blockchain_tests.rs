@@ -1570,6 +1570,35 @@ fn test_extcodehash_deleted_account_dynamic_prague_fixture() {
     );
 }
 
+fn assert_create_transaction_reverted_case(case_name: &str) {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcStateTests/CreateTransactionReverted.json",
+    );
+    let case = load_single_blockchain_case(fixture_path, case_name);
+    let (final_state, _results) = execute_blockchain_case(case_name, &case)
+        .expect("CreateTransactionReverted fixture should execute");
+    validate_post_state(&final_state, &case.pre, &case.post_state)
+        .expect("CreateTransactionReverted post-state should match fixture");
+}
+
+#[test]
+fn test_create_transaction_reverted_cancun_fixture() {
+    // Why: this fixture catches top-level CREATE nonce/account persistence
+    // semantics on the successful deployment path.
+    assert_create_transaction_reverted_case(
+        "BlockchainTests/InvalidBlocks/bcStateTests/CreateTransactionReverted.json::CreateTransactionReverted_Cancun",
+    );
+}
+
+#[test]
+fn test_create_transaction_reverted_prague_fixture() {
+    // Why: Prague coverage keeps CREATE state semantics aligned at the latest
+    // supported fork.
+    assert_create_transaction_reverted_case(
+        "BlockchainTests/InvalidBlocks/bcStateTests/CreateTransactionReverted.json::CreateTransactionReverted_Prague",
+    );
+}
+
 #[test]
 fn test_block_processing_error_summary_omits_large_return_data_payloads() {
     let transaction_results = vec![TransactionExecutionResult {

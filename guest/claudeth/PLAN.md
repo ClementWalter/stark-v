@@ -6,12 +6,13 @@ Last reviewed: 2026-02-11
 
 - `cargo test -p claudeth --release` passes.
 - Full EELS blockchain sweep is still non-gating (`test_execute_all_blockchain_tests` is `#[ignore]`).
-- Latest ignored full-suite probe (2026-02-11) confirms an immediate deterministic Prague mismatch:
-  - `BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json::UncleFromSideChain_Prague`
-  - `GasUsedMismatch`: expected `42160`, computed `42064` (delta `96`).
-- Execution-spec reference (`execution-specs/src/ethereum/forks/prague`) requires EIP-7623 calldata floor charging:
-  - validation requires `tx.gas >= max(intrinsic_gas, calldata_floor_gas_cost)`;
-  - post-execution gas used is floored with `max(gas_used_after_refund, calldata_floor_gas_cost)`.
+- Fresh ignored-suite probe after this turn’s CREATE fix shows:
+  - `CreateTransactionReverted` Cancun/Prague now pass.
+  - first remaining deterministic failures are gas deltas in withdrawal fixtures:
+    - `BlockchainTests/InvalidBlocks/bc4895-withdrawals/accountInteractions.json::{..._Cancun,..._Prague}`
+      - `GasUsedMismatch`: expected `77427`, computed `79727` (delta `+2300`)
+    - `BlockchainTests/InvalidBlocks/bc4895-withdrawals/warmup.json::{..._Cancun,..._Prague}`
+      - `GasUsedMismatch`: expected `1186133`, computed `1242533` (delta `+56400`)
 - Known explicit implementation gaps still present:
   - precompile `0x0a` point-evaluation not implemented;
   - precompile `0x08` non-trivial pairing still intentionally unsupported.
@@ -40,107 +41,109 @@ What:
 How:
 - Updated trie reference encoding threshold behavior and withdrawal key construction.
 
-### C. Baseline EELS Harness Stability
+### C. Prague EIP-7623 Calldata Floor Gas Rules
 
 Why:
-- Full ignored runs previously aborted before yielding useful failure diagnostics.
+- Prague gas accounting mismatched without calldata-floor validation/flooring.
 
 What:
-- Bounded block-error summaries and increased full-suite runner stack.
+- Implemented floor-gas validation and post-refund floor application.
 
 How:
-- Added compact transaction-summary formatting and ran ignored sweep in large-stack thread.
+- Added floor helpers, enforced `max(intrinsic_gas, calldata_floor_gas_cost)`, and floored final gas used.
+
+### D. Top-Level CREATE Success/Failure State Semantics
+
+Why:
+- `CreateTransactionReverted` fixtures failed with state-root mismatch due top-level CREATE state handling.
+
+What:
+- Aligned top-level CREATE semantics with execution-spec for created-account nonce and failure behavior.
+
+How:
+- Incremented created account nonce to `1` only on successful deployment.
+- Returned `contract_address = None` on failed top-level CREATE.
+- Ensured failed create paths return pre-execution state snapshot.
+- Added Cancun/Prague fixture regressions for `CreateTransactionReverted`.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, FIRST): Implement Prague EIP-7623 Calldata Floor Gas Rules
+### Task 1 (P0, FIRST): Fix Withdrawal-Family Gas Deltas (`accountInteractions`, `warmup`)
 
 Why:
-- Current first deterministic failure is Prague-only and exactly matches missing floor-gas semantics (`+96` on 4 non-zero calldata bytes).
-- Without this, Prague gas accounting diverges across many fixtures.
+- This is the first deterministic failure family in the latest ignored-suite probe.
+- `+2300`/`+56400` deltas indicate systemic gas-accounting divergence, not fixture noise.
 
 What:
-- Implement EIP-7623 calldata floor gas behavior in transaction validation and final gas accounting.
+- Eliminate gas overcharge in `bc4895-withdrawals` failing cases for Cancun/Prague.
 
 How:
-- Add calldata-token/floor-gas helpers.
-- Enforce `gas_limit >= max(intrinsic_gas, calldata_floor_gas_cost)` for Prague blocks.
-- Apply post-refund floor: `final_gas_used = max(final_gas_used, calldata_floor_gas_cost)`.
-- Add focused regression tests, including `UncleFromSideChain_Prague`.
+- Read fixture transactions and execution-spec reference gas paths for touched opcodes.
+- Diff per-transaction gas components against expected deltas.
+- Patch one coherent rule family (warm/cold/touch/access interaction) and add focused regressions for both fixtures.
 
-### Task 2 (P0): Fix Remaining CREATE Transaction State Semantics
+### Task 2 (P0): Close Remaining GasUsedMismatch Families After Task 1
 
 Why:
-- Prior full-suite baselines include deterministic CREATE-related root mismatches (`CreateTransactionReverted` family).
+- Gas mismatches are still the dominant blocker before hard-gating full-suite conformance.
 
 What:
-- Align contract-creation nonce/account persistence semantics on all success/failure paths.
+- Remove residual gas accounting divergences outside the withdrawal family.
 
 How:
-- Reproduce with targeted fixtures, diff against execution-spec state transitions, and add focused nonce/account regression tests.
+- Re-run ignored suite, cluster by delta signature and fixture family, patch rule-by-rule with fixture regressions.
 
-### Task 3 (P0): Close Residual Gas Deltas in Cancun/Prague Fixtures
+### Task 3 (P0): Resolve Residual Valid-Block State Root Mismatches
 
 Why:
-- `GasUsedMismatch` remains the dominant unresolved class after branch-handling fixes.
+- Any valid-block state-root mismatch is consensus-critical.
 
 What:
-- Eliminate remaining discrepancies in per-tx gas accounting beyond EIP-7623.
+- Remove remaining state transition divergences after gas accounting stabilizes.
 
 How:
-- Cluster failures by delta signature and fixture family, patch one rule-family at a time, and add fixture regressions per patch.
+- Start from smallest failing valid fixtures and compare account/storage/code deltas against execution-spec outcomes.
 
-### Task 4 (P0): Resolve Remaining Valid-Block State Root Mismatches
-
-Why:
-- Any valid-block root mismatch is consensus-critical.
-
-What:
-- Remove remaining state-transition divergences after gas alignment.
-
-How:
-- Start from smallest failing valid fixtures and compare per-account/storage/code deltas against execution-spec outcomes.
-
-### Task 5 (P0): Implement Precompile `0x0a` Point Evaluation
+### Task 4 (P0): Implement Precompile `0x0a` Point Evaluation
 
 Why:
-- Cancun/Prague conformance remains incomplete while this precompile is intentionally unimplemented.
+- Cancun/Prague conformance is incomplete while point-evaluation precompile remains unimplemented.
 
 What:
-- Implement full point-evaluation semantics with validation and gas behavior.
+- Implement point-evaluation semantics, validation, and gas behavior.
 
 How:
 - Port execution-spec behavior and add success/failure/malformed/OOG vectors.
 
-### Task 6 (P0): Implement Full Non-Trivial BN254 Pairing (`0x08`)
+### Task 5 (P0): Implement Full Non-Trivial BN254 Pairing (`0x08`)
 
 Why:
-- Current implementation intentionally rejects non-trivial tuples.
+- Current pairing implementation intentionally rejects non-trivial tuples.
 
 What:
-- Implement full pairing product verification and canonical outputs.
+- Implement complete pairing product verification and canonical output behavior.
 
 How:
-- Implement complete tuple handling/validation and add multi-tuple conformance vectors.
+- Add full tuple parsing/validation/execution with multi-tuple conformance tests.
 
-### Task 7 (P0): Make Full EELS Blockchain Suite a Hard Gate
+### Task 6 (P0): Make Full EELS Blockchain Suite a Hard Gate
 
 Why:
-- README claims full EELS compatibility, but the only global compatibility check is still ignored.
+- README claims full EELS compatibility, but global compatibility test is still ignored.
 
 What:
-- Turn ignored full-suite runner into a mandatory zero-failure test.
+- Turn full-suite runner into mandatory zero-failure coverage.
 
 How:
-- After Tasks 1-6 land, remove `#[ignore]` and assert `failed == 0 && errors == 0`.
+- After Tasks 1-5 land, remove `#[ignore]` and assert `failed == 0 && errors == 0`.
 
-### Task 8 (P1): Enforce Native vs RV32 Deterministic Parity Gate
+### Task 7 (P1): Enforce Native vs RV32 Deterministic Parity Gate
 
 Why:
-- Dual-target claim needs automated parity enforcement.
+- The dual-target claim needs automated parity enforcement.
 
 What:
 - Add deterministic native/RV32 parity checks over curated fixtures.
 
 How:
-- Add reproducible driver and gate in CI once stable.
+- Build reproducible parity driver and gate it once stable.

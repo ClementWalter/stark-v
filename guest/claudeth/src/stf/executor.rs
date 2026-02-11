@@ -595,7 +595,6 @@ fn execute_create<S: State + Clone>(
     match result {
         Ok((exec_result, mut returned_state)) => {
             let mut final_gas_used = exec_result.gas_used;
-            let success = exec_result.success;
 
             if exec_result.success {
                 if !exec_result.return_data.is_empty() && exec_result.return_data[0] == 0xEF {
@@ -608,7 +607,7 @@ fn execute_create<S: State + Clone>(
                         Vec::new(),
                         None,
                         exec_result.gas_trace,
-                        returned_state,
+                        state_before_exec,
                     ));
                 }
 
@@ -624,7 +623,7 @@ fn execute_create<S: State + Clone>(
                         Vec::new(),
                         None,
                         exec_result.gas_trace,
-                        returned_state,
+                        state_before_exec,
                     ));
                 }
 
@@ -633,6 +632,10 @@ fn execute_create<S: State + Clone>(
                 if gas_remaining >= code_deposit_cost {
                     // Charge the code deposit gas and deploy the contract
                     final_gas_used = final_gas_used.saturating_add(code_deposit_cost);
+                    // Why: newly created accounts must have nonce=1 after a
+                    // successful creation. This happens only on the successful
+                    // commit path and must not leak into failed creations.
+                    returned_state.increment_nonce(&contract_address);
                     returned_state.set_code(&contract_address, exec_result.return_data.clone());
                 } else {
                     // Out of gas during code deposit - consume all remaining gas
@@ -644,20 +647,31 @@ fn execute_create<S: State + Clone>(
                         Vec::new(),
                         None,
                         exec_result.gas_trace,
-                        returned_state,
+                        state_before_exec,
                     ));
                 }
+
+                return Ok((
+                    true,
+                    final_gas_used,
+                    exec_result.gas_refund,
+                    exec_result.return_data,
+                    convert_logs(exec_result.logs),
+                    Some(contract_address),
+                    exec_result.gas_trace,
+                    returned_state,
+                ));
             }
 
             Ok((
-                success,
+                false,
                 final_gas_used,
                 exec_result.gas_refund,
                 exec_result.return_data,
                 convert_logs(exec_result.logs),
-                Some(contract_address),
+                None,
                 exec_result.gas_trace,
-                returned_state,
+                state_before_exec,
             ))
         }
         Err(_) => Ok((
@@ -1217,7 +1231,7 @@ mod tests {
             logs,
             contract_address,
             _gas_trace,
-            _state,
+            state,
         ) = result.unwrap();
 
         assert!(success);
@@ -1228,6 +1242,7 @@ mod tests {
         // Verify contract was created
         let addr = contract_address.unwrap();
         assert_ne!(addr, Address::ZERO);
+        assert_eq!(state.get_nonce(&addr), U256::ONE);
     }
 
     #[test]
@@ -1263,7 +1278,7 @@ mod tests {
         let result = execute_create(&tx, state, &sender, contexts, 100000);
 
         assert!(result.is_ok());
-        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, _state) =
+        let (success, _, _gas_refund, _, logs, contract_address, _gas_trace, state) =
             result.unwrap();
 
         assert!(success);
@@ -1273,6 +1288,62 @@ mod tests {
         // Contract address should be computed deterministically
         let addr = contract_address.unwrap();
         assert_ne!(addr, Address::ZERO);
+        assert_eq!(state.get_nonce(&addr), U256::ONE);
+    }
+
+    #[test]
+    fn test_execute_create_revert_restores_pre_execution_state() {
+        let mut state = InMemoryState::new();
+        let block_ctx = BlockContext::default();
+        let tx_ctx = TxContext::default();
+        let contexts = ExecutionContexts {
+            block_ctx: &block_ctx,
+            parent_hash: Hash::ZERO,
+            block_hashes: &[],
+            tx_ctx: &tx_ctx,
+        };
+
+        let sender = Address::from([0x01; 20]);
+        state.set_balance(&sender, U256::from_u64(1_000_000));
+        state.increment_nonce(&sender); // Sender nonce is incremented in pre-execution.
+
+        // Init code that immediately REVERTs with empty data.
+        let init_code = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
+        let tx = Transaction::Legacy(LegacyTransaction {
+            nonce: U256::ZERO,
+            gas_price: U256::from_u64(1),
+            gas_limit: U256::from_u64(100000),
+            to: None,
+            value: U256::ZERO,
+            data: Bytes::from(init_code),
+            v: U256::from_u64(27),
+            r: U256::ONE,
+            s: U256::ONE,
+        });
+
+        let result = execute_create(&tx, state, &sender, contexts, 100000);
+
+        assert!(result.is_ok());
+        let (
+            success,
+            _gas_used,
+            _gas_refund,
+            _return_data,
+            logs,
+            contract_address,
+            _gas_trace,
+            state,
+        ) = result.unwrap();
+
+        assert!(!success);
+        assert!(logs.is_empty());
+        assert!(contract_address.is_none());
+
+        // Why: failed contract creation must not persist created-account
+        // nonce/code mutations.
+        let expected_address = compute_create_address(&sender, U256::ZERO);
+        assert_eq!(state.get_nonce(&expected_address), U256::ZERO);
+        assert!(state.get_code(&expected_address).is_empty());
     }
 
     #[test]

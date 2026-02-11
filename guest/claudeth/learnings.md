@@ -14,7 +14,10 @@
 - Do warm recursive `CALL*`/`CREATE*` frames with tx-level baseline addresses (origin, coinbase, precompiles, frame addresses) before execution.
 - Do mark CREATE/CREATE2 destination addresses warm before executing init code so immediate post-create account opcodes are charged warm.
 - Do increment creator nonce for recursive CREATE/CREATE2 attempts that pass prechecks, and set created-account nonce to `1` on the successful creation path.
+- Do increment the top-level create-transaction destination account nonce to `1` only on successful deployment commit.
+- Do return `contract_address = None` and pre-execution state for failed top-level CREATE paths (revert/exceptional-halt/code-deposit failure).
 - Do add focused fixture regressions for each failing family before broader suite reruns.
+- Do rerun the ignored full-suite probe after each fix until the new first deterministic `✗` is observed.
 - Do summarize `BlockProcessingError` with bounded, high-signal fields (expected/computed deltas + compact tx gas summaries) during full-suite fixture loops.
 - Do execute the ignored full EELS sweep in a dedicated large-stack thread so deep fixture paths can finish and report actionable failures.
 - Do implement Prague EIP-7623 as a calldata-floor rule (`max(gas_used_after_refund, calldata_floor_gas_cost)`), not as a replacement for intrinsic gas.
@@ -33,6 +36,8 @@
 - Don't treat `EXTCODEHASH` of a dead account as `keccak256("")`.
 - Don't assume top-level warm initialization automatically carries into child recursive executions.
 - Don't compute recursive CREATE addresses with `caller_nonce - 1`; use the caller nonce before increment for CREATE address derivation.
+- Don't report a contract address for failed top-level CREATE executions.
+- Don't leak failed top-level CREATE init-code side effects through helper return state.
 - Don't stop at the first `GasUsedMismatch`: fixing gas can expose the next deterministic layer (`StateRootMismatch`) immediately.
 - Don't dump full `{:?}` transaction payloads (especially large `return_data`) inside fixture failure messages.
 - Don't assume default Rust test-thread stack is sufficient for the largest historical blockchain fixtures.
