@@ -1177,11 +1177,223 @@ fn test_recent_block_hash_window_orders_from_oldest_to_newest() {
     );
 }
 
+type CaseExecutionOutput = (InMemoryState, Vec<claudeth::stf::BlockProcessingResult>);
+
+fn execute_blockchain_case(
+    test_name: &str,
+    test_case: &BlockchainTest,
+) -> Result<CaseExecutionOutput, String> {
+    use claudeth::stf::process_block;
+    let _ = test_name;
+
+    // Why: forked fixtures contain branch switches (A -> B). Selecting parent
+    // headers by hash without selecting parent state by hash executes blocks on
+    // the wrong branch and creates false nonce/gas/state mismatches.
+    let mut genesis_state = InMemoryState::new();
+    apply_pre_state(&mut genesis_state, &test_case.pre)?;
+
+    let chain_id = parse_u256(&test_case.config.chainid)?;
+
+    let genesis_header = convert_test_block_header(&test_case.genesis_block_header)?;
+    let genesis_hash = genesis_header.compute_hash();
+
+    let mut headers_by_hash = HashMap::new();
+    headers_by_hash.insert(genesis_hash, genesis_header);
+
+    let mut states_by_hash = HashMap::new();
+    states_by_hash.insert(genesis_hash, genesis_state);
+
+    let mut block_results = Vec::new();
+
+    for (block_idx, test_block) in test_case.blocks.iter().enumerate() {
+        let expects_exception = test_block.expect_exception.is_some();
+
+        if test_block.block_header.is_none() {
+            if expects_exception {
+                continue;
+            }
+            return Err(format!(
+                "Block {block_idx}: Missing block header without expectException marker"
+            ));
+        }
+
+        let block_header = convert_test_block_header(
+            test_block
+                .block_header
+                .as_ref()
+                .expect("checked block_header presence"),
+        )?;
+
+        let parent_header = match resolve_parent_header(&block_header, &headers_by_hash) {
+            Some(parent) => parent,
+            None => {
+                if expects_exception {
+                    continue;
+                }
+                return Err(format!(
+                    "Block {block_idx}: parent header not found for parent hash {}",
+                    block_header.parent_hash
+                ));
+            }
+        };
+
+        let parent_state = match states_by_hash.get(&block_header.parent_hash) {
+            Some(state) => state,
+            None => {
+                if expects_exception {
+                    continue;
+                }
+                return Err(format!(
+                    "Block {block_idx}: parent state not found for parent hash {}",
+                    block_header.parent_hash
+                ));
+            }
+        };
+
+        let recent_block_hashes =
+            collect_recent_block_hashes(block_header.parent_hash, &headers_by_hash);
+
+        let transactions: Result<Vec<_>, String> = test_block
+            .transactions
+            .iter()
+            .enumerate()
+            .map(|(tx_idx, tx)| {
+                convert_test_transaction(tx).map_err(|e| {
+                    format!("Block {block_idx}, tx {tx_idx}: Failed to convert transaction: {e}")
+                })
+            })
+            .collect();
+        let transactions = transactions?;
+
+        let withdrawals: Vec<claudeth::types::Withdrawal> = test_block
+            .withdrawals
+            .iter()
+            .enumerate()
+            .map(|(wd_idx, wd)| {
+                convert_test_withdrawal(wd).map_err(|e| {
+                    format!("Block {block_idx}, withdrawal {wd_idx}: Failed to convert withdrawal: {e}")
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut candidate_state = parent_state.clone();
+
+        match process_block(
+            &block_header,
+            parent_header,
+            &transactions,
+            &withdrawals,
+            &recent_block_hashes,
+            &mut candidate_state,
+            chain_id,
+        ) {
+            Ok(result) => {
+                if expects_exception {
+                    return Err(format!(
+                        "Block {block_idx}: Expected exception `{}` but execution succeeded",
+                        test_block
+                            .expect_exception
+                            .as_deref()
+                            .unwrap_or("<missing>")
+                    ));
+                }
+                let block_hash = block_header.compute_hash();
+                headers_by_hash.insert(block_hash, block_header);
+                states_by_hash.insert(block_hash, candidate_state);
+                block_results.push(result);
+            }
+            Err(e) => {
+                if expects_exception {
+                    // Invalid blocks are expected to fail and must not update
+                    // canonical header/state indexes.
+                    continue;
+                }
+
+                if matches!(
+                    e,
+                    claudeth::stf::BlockProcessingError::TransactionExecutionError(_)
+                ) {
+                    dump_transaction_disassembly(test_block);
+                }
+
+                #[cfg(feature = "evm-trace")]
+                {
+                    let tx_results = match &e {
+                        claudeth::stf::BlockProcessingError::GasUsedMismatch {
+                            transaction_results,
+                            ..
+                        } => Some(transaction_results),
+                        claudeth::stf::BlockProcessingError::ReceiptsRootMismatch {
+                            transaction_results,
+                            ..
+                        } => Some(transaction_results),
+                        claudeth::stf::BlockProcessingError::StateRootMismatch {
+                            transaction_results,
+                            ..
+                        } => Some(transaction_results),
+                        claudeth::stf::BlockProcessingError::TransactionsRootMismatch {
+                            transaction_results,
+                            ..
+                        } => Some(transaction_results),
+                        claudeth::stf::BlockProcessingError::LogsBloomMismatch {
+                            transaction_results,
+                            ..
+                        } => Some(transaction_results),
+                        claudeth::stf::BlockProcessingError::GasLimitExceeded {
+                            transaction_results,
+                            ..
+                        } => Some(transaction_results),
+                        _ => None,
+                    };
+
+                    if let Some(results) = tx_results {
+                        for (tx_idx, tx_result) in results.iter().enumerate() {
+                            if let Some(trace) = tx_result.gas_trace.as_ref() {
+                                eprintln!(
+                                    "Gas trace for {test_name} block {block_idx} tx {tx_idx}:"
+                                );
+                                eprintln!("{}", trace.format());
+                            }
+                        }
+                    }
+                }
+
+                return Err(format!("Block {block_idx}: Execution failed: {e:?}"));
+            }
+        }
+    }
+
+    let expected_head_hash = claudeth::types::Hash::from_str(&test_case.last_block_hash)
+        .map_err(|err| format!("invalid lastblockhash {}: {err}", test_case.last_block_hash))?;
+    let final_state = states_by_hash.get(&expected_head_hash).cloned().ok_or_else(|| {
+        format!(
+            "final state for expected last block hash {} not found",
+            test_case.last_block_hash
+        )
+    })?;
+
+    Ok((final_state, block_results))
+}
+
+#[test]
+fn test_multi_chain_fixture_state_selection_uses_parent_hash_not_linear_order() {
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json",
+    );
+    let case = load_single_blockchain_case(
+        fixture_path,
+        "BlockchainTests/InvalidBlocks/bcMultiChainTest/UncleFromSideChain.json::UncleFromSideChain_Cancun",
+    );
+
+    // This case switches from chain A to chain B at height 1. If state is
+    // tracked linearly by loop order, chain B block 1 fails with NonceTooLow.
+    execute_blockchain_case("UncleFromSideChain_Cancun", &case)
+        .expect("branching fixture should execute with hash-indexed parent state");
+}
+
 #[test]
 #[ignore] // Run with --ignored to execute all EELS tests
 fn test_execute_all_blockchain_tests() {
-    use claudeth::stf::process_block;
-
     let tests = discover_blockchain_tests();
     if tests.is_empty() {
         eprintln!("No EELS tests found - skipping test");
@@ -1209,202 +1421,31 @@ fn test_execute_all_blockchain_tests() {
 
         for (test_name, test_case) in test_cases {
             total_tests += 1;
-
-            // Initialize state from pre
-            let mut state = InMemoryState::new();
-            if let Err(e) = apply_pre_state(&mut state, &test_case.pre) {
-                eprintln!("✗ {test_name}: Failed to apply pre-state: {e}");
-                errors += 1;
-                continue;
-            }
-
-            // Parse chain ID from config
-            let chain_id = match parse_u256(&test_case.config.chainid) {
-                Ok(id) => id,
-                Err(e) => {
-                    eprintln!("✗ {test_name}: Failed to parse chain_id: {e}");
-                    errors += 1;
-                    continue;
-                }
-            };
-
-            // Execute blocks sequentially while resolving parent headers by hash.
-            // Blockchain fixtures may include forks (chain A / B), so relying on
-            // previous loop iteration for parent selection is incorrect.
-            let genesis_header = match convert_test_block_header(&test_case.genesis_block_header) {
-                Ok(h) => h,
-                Err(e) => {
-                    eprintln!("✗ {test_name}: Failed to convert genesis header: {e}");
-                    errors += 1;
-                    continue;
-                }
-            };
-            let genesis_hash = genesis_header.compute_hash();
-            let mut headers_by_hash = HashMap::new();
-            headers_by_hash.insert(genesis_hash, genesis_header);
-
-            let mut test_failed = false;
-            let mut failure_reason = String::new();
-
-            let mut block_results = Vec::new();
-
-            for (block_idx, test_block) in test_case.blocks.iter().enumerate() {
-                let expects_exception = test_block.expect_exception.is_some();
-
-                // Invalid blocks may omit a decoded header in fixtures. If an
-                // exception is expected, this is a successful invalid-case path.
-                if test_block.block_header.is_none() {
-                    if expects_exception {
+            let (final_state, block_results) =
+                match execute_blockchain_case(&test_name, &test_case) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        eprintln!("✗ {test_name}: {e}");
+                        failed += 1;
                         continue;
                     }
-                    failure_reason = format!(
-                        "Block {block_idx}: Missing block header without expectException marker"
-                    );
-                    test_failed = true;
-                    break;
+                };
+            #[cfg(not(feature = "evm-trace"))]
+            let _ = &block_results;
+
+            match validate_post_state(&final_state, &test_case.pre, &test_case.post_state) {
+                Ok(()) => {
+                    println!("✓ {test_name}");
+                    passed += 1;
                 }
-
-                let block_header =
-                    match convert_test_block_header(test_block.block_header.as_ref().unwrap()) {
-                        Ok(h) => h,
-                        Err(e) => {
-                            failure_reason =
-                                format!("Block {block_idx}: Failed to convert header: {e}");
-                            test_failed = true;
-                            break;
-                        }
-                    };
-
-                let parent_header = match resolve_parent_header(&block_header, &headers_by_hash) {
-                    Some(parent) => parent,
-                    None => {
-                        if expects_exception {
-                            continue;
-                        }
-                        failure_reason = format!(
-                            "Block {block_idx}: parent header not found for parent hash {}",
-                            block_header.parent_hash
-                        );
-                        test_failed = true;
-                        break;
-                    }
-                };
-
-                let recent_block_hashes =
-                    collect_recent_block_hashes(block_header.parent_hash, &headers_by_hash);
-
-                // Convert transactions
-                let transactions: Result<Vec<_>, String> = test_block
-                    .transactions
-                    .iter()
-                    .enumerate()
-                    .map(|(tx_idx, tx)| {
-                        convert_test_transaction(tx).map_err(|e| {
-                            format!(
-                                "Block {block_idx}, tx {tx_idx}: Failed to convert transaction: {e}"
-                            )
-                        })
-                    })
-                    .collect();
-
-                let transactions = match transactions {
-                    Ok(txs) => txs,
-                    Err(e) => {
-                        failure_reason = e;
-                        test_failed = true;
-                        break;
-                    }
-                };
-
-                // Execute block with fixture withdrawals so withdrawals_root checks
-                // are evaluated against the same body the fixture encodes.
-                let withdrawals: Vec<claudeth::types::Withdrawal> = match test_block
-                    .withdrawals
-                    .iter()
-                    .enumerate()
-                    .map(|(wd_idx, wd)| {
-                        convert_test_withdrawal(wd).map_err(|e| {
-                            format!(
-                                "Block {block_idx}, withdrawal {wd_idx}: Failed to convert withdrawal: {e}"
-                            )
-                        })
-                    })
-                    .collect()
-                {
-                    Ok(withdrawals) => withdrawals,
-                    Err(e) => {
-                        failure_reason = e;
-                        test_failed = true;
-                        break;
-                    }
-                };
-
-                match process_block(
-                    &block_header,
-                    parent_header,
-                    &transactions,
-                    &withdrawals,
-                    &recent_block_hashes,
-                    &mut state,
-                    chain_id,
-                ) {
-                    Ok(result) => {
-                        if expects_exception {
-                            failure_reason = format!(
-                                "Block {block_idx}: Expected exception `{}` but execution succeeded",
-                                test_block
-                                    .expect_exception
-                                    .as_deref()
-                                    .unwrap_or("<missing>")
-                            );
-                            test_failed = true;
-                            break;
-                        }
-                        headers_by_hash.insert(block_header.compute_hash(), block_header);
-                        block_results.push(result);
-                    }
-                    Err(e) => {
-                        if expects_exception {
-                            // Invalid blocks are expected to fail execution and
-                            // should not advance the canonical parent header.
-                            continue;
-                        }
-
-                        // Extract transaction results from error for debugging
-                        #[cfg(feature = "evm-trace")]
-                        let tx_results = match &e {
-                            claudeth::stf::BlockProcessingError::GasUsedMismatch {
-                                transaction_results,
-                                ..
-                            } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::ReceiptsRootMismatch {
-                                transaction_results,
-                                ..
-                            } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::StateRootMismatch {
-                                transaction_results,
-                                ..
-                            } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::TransactionsRootMismatch {
-                                transaction_results,
-                                ..
-                            } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::LogsBloomMismatch {
-                                transaction_results,
-                                ..
-                            } => Some(transaction_results),
-                            claudeth::stf::BlockProcessingError::GasLimitExceeded {
-                                transaction_results,
-                                ..
-                            } => Some(transaction_results),
-                            _ => None,
-                        };
-
-                        failure_reason = format!("Block {block_idx}: Execution failed: {e:?}");
-
-                        #[cfg(feature = "evm-trace")]
-                        if let Some(results) = tx_results {
-                            for (tx_idx, tx_result) in results.iter().enumerate() {
+                Err(e) => {
+                    eprintln!("✗ {test_name}: Post-state mismatch: {e}");
+                    #[cfg(feature = "evm-trace")]
+                    {
+                        for (block_idx, block_result) in block_results.iter().enumerate() {
+                            for (tx_idx, tx_result) in
+                                block_result.transaction_results.iter().enumerate()
+                            {
                                 if let Some(trace) = tx_result.gas_trace.as_ref() {
                                     eprintln!(
                                         "Gas trace for {test_name} block {block_idx} tx {tx_idx}:"
@@ -1413,47 +1454,8 @@ fn test_execute_all_blockchain_tests() {
                                 }
                             }
                         }
-
-                        if matches!(
-                            e,
-                            claudeth::stf::BlockProcessingError::TransactionExecutionError(_)
-                        ) {
-                            dump_transaction_disassembly(test_block);
-                        }
-                        test_failed = true;
-                        break;
                     }
-                }
-            }
-
-            if test_failed {
-                eprintln!("✗ {test_name}: {failure_reason}");
-                failed += 1;
-            } else {
-                match validate_post_state(&state, &test_case.pre, &test_case.post_state) {
-                    Ok(()) => {
-                        println!("✓ {test_name}");
-                        passed += 1;
-                    }
-                    Err(e) => {
-                        eprintln!("✗ {test_name}: Post-state mismatch: {e}");
-                        #[cfg(feature = "evm-trace")]
-                        {
-                            for (block_idx, block_result) in block_results.iter().enumerate() {
-                                for (tx_idx, tx_result) in
-                                    block_result.transaction_results.iter().enumerate()
-                                {
-                                    if let Some(trace) = tx_result.gas_trace.as_ref() {
-                                        eprintln!(
-                                            "Gas trace for {test_name} block {block_idx} tx {tx_idx}:"
-                                        );
-                                        eprintln!("{}", trace.format());
-                                    }
-                                }
-                            }
-                        }
-                        failed += 1;
-                    }
+                    failed += 1;
                 }
             }
         }

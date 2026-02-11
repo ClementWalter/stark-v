@@ -9,7 +9,10 @@ Last reviewed: 2026-02-11
 - Latest complete full-suite baseline (from the last completed ignored run):
   - command: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
   - totals: `Total: 1142`, `Passed: 898`, `Failed: 244`, `Errors: 0`
-- A fresh rerun was started on 2026-02-11 and inspected mid-run; it confirmed the same dominant failure classes (`GasUsedMismatch`, then `StateRootMismatch`) and repeated SELFDESTRUCT-heavy undercharge patterns.
+- A fresh rerun on 2026-02-11 revealed an additional deterministic harness issue before deep gas/root analysis:
+  - forked fixtures (for example `bcMultiChainTest/UncleFromSideChain`) still reuse a single mutable state across branches;
+  - parent headers are selected by hash, but parent state is still selected implicitly by loop order;
+  - this causes false `NonceTooLow` validation failures on otherwise non-exception branch blocks.
 - Deterministic implementation gaps currently visible in code:
   - `SELFDESTRUCT` dynamic gas now includes execution-spec cold-beneficiary and new-account surcharges.
   - precompile `0x0a` (point evaluation) is still unimplemented.
@@ -82,12 +85,28 @@ How:
 - Added interpreter regressions for cold/warm beneficiary behavior and zero/non-zero originator balances.
 - Validated with `cargo test -p claudeth --release test_selfdestruct` and full `cargo test -p claudeth --release`.
 
-## Priority Backlog (Why / What / How)
-
-### Task 6 (P0, FIRST): Systematically Eliminate Remaining Gas Accounting Divergences
+### Task 6 (DONE): Resolve Parent-State Selection for Forked Blockchain Fixtures
 
 Why:
-- `GasUsedMismatch` remains the dominant failure class after harness, trie, withdrawals, and SELFDESTRUCT-gas fixes.
+- Forked fixtures were still mutating one linear state, creating false failures
+  on branch pivots (`NonceTooLow` on non-exception blocks).
+
+What:
+- Added hash-indexed parent-state selection in the EELS harness.
+- Validated final post-state against fixture `lastblockhash` snapshot.
+- Added a regression for `bcMultiChainTest/UncleFromSideChain`.
+
+How:
+- Introduced per-block `HashMap<Hash, InMemoryState>` snapshots keyed by executed block hash.
+- Executed each block against a clone of its resolved parent state by `parent_hash`.
+- Ensured expected-invalid blocks do not advance header or state indexes.
+
+## Priority Backlog (Why / What / How)
+
+### Task 7 (P0, FIRST): Systematically Eliminate Remaining Gas Accounting Divergences
+
+Why:
+- `GasUsedMismatch` remains a dominant post-harness failure class and blocks full fixture parity.
 
 What:
 - Close remaining gas-rule deltas across CALL-family accounting, refunds, memory expansion, and opcode-specific dynamic costs.
@@ -97,7 +116,7 @@ How:
 - Fix one family at a time with execution-spec cross-checks.
 - Add fixture-linked regressions for every patched family.
 
-### Task 7 (P0): Resolve `StateRootMismatch` on Valid Fixtures
+### Task 8 (P0): Resolve `StateRootMismatch` on Valid Fixtures
 
 Why:
 - Any valid-block state root mismatch is a consensus-level STF deviation.
@@ -110,7 +129,7 @@ How:
 - Diff account/storage/code transitions against execution-spec expectations.
 - Add deterministic post-state-root regression tests.
 
-### Task 8 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
+### Task 9 (P0): Implement Precompile `0x0a` Point Evaluation (EIP-4844)
 
 Why:
 - Cancun/Prague conformance requires this precompile.
@@ -122,7 +141,7 @@ How:
 - Follow execution-spec `point_evaluation.py` semantics exactly.
 - Add tests for valid proof, invalid proof, malformed input, and OOG paths.
 
-### Task 9 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
+### Task 10 (P0): Complete Non-Trivial ALT_BN128 Pairing (`0x08`)
 
 Why:
 - Current implementation intentionally fails non-trivial tuples, breaking pairing coverage.
@@ -134,7 +153,7 @@ How:
 - Port execution-spec-compatible pairing checks and arithmetic flow.
 - Add multi-tuple valid and invalid regression vectors.
 
-### Task 10 (P0): Make Full EELS Blockchain Test a Hard Gate
+### Task 11 (P0): Make Full EELS Blockchain Test a Hard Gate
 
 Why:
 - Compatibility claims are not defensible while full suite execution is ignored.
@@ -146,7 +165,7 @@ How:
 - Remove `#[ignore]` once P0 functional gaps are closed.
 - Enforce `failed == 0 && errors == 0` in test assertions.
 
-### Task 11 (P1): Enforce Native vs RV32 Parity on Curated Fixtures
+### Task 12 (P1): Enforce Native vs RV32 Parity on Curated Fixtures
 
 Why:
 - README claims dual-target execution but parity is not currently auto-verified.
@@ -158,7 +177,7 @@ How:
 - Add a `uv run` PEP 723 Python driver that runs both targets and diffs outcomes.
 - Gate this parity command in CI when stable.
 
-### Task 12 (P1): Align README Claims with Enforced Guarantees
+### Task 13 (P1): Align README Claims with Enforced Guarantees
 
 Why:
 - Public claims must match what tests actually enforce.
