@@ -84,6 +84,7 @@ words:
   - immediates
   - initcode
   - initialisation
+  - inlines
   - inplace
   - insn
   - intermed

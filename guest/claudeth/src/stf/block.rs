@@ -19,18 +19,16 @@ use std::vec::Vec;
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 
 use crate::crypto::rlp::encode_u256;
+use crate::crypto::{keccak256, rlp};
 use crate::evm::host::RecursiveHost;
 use crate::evm::interpreter::{BlockContext, CallContext, Evm, TxContext};
-use crate::state::{State, Trie};
+use crate::state::{EMPTY_TRIE_ROOT, State, Trie, bytes_to_nibbles, encode_compact_path};
 use crate::stf::transaction::{MAX_BLOB_GAS_PER_BLOCK, blob_gas_used};
 use crate::stf::{
     Bloom, ExecutionError, TransactionExecutionResult, TransactionReceipt,
     calculate_receipts_root_with_types, execute_transaction,
 };
 use crate::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
-
-#[cfg(test)]
-use crate::state::EMPTY_TRIE_ROOT;
 
 // =============================================================================
 // Block Processing Result
@@ -225,13 +223,129 @@ fn calculate_state_root<S: State>(state: &S) -> Hash {
 
 /// Computes the withdrawals root from a list of withdrawals.
 fn calculate_withdrawals_root(withdrawals: &[Withdrawal]) -> Hash {
-    let mut trie = Trie::new();
-    for (index, withdrawal) in withdrawals.iter().enumerate() {
-        let key = encode_u256(&U256::from(index as u64));
-        let value = withdrawal.encode_rlp();
-        trie.insert(&key, value);
+    if withdrawals.is_empty() {
+        return EMPTY_TRIE_ROOT;
     }
-    trie.compute_root()
+
+    // Why: execution-specs inlines child node RLP when it is <32 bytes; always
+    // hashing children changes trie structure and diverges from fixture roots.
+    #[derive(Clone)]
+    struct WithdrawalTrieEntry {
+        key_nibbles: Vec<u8>,
+        value_rlp: Vec<u8>,
+    }
+
+    enum TrieNodeRef {
+        InlineRlp(Vec<u8>),
+        Hashed(Hash),
+    }
+
+    impl TrieNodeRef {
+        fn into_rlp_item(self) -> Vec<u8> {
+            match self {
+                TrieNodeRef::InlineRlp(encoded) => encoded,
+                TrieNodeRef::Hashed(hash) => rlp::encode_hash(&hash),
+            }
+        }
+    }
+
+    fn to_node_ref(encoded: Vec<u8>) -> TrieNodeRef {
+        if encoded.len() < 32 {
+            TrieNodeRef::InlineRlp(encoded)
+        } else {
+            TrieNodeRef::Hashed(keccak256(&encoded))
+        }
+    }
+
+    fn shared_prefix_len(entries: &[WithdrawalTrieEntry], level: usize) -> usize {
+        if entries.len() < 2 {
+            return 0;
+        }
+
+        let min_remaining = entries
+            .iter()
+            .map(|entry| entry.key_nibbles.len().saturating_sub(level))
+            .min()
+            .unwrap_or(0);
+
+        let mut prefix_len = 0usize;
+        while prefix_len < min_remaining {
+            let candidate = entries[0].key_nibbles[level + prefix_len];
+            if entries
+                .iter()
+                .all(|entry| entry.key_nibbles[level + prefix_len] == candidate)
+            {
+                prefix_len += 1;
+            } else {
+                break;
+            }
+        }
+        prefix_len
+    }
+
+    fn encode_node(entries: &[WithdrawalTrieEntry], level: usize) -> TrieNodeRef {
+        if entries.len() == 1 {
+            let entry = &entries[0];
+            let compact_path = encode_compact_path(&entry.key_nibbles[level..], true);
+            let leaf_items = vec![
+                rlp::encode_bytes(&compact_path),
+                rlp::encode_bytes(&entry.value_rlp),
+            ];
+            return to_node_ref(rlp::encode_list(&leaf_items));
+        }
+
+        let prefix_len = shared_prefix_len(entries, level);
+        if prefix_len > 0 {
+            let child_ref = encode_node(entries, level + prefix_len);
+            let compact_path = encode_compact_path(&entries[0].key_nibbles[level..level + prefix_len], false);
+            let extension_items = vec![rlp::encode_bytes(&compact_path), child_ref.into_rlp_item()];
+            return to_node_ref(rlp::encode_list(&extension_items));
+        }
+
+        let mut children: [Vec<WithdrawalTrieEntry>; 16] = core::array::from_fn(|_| Vec::new());
+        let mut branch_value: Option<Vec<u8>> = None;
+
+        for entry in entries {
+            if level == entry.key_nibbles.len() {
+                branch_value = Some(entry.value_rlp.clone());
+                continue;
+            }
+
+            let child_index = usize::from(entry.key_nibbles[level]);
+            children[child_index].push(entry.clone());
+        }
+
+        let mut branch_items = Vec::with_capacity(17);
+        for child_entries in &children {
+            if child_entries.is_empty() {
+                branch_items.push(rlp::encode_bytes(&[]));
+            } else {
+                branch_items.push(encode_node(child_entries, level + 1).into_rlp_item());
+            }
+        }
+        branch_items.push(match branch_value {
+            Some(value) => rlp::encode_bytes(&value),
+            None => rlp::encode_bytes(&[]),
+        });
+
+        to_node_ref(rlp::encode_list(&branch_items))
+    }
+
+    let entries: Vec<WithdrawalTrieEntry> = withdrawals
+        .iter()
+        .enumerate()
+        .map(|(index, withdrawal)| WithdrawalTrieEntry {
+            key_nibbles: bytes_to_nibbles(&encode_u256(&U256::from(index as u64))),
+            value_rlp: withdrawal.encode_rlp(),
+        })
+        .collect();
+
+    match encode_node(&entries, 0) {
+        // Why: the block header root is always a 32-byte hash, even if the
+        // internal root node itself is short enough to be inlined.
+        TrieNodeRef::InlineRlp(encoded) => keccak256(&encoded),
+        TrieNodeRef::Hashed(hash) => hash,
+    }
 }
 
 /// Applies withdrawals to the state (credits balances).
@@ -1140,6 +1254,101 @@ mod tests {
             state.get_balance(&withdrawals[0].address),
             withdrawals[0].amount_wei()
         );
+    }
+
+    #[test]
+    fn test_calculate_withdrawals_root_matches_fixture_with_duplicate_indices() {
+        // Why: this fixture uses duplicate/non-monotonic withdrawal.index
+        // values and catches trie-reference encoding mismatches immediately.
+        let withdrawals = vec![
+            Withdrawal {
+                index: 0,
+                validator_index: 0,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+            Withdrawal {
+                index: 2,
+                validator_index: 0,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+            Withdrawal {
+                index: 1,
+                validator_index: 0,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+            Withdrawal {
+                index: 2,
+                validator_index: 0,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+        ];
+
+        let expected = Hash::from([
+            0xa9, 0x5b, 0x9a, 0x7b, 0x58, 0xa6, 0xb3, 0xcb, 0x40, 0x01, 0xeb, 0x0b, 0xe6, 0x79,
+            0x51, 0xc5, 0x51, 0x71, 0x41, 0xcb, 0x01, 0x83, 0xa2, 0x55, 0xb5, 0xca, 0xe0, 0x27,
+            0xa7, 0xb1, 0x0b, 0x36,
+        ]);
+
+        assert_eq!(calculate_withdrawals_root(&withdrawals), expected);
+    }
+
+    #[test]
+    fn test_calculate_withdrawals_root_matches_fixture_same_address_diff_validators() {
+        // Why: this fixture confirms validator_index participates in value
+        // encoding while trie keys still come from list position.
+        let withdrawals = vec![
+            Withdrawal {
+                index: 0,
+                validator_index: 0,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+            Withdrawal {
+                index: 2,
+                validator_index: 1,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+            Withdrawal {
+                index: 1,
+                validator_index: 3,
+                address: Address::from([
+                    0xc9, 0x4f, 0x53, 0x74, 0xfc, 0xe5, 0xed, 0xbc, 0x8e, 0x2a, 0x86, 0x97,
+                    0xc1, 0x53, 0x31, 0x67, 0x7e, 0x6e, 0xbf, 0x0b,
+                ]),
+                amount_gwei: 10_000,
+            },
+        ];
+
+        let expected = Hash::from([
+            0x36, 0x19, 0xf8, 0xd0, 0x3e, 0x31, 0x4a, 0x2c, 0xbe, 0x21, 0x7b, 0x3a, 0x45, 0x8f,
+            0xb5, 0xe4, 0x12, 0x5b, 0xdf, 0x37, 0x0f, 0xa9, 0x0d, 0xb4, 0x9e, 0x34, 0xb2, 0x0a,
+            0x0b, 0x1a, 0x93, 0xa0,
+        ]);
+
+        assert_eq!(calculate_withdrawals_root(&withdrawals), expected);
     }
 
     #[test]
