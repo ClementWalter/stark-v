@@ -17,7 +17,7 @@ Last reviewed: 2026-02-11
 
 ## Completed This Turn
 
-- Re-baselined ignored-suite frontier and identified `mergeExample` as first deterministic failure.
+- Re-ran ignored-suite baseline and identified `mergeExample` as first deterministic failure.
 - Fixed post-merge opcode `0x44` context wiring:
   - `src/stf/block.rs` now maps EVM block-context `difficulty` to header `mix_hash` when `header.difficulty == 0` (PREVRANDAO semantics).
 - Added focused regressions:
@@ -58,7 +58,7 @@ Why:
 - README compatibility claim cannot be considered true until deterministic blockchain fixture mismatches are eliminated.
 
 What:
-- Resolve remaining deterministic failure families one by one (for example currently observed later family: `reentrencySuicide`).
+- Resolve remaining deterministic failure families one by one (for example the currently observed later reentrancy + selfdestruct valid-block family).
 
 How:
 - For each frontier: root-cause -> minimal patch -> focused Cancun/Prague regressions -> re-baseline.
