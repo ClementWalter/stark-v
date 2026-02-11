@@ -11,7 +11,7 @@ Last reviewed: 2026-02-11
   - totals: `Total: 1142`, `Passed: 898`, `Failed: 244`, `Errors: 0`
 - A fresh rerun was started on 2026-02-11 and inspected mid-run; it confirmed the same dominant failure classes (`GasUsedMismatch`, then `StateRootMismatch`) and repeated SELFDESTRUCT-heavy undercharge patterns.
 - Deterministic implementation gaps currently visible in code:
-  - `SELFDESTRUCT` dynamic gas is incomplete (missing cold-beneficiary and new-account charges).
+  - `SELFDESTRUCT` dynamic gas now includes execution-spec cold-beneficiary and new-account surcharges.
   - precompile `0x0a` (point evaluation) is still unimplemented.
   - precompile `0x08` pairing only handles identity/infinity paths; non-trivial tuples are unimplemented.
   - full suite parity is not enforced as a hard gate, so README compatibility claims are not currently provable by CI/test gating.
@@ -67,31 +67,27 @@ What:
 How:
 - Reworked withdrawals trie construction and added fixture-backed regressions.
 
-## Priority Backlog (Why / What / How)
-
-### Task 5 (P0, FIRST): Implement Full Cancun/Prague `SELFDESTRUCT` Gas Semantics
+### Task 5 (DONE): Implement Full Cancun/Prague `SELFDESTRUCT` Gas Semantics
 
 Why:
-- Missing dynamic `SELFDESTRUCT` gas creates systematic undercharging in selfdestruct-heavy fixtures and contributes directly to `GasUsedMismatch`.
+- Missing dynamic `SELFDESTRUCT` gas caused systematic undercharging in selfdestruct-heavy fixtures.
 
 What:
-- Charge all required dynamic components for opcode `0xFF`:
+- Implemented missing dynamic charges for opcode `0xFF`:
   - cold beneficiary access surcharge,
-  - new-account surcharge when beneficiary is not alive and originator balance is non-zero,
-  - while preserving existing EIP-6780 deletion behavior.
+  - new-account surcharge when beneficiary is not alive and originator balance is non-zero.
 
 How:
-- Mirror execution-spec `system.py::selfdestruct` logic for gas decision points.
-- Add focused interpreter tests that lock gas usage for:
-  - cold + empty beneficiary + non-zero balance,
-  - cold + empty beneficiary + zero balance,
-  - warm beneficiary behavior.
-- Validate with targeted release tests and full `cargo test -p claudeth --release`.
+- Mirrored execution-spec `system.py::selfdestruct` gas decision points.
+- Added interpreter regressions for cold/warm beneficiary behavior and zero/non-zero originator balances.
+- Validated with `cargo test -p claudeth --release test_selfdestruct` and full `cargo test -p claudeth --release`.
 
-### Task 6 (P0): Systematically Eliminate Remaining Gas Accounting Divergences
+## Priority Backlog (Why / What / How)
+
+### Task 6 (P0, FIRST): Systematically Eliminate Remaining Gas Accounting Divergences
 
 Why:
-- `GasUsedMismatch` remains the dominant failure class after harness and trie fixes.
+- `GasUsedMismatch` remains the dominant failure class after harness, trie, withdrawals, and SELFDESTRUCT-gas fixes.
 
 What:
 - Close remaining gas-rule deltas across CALL-family accounting, refunds, memory expansion, and opcode-specific dynamic costs.
