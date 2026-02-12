@@ -47,7 +47,6 @@ words:
   - csrrw
   - delegatecall
   - delegatecalls
-  - determinize
   - discardable
   - divu
   - doctest

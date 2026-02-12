@@ -28,7 +28,7 @@ Make implementation truthfully match `README.md` by ensuring:
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, DONE): Determinize and Instrument Full EELS Sweep
+### Task 1 (P0, DONE): Make Full EELS Sweep Deterministic and Instrumented
 
 Why:
 - Nondeterministic ordering and silent long phases made frontier capture unreliable.
