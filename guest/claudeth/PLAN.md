@@ -1,97 +1,88 @@
 # Claudeth Completion Plan
 
-Last reviewed: 2026-02-11
+Last reviewed: 2026-02-12
 
 ## Ground Truth Snapshot
 
-- `README.md` claims full EELS compatibility and native/RV32 validation.
-- Current harness state:
-  - `test_execute_all_blockchain_tests` is still `#[ignore]`.
-  - Full-suite execution now has deterministic ordering (sorted fixture files and sorted case names).
-  - Full-suite execution prints per-case start markers to make long fixtures diagnosable.
-  - Full-suite execution asserts `failed == 0` and `errors == 0` when run.
-- Release validation executed in this turn:
-  - `cargo test -p claudeth --release --tests --no-run`
-  - `cargo test -p claudeth --release test_can_parse_blockchain_tests`
-  - `cargo test -p claudeth --release test_random_statetest99bc_`
-  - `cargo test -p claudeth --release test_blockhash_tests_`
-- Full-suite probes (ignored and non-ignored exploratory run) progressed through invalid suites, random blockhash suites, opcode matrices, and into wallet fixtures without observed failures before manual interruption due very long runtime (~47 minutes in one run).
-- Native/RV32 parity is still not enforced as a gate.
+- `README.md` claims full EELS compatibility and test validation on native and RV32im.
+- Release validation executed:
+  - `cargo test -p claudeth --release` passed (`57` EELS focused tests passed, `1` full-sweep test ignored at that moment).
+  - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture` passed end-to-end with:
+    - `Total: 1142`
+    - `Passed: 1142`
+    - `Failed: 0`
+    - `Errors: 0`
+    - Runtime: `3312.94s` (~55m13s)
+- Full-suite runner behavior now matches reference expectations:
+  - deterministic traversal (sorted file paths + sorted case names),
+  - per-case start markers for long silent fixtures,
+  - hard assertions on `failed == 0` and `errors == 0`.
+- Remaining mismatch with README claim:
+  - no deterministic native-vs-RV32 parity gate yet.
 
 ## Completion Objective
 
-Make implementation truthfully match `README.md` by ensuring:
+Make repository truthfully satisfy `README.md` claims by ensuring:
 
-- full EELS blockchain coverage completes to zero failures/errors in release mode;
-- full-suite execution is stable enough to run as a default gate;
-- native and RV32 paths are both validated with deterministic parity checks.
+- full EELS blockchain sweep is default, mandatory, and deterministic in release mode;
+- native and RV32im executions are both exercised with explicit parity checks;
+- long-running full-sweep behavior is operationally explicit and reproducible.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, DONE): Make Full EELS Sweep Deterministic and Instrumented
+### Task 1 (P0, DONE): Promote Full EELS Sweep to Default Gate
 
 Why:
-- Nondeterministic ordering and silent long phases made frontier capture unreliable.
-- Long fixture phases were hard to distinguish from dead runs.
+- README-level compatibility must be enforced by default, not hidden behind `--ignored`.
+- We now have a completed zero-failure baseline (`1142/1142`) proving the suite is runnable.
 
 What:
-- Make full-sweep traversal reproducible and observable.
+- Removed `#[ignore]` from `test_execute_all_blockchain_tests` so default release tests enforce full blockchain conformance.
 
 How:
-- Sort discovered fixture file paths.
-- Sort per-file case names after JSON decode.
-- Add per-case start markers.
-- Keep hard `failed/errors` assertions in the full-sweep runner.
+- Kept deterministic ordering, per-case markers, and hard failure/error assertions intact.
+- Preserved 128 MiB stack runner for deep fixtures.
+
+### Task 2 (P1, FIRST): Add Deterministic Native vs RV32 Parity Gate
 
 Reference implementation notes used:
-- `execution-spec-tests/src/ethereum_test_specs/blockchain.py`
-- `execution-spec-tests/src/ethereum_test_specs/helpers.py`
-
-### Task 2 (P0, FIRST): Complete One Uninterrupted Full Ignored Sweep and Capture Final Totals
-
-Why:
-- We still need one complete end-to-end result to prove zero deterministic failures across the full supported fixture surface.
-
-What:
-- Run the full blockchain sweep to completion and record totals (`Total/Passed/Failed/Errors`).
-
-How:
-- Run: `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture`
-- If runtime is excessive, capture slowest fixture families and profile/optimize runner paths before retrying.
-
-### Task 3 (P0): Promote Full Sweep to Default Non-Ignored Gate After Stable Zero-Failure Completion
+- `execution-specs/src/ethereum/forks/prague/fork.py` (`state_transition` block-level validity checks must hard-fail on mismatches).
+- `execution-spec-tests/src/ethereum_test_specs/blockchain.py` (fixture execution enforces parent/environment consistency and explicit exception handling).
+- `execution-spec-tests/src/ethereum_test_specs/helpers.py` (strict mismatch surfacing for unexpected success/failure).
 
 Why:
-- README compatibility claims require default enforcement, not optional/manual checks.
+- README claims both native and RV32 paths are validated, but no parity assertion currently proves identical outcomes.
 
 What:
-- Remove `#[ignore]` once Task 2 demonstrates stable completion and acceptable runtime for normal release validation loops.
+- Add a release-mode parity test harness for a curated high-signal fixture set.
 
 How:
-- Un-ignore `test_execute_all_blockchain_tests`.
-- Keep deterministic ordering and hard assertions.
-- Re-run release hooks and ensure operational viability.
+- Execute same fixture inputs on native and RV32 runner.
+- Compare state root, receipts root, logs bloom, gas used, and status.
+- Fail on any divergence with concise diagnostics.
 
-### Task 4 (P1): Frontier-Driven Fix Loop if Any Fixture Fails
+### Task 3 (P1): Operationalize Full-Sweep Runtime Expectations
 
 Why:
-- Any deterministic mismatch invalidates compatibility claims.
+- Full default sweep now takes ~55 minutes; silent phases can look stalled and create false triage.
 
 What:
-- Capture first failing family, add focused regression, patch minimal semantic delta, rerun.
+- Make runtime expectations explicit and CI-friendly without weakening coverage.
 
 How:
-- Loop until full sweep totals are zero failures and zero errors.
+- Document expected duration and silent fixture families.
+- Keep per-case markers as progress heartbeat.
+- Ensure CI timeout/memory settings are compatible with observed runtime envelope.
 
-### Task 5 (P1): Enforce Native vs RV32 Deterministic Parity
+### Task 4 (P1): Frontier-Driven Semantic Fix Loop (Conditional)
 
 Why:
-- README states both targets are validated, but no parity gate currently enforces this.
+- Once full sweep is default, any future deterministic failure blocks release readiness.
 
 What:
-- Add a release-mode parity suite over high-signal fixtures.
+- Use failing fixture as regression frontier and patch minimal semantic deltas.
 
 How:
-- Run identical fixture subset on native and runner.
-- Compare post-state root, receipts root, logs bloom, and gas used.
-- Fail on any divergence.
+- Capture first failing case from deterministic traversal.
+- Add focused regression test.
+- Patch implementation and rerun release sweep until `failed=0` and `errors=0`.

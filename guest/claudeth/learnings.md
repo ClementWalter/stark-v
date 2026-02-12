@@ -31,6 +31,8 @@
 - Do keep full-suite fixture traversal deterministic (sorted file and case order) when capturing regression frontiers.
 - Do hard-fail the full EELS sweep on any fixture failure/error once compatibility is the stated objective.
 - Do print per-case start markers in long EELS sweeps so slow fixtures are distinguishable from dead runs.
+- Do capture and retain one uninterrupted full-sweep baseline (`Total/Passed/Failed/Errors` + runtime) before changing gate policy.
+- Do make the full-sweep test non-ignored once deterministic zero-failure baseline is proven.
 
 ## Don't
 - Don't execute forked branches on a single linear mutable state.
@@ -56,3 +58,4 @@
 - Don't use lossy `as_usize()` truncation for copy-opcode source offsets.
 - Don't keep full-suite execution ignored/non-fatal once README claims full compatibility.
 - Don't assume `prek` silence implies deadlock; long fixtures can run for tens of minutes without hook-streamed output.
+- Don't kill the final wallet fixtures (`walletReorganizeOwners_*`) early; they can be multi-minute silent phases even in healthy runs.

@@ -2164,12 +2164,9 @@ fn test_blockhash_tests_prague_fixture() {
 }
 
 #[test]
-#[ignore] // Run with --ignored to execute the full EELS blockchain sweep
 fn test_execute_all_blockchain_tests() {
-    // Why: some large historical fixtures trigger deep recursion paths that
-    // exceed the default test-thread stack before we can collect full-suite
-    // totals. Running the harness in an explicitly larger stack keeps the
-    // execution deterministic and lets us complete the baseline run.
+    // Why: README-level compatibility must be enforced by default; this test
+    // remains non-ignored and uses a larger stack to survive deep fixtures.
     let join_handle = std::thread::Builder::new()
         .name("eels-full-suite".to_string())
         .stack_size(128 * 1024 * 1024)
