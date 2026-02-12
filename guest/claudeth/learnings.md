@@ -1,79 +1,58 @@
 ## Do
-- Do resolve fixture parents by `block_header.parent_hash` using hash-indexed header/state snapshots.
-- Do exclude expected-invalid blocks from canonical header/state indexes.
-- Do validate fixture post-state at `lastblockhash`, not at the last iterated block.
+- Do resolve parent state/header snapshots by `parent_hash`, not fixture iteration order.
+- Do exclude expected-invalid blocks from canonical hash-indexed ancestry maps.
+- Do validate fixture post-state at `lastblockhash`, not the last iterated block.
 - Do pass `BLOCKHASH` ancestry oldest -> newest with direct parent last.
-- Do treat `BLOCKHASH` arguments as full-width `U256` values; reject out-of-range values instead of narrowing.
-- Do bound fixture error summaries; avoid printing full tx payloads or massive return-data blobs.
-- Do run EELS baselines in release mode with `cargo test -p claudeth --release ... --ignored --nocapture`.
-- Do add a focused regression for each failing fixture family before broad reruns.
-- Do rerun the ignored full-suite probe after each fix to move the failure frontier.
-- Do run deep fixture sweeps in a larger-stack test thread when needed.
-- Do hash trie node RLP bytes with Keccak-256 for hashed-node references.
-- Do inline trie child nodes only when encoded length is `< 32`; hash otherwise.
-- Do key withdrawals trie entries by list position (`enumerate` index).
-- Do compute `SELFDESTRUCT` gas from pre-transfer state: base + cold surcharge + conditional new-account surcharge.
-- Do return `0` from `EXTCODEHASH` for non-existent accounts and `keccak256("")` only for alive empty-code accounts.
-- Do prewarm recursive child frames with parent warm addresses/storage keys (EIP-2929 continuity).
-- Do prewarm CREATE/CREATE2 destination addresses before init-code execution.
-- Do increment creator nonce for CREATE/CREATE2 attempts that pass prechecks, even when creation later fails.
-- Do initialize created-account nonce before init-code execution so nested CREATE address derivation matches execution-spec behavior.
-- Do roll back created-account nonce changes on failed top-level CREATE paths while keeping `mark_account_created` semantics.
+- Do treat `BLOCKHASH` operands as full-width `U256`; reject out-of-range values without lossy truncation.
+- Do key withdrawal trie entries by withdrawal list index.
+- Do hash trie node RLP bytes with Keccak-256 for hashed references.
+- Do inline trie children only when encoded length is `< 32` bytes.
+- Do compute `SELFDESTRUCT` gas from pre-transfer state (base + warm/cold + conditional new-account surcharge).
+- Do return `0` from `EXTCODEHASH` for non-existent accounts and `keccak256("")` for existing empty-code accounts.
+- Do prewarm recursive child frames with parent warm address/storage sets (EIP-2929 continuity).
+- Do prewarm CREATE/CREATE2 destination addresses before initcode execution.
+- Do increment creator nonce once CREATE/CREATE2 passes prechecks, even if creation later fails.
+- Do initialize created-account nonce before initcode execution so nested CREATE address derivation matches spec behavior.
+- Do roll back failed top-level CREATE side effects while preserving creation-tracking semantics.
 - Do return `contract_address = None` for failed top-level CREATE paths.
 - Do short-circuit CREATE collisions on code/nonce/non-empty-storage and burn forwarded gas.
-- Do compute Prague calldata floor as `21000 + calldata_tokens * 10` and apply it as a floor on post-refund gas-used.
-- Do keep available execution gas as `gas_limit - intrinsic_gas`; do not replace intrinsic gas with floor gas.
-- Do charge caller-side call gas as `max(child_gas_used - stipend, 0)` and credit unused stipend back.
-- Do transfer ETH only for `CALL`/`CALLCODE`; never for `DELEGATECALL`/`STATICCALL`.
-- Do preserve `CALLVALUE` context through `DELEGATECALL` without moving balances.
-- Do copy only `min(out_size, return_data_len)` bytes for `CALL*` output memory writes; preserve the untouched tail bytes in the output slice.
-- Do propagate successful child-frame logs into parent receipt logs.
-- Do propagate successful child-frame gas refunds into the parent frame refund counter.
-- Do implement `LT`/`GT`/`SLT`/`SGT` using execution-spec operand order.
+- Do apply Prague calldata-floor logic as a floor on post-refund gas-used, not as intrinsic gas replacement.
+- Do charge caller-side call gas as `max(child_gas_used - stipend, 0)` and return unused stipend.
+- Do transfer ETH only for `CALL`/`CALLCODE`, never `DELEGATECALL`/`STATICCALL`.
+- Do preserve output-memory tail bytes when return data is shorter than `out_size`.
+- Do propagate successful child logs, warm accesses, and refunds into parent context.
+- Do drop child refund deltas on child revert/error.
 - Do map opcode `0x44` to `PREVRANDAO` (`mix_hash`) on post-merge forks.
-- Do implement `EXP` with execution-spec operand order (`base`, then `exponent`).
-- Do implement PUSH immediate decoding with execution-spec buffer-read behavior: truncated EOF immediates are right-padded with zeros.
-- Do enforce static-context write protection in the active interpreter path (`SSTORE` must fail under static context).
-- Do propagate static-context flags across recursive `CALL*` frames.
-- Do make charged memory expansion stateful for read-only ranges (LOG/KECCAK/RETURN/REVERT/call-input reads) so the same range is not re-charged later.
-- Do treat `CODECOPY` source offsets as full-width `U256`; offsets above `usize` are out-of-range reads that must yield zero bytes.
-- Do include account-level post-state diagnostics when chasing state-root mismatches; they separate trie/root drift from actual state-transition drift.
+- Do implement non-commutative opcodes (`LT`/`GT`/`SLT`/`SGT`/`EXP`) with execution-spec operand order.
+- Do treat truncated PUSH immediates as right-zero-padded runtime data, not exceptional halts.
+- Do enforce static-context write protection (`SSTORE`, `LOG*`, CREATE, SELFDESTRUCT) through recursive frames.
+- Do mutate memory length when charging read-range expansion so expansion cost is stateful.
+- Do treat `CODECOPY` source offsets as full-width `U256`; offsets above `usize` are out-of-range zero reads.
+- Do keep full-suite fixture traversal deterministic (sorted file and case order) when capturing regression frontiers.
+- Do hard-fail the full EELS sweep on any fixture failure/error once compatibility is the stated objective.
+- Do print per-case start markers in long EELS sweeps so slow fixtures are distinguishable from dead runs.
 
 ## Don't
-- Don't treat fixture iteration order as canonical chain order in multi-branch tests.
 - Don't execute forked branches on a single linear mutable state.
-- Don't pass an empty recent-hash list when `BLOCKHASH` can be reached.
-- Don't convert `BLOCKHASH` stack operands with lossy `as_u64()` truncation.
-- Don't index ancestry with headers from expected-invalid blocks.
+- Don't pass an empty recent-hash list when `BLOCKHASH` is reachable.
+- Don't truncate `BLOCKHASH` stack operands with `as_u64()`.
 - Don't synthesize trie references by zero-padding short RLP payloads.
-- Don't assume generic trie helpers are spec-compatible for all roots without validating encoding thresholds.
-- Don't model `SELFDESTRUCT` as fixed `5000` gas in Cancun/Prague.
-- Don't skip `SELFDESTRUCT` new-account surcharge just because beneficiary is warm.
-- Don't treat top-level warm initialization as automatically inherited by recursive frames.
-- Don't compute CREATE address from `caller_nonce - 1`.
-- Don't report contract addresses for failed top-level CREATE execution.
-- Don't leak failed top-level CREATE side effects.
-- Don't defer top-level created-account nonce initialization until after successful code-deposit commit.
-- Don't use `account_exists` alone as CREATE collision predicate (balance-only accounts are not collisions).
-- Don't execute top-level create init code on colliding destinations.
-- Don't stop triage after one gas fix; the next deterministic mismatch often appears immediately.
-- Don't print full `{:?}` transactions in fixture failures.
-- Don't assume default test-thread stack is enough for largest historical fixtures.
+- Don't model `SELFDESTRUCT` as a fixed 5000 gas in Cancun/Prague.
+- Don't assume warm initialization at tx entry automatically propagates to recursive frames.
+- Don't derive CREATE destination from `caller_nonce - 1`.
+- Don't leak failed top-level CREATE side effects into final state.
+- Don't treat balance-only accounts as CREATE-collision accounts.
+- Don't stop triage after the first gas fix; rerun to find the next deterministic frontier.
+- Don't print unbounded transaction/return-data payloads in failure diagnostics.
+- Don't assume default test-thread stack is enough for deep historical fixtures.
 - Don't model Prague EIP-7623 as flat non-zero-byte repricing.
-- Don't validate Prague tx gas only against intrinsic gas; include calldata-floor rule.
 - Don't charge call stipend as caller-consumed gas.
-- Don't use `msg.value != 0` alone to decide ETH transfer in host calls.
-- Don't zero-fill `CALL`/`CALLCODE`/`DELEGATECALL`/`STATICCALL` output ranges when child return data is shorter than `out_size`.
-- Don't drop successful child warm accesses/logs at call boundaries.
-- Don't carry refund deltas from reverted/errored child frames into the parent frame.
+- Don't use `msg.value != 0` alone to decide whether ETH transfer occurs.
+- Don't zero-fill full call output buffers when child return data is shorter.
+- Don't carry refund deltas from reverted child frames into parent frame accounting.
 - Don't map recursive `REVERT` to full forwarded-gas burn.
-- Don't double-charge LOG base gas in both opcode base and dynamic helper.
+- Don't double-charge LOG base gas in both opcode base and dynamic helpers.
 - Don't compute memory expansion from `offset + size` when `size == 0`.
-- Don't charge memory expansion gas without mutating memory length; repeated reads must observe prior expansion.
-- Don't treat non-commutative comparison opcodes as symmetric.
-- Don't feed post-merge opcode `0x44` from header `difficulty`.
-- Don't reverse `EXP` operands.
-- Don't treat truncated PUSH immediates as exceptional halts (`InvalidPush`) in runtime execution.
-- Don't hardcode Prague precompile warm range to `0x01..0x0a`; Prague includes `0x01..0x11`.
-- Don't allow static child frames to execute state-changing opcodes.
-- Don't use lossy `as_usize()` truncation for copy-opcode source offsets; large offsets must not wrap to low-bit indices.
+- Don't use lossy `as_usize()` truncation for copy-opcode source offsets.
+- Don't keep full-suite execution ignored/non-fatal once README claims full compatibility.
+- Don't assume `prek` silence implies deadlock; long fixtures can run for tens of minutes without hook-streamed output.

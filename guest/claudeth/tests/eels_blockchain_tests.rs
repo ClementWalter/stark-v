@@ -228,6 +228,9 @@ fn discover_blockchain_tests() -> Vec<std::path::PathBuf> {
             tests.push(entry.path().to_path_buf());
         }
     }
+    // Why: deterministic fixture ordering makes full-suite regressions
+    // reproducible and keeps failing-frontier capture stable across runs.
+    tests.sort();
     tests
 }
 
@@ -2161,7 +2164,7 @@ fn test_blockhash_tests_prague_fixture() {
 }
 
 #[test]
-#[ignore] // Run with --ignored to execute all EELS tests
+#[ignore] // Run with --ignored to execute the full EELS blockchain sweep
 fn test_execute_all_blockchain_tests() {
     // Why: some large historical fixtures trigger deep recursion paths that
     // exceed the default test-thread stack before we can collect full-suite
@@ -2191,20 +2194,26 @@ fn run_all_blockchain_tests_impl() {
     let mut failed = 0;
     let mut errors = 0;
 
-    // Execute all discovered fixtures. This test remains ignored for now because
-    // full EELS parity is still under active implementation.
     for test_path in &tests {
-        let test_cases = match load_blockchain_test(test_path) {
+        let mut test_cases: Vec<_> = match load_blockchain_test(test_path) {
             Ok(cases) => cases,
             Err(e) => {
                 eprintln!("✗ Failed to load {}: {e}", test_path.display());
                 errors += 1;
                 continue;
             }
-        };
+        }
+        .into_iter()
+        .collect();
+        // Why: fixture JSON objects deserialize into HashMap and iteration order
+        // is randomized; sorting prevents nondeterministic run ordering.
+        test_cases.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         for (test_name, test_case) in test_cases {
             total_tests += 1;
+            // Why: per-case start markers make prolonged fixtures diagnosable in
+            // CI and local runs without requiring verbose pass logging.
+            println!("→ {test_name}");
             let (final_state, block_results) = match execute_blockchain_case(&test_name, &test_case)
             {
                 Ok(result) => result,
@@ -2219,7 +2228,6 @@ fn run_all_blockchain_tests_impl() {
 
             match validate_post_state(&final_state, &test_case.pre, &test_case.post_state) {
                 Ok(()) => {
-                    println!("✓ {test_name}");
                     passed += 1;
                 }
                 Err(e) => {
@@ -2252,7 +2260,6 @@ fn run_all_blockchain_tests_impl() {
     println!("Errors: {errors}");
     println!("========================");
 
-    // Don't fail the test yet - we're still implementing
-    // assert_eq!(failed, 0, "Some tests failed");
-    // assert_eq!(errors, 0, "Some tests errored");
+    assert_eq!(failed, 0, "Some EELS blockchain fixtures failed");
+    assert_eq!(errors, 0, "Some EELS blockchain fixtures failed to load");
 }
