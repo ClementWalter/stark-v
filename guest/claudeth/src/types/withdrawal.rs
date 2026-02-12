@@ -3,6 +3,15 @@
 //! Withdrawals are applied after transaction execution to credit validator
 //! balances. Amounts are specified in gwei.
 
+#[cfg(target_arch = "riscv32")]
+extern crate alloc;
+
+#[cfg(not(target_arch = "riscv32"))]
+use std::vec::Vec;
+
+#[cfg(target_arch = "riscv32")]
+use alloc::vec::Vec;
+
 use crate::crypto::rlp;
 use crate::crypto::rlp::RlpError;
 use crate::types::{Address, U256};

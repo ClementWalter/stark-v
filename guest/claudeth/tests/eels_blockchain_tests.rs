@@ -9,13 +9,16 @@
 use claudeth::evm::format_disassembly;
 use claudeth::state::{InMemoryState, State};
 use claudeth::stf::{BlockProcessingError, TransactionExecutionResult};
-use claudeth::types::{Address, Bytes, U256};
+use claudeth::types::{Address, Bytes, Hash, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 /// BlockchainTest fixture format
 ///
@@ -440,6 +443,310 @@ fn validate_post_state(
 fn parse_u64(value: &str) -> Result<u64, String> {
     let u256_val = parse_u256(value)?;
     u64::try_from(u256_val).map_err(|_| format!("value {value} too large for u64"))
+}
+
+const RV32_PARITY_MAX_CYCLES: u64 = 500_000_000;
+static RV32_CLAUDETH_ELF: OnceLock<Vec<u8>> = OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GuestOutputSummary {
+    status: u64,
+    gas_used: u64,
+    receipts_root: Hash,
+    state_root: Hash,
+    error_code: u64,
+    error_data: Vec<u8>,
+}
+
+fn load_rv32_claudeth_elf() -> &'static [u8] {
+    RV32_CLAUDETH_ELF
+        .get_or_init(|| {
+            let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+            // Why: parity must execute the exact same guest binary logic on RV32,
+            // so we build the crate's own `riscv32im-unknown-none-elf` artifact.
+            let build_status = Command::new("cargo")
+                .current_dir(manifest_dir)
+                .args([
+                    "build",
+                    "-p",
+                    "claudeth",
+                    "--release",
+                    "--target",
+                    "riscv32im-unknown-none-elf",
+                    "--target-dir",
+                    "target",
+                ])
+                .status()
+                .expect("failed to spawn cargo build for RV32 claudeth guest");
+            assert!(
+                build_status.success(),
+                "failed to build RV32 claudeth guest with status {build_status}"
+            );
+
+            let elf_path = manifest_dir
+                .join("target")
+                .join("riscv32im-unknown-none-elf")
+                .join("release")
+                .join("claudeth");
+
+            fs::read(&elf_path)
+                .unwrap_or_else(|err| panic!("failed to read RV32 guest ELF {elf_path:?}: {err}"))
+        })
+        .as_slice()
+}
+
+fn run_guest_native(input: &[u8]) -> Result<Vec<u8>, String> {
+    let native_binary_path = env!("CARGO_BIN_EXE_claudeth");
+
+    let mut child = Command::new(native_binary_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("failed to spawn native claudeth guest: {err}"))?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(input)
+            .map_err(|err| format!("failed writing native guest stdin: {err}"))?;
+    } else {
+        return Err("native guest stdin pipe missing".to_string());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|err| format!("failed waiting native guest process: {err}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "native guest exited with status {} stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(output.stdout)
+}
+
+fn run_guest_rv32(input: &[u8]) -> Result<Vec<u8>, String> {
+    let run_result =
+        runner::run_with_input(load_rv32_claudeth_elf(), input, RV32_PARITY_MAX_CYCLES)
+            .map_err(|err| format!("RV32 guest run failed: {err}"))?;
+
+    run_result
+        .output
+        .ok_or_else(|| "RV32 guest halted without output payload".to_string())
+}
+
+fn decode_guest_output_summary(output: &[u8]) -> Result<GuestOutputSummary, String> {
+    let (items, rest) = claudeth::crypto::rlp::decode_list(output)
+        .map_err(|err| format!("failed to decode guest output list: {err:?}"))?;
+    if !rest.is_empty() {
+        return Err("guest output had trailing bytes".to_string());
+    }
+    if items.len() != 6 {
+        return Err(format!(
+            "invalid guest output field count: expected 6, got {}",
+            items.len()
+        ));
+    }
+
+    let (status, status_rest) = claudeth::crypto::rlp::decode_u64(&items[0])
+        .map_err(|err| format!("failed decoding status: {err:?}"))?;
+    if !status_rest.is_empty() {
+        return Err("status field had trailing bytes".to_string());
+    }
+
+    let (gas_used, gas_rest) = claudeth::crypto::rlp::decode_u64(&items[1])
+        .map_err(|err| format!("failed decoding gas_used: {err:?}"))?;
+    if !gas_rest.is_empty() {
+        return Err("gas_used field had trailing bytes".to_string());
+    }
+
+    let (receipts_root, receipts_rest) = claudeth::crypto::rlp::decode_hash(&items[2])
+        .map_err(|err| format!("failed decoding receipts_root: {err:?}"))?;
+    if !receipts_rest.is_empty() {
+        return Err("receipts_root field had trailing bytes".to_string());
+    }
+
+    let (state_root, state_rest) = claudeth::crypto::rlp::decode_hash(&items[3])
+        .map_err(|err| format!("failed decoding state_root: {err:?}"))?;
+    if !state_rest.is_empty() {
+        return Err("state_root field had trailing bytes".to_string());
+    }
+
+    let (error_code, error_code_rest) = claudeth::crypto::rlp::decode_u64(&items[4])
+        .map_err(|err| format!("failed decoding error_code: {err:?}"))?;
+    if !error_code_rest.is_empty() {
+        return Err("error_code field had trailing bytes".to_string());
+    }
+
+    let (error_data, error_data_rest) = claudeth::crypto::rlp::decode_bytes(&items[5])
+        .map_err(|err| format!("failed decoding error_data: {err:?}"))?;
+    if !error_data_rest.is_empty() {
+        return Err("error_data field had trailing bytes".to_string());
+    }
+
+    Ok(GuestOutputSummary {
+        status,
+        gas_used,
+        receipts_root,
+        state_root,
+        error_code,
+        error_data,
+    })
+}
+
+fn encode_state_entries_from_pre(pre: &HashMap<String, TestAccount>) -> Result<Vec<u8>, String> {
+    let mut addresses = pre.keys().cloned().collect::<Vec<_>>();
+    // Why: deterministic ordering keeps parity fixtures reproducible and makes
+    // mismatch diagnostics stable across host/platform execution.
+    addresses.sort();
+
+    let mut encoded_entries = Vec::with_capacity(addresses.len());
+    for address_str in addresses {
+        let account = pre
+            .get(&address_str)
+            .ok_or_else(|| format!("missing pre-state account for {address_str}"))?;
+
+        let address = parse_address(&address_str)?;
+        let nonce = parse_u256(&account.nonce)?;
+        let balance = parse_u256(&account.balance)?;
+        let code = parse_bytes(&account.code)?;
+
+        let mut storage_keys = account.storage.keys().cloned().collect::<Vec<_>>();
+        storage_keys.sort();
+        let mut encoded_storage = Vec::with_capacity(storage_keys.len());
+        for key_str in storage_keys {
+            let value_str = account
+                .storage
+                .get(&key_str)
+                .ok_or_else(|| format!("missing storage value for key {key_str}"))?;
+            let key = parse_u256(&key_str)?;
+            let value = parse_u256(value_str)?;
+            encoded_storage.push(claudeth::crypto::rlp::encode_list(&[
+                claudeth::crypto::rlp::encode_u256(&key),
+                claudeth::crypto::rlp::encode_u256(&value),
+            ]));
+        }
+
+        encoded_entries.push(claudeth::crypto::rlp::encode_list(&[
+            claudeth::crypto::rlp::encode_address(&address),
+            claudeth::crypto::rlp::encode_u256(&nonce),
+            claudeth::crypto::rlp::encode_u256(&balance),
+            claudeth::crypto::rlp::encode_bytes(code.as_ref()),
+            claudeth::crypto::rlp::encode_list(&encoded_storage),
+        ]));
+    }
+
+    Ok(claudeth::crypto::rlp::encode_list(&encoded_entries))
+}
+
+fn build_guest_input_for_single_block_case(test_case: &BlockchainTest) -> Result<Vec<u8>, String> {
+    if test_case.blocks.len() != 1 {
+        return Err(format!(
+            "parity harness expects exactly one block, got {}",
+            test_case.blocks.len()
+        ));
+    }
+
+    let test_block = test_case
+        .blocks
+        .first()
+        .ok_or_else(|| "missing block 0".to_string())?;
+    if test_block.expect_exception.is_some() {
+        return Err("parity harness only supports non-exception single-block fixtures".to_string());
+    }
+
+    let block_header = convert_test_block_header(
+        test_block
+            .block_header
+            .as_ref()
+            .ok_or_else(|| "block header missing in single-block fixture".to_string())?,
+    )?;
+    let parent_header = convert_test_block_header(&test_case.genesis_block_header)?;
+    let parent_hash = parent_header.compute_hash();
+    if block_header.parent_hash != parent_hash {
+        return Err(format!(
+            "fixture block parent hash mismatch: expected {parent_hash}, got {}",
+            block_header.parent_hash
+        ));
+    }
+
+    let chain_id = parse_u256(&test_case.config.chainid)?;
+    let encoded_transactions = test_block
+        .transactions
+        .iter()
+        .enumerate()
+        .map(|(tx_idx, tx)| {
+            convert_test_transaction(tx)
+                .map(|converted| converted.encode_rlp())
+                .map_err(|err| format!("failed converting transaction {tx_idx}: {err}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let encoded_state_entries = encode_state_entries_from_pre(&test_case.pre)?;
+
+    let mut headers_by_hash = HashMap::new();
+    headers_by_hash.insert(parent_hash, parent_header.clone());
+    let block_hashes = collect_recent_block_hashes(block_header.parent_hash, &headers_by_hash);
+    let encoded_block_hashes = block_hashes
+        .iter()
+        .map(claudeth::crypto::rlp::encode_hash)
+        .collect::<Vec<_>>();
+
+    let encoded_withdrawals = test_block
+        .withdrawals
+        .iter()
+        .enumerate()
+        .map(|(wd_idx, wd)| {
+            convert_test_withdrawal(wd)
+                .map(|withdrawal| withdrawal.encode_rlp())
+                .map_err(|err| format!("failed converting withdrawal {wd_idx}: {err}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut payload_items = vec![
+        block_header.encode_rlp(),
+        parent_header.encode_rlp(),
+        claudeth::crypto::rlp::encode_u256(&chain_id),
+        claudeth::crypto::rlp::encode_list(&encoded_transactions),
+        encoded_state_entries,
+        claudeth::crypto::rlp::encode_list(&encoded_block_hashes),
+    ];
+
+    if block_header.withdrawals_root.is_some() {
+        payload_items.push(claudeth::crypto::rlp::encode_list(&encoded_withdrawals));
+    }
+
+    Ok(claudeth::crypto::rlp::encode_list(&payload_items))
+}
+
+fn assert_single_block_native_rv32_parity(fixture_path: &str, case_name: &str) {
+    let case = load_single_blockchain_case(Path::new(fixture_path), case_name);
+    let input = build_guest_input_for_single_block_case(&case)
+        .unwrap_or_else(|err| panic!("failed building guest input for {case_name}: {err}"));
+
+    let native_output = run_guest_native(&input)
+        .unwrap_or_else(|err| panic!("native guest execution failed for {case_name}: {err}"));
+    let rv32_output = run_guest_rv32(&input)
+        .unwrap_or_else(|err| panic!("RV32 guest execution failed for {case_name}: {err}"));
+
+    let native_summary = decode_guest_output_summary(&native_output)
+        .unwrap_or_else(|err| panic!("failed decoding native output for {case_name}: {err}"));
+    let rv32_summary = decode_guest_output_summary(&rv32_output)
+        .unwrap_or_else(|err| panic!("failed decoding RV32 output for {case_name}: {err}"));
+
+    assert_eq!(
+        native_summary, rv32_summary,
+        "native/RV32 guest output summary mismatch for {case_name}"
+    );
+    assert_eq!(
+        &native_output,
+        &rv32_output,
+        "native/RV32 guest raw output mismatch for {case_name}: native=0x{} rv32=0x{}",
+        hex::encode(&native_output),
+        hex::encode(&rv32_output),
+    );
 }
 
 fn convert_test_transaction(
@@ -1492,19 +1799,21 @@ fn execute_blockchain_case(
                     }
                 }
 
-                let post_state_diagnostic =
-                    match validate_post_state(&candidate_state, &test_case.pre, &test_case.post_state)
-                    {
-                        Ok(()) => {
-                            // Why: when account-level expectations match but
-                            // state-root validation fails, the mismatch likely
-                            // sits in trie encoding/account inclusion details.
-                            "account-level post-state matches fixture".to_string()
-                        }
-                        Err(post_state_err) => {
-                            format!("account-level post-state mismatch: {post_state_err}")
-                        }
-                    };
+                let post_state_diagnostic = match validate_post_state(
+                    &candidate_state,
+                    &test_case.pre,
+                    &test_case.post_state,
+                ) {
+                    Ok(()) => {
+                        // Why: when account-level expectations match but
+                        // state-root validation fails, the mismatch likely
+                        // sits in trie encoding/account inclusion details.
+                        "account-level post-state matches fixture".to_string()
+                    }
+                    Err(post_state_err) => {
+                        format!("account-level post-state mismatch: {post_state_err}")
+                    }
+                };
 
                 return Err(format!(
                     "Block {block_idx}: Execution failed: {}; {post_state_diagnostic}",
@@ -1886,8 +2195,9 @@ fn test_suicide_storage_check_v_create_prague_fixture() {
 }
 
 fn assert_callcode_output3partial_case(case_name: &str) {
-    let fixture_path =
-        Path::new("tests/eels/BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json");
+    let fixture_path = Path::new(
+        "tests/eels/BlockchainTests/ValidBlocks/bcStateTests/callcodeOutput3partial.json",
+    );
     let case = load_single_blockchain_case(fixture_path, case_name);
     let (final_state, _results) = execute_blockchain_case(case_name, &case)
         .expect("callcodeOutput3partial fixture should execute without state-root mismatches");
@@ -2161,6 +2471,35 @@ fn test_blockhash_tests_prague_fixture() {
     assert_blockhash_tests_case(
         "BlockchainTests/ValidBlocks/bcStateTests/blockhashTests.json::blockhashTests_Prague",
     );
+}
+
+#[test]
+fn test_native_rv32_guest_parity_curated_single_block_fixtures() {
+    // Why: README claims native and RV32 validation. These fixtures provide a
+    // deterministic parity gate through both execution paths on representative
+    // Cancun/Prague state-transition behavior.
+    let curated_cases = [
+        (
+            "tests/eels/BlockchainTests/ValidBlocks/bcExample/basefeeExample.json",
+            "BlockchainTests/ValidBlocks/bcExample/basefeeExample.json::basefeeExample_Cancun",
+        ),
+        (
+            "tests/eels/BlockchainTests/ValidBlocks/bcExample/basefeeExample.json",
+            "BlockchainTests/ValidBlocks/bcExample/basefeeExample.json::basefeeExample_Prague",
+        ),
+        (
+            "tests/eels/BlockchainTests/ValidBlocks/bcExample/mergeExample.json",
+            "BlockchainTests/ValidBlocks/bcExample/mergeExample.json::mergeExample_Cancun",
+        ),
+        (
+            "tests/eels/BlockchainTests/ValidBlocks/bcExample/mergeExample.json",
+            "BlockchainTests/ValidBlocks/bcExample/mergeExample.json::mergeExample_Prague",
+        ),
+    ];
+
+    for (fixture_path, case_name) in curated_cases {
+        assert_single_block_native_rv32_parity(fixture_path, case_name);
+    }
 }
 
 #[test]

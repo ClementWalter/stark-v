@@ -21,7 +21,7 @@ use core::cmp::Ordering;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use crate::crypto::secp256k1::recover_address;
 use crate::crypto::secp256k1_math::secp256k1_n;

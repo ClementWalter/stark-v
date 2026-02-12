@@ -23,7 +23,7 @@ use std::vec::Vec;
 #[cfg(target_arch = "riscv32")]
 use alloc::collections::BTreeSet as HashSet;
 #[cfg(target_arch = "riscv32")]
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use crate::evm::error::EvmError;
 use crate::evm::{GAS_SLOAD_COLD, GAS_SLOAD_WARM, GAS_SSTORE_SENTRY, sstore_gas_cost};

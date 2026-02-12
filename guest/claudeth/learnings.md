@@ -33,6 +33,10 @@
 - Do print per-case start markers in long EELS sweeps so slow fixtures are distinguishable from dead runs.
 - Do capture and retain one uninterrupted full-sweep baseline (`Total/Passed/Failed/Errors` + runtime) before changing gate policy.
 - Do make the full-sweep test non-ignored once deterministic zero-failure baseline is proven.
+- Do preserve deterministic state-root ordering on RV32 by iterating `BTreeMap` keys directly when available.
+- Do reserve MiB-scale RV32 stack space in `linker.ld`; STF execution and trie/account processing use deep stacks.
+- Do assert native-vs-RV32 parity on exact guest output bytes plus decoded summary fields for actionable mismatch triage.
+- Do keep RV32 parity fixtures curated and lightweight enough to stay within explicit `max_cycles` budgets.
 
 ## Don't
 - Don't execute forked branches on a single linear mutable state.
@@ -59,3 +63,6 @@
 - Don't keep full-suite execution ignored/non-fatal once README claims full compatibility.
 - Don't assume `prek` silence implies deadlock; long fixtures can run for tens of minutes without hook-streamed output.
 - Don't kill the final wallet fixtures (`walletReorganizeOwners_*`) early; they can be multi-minute silent phases even in healthy runs.
+- Don't call sort helpers on RV32 hot paths when deterministic order is already provided by map semantics; this can enter core sort paths with unsupported `unimp` sentinels in the runner.
+- Don't reserve kilobyte-sized RV32 stacks for full STF runs; stack corruption can manifest as non-halting cycle exhaustion.
+- Don't assume a fixed RV32 cycle ceiling is universal across all single-block fixtures; choose curated cases deliberately.

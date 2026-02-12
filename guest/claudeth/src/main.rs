@@ -3,6 +3,8 @@
 
 #[cfg(target_arch = "riscv32")]
 extern crate alloc;
+#[cfg(target_arch = "riscv32")]
+use core::arch::global_asm;
 
 #[cfg(not(target_arch = "riscv32"))]
 use std::io::{self, Read, Write};
@@ -17,6 +19,24 @@ use claudeth::crypto::{keccak256, rlp};
 use claudeth::state::{Account, EMPTY_CODE_HASH, InMemoryState, Proof, State, verify_proof};
 use claudeth::stf::{BlockProcessingError, ExecutionError, process_block};
 use claudeth::types::{Address, BlockHeader, Hash, Transaction, U256, Withdrawal};
+
+#[cfg(target_arch = "riscv32")]
+// Why: the runner executes the ELF entrypoint directly; a tiny `_start`
+// trampoline sets gp/sp then transfers control to `__zkvm_start`.
+global_asm!(
+    r#"
+    .section .text._start
+    .globl _start
+_start:
+    .option push
+    .option norelax
+    la gp, __global_pointer$
+    .option pop
+
+    la sp, __stack_top
+    call __zkvm_start
+"#
+);
 
 const ERROR_INVALID_HEADER: u64 = 1;
 const ERROR_TX_EXECUTION: u64 = 2;
@@ -970,9 +990,53 @@ mod zkvm_io {
         unsafe {
             let start = core::ptr::addr_of!(__input_start) as usize;
             let end = core::ptr::addr_of!(__input_end) as usize;
-            let input_size = end.saturating_sub(start);
-            let mut buf = Vec::with_capacity(input_size);
-            for i in 0..input_size {
+            let max_size = end.saturating_sub(start);
+            if max_size == 0 {
+                return Vec::new();
+            }
+
+            // Why: runner writes raw bytes at __input_start without a length
+            // word. Deriving the total size from the leading RLP prefix avoids
+            // treating zero-filled capacity tail as part of the payload.
+            let first = core::ptr::read_volatile(start as *const u8);
+            let mut read_len = match first {
+                0x00..=0x7f => 1usize,
+                0x80..=0xb7 => 1usize + (first as usize - 0x80),
+                0xb8..=0xbf => {
+                    let len_of_len = (first as usize).saturating_sub(0xb7);
+                    if len_of_len == 0 || len_of_len > 8 || len_of_len + 1 > max_size {
+                        max_size
+                    } else {
+                        let mut payload_len = 0usize;
+                        for idx in 0..len_of_len {
+                            let byte = core::ptr::read_volatile((start + 1 + idx) as *const u8);
+                            payload_len = (payload_len << 8) | byte as usize;
+                        }
+                        1 + len_of_len + payload_len
+                    }
+                }
+                0xc0..=0xf7 => 1usize + (first as usize - 0xc0),
+                0xf8..=0xff => {
+                    let len_of_len = (first as usize).saturating_sub(0xf7);
+                    if len_of_len == 0 || len_of_len > 8 || len_of_len + 1 > max_size {
+                        max_size
+                    } else {
+                        let mut payload_len = 0usize;
+                        for idx in 0..len_of_len {
+                            let byte = core::ptr::read_volatile((start + 1 + idx) as *const u8);
+                            payload_len = (payload_len << 8) | byte as usize;
+                        }
+                        1 + len_of_len + payload_len
+                    }
+                }
+            };
+
+            if read_len > max_size {
+                read_len = max_size;
+            }
+
+            let mut buf = Vec::with_capacity(read_len);
+            for i in 0..read_len {
                 let addr = start + i;
                 let byte = core::ptr::read_volatile(addr as *const u8);
                 buf.push(byte);

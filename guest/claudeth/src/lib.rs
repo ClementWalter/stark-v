@@ -31,15 +31,13 @@ extern crate alloc;
 use core::alloc::{GlobalAlloc, Layout};
 #[cfg(target_arch = "riscv32")]
 use core::panic::PanicInfo;
-#[cfg(target_arch = "riscv32")]
-use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// Simple bump allocator for riscv32 target
 #[cfg(target_arch = "riscv32")]
 struct BumpAllocator;
 
 #[cfg(target_arch = "riscv32")]
-const HEAP_SIZE: usize = 4 * 1024 * 1024;
+const HEAP_SIZE: usize = 16 * 1024 * 1024;
 
 #[cfg(target_arch = "riscv32")]
 #[repr(align(16))]
@@ -49,7 +47,7 @@ struct AlignedHeap([u8; HEAP_SIZE]);
 static mut HEAP: AlignedHeap = AlignedHeap([0; HEAP_SIZE]);
 
 #[cfg(target_arch = "riscv32")]
-static HEAP_OFFSET: AtomicUsize = AtomicUsize::new(0);
+static mut HEAP_OFFSET: usize = 0;
 
 #[cfg(target_arch = "riscv32")]
 unsafe impl GlobalAlloc for BumpAllocator {
@@ -61,25 +59,20 @@ unsafe impl GlobalAlloc for BumpAllocator {
         }
 
         let align = layout.align().max(core::mem::align_of::<usize>());
-        let mut current = HEAP_OFFSET.load(Ordering::Relaxed);
+        // Why: rv32im excludes atomic compare-and-swap, and the guest runtime
+        // is single-threaded, so a plain mutable bump pointer is sufficient.
+        let current = unsafe { HEAP_OFFSET };
+        let aligned = (current + align - 1) & !(align - 1);
+        let next = aligned.saturating_add(size);
+        if next > HEAP_SIZE {
+            return core::ptr::null_mut();
+        }
 
-        loop {
-            let aligned = (current + align - 1) & !(align - 1);
-            let next = aligned.saturating_add(size);
-
-            if next > HEAP_SIZE {
-                return core::ptr::null_mut();
-            }
-
-            match HEAP_OFFSET.compare_exchange(current, next, Ordering::SeqCst, Ordering::Relaxed) {
-                Ok(_) => {
-                    // SAFETY: aligned is within HEAP bounds as checked above.
-                    return unsafe { HEAP.0.as_mut_ptr().add(aligned) };
-                }
-                Err(updated) => {
-                    current = updated;
-                }
-            }
+        // SAFETY: single-threaded guest; allocator is the only writer.
+        unsafe {
+            HEAP_OFFSET = next;
+            let heap_ptr = core::ptr::addr_of_mut!(HEAP.0) as *mut u8;
+            heap_ptr.add(aligned)
         }
     }
 

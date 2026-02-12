@@ -11,7 +11,11 @@ use std::string::String;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::{format, string::String, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 /// A single disassembled instruction.
 #[derive(Debug, Clone, PartialEq, Eq)]

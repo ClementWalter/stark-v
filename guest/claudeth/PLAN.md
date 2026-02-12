@@ -4,85 +4,94 @@ Last reviewed: 2026-02-12
 
 ## Ground Truth Snapshot
 
-- `README.md` claims full EELS compatibility and test validation on native and RV32im.
-- Release validation executed:
-  - `cargo test -p claudeth --release` passed (`57` EELS focused tests passed, `1` full-sweep test ignored at that moment).
-  - `cargo test -p claudeth --release test_execute_all_blockchain_tests -- --ignored --nocapture` passed end-to-end with:
-    - `Total: 1142`
-    - `Passed: 1142`
-    - `Failed: 0`
-    - `Errors: 0`
-    - Runtime: `3312.94s` (~55m13s)
-- Full-suite runner behavior now matches reference expectations:
-  - deterministic traversal (sorted file paths + sorted case names),
-  - per-case start markers for long silent fixtures,
-  - hard assertions on `failed == 0` and `errors == 0`.
-- Remaining mismatch with README claim:
-  - no deterministic native-vs-RV32 parity gate yet.
+- `README.md` claims:
+  - full Ethereum execution compatibility,
+  - tests validated on both native and `riscv32im-unknown-none-elf`,
+  - no external crate dependencies.
+- Current implementation status:
+  - native EELS blockchain conformance gate exists in `tests/eels_blockchain_tests.rs` and runs by default (`test_execute_all_blockchain_tests` is non-ignored).
+  - deterministic full-sweep traversal and hard failure/error assertions are already implemented.
+  - deterministic native-vs-RV32 parity gate now exists for curated single-block Cancun/Prague fixtures (`basefeeExample`, `mergeExample`) and compares full guest output payloads.
+  - RV32 guest execution is now wired for runner I/O symbols and entrypoint startup (`build.rs`, `linker.ld`, `src/main.rs`) with a stable RV32 allocator path and stack reservation.
+  - `Cargo.toml` currently depends on external crates (`serde`, and test-time crates such as `serde_json`, `hex`, `walkdir`), which does not match the strict README dependency claim.
 
 ## Completion Objective
 
-Make repository truthfully satisfy `README.md` claims by ensuring:
+Make repository behavior and validation match README claims in a verifiable way:
 
-- full EELS blockchain sweep is default, mandatory, and deterministic in release mode;
-- native and RV32im executions are both exercised with explicit parity checks;
-- long-running full-sweep behavior is operationally explicit and reproducible.
+- keep deterministic native full-suite conformance as a mandatory release gate,
+- add deterministic native/RV32 parity checks for the same fixture inputs,
+- close remaining README/code mismatches in dependency policy and validation scope.
 
 ## Priority Backlog (Why / What / How)
 
-### Task 1 (P0, DONE): Promote Full EELS Sweep to Default Gate
+### Task 1 (P0, DONE): Add Deterministic Native vs RV32 Guest Parity Gate
 
 Why:
-- README-level compatibility must be enforced by default, not hidden behind `--ignored`.
-- We now have a completed zero-failure baseline (`1142/1142`) proving the suite is runnable.
+- README claims both native and RV32 are validated, but current tests only enforce native behavior.
+- Cross-architecture drift can silently appear from `no_std`, allocator, or VM I/O path differences even when native tests pass.
 
 What:
-- Removed `#[ignore]` from `test_execute_all_blockchain_tests` so default release tests enforce full blockchain conformance.
+- Add a release-mode integration parity test that executes curated EELS fixtures through:
+  - native guest entrypoint binary path,
+  - RV32 guest binary through `runner::run_with_input`.
+- Assert deterministic equality of guest outputs (status/gas/root/error payload) per fixture.
 
 How:
-- Kept deterministic ordering, per-case markers, and hard failure/error assertions intact.
-- Preserved 128 MiB stack runner for deep fixtures.
+- Reuse existing fixture parsing/conversion logic in `tests/eels_blockchain_tests.rs`.
+- Build canonical guest input payloads in the exact RLP format expected by `src/main.rs`.
+- Compile RV32 guest once per test process, reuse ELF bytes, and compare native-vs-RV32 results fixture-by-fixture with actionable diagnostics.
+- Use execution-spec references as guardrails:
+  - `execution-specs/src/ethereum/forks/prague/fork.py` (`state_transition` strict header/body consistency checks),
+  - `execution-spec-tests/src/ethereum_test_specs/blockchain.py` (parent/environment consistency),
+  - `execution-spec-tests/src/ethereum_test_specs/helpers.py` (strict mismatch surfacing).
 
-### Task 2 (P1, FIRST): Add Deterministic Native vs RV32 Parity Gate
-
-Reference implementation notes used:
-- `execution-specs/src/ethereum/forks/prague/fork.py` (`state_transition` block-level validity checks must hard-fail on mismatches).
-- `execution-spec-tests/src/ethereum_test_specs/blockchain.py` (fixture execution enforces parent/environment consistency and explicit exception handling).
-- `execution-spec-tests/src/ethereum_test_specs/helpers.py` (strict mismatch surfacing for unexpected success/failure).
+### Task 2 (P1, FIRST): Extend Parity Gate Beyond Single-Block Cases
 
 Why:
-- README claims both native and RV32 paths are validated, but no parity assertion currently proves identical outcomes.
+- Single-block fixtures catch entrypoint and transaction semantics but miss chain-history-sensitive behavior.
 
 What:
-- Add a release-mode parity test harness for a curated high-signal fixture set.
+- Extend parity harness coverage to multi-block/branching fixtures.
 
 How:
-- Execute same fixture inputs on native and RV32 runner.
-- Compare state root, receipts root, logs bloom, gas used, and status.
-- Fail on any divergence with concise diagnostics.
+- Add deterministic state snapshot encoding from intermediate in-memory state into guest input state entries or witness format.
+- Re-run parity assertions per block in chain order while preserving expected-invalid block handling.
+- Keep curated RV32 runtime bounded by selecting representative cases and maintaining explicit `max_cycles` budgets.
 
-### Task 3 (P1): Operationalize Full-Sweep Runtime Expectations
+### Task 3 (P1): Align Validation Scope with README “execution-spec-tests” Claim
 
 Why:
-- Full default sweep now takes ~55 minutes; silent phases can look stalled and create false triage.
+- Current conformance harness is focused on `ethereum/tests` blockchain fixtures; README references execution-spec-tests-level compatibility.
 
 What:
-- Make runtime expectations explicit and CI-friendly without weakening coverage.
+- Add an explicit mapping and gate that demonstrates covered execution-spec-tests corpus/suites and unsupported subsets.
 
 How:
-- Document expected duration and silent fixture families.
-- Keep per-case markers as progress heartbeat.
-- Ensure CI timeout/memory settings are compatible with observed runtime envelope.
+- Introduce deterministic suite selection + reporting of totals by fork/category.
+- Fail CI if covered suites regress.
 
-### Task 4 (P1): Frontier-Driven Semantic Fix Loop (Conditional)
+### Task 4 (P2): Close README Dependency Policy Mismatch
 
 Why:
-- Once full sweep is default, any future deterministic failure blocks release readiness.
+- README says no external dependencies; current manifest includes external crates.
 
 What:
-- Use failing fixture as regression frontier and patch minimal semantic deltas.
+- Remove or isolate external dependencies to match policy, or introduce a strict no-deps build profile proven in CI.
 
 How:
-- Capture first failing case from deterministic traversal.
-- Add focused regression test.
-- Patch implementation and rerun release sweep until `failed=0` and `errors=0`.
+- Prioritize runtime path first (`src/` and guest binary), then test-only dependencies.
+- Replace derive/serde-dependent code paths with in-tree encoders/parsers where needed.
+- Add a CI check that fails when external crates appear in the runtime dependency graph.
+
+### Task 5 (P2): Operational Hardening of Long Full-Sweep Runs
+
+Why:
+- Full deterministic sweep is long-running; reliability depends on explicit runtime expectations.
+
+What:
+- Preserve debuggability and reproducibility for long release-mode runs.
+
+How:
+- Keep per-case start markers and deterministic ordering.
+- Document expected runtime envelope and required CI timeout/memory settings.

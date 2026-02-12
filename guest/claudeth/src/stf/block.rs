@@ -16,7 +16,7 @@ extern crate alloc;
 use std::vec::Vec;
 
 #[cfg(target_arch = "riscv32")]
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
 
 use crate::crypto::rlp::encode_u256;
 use crate::crypto::{keccak256, rlp};

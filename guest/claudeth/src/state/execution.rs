@@ -438,9 +438,23 @@ impl State for InMemoryState {
         }
 
         let mut trie = Trie::new();
-        let mut addresses: Vec<Address> = self.accounts.keys().copied().collect();
-        addresses.sort_unstable();
-        for address in addresses {
+        #[cfg(not(target_arch = "riscv32"))]
+        let ordered_addresses: Vec<Address> = {
+            let mut addresses: Vec<Address> = self.accounts.keys().copied().collect();
+            addresses.sort_unstable();
+            addresses
+        };
+
+        #[cfg(target_arch = "riscv32")]
+        let ordered_addresses: Vec<Address> = {
+            // Why: on RV32 we store accounts in a BTreeMap, so key iteration is
+            // already deterministic. Avoiding sort here prevents entering
+            // core::slice::sort paths that emit `unimp` sentinels unsupported
+            // by the RV32 runner.
+            self.accounts.keys().copied().collect()
+        };
+
+        for address in ordered_addresses {
             let account = match self.accounts.get(&address) {
                 Some(account) => account,
                 None => continue,
