@@ -144,13 +144,11 @@ impl Preprocessing {
             .iter()
             .zip(self.domain_log_sizes.iter())
             .map(|(data, &domain_log_size)| {
-                // Allocate 64-byte aligned memory and copy data
-                let aligned_data: Vec<u32> = aligned_vec_from_slice(data);
+                // Copy into 64-byte aligned memory for SIMD compatibility
+                let mut aligned = simd::AlignedVec::with_capacity(data.len());
+                aligned.extend_from_slice(data);
+                let values: BaseColumn = aligned.into();
 
-                // Convert to Vec<PackedBaseField> using bytemuck
-                let packed_data: Vec<_> = bytemuck::cast_slice(&aligned_data).to_vec();
-
-                let values = BaseColumn::from_simd(packed_data);
                 let domain = CanonicCoset::new(domain_log_size).circle_domain();
                 let evals = CircleEvaluation::new(domain, values);
 
@@ -164,35 +162,6 @@ impl Preprocessing {
         };
 
         (polynomials, merkle_prover)
-    }
-}
-
-/// Creates a Vec<T> with 64-byte alignment from a slice.
-///
-/// Required for reconstructing SIMD-compatible PackedBaseField data from
-/// serialized u32 arrays.
-fn aligned_vec_from_slice<T: Clone>(elements: &[T]) -> Vec<T> {
-    use std::alloc::{Layout, alloc_zeroed, handle_alloc_error};
-    use std::ptr::write;
-
-    let len = elements.len();
-    let elem_size = std::mem::size_of::<T>();
-    let align = 64.max(std::mem::align_of::<T>());
-    let layout = Layout::from_size_align(
-        len.checked_mul(elem_size)
-            .expect("Overflow in allocation size"),
-        align,
-    )
-    .unwrap();
-    unsafe {
-        let ptr = alloc_zeroed(layout) as *mut T;
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
-        for (i, v) in elements.iter().enumerate() {
-            write(ptr.add(i), v.clone());
-        }
-        Vec::from_raw_parts(ptr, len, len)
     }
 }
 
