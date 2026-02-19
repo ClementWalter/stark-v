@@ -711,27 +711,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
-name = "erased-serde"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89e8918065695684b2b0702da20382d5ae6065cf3327bc2d6436bd49a71ce9f3"
-dependencies = [
- "serde",
- "serde_core",
- "typeid",
-]
-
-[[package]]
 name = "ere-zkvm-interface"
-version = "0.1.0"
-source = "git+https://github.com/eth-act/ere?rev=aaf2efcc78fecf5f3b7d149a0042c97057a10fb6#aaf2efcc78fecf5f3b7d149a0042c97057a10fb6"
+version = "0.2.0"
+source = "git+https://github.com/eth-act/ere?rev=66c516a24d9c3549f76b84f72365ab544299e63a#66c516a24d9c3549f76b84f72365ab544299e63a"
 dependencies = [
  "anyhow",
  "auto_impl",
  "bincode",
  "indexmap",
  "serde",
- "serde-untagged",
  "strum",
  "thiserror",
 ]
@@ -1443,18 +1431,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-untagged"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9faf48a4a2d2693be24c6289dbe26552776eb7737074e6722891fadbe6c5058"
-dependencies = [
- "erased-serde",
- "serde",
- "serde_core",
- "typeid",
-]
-
-[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1903,12 +1879,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
 ]
-
-[[package]]
-name = "typeid"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"
