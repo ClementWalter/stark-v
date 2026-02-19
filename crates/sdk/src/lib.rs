@@ -47,7 +47,7 @@ mod compiler;
 mod proof_serde;
 mod vm;
 
-pub use compiler::{StarkVCompiler, StarkVCompilerError};
+pub use compiler::{StarkVCompiler, StarkVCompilerError, StarkVProgram};
 pub use vm::StarkV;
 
 /// Maximum cycles for program execution (default).

@@ -22,5 +22,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-01-29
+          targets: riscv32im-unknown-none-elf
+          components: clippy, rustfmt
+
       - name: Trunk
         uses: trunk-io/trunk-action@v1

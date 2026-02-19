@@ -1,26 +1,30 @@
 //! Main proving function for RV32IM execution traces.
 
 #[cfg(feature = "track-relations")]
+use crate::relations::PreProcessedTrace;
+#[cfg(feature = "track-relations")]
 use num_traits::Zero;
-use stwo::core::channel::{Blake2sChannel, Channel};
+use stwo::core::channel::{Blake2sChannel, Channel, MerkleChannel};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof_of_work::GrindOps;
 use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::circle::PolyOps;
-use stwo::prover::{CommitmentSchemeProver, prove};
+use stwo::prover::{CommitmentSchemeProver, CommitmentTreeProver, prove};
 use stwo_constraint_framework::TraceLocationAllocator;
 use tracing::{Level, info, span};
 
 use crate::components::{Components, gen_interaction_trace, gen_trace};
 use crate::public_data::PublicData;
-use crate::relations::{INTERACTION_POW_BITS, PreProcessedTrace, Relations};
-use crate::{InteractionClaim, Proof};
+use crate::relations::{INTERACTION_POW_BITS, Relations};
+use crate::{InteractionClaim, Preprocessing, Proof};
 
 /// Prove execution of an RV32IM program.
 ///
 /// Takes a `RunResult` from the runner and generates a STARK proof.
+/// The `preprocessing` parameter contains cached commitment tree data
+/// that is injected directly, skipping the expensive tree rebuild.
 ///
 /// # Panics
 ///
@@ -29,6 +33,7 @@ use crate::{InteractionClaim, Proof};
 pub fn prove_rv32im(
     run_result: runner::RunResult,
     config: PcsConfig,
+    preprocessing: &Preprocessing,
 ) -> Proof<Blake2sMerkleHasher> {
     let public_data = PublicData::new(&run_result);
 
@@ -43,9 +48,16 @@ pub fn prove_rv32im(
 
     // 2. Precompute twiddles (need enough for largest domain + blowup)
     let span = span!(Level::INFO, "Precompute twiddles").entered();
+    let max_preprocessed_log_size = preprocessing
+        .domain_log_sizes
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(0);
+    let twiddles_log_size = log_size.max(max_preprocessed_log_size);
     let twiddles = SimdBackend::precompute_twiddles(
         // See https://github.com/starkware-libs/stwo-cairo/blob/main/stwo_cairo_prover/crates/prover/src/prover.rs#L46-L47
-        CanonicCoset::new(log_size + 2 + config.fri_config.log_blowup_factor)
+        CanonicCoset::new(twiddles_log_size + 2 + config.fri_config.log_blowup_factor)
             .circle_domain()
             .half_coset,
     );
@@ -59,15 +71,19 @@ pub fn prove_rv32im(
     // 4. Public data
     public_data.mix_into(channel);
 
-    // 5. Preprocessed trace (constant lookup tables - fixed size, independent of execution)
-    let span = span!(Level::INFO, "Preprocessed trace").entered();
-    let preprocessed_trace = PreProcessedTrace::new();
-    let preprocessed_ids = preprocessed_trace.ids.clone();
+    // 5. Load preprocessed trace — reconstruct from cached data and inject directly
+    //    (skips interpolation, extension, and Merkle tree building)
+    let span = span!(Level::INFO, "Load preprocessed trace").entered();
+    let preprocessed_ids = preprocessing.column_ids();
     info!("Preprocessed trace ids len: {}", preprocessed_ids.len());
 
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(preprocessed_trace.trace);
-    tree_builder.commit(channel);
+    let (polynomials, merkle_prover) = preprocessing.to_commitment_tree();
+    let root = merkle_prover.layers[0][0];
+    commitment_scheme.trees.push(CommitmentTreeProver {
+        polynomials,
+        commitment: merkle_prover,
+    });
+    Blake2sMerkleChannel::mix_root(channel, root);
     span.exit();
 
     // 6. Main execution trace (opcode + multiplicity columns)
