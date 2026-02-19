@@ -1,0 +1,20 @@
+[package]
+name = "claudeth"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["lib", "staticlib"]
+
+[features]
+default = []
+evm-trace = []  # Enable EVM execution tracing for debugging
+
+[dependencies]
+serde = { workspace = true, features = ["derive", "alloc"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+hex = { workspace = true }
+walkdir = "2.5"
+runner = { workspace = true }

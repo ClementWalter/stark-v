@@ -1,18 +1,32 @@
 repos:
   - repo: local
     hooks:
-      - id: no-external-changes
-        name: Prevent changes to external directory
+      - id: no-orphan-rust-files
+        name: No orphan Rust files
         language: system
-        entry:
-          "bash -c 'git diff --cached --name-only | grep -q ^external/ && echo
-          Error: Changes to external/ directory are not allowed && exit 1 ||
-          exit 0'"
         pass_filenames: false
-        always_run: true
+        entry: uv run scripts/check_no_orphan_rust_files.py
 
-      - id: trunk
-        name: Trunk check
+      - id: cspell-auto-add
+        name: CSpell auto-add unknown words
         language: system
         pass_filenames: false
-        entry: trunk check --fix --ci
+        entry: uv run scripts/cspell_auto_add_words.py
+
+      - id: protected-paths
+        name: Protected paths unchanged
+        language: system
+        pass_filenames: false
+        entry: uv run scripts/check_protected_paths.py
+
+      - id: cargo-clippy
+        name: Cargo clippy
+        language: system
+        pass_filenames: false
+        entry: cargo clippy -p claudeth -- -D warnings
+
+      - id: cargo-test
+        name: Cargo test
+        language: system
+        pass_filenames: false
+        entry: cargo test --release -p claudeth

@@ -1,55 +1,106 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
+  - abababababababababababababababab
+  - abcdez
   - addi
+  - addmod
   - addrs
-  - ADDSUB
+  - addsub
   - allocvec
   - andi
   - andn
   - auipc
+  - basefee
+  - baselined
+  - beac
   - bgeu
   - bitmask
   - bitmaski
+  - blobbasefee
+  - blobhash
+  - blobtransactions
+  - blockhash
   - bltu
   - bytemuck
+  - callcode
+  - calldatacopy
+  - calldataload
+  - calldatasize
+  - callvalue
   - cfgs
-  - Circom
-  - clément
+  - chainid
+  - chainname
+  - checkmarks
+  - checksummed
+  - checksumming
+  - circom
+  - claudeth
+  - clementwalter
   - clippy
+  - 'clément'
+  - codecopy
+  - codedeposit
+  - codesize
+  - coeff
   - condvar
   - csrrw
+  - delegatecall
+  - delegatecalls
+  - discardable
   - divu
   - doctest
+  - doctests
   - doubleword
   - dtolnay
   - ebreak
+  - ecadd
   - ecall
+  - ecmul
+  - ecpairing
   - ehdr
   - eprintln
+  - erigon
+  - ethash
+  - ethproofs
   - evals
+  - extcode
+  - extcodecopy
+  - extcodehash
+  - fastish
   - filesz
   - fondeur
+  - footgun
   - funct
+  - fusaka
   - futex
+  - getrandom
+  - gitwildmatch
   - globl
-  - Groth
+  - groth
   - halfword
   - hashbrown
   - idents
   - ilog2
   - immediates
+  - initcode
+  - initialisation
   - inplace
   - insn
   - intermed
+  - iszero
   - itertools
   - jalr
   - jemalloc
   - jemallocator
+  - jumpdest
+  - jumpdests
+  - jumpi
   - kakarot
   - keccak
-  - Keccak
-  - Kitem
+  - keepends
+  - kitem
+  - lastblockhash
   - littleriscv
   - loadb
   - loadbu
@@ -59,88 +110,140 @@ words:
   - logup
   - madv
   - madvise
+  - mcopy
   - memsz
-  - MEPC
+  - mepc
   - merkle
   - mersenne
   - metavar
   - mimalloc
   - mispredictions
+  - mload
   - mmap
   - mmio
+  - modexp
   - movsign
-  - Movsign
   - mret
-  - MRET
-  - MTVEC
+  - msize
+  - mstore
+  - mtvec
   - muldiv
   - mulh
   - mulhsu
   - mulhu
   - muli
+  - mulmod
   - mult
   - mults
   - nocapture
   - nomem
+  - nonzeros
   - norelax
   - noreturn
   - nostack
   - objdump
+  - ommers
   - openvm
+  - operationalize
+  - optionstest
+  - overfitting
   - pairable
+  - parseable
   - popcount
+  - precharge
+  - prechecks
   - precomputation
+  - prehash
+  - prehashed
+  - preimage
+  - prek
+  - prevrandao
   - println
+  - pycache
+  - randao
   - readelf
+  - rebaseline
+  - recid
+  - reentrency
   - regs
   - remu
   - repr
+  - reprioritizing
+  - returndata
+  - returndatacopy
+  - returndatasize
+  - revm
+  - ripemd
   - risc0
   - riscv
   - rodata
+  - roundtrips
   - rustc
   - rustflags
   - rustup
   - rzup
+  - sandboxed
   - sdiv
   - secp
+  - selfbalance
+  - selfdestruct
+  - selfdestructs
   - serde
   - shamir
   - shamt
+  - signextend
   - slli
+  - sload
   - slti
   - sltiu
   - sltu
   - sltui
+  - smod
   - smul
   - srai
   - srli
+  - sstore
+  - sstores
   - starknet
   - starkv
+  - starkware
+  - statedb
+  - statetest
+  - staticcall
+  - staticlib
   - storeb
   - storeh
   - storew
   - strtab
   - stwo
   - subi
-  - Swatinem
+  - swatinem
   - syms
   - syscalls
+  - testname
   - thiserror
   - tikv
+  - tload
   - trac
   - transpiling
+  - tstore
   - ttext
   - underflowed
   - unimp
+  - uninlined
   - usize
+  - usizes
   - vaddr
+  - venv
   - virt
-  - Virt
+  - vitalik
   - vm
+  - walkdir
   - worktree
   - worktrees
   - writeback
-  - XLEN
+  - xdeadbeefu
+  - xffu
+  - xlen
   - xori
   - zkvm

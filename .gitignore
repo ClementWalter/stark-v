@@ -6,3 +6,5 @@ tmp*
 .cursor
 .claude
 .codex
+.venv
+__pycache__

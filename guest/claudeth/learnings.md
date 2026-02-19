@@ -1,0 +1,68 @@
+## Do
+- Do resolve parent state/header snapshots by `parent_hash`, not fixture iteration order.
+- Do exclude expected-invalid blocks from canonical hash-indexed ancestry maps.
+- Do validate fixture post-state at `lastblockhash`, not the last iterated block.
+- Do pass `BLOCKHASH` ancestry oldest -> newest with direct parent last.
+- Do treat `BLOCKHASH` operands as full-width `U256`; reject out-of-range values without lossy truncation.
+- Do key withdrawal trie entries by withdrawal list index.
+- Do hash trie node RLP bytes with Keccak-256 for hashed references.
+- Do inline trie children only when encoded length is `< 32` bytes.
+- Do compute `SELFDESTRUCT` gas from pre-transfer state (base + warm/cold + conditional new-account surcharge).
+- Do return `0` from `EXTCODEHASH` for non-existent accounts and `keccak256("")` for existing empty-code accounts.
+- Do prewarm recursive child frames with parent warm address/storage sets (EIP-2929 continuity).
+- Do prewarm CREATE/CREATE2 destination addresses before initcode execution.
+- Do increment creator nonce once CREATE/CREATE2 passes prechecks, even if creation later fails.
+- Do initialize created-account nonce before initcode execution so nested CREATE address derivation matches spec behavior.
+- Do roll back failed top-level CREATE side effects while preserving creation-tracking semantics.
+- Do return `contract_address = None` for failed top-level CREATE paths.
+- Do short-circuit CREATE collisions on code/nonce/non-empty-storage and burn forwarded gas.
+- Do apply Prague calldata-floor logic as a floor on post-refund gas-used, not as intrinsic gas replacement.
+- Do charge caller-side call gas as `max(child_gas_used - stipend, 0)` and return unused stipend.
+- Do transfer ETH only for `CALL`/`CALLCODE`, never `DELEGATECALL`/`STATICCALL`.
+- Do preserve output-memory tail bytes when return data is shorter than `out_size`.
+- Do propagate successful child logs, warm accesses, and refunds into parent context.
+- Do drop child refund deltas on child revert/error.
+- Do map opcode `0x44` to `PREVRANDAO` (`mix_hash`) on post-merge forks.
+- Do implement non-commutative opcodes (`LT`/`GT`/`SLT`/`SGT`/`EXP`) with execution-spec operand order.
+- Do treat truncated PUSH immediates as right-zero-padded runtime data, not exceptional halts.
+- Do enforce static-context write protection (`SSTORE`, `LOG*`, CREATE, SELFDESTRUCT) through recursive frames.
+- Do mutate memory length when charging read-range expansion so expansion cost is stateful.
+- Do treat `CODECOPY` source offsets as full-width `U256`; offsets above `usize` are out-of-range zero reads.
+- Do keep full-suite fixture traversal deterministic (sorted file and case order) when capturing regression frontiers.
+- Do hard-fail the full EELS sweep on any fixture failure/error once compatibility is the stated objective.
+- Do print per-case start markers in long EELS sweeps so slow fixtures are distinguishable from dead runs.
+- Do capture and retain one uninterrupted full-sweep baseline (`Total/Passed/Failed/Errors` + runtime) before changing gate policy.
+- Do make the full-sweep test non-ignored once deterministic zero-failure baseline is proven.
+- Do preserve deterministic state-root ordering on RV32 by iterating `BTreeMap` keys directly when available.
+- Do reserve MiB-scale RV32 stack space in `linker.ld`; STF execution and trie/account processing use deep stacks.
+- Do assert native-vs-RV32 parity on exact guest output bytes plus decoded summary fields for actionable mismatch triage.
+- Do keep RV32 parity fixtures curated and lightweight enough to stay within explicit `max_cycles` budgets.
+
+## Don't
+- Don't execute forked branches on a single linear mutable state.
+- Don't pass an empty recent-hash list when `BLOCKHASH` is reachable.
+- Don't truncate `BLOCKHASH` stack operands with `as_u64()`.
+- Don't synthesize trie references by zero-padding short RLP payloads.
+- Don't model `SELFDESTRUCT` as a fixed 5000 gas in Cancun/Prague.
+- Don't assume warm initialization at tx entry automatically propagates to recursive frames.
+- Don't derive CREATE destination from `caller_nonce - 1`.
+- Don't leak failed top-level CREATE side effects into final state.
+- Don't treat balance-only accounts as CREATE-collision accounts.
+- Don't stop triage after the first gas fix; rerun to find the next deterministic frontier.
+- Don't print unbounded transaction/return-data payloads in failure diagnostics.
+- Don't assume default test-thread stack is enough for deep historical fixtures.
+- Don't model Prague EIP-7623 as flat non-zero-byte repricing.
+- Don't charge call stipend as caller-consumed gas.
+- Don't use `msg.value != 0` alone to decide whether ETH transfer occurs.
+- Don't zero-fill full call output buffers when child return data is shorter.
+- Don't carry refund deltas from reverted child frames into parent frame accounting.
+- Don't map recursive `REVERT` to full forwarded-gas burn.
+- Don't double-charge LOG base gas in both opcode base and dynamic helpers.
+- Don't compute memory expansion from `offset + size` when `size == 0`.
+- Don't use lossy `as_usize()` truncation for copy-opcode source offsets.
+- Don't keep full-suite execution ignored/non-fatal once README claims full compatibility.
+- Don't assume `prek` silence implies deadlock; long fixtures can run for tens of minutes without hook-streamed output.
+- Don't kill the final wallet fixtures (`walletReorganizeOwners_*`) early; they can be multi-minute silent phases even in healthy runs.
+- Don't call sort helpers on RV32 hot paths when deterministic order is already provided by map semantics; this can enter core sort paths with unsupported `unimp` sentinels in the runner.
+- Don't reserve kilobyte-sized RV32 stacks for full STF runs; stack corruption can manifest as non-halting cycle exhaustion.
+- Don't assume a fixed RV32 cycle ceiling is universal across all single-block fixtures; choose curated cases deliberately.
