@@ -1,6 +1,8 @@
 //! Main proving function for RV32IM execution traces.
 
 #[cfg(feature = "track-relations")]
+use crate::relations::PreProcessedTrace;
+#[cfg(feature = "track-relations")]
 use num_traits::Zero;
 use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::pcs::PcsConfig;
@@ -15,8 +17,8 @@ use tracing::{Level, info, span};
 
 use crate::components::{Components, gen_interaction_trace, gen_trace};
 use crate::public_data::PublicData;
-use crate::relations::{INTERACTION_POW_BITS, PreProcessedTrace, Relations};
-use crate::{InteractionClaim, Proof};
+use crate::relations::{INTERACTION_POW_BITS, Relations};
+use crate::{InteractionClaim, Preprocessing, Proof};
 
 /// Prove execution of an RV32IM program.
 ///
@@ -29,7 +31,7 @@ use crate::{InteractionClaim, Proof};
 pub fn prove_rv32im(
     run_result: runner::RunResult,
     config: PcsConfig,
-    preprocessed_trace: PreProcessedTrace,
+    preprocessing: Preprocessing,
 ) -> Proof<Blake2sMerkleHasher> {
     let public_data = PublicData::new(&run_result);
 
@@ -60,13 +62,13 @@ pub fn prove_rv32im(
     // 4. Public data
     public_data.mix_into(channel);
 
-    // 5. Preprocessed trace (constant lookup tables - fixed size, independent of execution)
-    let span = span!(Level::INFO, "Preprocessed trace").entered();
-    let preprocessed_ids = preprocessed_trace.ids.clone();
+    // 5. Commit preprocessed trace (constant lookup tables from preprocessing step)
+    let span = span!(Level::INFO, "Commit preprocessed trace").entered();
+    let preprocessed_ids = preprocessing.trace.ids.clone();
     info!("Preprocessed trace ids len: {}", preprocessed_ids.len());
 
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(preprocessed_trace.trace);
+    tree_builder.extend_evals(preprocessing.trace.trace);
     tree_builder.commit(channel);
     span.exit();
 

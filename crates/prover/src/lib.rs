@@ -77,15 +77,29 @@ pub mod verifier;
 pub use errors::VerificationError;
 pub use prover::prove_rv32im;
 pub use public_data::PublicData;
-pub use relations::PreProcessedTrace;
 pub use verifier::verify_rv32im;
 
-/// Generate the preprocessed trace (constant lookup tables).
+/// Result of preprocessing: constant lookup tables with pre-computed metadata.
+///
+/// Contains the raw trace evaluations, column IDs, and pre-computed log sizes.
+/// The trace is consumed by the prover's tree builder commitment; the verifier
+/// only needs `log_sizes` and `ids`.
+pub struct Preprocessing {
+    /// Inner preprocessed trace (trace evaluations + column IDs).
+    pub(crate) trace: relations::PreProcessedTrace,
+    /// Pre-computed log sizes for each preprocessed column.
+    pub log_sizes: Vec<u32>,
+}
+
+/// Generate the preprocessed trace (constant lookup tables) with metadata.
 ///
 /// This is independent of any specific execution and can be reused across
-/// multiple prove/verify calls.
-pub fn preprocess() -> PreProcessedTrace {
-    PreProcessedTrace::new()
+/// multiple prove/verify calls. Computes everything up to the tree builder
+/// commitment boundary.
+pub fn preprocess() -> Preprocessing {
+    let trace = relations::PreProcessedTrace::new();
+    let log_sizes = trace.trace.iter().map(|c| c.domain.log_size()).collect();
+    Preprocessing { trace, log_sizes }
 }
 
 // Re-export stwo types needed by external consumers

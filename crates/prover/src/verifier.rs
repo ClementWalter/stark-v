@@ -7,15 +7,16 @@ use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::verify;
 use stwo_constraint_framework::TraceLocationAllocator;
 
+use crate::Preprocessing;
 use crate::Proof;
 use crate::components::Components;
 use crate::errors::VerificationError;
-use crate::relations::{INTERACTION_POW_BITS, PreProcessedTrace, Relations};
+use crate::relations::{INTERACTION_POW_BITS, Relations};
 
 pub fn verify_rv32im(
     proof: Proof<Blake2sMerkleHasher>,
     config: PcsConfig,
-    preprocessed_trace: PreProcessedTrace,
+    preprocessing: Preprocessing,
 ) -> Result<(), VerificationError> {
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
@@ -23,19 +24,13 @@ pub fn verify_rv32im(
     // Public data.
     proof.public_data.mix_into(channel);
 
-    // Preprocessed trace.
-    let preprocessed_log_sizes: Vec<u32> = preprocessed_trace
-        .trace
-        .iter()
-        .map(|col| col.domain.log_size())
-        .collect();
-
+    // Preprocessed trace — use pre-computed log sizes from preprocessing.
     let mut commitment_index = 0usize;
     {
         let commitments = &proof.stark_proof.commitments;
         commitment_scheme.commit(
             commitments[commitment_index],
-            &preprocessed_log_sizes,
+            &preprocessing.log_sizes,
             channel,
         );
         commitment_index += 1;
@@ -76,7 +71,7 @@ pub fn verify_rv32im(
 
     // Verify STARK proof.
     let mut location_allocator =
-        TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_trace.ids);
+        TraceLocationAllocator::new_with_preprocessed_columns(&preprocessing.trace.ids);
     let components = Components::new(
         &proof.claim,
         &mut location_allocator,
