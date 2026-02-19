@@ -3,7 +3,7 @@
 use num_traits::Zero;
 use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
-use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::verify;
 use stwo_constraint_framework::TraceLocationAllocator;
 

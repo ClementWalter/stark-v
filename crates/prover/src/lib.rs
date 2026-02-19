@@ -127,16 +127,16 @@ impl Preprocessing {
         &self,
     ) -> (
         Vec<stwo::prover::Poly<stwo::prover::backend::simd::SimdBackend>>,
-        stwo::prover::vcs::prover::MerkleProver<
+        stwo::prover::vcs_lifted::prover::MerkleProverLifted<
             stwo::prover::backend::simd::SimdBackend,
-            stwo::core::vcs::blake2_merkle::Blake2sMerkleHasher,
+            stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher,
         >,
     ) {
         use stwo::core::poly::circle::CanonicCoset;
         use stwo::prover::Poly;
         use stwo::prover::backend::simd::column::BaseColumn;
         use stwo::prover::poly::circle::CircleEvaluation;
-        use stwo::prover::vcs::prover::MerkleProver;
+        use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 
         // Reconstruct polynomials from extended evaluations
         let polynomials: Vec<Poly<stwo::prover::backend::simd::SimdBackend>> = self
@@ -157,7 +157,7 @@ impl Preprocessing {
             .collect();
 
         // Reconstruct MerkleProver from layers
-        let merkle_prover = MerkleProver {
+        let merkle_prover = MerkleProverLifted {
             layers: self.merkle_layers.clone(),
         };
 
@@ -177,7 +177,7 @@ impl Preprocessing {
 pub fn preprocess(config: PcsConfig) -> Preprocessing {
     use stwo::core::channel::Blake2sChannel;
     use stwo::core::poly::circle::CanonicCoset;
-    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::prover::CommitmentSchemeProver;
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::poly::circle::PolyOps;
@@ -277,7 +277,7 @@ pub mod e2e;
 use serde::{Deserialize, Serialize};
 use stwo::core::channel::Channel;
 use stwo::core::proof::StarkProof;
-use stwo::core::vcs::MerkleHasher;
+use stwo::core::vcs_lifted::MerkleHasherLifted;
 
 use crate::components::ClaimedSum;
 
@@ -300,7 +300,7 @@ impl InteractionClaim {
 
 /// RV32IM proof bundle.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Proof<H: MerkleHasher> {
+pub struct Proof<H: MerkleHasherLifted> {
     pub claim: components::Claim,
     pub interaction_claim: InteractionClaim,
     pub public_data: PublicData,
