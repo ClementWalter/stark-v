@@ -24,6 +24,9 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let linker_path = Path::new(&manifest_dir).join("linker.ld");
     println!("cargo:rustc-link-arg=-T{}", linker_path.display());
+    // Export linker script path so downstream guest crates can reference it
+    // via the DEP_GUEST_BIN_LINKER_SCRIPT env var in their build scripts.
+    println!("cargo:linker_script={}", linker_path.display());
     println!("cargo:rerun-if-changed=linker.ld");
 
     // Scan for example files
