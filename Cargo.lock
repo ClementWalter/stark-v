@@ -53,7 +53,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys",
 ]
 
 [[package]]
@@ -64,7 +64,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys",
 ]
 
 [[package]]
@@ -743,7 +743,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1069,7 +1069,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1203,6 +1203,7 @@ dependencies = [
 name = "prover"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "ctor",
  "debug-utils",
  "divan",
@@ -1373,7 +1374,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1652,7 +1653,7 @@ dependencies = [
 [[package]]
 name = "std-shims"
 version = "0.1.0"
-source = "git+https://github.com/ClementWalter/stwo?rev=60488760#6048876096761a266d2313343d56fba9b457f8d8"
+source = "git+https://github.com/ClementWalter/stwo?rev=25dd4360#25dd4360de8a26863376ebc8f1cf0409c5dbee76"
 
 [[package]]
 name = "strsim"
@@ -1684,7 +1685,7 @@ dependencies = [
 [[package]]
 name = "stwo"
 version = "0.1.1"
-source = "git+https://github.com/ClementWalter/stwo?rev=60488760#6048876096761a266d2313343d56fba9b457f8d8"
+source = "git+https://github.com/ClementWalter/stwo?rev=25dd4360#25dd4360de8a26863376ebc8f1cf0409c5dbee76"
 dependencies = [
  "blake2",
  "blake3",
@@ -1712,7 +1713,7 @@ dependencies = [
 [[package]]
 name = "stwo-constraint-framework"
 version = "0.1.1"
-source = "git+https://github.com/ClementWalter/stwo?rev=60488760#6048876096761a266d2313343d56fba9b457f8d8"
+source = "git+https://github.com/ClementWalter/stwo?rev=25dd4360#25dd4360de8a26863376ebc8f1cf0409c5dbee76"
 dependencies = [
  "hashbrown 0.16.1",
  "itertools 0.12.1",
@@ -1768,7 +1769,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b8cb979cb11c32ce1603f8137b22262a9d131aaa5c37b5678025f22b8becd0"
 dependencies = [
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys",
 ]
 
 [[package]]
@@ -2043,15 +2044,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
 dependencies = [
  "windows-targets",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.61.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
-dependencies = [
- "windows-link",
 ]
 
 [[package]]

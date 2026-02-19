@@ -305,10 +305,10 @@ fn run_prove(
     let config = PcsConfig::default();
 
     info!("Preprocessing...");
-    let preprocessed = prover::preprocess();
+    let preprocessed = prover::preprocess(config);
 
     info!("Generating proof...");
-    let proof = prove_rv32im(run_result, config, preprocessed);
+    let proof = prove_rv32im(run_result, config, &preprocessed);
 
     // The proof size estimate is logged by stwo during proving
     // We'll use 0 as placeholder since we can't easily serialize the proof
@@ -317,8 +317,7 @@ fn run_prove(
     // Verify if not skipped
     let verified = if !skip_verify {
         info!("Verifying proof...");
-        let preprocessed = prover::preprocess();
-        match verify_rv32im(proof, config, preprocessed) {
+        match verify_rv32im(proof, config, &preprocessed) {
             Ok(()) => {
                 info!("Proof verified successfully");
                 true

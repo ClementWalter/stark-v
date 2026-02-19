@@ -16,7 +16,7 @@ use std::time::Instant;
 
 /// stark-v zkVM instance.
 ///
-/// Holds a compiled program and configuration, ready to execute and prove.
+/// Holds a compiled program, configuration, and cached preprocessing data.
 pub struct StarkV {
     /// Compiled ELF program.
     program: StarkVProgram,
@@ -24,15 +24,19 @@ pub struct StarkV {
     max_cycles: u64,
     /// PCS configuration.
     config: PcsConfig,
+    /// Cached preprocessing data (Merkle tree + extended evals).
+    preprocessing: prover::Preprocessing,
 }
 
 impl StarkV {
     /// Create a new stark-v instance with a compiled program.
     pub fn new(program: StarkVProgram) -> Self {
+        let config = PcsConfig::default();
         Self {
             program,
             max_cycles: DEFAULT_MAX_CYCLES,
-            config: PcsConfig::default(),
+            preprocessing: prover::preprocess(config),
+            config,
         }
     }
 
@@ -43,8 +47,11 @@ impl StarkV {
     }
 
     /// Set the PCS configuration.
+    ///
+    /// Regenerates preprocessing data since it depends on the blowup factor.
     pub fn with_config(mut self, config: PcsConfig) -> Self {
         self.config = config;
+        self.preprocessing = prover::preprocess(config);
         self
     }
 
@@ -132,9 +139,7 @@ impl zkVM for StarkV {
             runner::run_with_input(&self.program.elf_bytes, input.stdin(), self.max_cycles)?;
         let output = run_result.output.clone().unwrap_or_default();
 
-        // Preprocessing is done per-call because PreProcessedTrace is consumed by proving
-        let preprocessed = prover::preprocess();
-        let proof = prover::prove_rv32im(run_result, self.config, preprocessed);
+        let proof = prover::prove_rv32im(run_result, self.config, &self.preprocessing);
         let proof_bytes = postcard::to_allocvec(&proof)
             .map_err(|err| CommonError::serialize("proof", "postcard", err))?;
 
@@ -171,8 +176,7 @@ impl zkVM for StarkV {
             &output_words,
         )?;
 
-        let preprocessed = prover::preprocess();
-        prover::verify_rv32im(proof, self.config, preprocessed)
+        prover::verify_rv32im(proof, self.config, &self.preprocessing)
             .map_err(|err| anyhow!("Proof verification failed: {err}"))?;
 
         Ok(output)

@@ -16,7 +16,7 @@ use crate::relations::{INTERACTION_POW_BITS, Relations};
 pub fn verify_rv32im(
     proof: Proof<Blake2sMerkleHasher>,
     config: PcsConfig,
-    preprocessing: Preprocessing,
+    preprocessing: &Preprocessing,
 ) -> Result<(), VerificationError> {
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
@@ -70,8 +70,9 @@ pub fn verify_rv32im(
     }
 
     // Verify STARK proof.
+    let preprocessed_ids = preprocessing.column_ids();
     let mut location_allocator =
-        TraceLocationAllocator::new_with_preprocessed_columns(&preprocessing.trace.ids);
+        TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_ids);
     let components = Components::new(
         &proof.claim,
         &mut location_allocator,

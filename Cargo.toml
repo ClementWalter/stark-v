@@ -20,10 +20,10 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 # Stwo dependencies (using fork with nightly-2026 array_chunks fix)
-stwo = { git = "https://github.com/ClementWalter/stwo", rev = "60488760" }
-stwo-air-utils = { git = "https://github.com/ClementWalter/stwo", rev = "60488760" }
-stwo-air-utils-derive = { git = "https://github.com/ClementWalter/stwo", rev = "60488760" }
-stwo-constraint-framework = { git = "https://github.com/ClementWalter/stwo", rev = "60488760", features = [
+stwo = { git = "https://github.com/ClementWalter/stwo", rev = "25dd4360" }
+stwo-air-utils = { git = "https://github.com/ClementWalter/stwo", rev = "25dd4360" }
+stwo-air-utils-derive = { git = "https://github.com/ClementWalter/stwo", rev = "25dd4360" }
+stwo-constraint-framework = { git = "https://github.com/ClementWalter/stwo", rev = "25dd4360", features = [
   "prover",
   "std",
 ] }

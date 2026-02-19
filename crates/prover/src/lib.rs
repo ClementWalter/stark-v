@@ -79,27 +79,222 @@ pub use prover::prove_rv32im;
 pub use public_data::PublicData;
 pub use verifier::verify_rv32im;
 
-/// Result of preprocessing: constant lookup tables with pre-computed metadata.
+/// Serializable preprocessed data for RV32IM proving.
 ///
-/// Contains the raw trace evaluations, column IDs, and pre-computed log sizes.
-/// The trace is consumed by the prover's tree builder commitment; the verifier
-/// only needs `log_sizes` and `ids`.
+/// Caches the expensive preprocessing computation including:
+/// - Extended polynomial evaluations (after interpolation and blowup)
+/// - Merkle tree layers (the commitment structure)
+/// - Column IDs for trace allocation
+///
+/// The data can be serialized to disk and reused across multiple proofs,
+/// avoiding the need to rebuild the Merkle tree each time.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Preprocessing {
-    /// Inner preprocessed trace (trace evaluations + column IDs).
-    pub(crate) trace: relations::PreProcessedTrace,
-    /// Pre-computed log sizes for each preprocessed column.
+    /// Column IDs for trace allocation.
+    pub ids: Vec<String>,
+    /// Original column log sizes (before extension) — used by the verifier.
     pub log_sizes: Vec<u32>,
+    /// Domain log sizes for each extended evaluation column (after blowup).
+    pub domain_log_sizes: Vec<u32>,
+    /// Extended polynomial evaluations (after blowup) — raw u32 data per column.
+    /// Each inner Vec contains the flattened PackedBaseField data as u32 values.
+    pub extended_evals: Vec<Vec<u32>>,
+    /// Merkle tree layers (hashes) — Vec<Blake2sHash> per layer.
+    /// First layer is the root (single hash), last layer is the largest.
+    pub merkle_layers: Vec<Vec<stwo::core::vcs::blake2_hash::Blake2sHash>>,
 }
 
-/// Generate the preprocessed trace (constant lookup tables) with metadata.
+impl Preprocessing {
+    /// Get the preprocessed column IDs as PreProcessedColumnId objects.
+    pub fn column_ids(
+        &self,
+    ) -> Vec<stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId> {
+        self.ids
+            .iter()
+            .map(
+                |id| stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId {
+                    id: id.clone(),
+                },
+            )
+            .collect()
+    }
+
+    /// Reconstruct the CommitmentTreeProver from the cached data.
+    ///
+    /// Converts the serialized data back into the stwo types needed for proving.
+    /// Uses 64-byte aligned allocation for SIMD compatibility.
+    pub fn to_commitment_tree(
+        &self,
+    ) -> (
+        Vec<stwo::prover::Poly<stwo::prover::backend::simd::SimdBackend>>,
+        stwo::prover::vcs::prover::MerkleProver<
+            stwo::prover::backend::simd::SimdBackend,
+            stwo::core::vcs::blake2_merkle::Blake2sMerkleHasher,
+        >,
+    ) {
+        use stwo::core::poly::circle::CanonicCoset;
+        use stwo::prover::Poly;
+        use stwo::prover::backend::simd::column::BaseColumn;
+        use stwo::prover::poly::circle::CircleEvaluation;
+        use stwo::prover::vcs::prover::MerkleProver;
+
+        // Reconstruct polynomials from extended evaluations
+        let polynomials: Vec<Poly<stwo::prover::backend::simd::SimdBackend>> = self
+            .extended_evals
+            .iter()
+            .zip(self.domain_log_sizes.iter())
+            .map(|(data, &domain_log_size)| {
+                // Allocate 64-byte aligned memory and copy data
+                let aligned_data: Vec<u32> = aligned_vec_from_slice(data);
+
+                // Convert to Vec<PackedBaseField> using bytemuck
+                let packed_data: Vec<_> = bytemuck::cast_slice(&aligned_data).to_vec();
+
+                let values = BaseColumn::from_simd(packed_data);
+                let domain = CanonicCoset::new(domain_log_size).circle_domain();
+                let evals = CircleEvaluation::new(domain, values);
+
+                Poly::new(None, evals)
+            })
+            .collect();
+
+        // Reconstruct MerkleProver from layers
+        let merkle_prover = MerkleProver {
+            layers: self.merkle_layers.clone(),
+        };
+
+        (polynomials, merkle_prover)
+    }
+}
+
+/// Creates a Vec<T> with 64-byte alignment from a slice.
 ///
-/// This is independent of any specific execution and can be reused across
-/// multiple prove/verify calls. Computes everything up to the tree builder
-/// commitment boundary.
-pub fn preprocess() -> Preprocessing {
-    let trace = relations::PreProcessedTrace::new();
-    let log_sizes = trace.trace.iter().map(|c| c.domain.log_size()).collect();
-    Preprocessing { trace, log_sizes }
+/// Required for reconstructing SIMD-compatible PackedBaseField data from
+/// serialized u32 arrays.
+fn aligned_vec_from_slice<T: Clone>(elements: &[T]) -> Vec<T> {
+    use std::alloc::{Layout, alloc_zeroed, handle_alloc_error};
+    use std::ptr::write;
+
+    let len = elements.len();
+    let elem_size = std::mem::size_of::<T>();
+    let align = 64.max(std::mem::align_of::<T>());
+    let layout = Layout::from_size_align(
+        len.checked_mul(elem_size)
+            .expect("Overflow in allocation size"),
+        align,
+    )
+    .unwrap();
+    unsafe {
+        let ptr = alloc_zeroed(layout) as *mut T;
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
+        for (i, v) in elements.iter().enumerate() {
+            write(ptr.add(i), v.clone());
+        }
+        Vec::from_raw_parts(ptr, len, len)
+    }
+}
+
+/// Generate preprocessed data for RV32IM proving.
+///
+/// Performs the full preprocessing pipeline once:
+/// 1. Generates constant lookup table columns
+/// 2. Computes twiddles for polynomial extension
+/// 3. Builds the Merkle tree commitment
+/// 4. Extracts committed data (extended evals + Merkle layers)
+///
+/// The result can be serialized and reused across multiple prove/verify calls.
+pub fn preprocess(config: PcsConfig) -> Preprocessing {
+    use stwo::core::channel::Blake2sChannel;
+    use stwo::core::poly::circle::CanonicCoset;
+    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::prover::CommitmentSchemeProver;
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::poly::circle::PolyOps;
+    use tracing::{Level, span};
+
+    // 1. Generate PreProcessedTrace (raw columns + ids)
+    let span = span!(Level::INFO, "Preprocess").entered();
+
+    let span_1 = span!(Level::INFO, "Generate trace").entered();
+    let preprocessed_trace = relations::PreProcessedTrace::new();
+    span_1.exit();
+
+    // 2. Compute twiddles — need enough for largest preprocessed domain + blowup
+    let span_2 = span!(Level::INFO, "Precompute twiddles").entered();
+    let max_log_size = preprocessed_trace
+        .trace
+        .iter()
+        .map(|c| c.domain.log_size())
+        .max()
+        .unwrap_or(0);
+    let twiddles = SimdBackend::precompute_twiddles(
+        CanonicCoset::new(max_log_size + 2 + config.fri_config.log_blowup_factor)
+            .circle_domain()
+            .half_coset,
+    );
+    span_2.exit();
+
+    // 3. Capture original column log sizes before trace is consumed
+    let log_sizes: Vec<u32> = preprocessed_trace
+        .trace
+        .iter()
+        .map(|c| c.domain.log_size())
+        .collect();
+
+    // 4. Create commitment scheme and commit
+    let span_3 = span!(Level::INFO, "Commit").entered();
+    let channel = &mut Blake2sChannel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(preprocessed_trace.trace);
+    tree_builder.commit(channel);
+    span_3.exit();
+
+    // 5. Extract the committed tree data
+    let span_4 = span!(Level::INFO, "Extract data").entered();
+    let tree = &commitment_scheme.trees[0];
+
+    // Extract column IDs
+    let ids: Vec<String> = preprocessed_trace
+        .ids
+        .iter()
+        .map(|id| id.id.clone())
+        .collect();
+
+    // Extract domain log sizes and extended evaluations
+    let domain_log_sizes: Vec<u32> = tree
+        .polynomials
+        .iter()
+        .map(|poly| poly.evals.domain.log_size())
+        .collect();
+
+    let extended_evals: Vec<Vec<u32>> = tree
+        .polynomials
+        .iter()
+        .map(|poly| {
+            // Cast PackedBaseField data to u32 slice (zero-copy)
+            let packed_slice: &[u32] = bytemuck::cast_slice(&poly.evals.values.data);
+            packed_slice.to_vec()
+        })
+        .collect();
+
+    // Extract Merkle tree layers
+    let merkle_layers = tree.commitment.layers.clone();
+
+    span_4.exit();
+    span.exit();
+
+    Preprocessing {
+        ids,
+        log_sizes,
+        domain_log_sizes,
+        extended_evals,
+        merkle_layers,
+    }
 }
 
 // Re-export stwo types needed by external consumers

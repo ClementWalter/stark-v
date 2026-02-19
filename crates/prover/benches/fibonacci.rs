@@ -71,7 +71,7 @@ fn bench_fibonacci<const N: u32>(bencher: divan::Bencher, par_iter: usize) {
                 .map(|_| {
                     let run_result = run_with_input(&elf_bytes, &input, 100_000_000)
                         .expect("Failed to run fib_input");
-                    prove_rv32im(run_result, config, prover::preprocess())
+                    prove_rv32im(run_result, config, &prover::preprocess(config))
                 })
                 .collect();
 
