@@ -29,6 +29,7 @@ use crate::{InteractionClaim, Proof};
 pub fn prove_rv32im(
     run_result: runner::RunResult,
     config: PcsConfig,
+    preprocessed_trace: PreProcessedTrace,
 ) -> Proof<Blake2sMerkleHasher> {
     let public_data = PublicData::new(&run_result);
 
@@ -61,7 +62,6 @@ pub fn prove_rv32im(
 
     // 5. Preprocessed trace (constant lookup tables - fixed size, independent of execution)
     let span = span!(Level::INFO, "Preprocessed trace").entered();
-    let preprocessed_trace = PreProcessedTrace::new();
     let preprocessed_ids = preprocessed_trace.ids.clone();
     info!("Preprocessed trace ids len: {}", preprocessed_ids.len());
 

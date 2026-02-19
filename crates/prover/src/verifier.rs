@@ -15,6 +15,7 @@ use crate::relations::{INTERACTION_POW_BITS, PreProcessedTrace, Relations};
 pub fn verify_rv32im(
     proof: Proof<Blake2sMerkleHasher>,
     config: PcsConfig,
+    preprocessed_trace: PreProcessedTrace,
 ) -> Result<(), VerificationError> {
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
@@ -23,7 +24,6 @@ pub fn verify_rv32im(
     proof.public_data.mix_into(channel);
 
     // Preprocessed trace.
-    let preprocessed_trace = PreProcessedTrace::new();
     let preprocessed_log_sizes: Vec<u32> = preprocessed_trace
         .trace
         .iter()

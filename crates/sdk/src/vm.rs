@@ -132,7 +132,9 @@ impl zkVM for StarkV {
             runner::run_with_input(&self.program.elf_bytes, input.stdin(), self.max_cycles)?;
         let output = run_result.output.clone().unwrap_or_default();
 
-        let proof = prover::prove_rv32im(run_result, self.config);
+        // Preprocessing is done per-call because PreProcessedTrace is consumed by proving
+        let preprocessed = prover::preprocess();
+        let proof = prover::prove_rv32im(run_result, self.config, preprocessed);
         let proof_bytes = postcard::to_allocvec(&proof)
             .map_err(|err| CommonError::serialize("proof", "postcard", err))?;
 
@@ -169,7 +171,8 @@ impl zkVM for StarkV {
             &output_words,
         )?;
 
-        prover::verify_rv32im(proof, self.config)
+        let preprocessed = prover::preprocess();
+        prover::verify_rv32im(proof, self.config, preprocessed)
             .map_err(|err| anyhow!("Proof verification failed: {err}"))?;
 
         Ok(output)

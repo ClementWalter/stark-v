@@ -77,7 +77,16 @@ pub mod verifier;
 pub use errors::VerificationError;
 pub use prover::prove_rv32im;
 pub use public_data::PublicData;
+pub use relations::PreProcessedTrace;
 pub use verifier::verify_rv32im;
+
+/// Generate the preprocessed trace (constant lookup tables).
+///
+/// This is independent of any specific execution and can be reused across
+/// multiple prove/verify calls.
+pub fn preprocess() -> PreProcessedTrace {
+    PreProcessedTrace::new()
+}
 
 // Re-export stwo types needed by external consumers
 pub use stwo::core::fri::FriConfig;

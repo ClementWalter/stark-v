@@ -144,8 +144,10 @@ let input = 42u32.to_le_bytes();
 let run_result = run_with_input(&elf_bytes, &input, 100_000_000)?;
 
 // Generate and verify proof
-let proof = prove_rv32im(run_result, PcsConfig::default());
-verify_rv32im(proof, PcsConfig::default())?;
+let preprocessed = prover::preprocess();
+let proof = prove_rv32im(run_result, PcsConfig::default(), preprocessed);
+let preprocessed = prover::preprocess();
+verify_rv32im(proof, PcsConfig::default(), preprocessed)?;
 ```
 
 ## Benchmarks
