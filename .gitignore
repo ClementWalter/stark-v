@@ -6,3 +6,4 @@ tmp*
 .cursor
 .claude
 .codex
+__pycache__
