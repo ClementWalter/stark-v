@@ -62,7 +62,8 @@ fn bench_fibonacci<const N: u32>(bencher: divan::Bencher, par_iter: usize) {
 
             let config = PcsConfig {
                 pow_bits: 24,
-                fri_config: FriConfig::new(0, 1, 70),
+                fri_config: FriConfig::new(0, 1, 70, 1),
+                lifting_log_size: None,
             };
 
             // Run VM and prove in parallel - each iteration gets its own RunResult
