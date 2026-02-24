@@ -3,7 +3,7 @@ suggestionsTimeout: 5000
 words:
   - addi
   - addrs
-  - ADDSUB
+  - addsub
   - allocvec
   - andi
   - andn
@@ -14,7 +14,7 @@ words:
   - bltu
   - bytemuck
   - cfgs
-  - Circom
+  - circom
   - clément
   - clippy
   - condvar
@@ -33,7 +33,7 @@ words:
   - funct
   - futex
   - globl
-  - Groth
+  - groth
   - halfword
   - hashbrown
   - idents
@@ -48,8 +48,7 @@ words:
   - jemallocator
   - kakarot
   - keccak
-  - Keccak
-  - Kitem
+  - kitem
   - littleriscv
   - loadb
   - loadbu
@@ -60,7 +59,7 @@ words:
   - madv
   - madvise
   - memsz
-  - MEPC
+  - mepc
   - merkle
   - mersenne
   - metavar
@@ -69,10 +68,8 @@ words:
   - mmap
   - mmio
   - movsign
-  - Movsign
   - mret
-  - MRET
-  - MTVEC
+  - mtvec
   - muldiv
   - mulh
   - mulhsu
@@ -91,6 +88,7 @@ words:
   - popcount
   - precomputation
   - println
+  - pycache
   - readelf
   - regs
   - remu
@@ -123,7 +121,7 @@ words:
   - strtab
   - stwo
   - subi
-  - Swatinem
+  - swatinem
   - syms
   - syscalls
   - thiserror
@@ -136,11 +134,10 @@ words:
   - usize
   - vaddr
   - virt
-  - Virt
   - vm
   - worktree
   - worktrees
   - writeback
-  - XLEN
+  - xlen
   - xori
   - zkvm

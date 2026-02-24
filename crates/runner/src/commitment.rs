@@ -24,6 +24,8 @@ pub(crate) struct MemoryLayout {
     pub io_end: u32,
     pub input_base: u32,
     pub input_end: u32,
+    pub output_len_addr: u32,
+    pub output_data_addr: u32,
     pub output_base: u32,
     pub output_end: u32,
 }
@@ -41,6 +43,8 @@ impl MemoryLayout {
         io_end: u32,
         input_base: u32,
         input_end: u32,
+        output_len_addr: u32,
+        output_data_addr: u32,
         output_base: u32,
         output_end: u32,
     ) -> Self {
@@ -55,6 +59,8 @@ impl MemoryLayout {
             io_end,
             input_base,
             input_end,
+            output_len_addr,
+            output_data_addr,
             output_base,
             output_end,
         }
@@ -87,6 +93,8 @@ impl MemoryLayout {
             io_end,
             input_base: loaded.input_start_addr,
             input_end: loaded.input_end_addr,
+            output_len_addr: loaded.output_len_addr,
+            output_data_addr: loaded.output_data_addr,
             output_base: loaded.output_len_addr,
             output_end: loaded.output_end_addr,
         }
@@ -96,8 +104,18 @@ impl MemoryLayout {
         addr >= self.input_base && addr < self.input_end
     }
 
-    pub(crate) fn is_output_addr(&self, addr: u32) -> bool {
-        addr >= self.output_base && addr < self.output_end
+    pub(crate) fn is_public_output_addr(&self, addr: u32, output_len: u32) -> bool {
+        let len_addr = self.output_len_addr & !3;
+        if addr == len_addr {
+            return true;
+        }
+        if output_len == 0 {
+            return false;
+        }
+        let start = self.output_data_addr & !3;
+        let end = self.output_data_addr.wrapping_add(output_len);
+        let end_aligned = end.wrapping_add(3) & !3;
+        addr >= start && addr < end_aligned
     }
 
     pub(crate) fn is_rw_addr(&self, addr: u32) -> bool {
@@ -247,6 +265,7 @@ impl Tracer {
         let mut mem_entries: Vec<(u32, u32, u32, u32)> = Vec::new();
         let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
         let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
+        let output_len = memory.read_u32(layout.output_len_addr);
 
         let mut mem_addrs = BTreeSet::new();
         for addr in memory.keys() {
@@ -262,11 +281,15 @@ impl Tracer {
 
         for addr in mem_addrs {
             let is_input = layout.is_input_addr(addr);
-            let is_output = layout.is_output_addr(addr);
+            let is_public_output = layout.is_public_output_addr(addr, output_len);
             let accessed_clk = self.mem_clk.get(&addr).copied().unwrap_or(0);
             let accessed = accessed_clk > 0;
             let include_initial = !is_input;
-            let include_final = if is_input { accessed } else { !is_output };
+            let include_final = if is_input {
+                accessed
+            } else {
+                !is_public_output
+            };
             let final_word = memory.read_u32(addr);
             let initial_word = self.mem_initial.get(&addr).copied().unwrap_or(final_word);
             let initial_bytes = initial_word.to_le_bytes();
@@ -301,9 +324,13 @@ impl Tracer {
         // Create memory trace
         for (addr, initial_word, final_word, final_clk) in mem_entries {
             let is_input = layout.is_input_addr(addr);
-            let is_output = layout.is_output_addr(addr);
+            let is_public_output = layout.is_public_output_addr(addr, output_len);
             let include_initial = !is_input;
-            let include_final = if is_input { final_clk > 0 } else { !is_output };
+            let include_final = if is_input {
+                final_clk > 0
+            } else {
+                !is_public_output
+            };
             let initial_bytes = initial_word.to_le_bytes();
             let final_bytes = final_word.to_le_bytes();
 
@@ -525,7 +552,7 @@ mod tests {
     fn test_commitment_decode_failure() {
         let layout = MemoryLayout::new(
             0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000, 0x7000, 0x7000, 0x7000,
-            0x7000,
+            0x7004, 0x7000, 0x7000,
         );
         let mut mem = Memory::new();
         mem.write_u32(layout.program_base, 0xFFFF_FFFF);
