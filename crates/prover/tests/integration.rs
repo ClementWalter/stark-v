@@ -389,3 +389,50 @@ fn test_e2e_sha2_benchmark() {
     info!("  prove:     {prove_khz:>10.3} kHz  ({prove_secs:.3}s)");
     info!("  run+prove: {run_prove_khz:>10.3} kHz  ({run_prove_secs:.3}s)");
 }
+
+/// Full end-to-end proof + verification for Keccak-256.
+#[test_log::test]
+fn test_prove_verify_keccak() {
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::{prove_rv32im, verify_rv32im};
+    use runner::run;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    struct KeccakResult {
+        input_len: u32,
+        hash: [u8; 32],
+    }
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("keccak");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read keccak ELF");
+
+    let run_result = run(&elf_bytes, 100_000_000).expect("Failed to run keccak");
+
+    let output_bytes = run_result.output.as_ref().expect("No output from keccak");
+    let output: KeccakResult =
+        postcard::from_bytes(output_bytes).expect("Failed to decode keccak output");
+    assert_eq!(output.input_len, 11);
+    assert_eq!(
+        output.hash,
+        [
+            0x47, 0x17, 0x32, 0x85, 0xa8, 0xd7, 0x34, 0x1e, 0x5e, 0x97, 0x2f, 0xc6, 0x77, 0x28,
+            0x63, 0x84, 0xf8, 0x02, 0xf8, 0xef, 0x42, 0xa5, 0xec, 0x5f, 0x03, 0xbb, 0xfa, 0x25,
+            0x4c, 0xb0, 0x1f, 0xad,
+        ],
+    );
+
+    let proof = prove_rv32im(
+        run_result,
+        PcsConfig::default(),
+        &prover::preprocess(PcsConfig::default()),
+    );
+    verify_rv32im(
+        proof,
+        PcsConfig::default(),
+        &prover::preprocess(PcsConfig::default()),
+    )
+    .expect("Verification failed");
+}
