@@ -151,7 +151,7 @@ impl zkVM for StarkV {
     }
 
     fn verify(&self, proof: &EreProof) -> anyhow::Result<PublicValues> {
-        use stwo::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+        use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
 
         let EreProof::Compressed(proof_bytes) = proof else {
             bail!(CommonError::unsupported_proof_kind(
