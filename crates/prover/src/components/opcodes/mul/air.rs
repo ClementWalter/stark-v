@@ -22,7 +22,7 @@ impl FrameworkEval for Eval {
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_size + 1
+        self.log_size + 2
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
