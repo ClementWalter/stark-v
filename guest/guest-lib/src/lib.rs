@@ -8,6 +8,10 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+// Enable alloc crate on riscv32 (heap provided by guest-bin bump allocator)
+#[cfg(target_arch = "riscv32")]
+extern crate alloc;
+
 // =============================================================================
 // Modules
 // =============================================================================
@@ -21,9 +25,9 @@ pub mod programs;
 // =============================================================================
 
 pub use programs::{
-    BranchResult, ConstantResult, EcdsaResult, FactorialResult, FibResult, KeccakResult,
-    LoadMergeResult, MemoryTestResult, MulDivResult, Sha2Result, branch, constant, ecdsa_verify,
-    fact, fib, keccak256, load_merge, memory, muldiv, sha256,
+    BranchResult, ConstantResult, EcdsaResult, FactorialResult, FibResult, HeapVecResult,
+    KeccakResult, LoadMergeResult, MemoryTestResult, MulDivResult, Sha2Result, branch, constant,
+    ecdsa_verify, fact, fib, heap_vec, keccak256, load_merge, memory, muldiv, sha256,
 };
 
 // =============================================================================
