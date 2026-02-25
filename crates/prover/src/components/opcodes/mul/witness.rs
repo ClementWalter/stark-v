@@ -14,6 +14,18 @@ use stwo_constraint_framework::LogupTraceGenerator;
 
 use super::columns::MulColumns;
 
+fn write_single_batch(
+    logup_gen: &mut LogupTraceGenerator,
+    numerators: &[PackedQM31],
+    denominators: &[PackedQM31],
+) {
+    let mut col_gen = logup_gen.new_col();
+    for vec_row in 0..numerators.len() {
+        col_gen.write_frac(vec_row, numerators[vec_row], denominators[vec_row]);
+    }
+    col_gen.finalize_col();
+}
+
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
     trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
@@ -217,27 +229,14 @@ pub fn gen_interaction_trace(
     // 10. range_check_8_8: -1 * (carry[0], carry[1])
     let rc_8_8_carry_0_denom = combine!(relations.range_check_8_8, [&carry_0, &carry_1]);
 
-    write_pair!(
-        &neg_enabler,
-        &rc_20_rs2_denom,
-        &neg_enabler,
-        &rc_8_8_carry_0_denom,
-        logup_gen
-    );
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_20_rs2_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_0_denom);
 
     // 11. range_check_8_8: -1 * (carry[2], carry[3])
     let rc_8_8_carry_1_denom = combine!(relations.range_check_8_8, [&carry_2, &carry_3]);
 
     // 12. range_check_8_8: -1 * (rd[0], rd[1])
     let rc_8_8_rd_0_denom = combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
-
-    write_pair!(
-        &neg_enabler,
-        &rc_8_8_carry_1_denom,
-        &neg_enabler,
-        &rc_8_8_rd_0_denom,
-        logup_gen
-    );
 
     // 13. range_check_8_8: -1 * (rd[2], rd[3])
     let rc_8_8_rd_1_denom = combine!(relations.range_check_8_8, [cols.rd_next_2, cols.rd_next_3]);
@@ -256,11 +255,12 @@ pub fn gen_interaction_trace(
         ]
     );
 
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_1_denom);
     write_pair!(
         &neg_enabler,
-        &rc_8_8_rd_1_denom,
+        &rc_8_8_rd_0_denom,
         &neg_enabler,
-        &rd_read_denom,
+        &rc_8_8_rd_1_denom,
         logup_gen
     );
 
@@ -282,12 +282,13 @@ pub fn gen_interaction_trace(
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
 
     write_pair!(
+        &neg_enabler,
+        &rd_read_denom,
         &pos_enabler,
         &rd_write_denom,
-        &neg_enabler,
-        &rc_20_rd_denom,
         logup_gen
     );
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_20_rd_denom);
 
     logup_gen.finalize_last()
 }

@@ -36,7 +36,6 @@ pub fn gen_interaction_trace(
     let zero = PackedM31::zero();
     let one = PackedM31::broadcast(BaseField::one());
     let four = PackedM31::broadcast(BaseField::from_u32_unchecked(4));
-    let pow2_14 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 14));
     let quarter_inv = PackedM31::broadcast(BaseField::from_u32_unchecked(4).inverse());
 
     let opcode_lb = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Lb as u32));
@@ -91,9 +90,13 @@ pub fn gen_interaction_trace(
     // dst[3] with sign handling from msb constraint
     let dst_3: Vec<PackedM31> = cols.dst_next_3.to_vec();
 
-    // base[0] - shift_amount alignment check value
+    // Alignment check value: (aligned memory address) / 4 where:
+    // aligned memory address = src_addr_selector + dst_addr_selector - r2_idx.
+    // This expression is linear and equals the selected memory address for both loads and stores.
     let alignment_check: Vec<PackedM31> = (0..simd_size)
-        .map(|i| (cols.rs1_next_0[i] - cols.shift_amount[i]) * quarter_inv * pow2_14)
+        .map(|i| {
+            (cols.src_addr_selector[i] + cols.dst_addr_selector[i] - cols.r2_idx[i]) * quarter_inv
+        })
         .collect();
 
     let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.pc[i] + four).collect();
@@ -308,7 +311,6 @@ pub fn register_multiplicities(
     let cols = LoadStoreColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clk.len();
 
-    let pow2_14 = PackedM31::broadcast(BaseField::from_u32_unchecked(1 << 14));
     let quarter_inv = PackedM31::broadcast(BaseField::from_u32_unchecked(4).inverse());
 
     // Numerator: negated enabler (to match gen_interaction_trace)
@@ -329,9 +331,12 @@ pub fn register_multiplicities(
         .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
         .collect();
 
-    // alignment_check = (rs1_next_0 - shift_amount) * quarter_inv * pow2_14
+    // alignment_check = (aligned memory address) / 4 where:
+    // aligned memory address = src_addr_selector + dst_addr_selector - r2_idx.
     let alignment_check: Vec<PackedM31> = (0..simd_size)
-        .map(|i| (cols.rs1_next_0[i] - cols.shift_amount[i]) * quarter_inv * pow2_14)
+        .map(|i| {
+            (cols.src_addr_selector[i] + cols.dst_addr_selector[i] - cols.r2_idx[i]) * quarter_inv
+        })
         .collect();
 
     let clk_minus_src_clk_prev: Vec<PackedM31> = (0..simd_size)

@@ -340,17 +340,16 @@ impl FrameworkEval for Eval {
             cols.clk.clone() - cols.rs1_clk_prev.clone()
         );
 
-        // Check that (base[0] - shift_amount) is a multiple of 4
-        // - RC_20(2^14 * (base[0] - shift_amount) / 2^2)
-        // This simplifies to checking (base[0] - shift_amount) / 4 is in range
+        // Check that aligned memory address / 4 is in u20.
+        // aligned memory address = src_addr_selector + dst_addr_selector - r2_idx.
+        // This linear form equals the selected memory address for both loads and stores.
         let quarter_inv = BaseField::from_u32_unchecked(4).inverse();
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            (base[0].clone() - cols.shift_amount.clone())
+            (cols.src_addr_selector.clone() + cols.dst_addr_selector.clone() - cols.r2_idx.clone())
                 * quarter_inv
-                * E::F::from(BaseField::from_u32_unchecked(1 << 14))
         );
 
         // Check that base is a M31

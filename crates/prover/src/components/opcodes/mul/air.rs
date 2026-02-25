@@ -242,7 +242,9 @@ impl FrameworkEval for Eval {
             cols.clk.clone() - cols.rd_clk_prev.clone()
         );
 
-        eval.finalize_logup_in_pairs();
+        // Keep carry-related RC_8_8 entries as singleton batches to avoid multiplying
+        // quadratic carry denominators with other denominators in the same batch.
+        eval.finalize_logup_batched(&vec![0, 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 7, 8, 8, 9]);
         eval
     }
 }
