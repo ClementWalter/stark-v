@@ -53,6 +53,10 @@ SECTIONS {
     __data_end = .;
     __data_len = __data_end - __data_start;
 
+    /* Heap occupies remaining DATA region after static data */
+    __heap_start = ALIGN(__data_end, 16);
+    __heap_end = ORIGIN(DATA) + LENGTH(DATA);
+
     PROVIDE(__global_pointer$ = ORIGIN(DATA) + 0x800);
 
     /DISCARD/ : {
