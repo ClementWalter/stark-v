@@ -54,6 +54,7 @@ pub use vm::StarkV;
 pub const DEFAULT_MAX_CYCLES: u64 = 100_000_000;
 
 /// Returns the secure PCS configuration used by stwo-cairo.
+/// See https://github.com/starkware-libs/stwo-cairo/blob/0f63409c5f8d26ca70255fc53b82ee0352922765/stwo_cairo_prover/crates/prover/src/prover.rs#L287-L312
 pub fn secure_pcs_config() -> PcsConfig {
     PcsConfig {
         pow_bits: 26,
