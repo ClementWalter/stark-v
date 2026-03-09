@@ -3,12 +3,12 @@
 //! This module provides the [`StarkV`] struct which implements the
 //! [`ere_zkvm_interface::zkVM`] trait.
 
-use crate::compiler::StarkVProgram;
 use crate::DEFAULT_MAX_CYCLES;
+use crate::compiler::StarkVProgram;
 use anyhow::{anyhow, bail};
 use ere_zkvm_interface::{
-    zkVM, CommonError, Input, ProgramExecutionReport, ProgramProvingReport, Proof as EreProof,
-    ProofKind, PublicValues,
+    CommonError, Input, ProgramExecutionReport, ProgramProvingReport, Proof as EreProof, ProofKind,
+    PublicValues, zkVM,
 };
 use prover::PcsConfig;
 use std::collections::BTreeMap;
@@ -233,8 +233,9 @@ mod tests {
         let output_words = vec![(0x1004, 5), (0x1008, u32::from_le_bytes(*b"ABCD"))];
 
         let err = extract_output_payload_bytes(0x1008, 5, &output_words).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("missing output word at address 0x0000100c"));
+        assert!(
+            err.to_string()
+                .contains("missing output word at address 0x0000100c")
+        );
     }
 }
