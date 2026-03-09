@@ -30,8 +30,7 @@ pub struct StarkV {
 
 impl StarkV {
     /// Create a new stark-v instance with a compiled program.
-    pub fn new(program: StarkVProgram) -> Self {
-        let config = PcsConfig::default();
+    pub fn new(program: StarkVProgram, config: PcsConfig) -> Self {
         Self {
             program,
             max_cycles: DEFAULT_MAX_CYCLES,
@@ -200,7 +199,7 @@ mod tests {
         let program = StarkVProgram {
             elf_bytes: vec![1, 2, 3],
         };
-        let vm = StarkV::new(program);
+        let vm = StarkV::new(program, PcsConfig::default());
         assert_eq!(vm.elf_bytes(), &[1, 2, 3]);
         assert_eq!(vm.max_cycles, DEFAULT_MAX_CYCLES);
     }
