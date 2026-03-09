@@ -3,12 +3,12 @@
 //! This module provides the [`StarkV`] struct which implements the
 //! [`ere_zkvm_interface::zkVM`] trait.
 
-use crate::DEFAULT_MAX_CYCLES;
 use crate::compiler::StarkVProgram;
+use crate::DEFAULT_MAX_CYCLES;
 use anyhow::{anyhow, bail};
 use ere_zkvm_interface::{
-    CommonError, Input, ProgramExecutionReport, ProgramProvingReport, Proof as EreProof, ProofKind,
-    PublicValues, zkVM,
+    zkVM, CommonError, Input, ProgramExecutionReport, ProgramProvingReport, Proof as EreProof,
+    ProofKind, PublicValues,
 };
 use prover::PcsConfig;
 use std::collections::BTreeMap;
@@ -30,8 +30,7 @@ pub struct StarkV {
 
 impl StarkV {
     /// Create a new stark-v instance with a compiled program.
-    pub fn new(program: StarkVProgram) -> Self {
-        let config = PcsConfig::default();
+    pub fn new(program: StarkVProgram, config: PcsConfig) -> Self {
         Self {
             program,
             max_cycles: DEFAULT_MAX_CYCLES,
@@ -200,7 +199,7 @@ mod tests {
         let program = StarkVProgram {
             elf_bytes: vec![1, 2, 3],
         };
-        let vm = StarkV::new(program);
+        let vm = StarkV::new(program, PcsConfig::default());
         assert_eq!(vm.elf_bytes(), &[1, 2, 3]);
         assert_eq!(vm.max_cycles, DEFAULT_MAX_CYCLES);
     }
@@ -234,9 +233,8 @@ mod tests {
         let output_words = vec![(0x1004, 5), (0x1008, u32::from_le_bytes(*b"ABCD"))];
 
         let err = extract_output_payload_bytes(0x1008, 5, &output_words).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing output word at address 0x0000100c")
-        );
+        assert!(err
+            .to_string()
+            .contains("missing output word at address 0x0000100c"));
     }
 }
