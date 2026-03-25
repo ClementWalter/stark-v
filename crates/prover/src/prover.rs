@@ -79,10 +79,12 @@ pub fn prove_rv32im(
 
     let (polynomials, merkle_prover) = preprocessing.to_commitment_tree();
     let root = merkle_prover.layers[0][0];
-    commitment_scheme.trees.push(CommitmentTreeProver {
-        polynomials,
-        commitment: merkle_prover,
-    });
+    commitment_scheme
+        .trees
+        .push(stwo::core::utils::MaybeOwned::Owned(CommitmentTreeProver {
+            polynomials,
+            commitment: merkle_prover,
+        }));
     Blake2sMerkleChannel::mix_root(channel, root);
     span.exit();
 
