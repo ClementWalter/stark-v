@@ -72,16 +72,13 @@ pub const DEFAULT_MAX_CYCLES: u64 = 100_000_000;
 ///
 /// **Commit rounds** (fold factor 2): ≥103 bits — not the bottleneck.
 ///
-/// Previous config (pow=26, queries=70) achieved only ~55 proven bits because
-/// each query provides 0.415 bits (not 1 bit) in the UDR regime.
-///
 /// References:
 ///   - BCHKS25 (Improved FRI bounds): <https://eprint.iacr.org/2025/2055>
 ///   - Fenzi & Sanso (small-field soundness): <https://eprint.iacr.org/2025/2197>
 ///   - Ethereum soundcalc: <https://github.com/ethereum/soundcalc>
 pub fn secure_pcs_config() -> PcsConfig {
     PcsConfig {
-        // 16 bits of proof-of-work grinding (~65ms on M3, down from ~500ms at 26).
+        // 16 bits of proof-of-work grinding (~65ms on M3).
         pow_bits: 16,
         // FriConfig::new(log_last_layer_degree_bound, log_blowup_factor, n_queries, line_fold_step)
         //   - log_blowup_factor=1: rate ρ=1/2 (2x evaluation domain).
@@ -109,9 +106,9 @@ mod tests {
     #[test]
     fn test_secure_pcs_config_security_bits() {
         let config = secure_pcs_config();
-        // Stwo's built-in formula (conjectured): pow_bits + log_blowup * n_queries
-        // = 16 + 1 * 193 = 209 (overstates actual security).
-        // Proven UDR security: 16 + 193 * 0.415 ≈ 96 bits.
+        // Stwo's built-in formula: pow_bits + log_blowup * n_queries = 16 + 1 * 193 = 209.
+        // This uses the conjectured 1 bit/query; proven UDR security is 96 bits
+        // (each query gives ~0.415 bits at rate 1/2 over QM31).
         assert_eq!(config.security_bits(), 16 + 1 * 193);
     }
 }
