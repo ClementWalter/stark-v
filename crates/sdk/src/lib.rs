@@ -53,12 +53,40 @@ pub use vm::StarkV;
 /// Maximum cycles for program execution (default).
 pub const DEFAULT_MAX_CYCLES: u64 = 100_000_000;
 
-/// Returns the secure PCS configuration used by stwo-cairo.
-/// See https://github.com/starkware-libs/stwo-cairo/blob/0f63409c5f8d26ca70255fc53b82ee0352922765/stwo_cairo_prover/crates/prover/src/prover.rs#L287-L312
+/// Returns the PCS configuration targeting 96 bits of proven security under the
+/// Unique Decoding Regime (UDR) from the BCHKS25 FRI soundness analysis.
+///
+/// # Security computation (soundcalc)
+///
+/// Security is `min(query_phase, batching, commit_rounds)`:
+///
+/// **Query phase** (UDR, rate ρ=1/2 over QM31):
+///   - Proximity parameter θ = (1−ρ)/2 = 0.25, giving ~0.415 bits per query.
+///   - `query_bits = pow_bits + n_queries × log2(1/(1−θ)) = 16 + 193 × 0.415 ≈ 96`.
+///
+/// **Batching** (power batching, ~1051 columns):
+///   - `batch_bits = floor(−log2((batch_size−1) × (θ·n+1) / |QM31|))`.
+///   - For trace ≤ 2^20: 94 bits. For trace 2^22: 92 bits.
+///   - Batching is not strengthened by PoW (randomness drawn before grind).
+///   - This is the hard ceiling for large traces without protocol changes.
+///
+/// **Commit rounds** (fold factor 2): ≥103 bits — not the bottleneck.
+///
+/// Previous config (pow=26, queries=70) achieved only ~55 proven bits because
+/// each query provides 0.415 bits (not 1 bit) in the UDR regime.
+///
+/// References:
+///   - BCHKS25 (Improved FRI bounds): <https://eprint.iacr.org/2025/2055>
+///   - Fenzi & Sanso (small-field soundness): <https://eprint.iacr.org/2025/2197>
+///   - Ethereum soundcalc: <https://github.com/ethereum/soundcalc>
 pub fn secure_pcs_config() -> PcsConfig {
     PcsConfig {
-        pow_bits: 26,
-        fri_config: FriConfig::new(0, 1, 70, 1),
+        // 16 bits of proof-of-work grinding (~65ms on M3, down from ~500ms at 26).
+        pow_bits: 16,
+        // FriConfig::new(log_last_layer_degree_bound, log_blowup_factor, n_queries, line_fold_step)
+        //   - log_blowup_factor=1: rate ρ=1/2 (2x evaluation domain).
+        //   - n_queries=193: 193 × 0.415 ≈ 80 bits from queries, + 16 pow = 96 bits.
+        fri_config: FriConfig::new(0, 1, 193, 1),
         lifting_log_size: None,
     }
 }
@@ -70,11 +98,20 @@ mod tests {
     #[test]
     fn test_secure_pcs_config_matches_expected_parameters() {
         let config = secure_pcs_config();
-        assert_eq!(config.pow_bits, 26);
+        assert_eq!(config.pow_bits, 16);
         assert_eq!(config.fri_config.log_last_layer_degree_bound, 0);
         assert_eq!(config.fri_config.log_blowup_factor, 1);
-        assert_eq!(config.fri_config.n_queries, 70);
+        assert_eq!(config.fri_config.n_queries, 193);
         assert_eq!(config.fri_config.line_fold_step, 1);
         assert_eq!(config.lifting_log_size, None);
+    }
+
+    #[test]
+    fn test_secure_pcs_config_security_bits() {
+        let config = secure_pcs_config();
+        // Stwo's built-in formula (conjectured): pow_bits + log_blowup * n_queries
+        // = 16 + 1 * 193 = 209 (overstates actual security).
+        // Proven UDR security: 16 + 193 * 0.415 ≈ 96 bits.
+        assert_eq!(config.security_bits(), 16 + 1 * 193);
     }
 }
