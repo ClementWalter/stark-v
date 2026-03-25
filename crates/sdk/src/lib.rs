@@ -70,11 +70,9 @@ pub const DEFAULT_MAX_CYCLES: u64 = 100_000_000;
 ///   - Batching is not strengthened by PoW (randomness drawn before grind).
 ///   - This is the hard ceiling for large traces without protocol changes.
 ///
-/// **Commit rounds** (line_fold_step=4, fold by 16 per round): ≥80 bits — not the
-/// bottleneck. Using fold_step=4 reduces FRI from ~22 rounds to ~6 rounds, saving
-/// ~1.5 MB of Merkle auth paths in the proof (with 193 queries). Commit-phase
-/// security drops from ~103 bits (fold by 2) to ~80 bits, still above the query
-/// phase and batching bottlenecks.
+/// **Commit rounds** (fold factor 2): ≥103 bits — not the bottleneck.
+/// Note: fold_step=4 would reduce proof size by ~1.5 MB but the stwo SIMD
+/// backend does not yet support fold_step > 1.
 ///
 /// References:
 ///   - BCHKS25 (Improved FRI bounds): <https://eprint.iacr.org/2025/2055>
@@ -87,10 +85,8 @@ pub fn secure_pcs_config() -> PcsConfig {
         // FriConfig::new(log_last_layer_degree_bound, log_blowup_factor, n_queries, line_fold_step)
         //   - log_blowup_factor=1: rate ρ=1/2 (2x evaluation domain).
         //   - n_queries=193: 193 × 0.415 ≈ 80 bits from queries, + 16 pow = 96 bits.
-        //   - line_fold_step=4: each FRI round folds by 2^4=16, reducing ~22 rounds
-        //     to ~6. Saves ~1.5 MB of Merkle auth paths at the cost of opening 16
-        //     siblings per round instead of 2.
-        fri_config: FriConfig::new(0, 1, 193, 4),
+        //   - line_fold_step=1: fold by 2 per round (stwo SIMD backend requires 1).
+        fri_config: FriConfig::new(0, 1, 193, 1),
         lifting_log_size: None,
     }
 }
@@ -106,7 +102,7 @@ mod tests {
         assert_eq!(config.fri_config.log_last_layer_degree_bound, 0);
         assert_eq!(config.fri_config.log_blowup_factor, 1);
         assert_eq!(config.fri_config.n_queries, 193);
-        assert_eq!(config.fri_config.line_fold_step, 4);
+        assert_eq!(config.fri_config.line_fold_step, 1);
         assert_eq!(config.lifting_log_size, None);
     }
 
