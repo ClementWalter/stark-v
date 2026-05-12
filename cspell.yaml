@@ -1,7 +1,6 @@
 version: "0.2"
 suggestionsTimeout: 5000
 words:
-  - BCHKS
   - addi
   - addrs
   - addsub
@@ -9,6 +8,7 @@ words:
   - andi
   - andn
   - auipc
+  - BCHKS
   - bgeu
   - bitmask
   - bitmaski
@@ -21,6 +21,7 @@ words:
   - condvar
   - csrrw
   - divu
+  - docstrings
   - doctest
   - doubleword
   - dtolnay
@@ -29,8 +30,9 @@ words:
   - ehdr
   - eprintln
   - evals
-  - filesz
+  - exfiltration
   - Fenzi
+  - filesz
   - fondeur
   - funct
   - futex
@@ -89,15 +91,18 @@ words:
   - pairable
   - popcount
   - precomputation
+  - prek
   - println
   - pycache
   - readelf
   - regs
   - remu
   - repr
+  - revm
   - risc0
   - riscv
   - rodata
+  - rstest
   - rustc
   - rustflags
   - rustup
@@ -113,10 +118,11 @@ words:
   - sltiu
   - sltu
   - sltui
+  - smmalloc
   - smul
+  - soundcalc
   - srai
   - srli
-  - soundcalc
   - starknet
   - starkv
   - storeb
