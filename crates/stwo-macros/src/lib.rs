@@ -1,9 +1,9 @@
-//! Proc-macros for the stwo zkVM.
+//! Proc-macros for the stwo prover library.
 //!
 //! This crate provides all macros used by runner and prover crates:
 //!
 //! ## Trace Table Macros
-//! - `define_trace_tables!` - Generate columnar trace tables for opcodes
+//! - `define_trace_tables!` - Generate columnar trace tables for components
 //!
 //! ## Helper Macros
 //! - `count_idents!` - Count the number of identifiers

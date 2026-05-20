@@ -1870,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "stwo"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "aligned",
  "blake2",
@@ -1901,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "stwo-constraint-framework"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "hashbrown 0.16.1",
  "itertools 0.13.0",

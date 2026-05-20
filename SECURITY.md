@@ -9,7 +9,7 @@ pre-production code — are taken seriously and handled privately.
 Please **do not** open a public GitHub issue for security problems.
 
 Report vulnerabilities by email to
-**[clement.walter@zama.ai](mailto:clement.walter@zama.ai)**, or via GitHub's
+**[clement0walter@gmail.com](mailto:clement0walter@gmail.com)**, or via GitHub's
 [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
 on the repository.
 
