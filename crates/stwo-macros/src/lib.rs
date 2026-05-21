@@ -22,7 +22,6 @@
 //! - `relations!` - Generate Relations struct and preprocessed table infrastructure
 //! - `tracer_components!` - Generate AIR component infrastructure for trace-backed components
 //! - `components!` - Compose trace-backed and preprocessed component infrastructure
-//! - `preprocessed_components!` - Generate preprocessed component infrastructure
 
 use proc_macro::TokenStream;
 
@@ -226,23 +225,10 @@ pub fn tracer_components(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// components! {
 ///     trace: { nested::mul, memory },
-///     preprocessed: preprocessed,
+///     preprocessed: { bitwise, range_check_20 },
 /// }
 /// ```
 #[proc_macro]
 pub fn components(input: TokenStream) -> TokenStream {
     components::components(input)
-}
-
-/// Generate preprocessed component infrastructure.
-///
-/// # Example
-/// ```ignore
-/// preprocessed_components!(bitwise, range_check_20, range_check_8_8);
-/// ```
-///
-/// Generates infrastructure for preprocessed (constant) lookup tables.
-#[proc_macro]
-pub fn preprocessed_components(input: TokenStream) -> TokenStream {
-    components::preprocessed_components(input)
 }

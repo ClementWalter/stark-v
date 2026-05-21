@@ -57,7 +57,7 @@ struct ComponentList {
 
 struct ComponentsInput {
     trace: Vec<ComponentEntry>,
-    preprocessed: Path,
+    preprocessed: Vec<Ident>,
 }
 
 struct IdentList {
@@ -107,7 +107,11 @@ impl Parse for ComponentsInput {
             ));
         }
         input.parse::<Token![:]>()?;
-        let preprocessed = input.parse()?;
+        let preprocessed_content;
+        braced!(preprocessed_content in input);
+        let IdentList {
+            idents: preprocessed,
+        } = preprocessed_content.parse()?;
         let _ = input.parse::<Token![,]>();
 
         Ok(Self {
@@ -127,7 +131,16 @@ pub fn components(input: TokenStream) -> TokenStream {
         trace,
         preprocessed,
     } = syn::parse_macro_input!(input as ComponentsInput);
-    render_components(Some(preprocessed), trace).into()
+    let preprocessed_components = render_preprocessed_components(preprocessed);
+    let components = render_components(Some(syn::parse_quote!(preprocessed)), trace);
+    quote! {
+        pub mod preprocessed {
+            #preprocessed_components
+        }
+
+        #components
+    }
+    .into()
 }
 
 fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -> TokenStream2 {
@@ -763,13 +776,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     }
 }
 
-// =============================================================================
-// preprocessed_components! macro
-// =============================================================================
-
-pub fn preprocessed_components(input: TokenStream) -> TokenStream {
-    let IdentList { idents: tables } = syn::parse_macro_input!(input as IdentList);
-
+fn render_preprocessed_components(tables: Vec<Ident>) -> TokenStream2 {
     // Generate inner modules for each preprocessed component
     let inner_modules = tables.iter().map(|table| {
         quote! {
@@ -1225,5 +1232,4 @@ pub fn preprocessed_components(input: TokenStream) -> TokenStream {
             }
         }
     }
-    .into()
 }
