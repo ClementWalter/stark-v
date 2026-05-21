@@ -309,7 +309,7 @@ fn test_mul_interaction_trace_prev_cur_deltas() {
     let single_traces = components::gen_trace(single_run.tracer);
     let single_rel = Relations::dummy();
     let (single_interaction, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &single_traces.opcodes.mul,
+        &single_traces.mul,
         &single_rel,
     );
 
@@ -321,7 +321,7 @@ fn test_mul_interaction_trace_prev_cur_deltas() {
     let many_traces = components::gen_trace(many_run.tracer);
     let many_rel = Relations::dummy();
     let (many_interaction, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &many_traces.opcodes.mul,
+        &many_traces.mul,
         &many_rel,
     );
 
@@ -407,13 +407,11 @@ fn test_mul_offset_sampling_matches_domain_extension() {
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run mul_output");
     let traces = components::gen_trace(run_result.tracer);
     let relations = Relations::dummy();
-    let (interaction_trace, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &traces.opcodes.mul,
-        &relations,
-    );
+    let (interaction_trace, _) =
+        prover::components::opcodes::mul::witness::gen_interaction_trace(&traces.mul, &relations);
 
     let eval = prover::components::opcodes::mul::air::Eval {
-        log_size: traces.opcodes.mul[0].domain.log_size(),
+        log_size: traces.mul[0].domain.log_size(),
         relations,
     };
     let info = stwo_constraint_framework::FrameworkEval::evaluate(
