@@ -9,29 +9,24 @@ pub mod preprocessed;
 pub mod program;
 pub mod reg_clock_update;
 
-pub use opcodes::{
-    auipc, base_alu_imm, base_alu_reg, branch_eq, branch_lt, div, jal, jalr, load_store, lt_imm,
-    lt_reg, lui, mul, mulh, shifts_imm, shifts_reg,
-};
-
 stwo_macros::opcode_components! {
-    preprocessed: preprocessed;
-    auipc: opcodes::auipc,
-    base_alu_imm: opcodes::base_alu_imm,
-    base_alu_reg: opcodes::base_alu_reg,
-    branch_eq: opcodes::branch_eq,
-    branch_lt: opcodes::branch_lt,
-    div: opcodes::div,
-    jal: opcodes::jal,
-    jalr: opcodes::jalr,
-    load_store: opcodes::load_store,
-    lt_imm: opcodes::lt_imm,
-    lt_reg: opcodes::lt_reg,
-    lui: opcodes::lui,
-    mul: opcodes::mul,
-    mulh: opcodes::mulh,
-    shifts_imm: opcodes::shifts_imm,
-    shifts_reg: opcodes::shifts_reg,
+    preprocessed,
+    opcodes::auipc,
+    opcodes::base_alu_imm,
+    opcodes::base_alu_reg,
+    opcodes::branch_eq,
+    opcodes::branch_lt,
+    opcodes::div,
+    opcodes::jal,
+    opcodes::jalr,
+    opcodes::load_store,
+    opcodes::lt_imm,
+    opcodes::lt_reg,
+    opcodes::lui,
+    opcodes::mul,
+    opcodes::mulh,
+    opcodes::shifts_imm,
+    opcodes::shifts_reg,
     program,
     memory,
     merkle,

@@ -30,20 +30,28 @@ struct ComponentEntry {
 
 impl Parse for ComponentEntry {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Ident = input.parse()?;
+        let first: Path = input.parse()?;
+        let name = path_name(&first)?;
         let module = if input.peek(Token![:]) {
             input.parse::<Token![:]>()?;
             input.parse()?
         } else {
-            syn::parse_quote!(#name)
+            first
         };
         Ok(Self { name, module })
     }
 }
 
+fn path_name(path: &Path) -> syn::Result<Ident> {
+    path.segments
+        .last()
+        .map(|segment| segment.ident.clone())
+        .ok_or_else(|| syn::Error::new_spanned(path, "component path must have a final segment"))
+}
+
 /// Input for opcode_components:
 /// - `opcode1, opcode2, ...`
-/// - `preprocessed: preprocessed; opcode1: nested::opcode1, ...`
+/// - `preprocessed; nested::opcode1, ...`
 struct OpcodeList {
     preprocessed: Option<Path>,
     opcodes: Vec<ComponentEntry>,
@@ -66,10 +74,15 @@ impl Parse for OpcodeList {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let preprocessed = if input.peek(Ident) {
             let fork = input.fork();
-            let header: Ident = fork.parse()?;
-            if header == "preprocessed" && fork.peek(Token![:]) {
-                let _header: Ident = input.parse()?;
+            let path: Path = fork.parse()?;
+            let name = path_name(&path)?;
+            if name == "preprocessed" && fork.peek(Token![:]) {
+                input.parse::<Path>()?;
                 input.parse::<Token![:]>()?;
+                let path = input.parse()?;
+                input.parse::<Token![;]>()?;
+                Some(path)
+            } else if name == "preprocessed" && fork.peek(Token![;]) {
                 let path = input.parse()?;
                 input.parse::<Token![;]>()?;
                 Some(path)
@@ -81,9 +94,19 @@ impl Parse for OpcodeList {
         };
 
         let opcodes: Punctuated<ComponentEntry, Token![,]> = Punctuated::parse_terminated(input)?;
+        let mut opcodes: Vec<ComponentEntry> = opcodes.into_iter().collect();
+        let preprocessed = if preprocessed.is_none()
+            && opcodes
+                .first()
+                .is_some_and(|component| component.name == "preprocessed")
+        {
+            Some(opcodes.remove(0).module)
+        } else {
+            preprocessed
+        };
         Ok(OpcodeList {
             preprocessed,
-            opcodes: opcodes.into_iter().collect(),
+            opcodes,
         })
     }
 }
