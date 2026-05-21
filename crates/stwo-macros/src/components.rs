@@ -1,10 +1,11 @@
 //! Proc-macros for generating AIR component infrastructure.
 
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Ident, Path, Token};
+use syn::{Ident, Path, Token, braced};
 
 /// Convert snake_case to PascalCase
 fn to_pascal_case(s: &str) -> String {
@@ -20,7 +21,7 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 // =============================================================================
-// opcode_components! macro
+// tracer_components! and components! macros
 // =============================================================================
 
 struct ComponentEntry {
@@ -49,12 +50,14 @@ fn path_name(path: &Path) -> syn::Result<Ident> {
         .ok_or_else(|| syn::Error::new_spanned(path, "component path must have a final segment"))
 }
 
-/// Input for opcode_components:
-/// - `opcode1, opcode2, ...`
-/// - `preprocessed; nested::opcode1, ...`
-struct OpcodeList {
-    preprocessed: Option<Path>,
-    opcodes: Vec<ComponentEntry>,
+/// Input for trace-backed component lists: `component, nested::component, ...`
+struct ComponentList {
+    components: Vec<ComponentEntry>,
+}
+
+struct ComponentsInput {
+    trace: Vec<ComponentEntry>,
+    preprocessed: Path,
 }
 
 struct IdentList {
@@ -70,53 +73,64 @@ impl Parse for IdentList {
     }
 }
 
-impl Parse for OpcodeList {
+impl Parse for ComponentList {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let preprocessed = if input.peek(Ident) {
-            let fork = input.fork();
-            let path: Path = fork.parse()?;
-            let name = path_name(&path)?;
-            if name == "preprocessed" && fork.peek(Token![:]) {
-                input.parse::<Path>()?;
-                input.parse::<Token![:]>()?;
-                let path = input.parse()?;
-                input.parse::<Token![;]>()?;
-                Some(path)
-            } else if name == "preprocessed" && fork.peek(Token![;]) {
-                let path = input.parse()?;
-                input.parse::<Token![;]>()?;
-                Some(path)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let opcodes: Punctuated<ComponentEntry, Token![,]> = Punctuated::parse_terminated(input)?;
-        let mut opcodes: Vec<ComponentEntry> = opcodes.into_iter().collect();
-        let preprocessed = if preprocessed.is_none()
-            && opcodes
-                .first()
-                .is_some_and(|component| component.name == "preprocessed")
-        {
-            Some(opcodes.remove(0).module)
-        } else {
-            preprocessed
-        };
-        Ok(OpcodeList {
-            preprocessed,
-            opcodes,
+        let components: Punctuated<ComponentEntry, Token![,]> =
+            Punctuated::parse_terminated(input)?;
+        Ok(ComponentList {
+            components: components.into_iter().collect(),
         })
     }
 }
 
-pub fn opcode_components(input: TokenStream) -> TokenStream {
-    let OpcodeList {
-        preprocessed,
-        opcodes,
-    } = syn::parse_macro_input!(input as OpcodeList);
+impl Parse for ComponentsInput {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let trace_label: Ident = input.parse()?;
+        if trace_label != "trace" {
+            return Err(syn::Error::new_spanned(
+                trace_label,
+                "expected `trace: { ... }` section",
+            ));
+        }
+        input.parse::<Token![:]>()?;
+        let trace_content;
+        braced!(trace_content in input);
+        let ComponentList { components: trace } = trace_content.parse()?;
 
+        input.parse::<Token![,]>()?;
+
+        let preprocessed_label: Ident = input.parse()?;
+        if preprocessed_label != "preprocessed" {
+            return Err(syn::Error::new_spanned(
+                preprocessed_label,
+                "expected `preprocessed: path` section",
+            ));
+        }
+        input.parse::<Token![:]>()?;
+        let preprocessed = input.parse()?;
+        let _ = input.parse::<Token![,]>();
+
+        Ok(Self {
+            trace,
+            preprocessed,
+        })
+    }
+}
+
+pub fn tracer_components(input: TokenStream) -> TokenStream {
+    let ComponentList { components } = syn::parse_macro_input!(input as ComponentList);
+    render_components(None, components).into()
+}
+
+pub fn components(input: TokenStream) -> TokenStream {
+    let ComponentsInput {
+        trace,
+        preprocessed,
+    } = syn::parse_macro_input!(input as ComponentsInput);
+    render_components(Some(preprocessed), trace).into()
+}
+
+fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -> TokenStream2 {
     // Generate Traces struct fields
     let traces_fields = opcodes.iter().map(|component| {
         let op = &component.name;
@@ -747,7 +761,6 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             #track_relations_impl
         }
     }
-    .into()
 }
 
 // =============================================================================

@@ -20,7 +20,7 @@ pub mod mulh; // Section 15: mulh, mulhsu, mulhu
 pub mod shifts_imm; // Section 4: slli, srli, srai
 pub mod shifts_reg; // Section 3: sll, srl, sra // Section 16: div, divu, rem, remu
 
-stwo_macros::opcode_components! {
+stwo_macros::tracer_components! {
     auipc,
     base_alu_imm,
     base_alu_reg,

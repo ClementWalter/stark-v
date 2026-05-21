@@ -20,7 +20,8 @@
 //!
 //! ## Prover Infrastructure Macros
 //! - `relations!` - Generate Relations struct and preprocessed table infrastructure
-//! - `opcode_components!` - Generate AIR component infrastructure for opcodes
+//! - `tracer_components!` - Generate AIR component infrastructure for trace-backed components
+//! - `components!` - Compose trace-backed and preprocessed component infrastructure
 //! - `preprocessed_components!` - Generate preprocessed component infrastructure
 
 use proc_macro::TokenStream;
@@ -202,21 +203,35 @@ pub fn relations(input: TokenStream) -> TokenStream {
     relations::relations(input)
 }
 
-/// Generate AIR component infrastructure for all opcodes.
+/// Generate AIR component infrastructure for trace-backed components.
 ///
 /// # Example
 /// ```ignore
-/// opcode_components!(add, sub, mul, div);
+/// tracer_components!(add, nested::mul);
 /// ```
 ///
 /// Generates:
-/// - `Traces` struct with one field per opcode
+/// - `Traces` struct with one field per trace-backed component
 /// - `Claim` struct with log_size for each component
-/// - `ClaimedSum` struct with QM31 field per opcode
-/// - `Components` struct with one `air::Component` field per opcode
+/// - `ClaimedSum` struct with QM31 field per component
+/// - `Components` struct with one `air::Component` field per component
 #[proc_macro]
-pub fn opcode_components(input: TokenStream) -> TokenStream {
-    components::opcode_components(input)
+pub fn tracer_components(input: TokenStream) -> TokenStream {
+    components::tracer_components(input)
+}
+
+/// Compose trace-backed and preprocessed component infrastructure.
+///
+/// # Example
+/// ```ignore
+/// components! {
+///     trace: { nested::mul, memory },
+///     preprocessed: preprocessed,
+/// }
+/// ```
+#[proc_macro]
+pub fn components(input: TokenStream) -> TokenStream {
+    components::components(input)
 }
 
 /// Generate preprocessed component infrastructure.
