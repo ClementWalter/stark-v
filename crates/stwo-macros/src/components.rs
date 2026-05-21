@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Ident, Token};
+use syn::{Ident, Path, Token};
 
 /// Convert snake_case to PascalCase
 fn to_pascal_case(s: &str) -> String {
@@ -23,55 +23,134 @@ fn to_pascal_case(s: &str) -> String {
 // opcode_components! macro
 // =============================================================================
 
-/// Input for opcode_components: `opcode1, opcode2, ...`
+struct ComponentEntry {
+    name: Ident,
+    module: Path,
+}
+
+impl Parse for ComponentEntry {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name: Ident = input.parse()?;
+        let module = if input.peek(Token![:]) {
+            input.parse::<Token![:]>()?;
+            input.parse()?
+        } else {
+            syn::parse_quote!(#name)
+        };
+        Ok(Self { name, module })
+    }
+}
+
+/// Input for opcode_components:
+/// - `opcode1, opcode2, ...`
+/// - `preprocessed: preprocessed; opcode1: nested::opcode1, ...`
 struct OpcodeList {
-    opcodes: Vec<Ident>,
+    preprocessed: Option<Path>,
+    opcodes: Vec<ComponentEntry>,
+}
+
+struct IdentList {
+    idents: Vec<Ident>,
+}
+
+impl Parse for IdentList {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let idents: Punctuated<Ident, Token![,]> = Punctuated::parse_terminated(input)?;
+        Ok(Self {
+            idents: idents.into_iter().collect(),
+        })
+    }
 }
 
 impl Parse for OpcodeList {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let opcodes: Punctuated<Ident, Token![,]> = Punctuated::parse_terminated(input)?;
+        let preprocessed = if input.peek(Ident) {
+            let fork = input.fork();
+            let header: Ident = fork.parse()?;
+            if header == "preprocessed" && fork.peek(Token![:]) {
+                let _header: Ident = input.parse()?;
+                input.parse::<Token![:]>()?;
+                let path = input.parse()?;
+                input.parse::<Token![;]>()?;
+                Some(path)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let opcodes: Punctuated<ComponentEntry, Token![,]> = Punctuated::parse_terminated(input)?;
         Ok(OpcodeList {
+            preprocessed,
             opcodes: opcodes.into_iter().collect(),
         })
     }
 }
 
 pub fn opcode_components(input: TokenStream) -> TokenStream {
-    let OpcodeList { opcodes } = syn::parse_macro_input!(input as OpcodeList);
+    let OpcodeList {
+        preprocessed,
+        opcodes,
+    } = syn::parse_macro_input!(input as OpcodeList);
 
     // Generate Traces struct fields
-    let traces_fields = opcodes.iter().map(|op| {
+    let traces_fields = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             pub #op: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         }
     });
+    let preprocessed_traces_field = preprocessed.as_ref().map(|path| {
+        quote! {
+            pub preprocessed: #path::Traces,
+        }
+    });
 
     // Generate Traces::max_log_size() and log_sizes() body
-    let log_sizes_body = opcodes.iter().map(|op| {
+    let log_sizes_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             if let Some(first) = self.#op.first() {
                 sizes.push(first.domain.log_size());
             }
         }
     });
+    let preprocessed_log_sizes = preprocessed.as_ref().map(|_| {
+        quote! {
+            sizes.extend(self.preprocessed.log_sizes());
+        }
+    });
 
     // Generate Traces::columns_cloned() body
-    let columns_cloned_body = opcodes.iter().map(|op| {
+    let columns_cloned_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             columns.extend(self.#op.clone());
         }
     });
+    let preprocessed_columns_cloned = preprocessed.as_ref().map(|_| {
+        quote! {
+            columns.extend(self.preprocessed.columns_cloned());
+        }
+    });
 
     // Generate Traces::into_columns() body
-    let into_columns_body = opcodes.iter().map(|op| {
+    let into_columns_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             columns.extend(self.#op);
         }
     });
+    let preprocessed_into_columns = preprocessed.as_ref().map(|_| {
+        quote! {
+            columns.extend(self.preprocessed.into_columns());
+        }
+    });
 
     // Generate Traces::print_tables() body
-    let print_tables_body = opcodes.iter().map(|op| {
+    let print_tables_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         let op_str = op.to_string();
         let pascal = to_pascal_case(&op_str);
         let columns_type = format_ident!("{}Columns", pascal);
@@ -85,13 +164,25 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             }
         }
     });
-
-    // Generate Claim struct fields and From impl
-    let claim_fields = opcodes.iter().map(|op| {
-        quote! { pub #op: u32, }
+    let preprocessed_print_tables = preprocessed.as_ref().map(|_| {
+        quote! {
+            self.preprocessed.print_tables(max_rows, max_cols);
+        }
     });
 
-    let claim_from_body = opcodes.iter().map(|op| {
+    // Generate Claim struct fields and From impl
+    let claim_fields = opcodes.iter().map(|component| {
+        let op = &component.name;
+        quote! { pub #op: u32, }
+    });
+    let preprocessed_claim_field = preprocessed.as_ref().map(|path| {
+        quote! {
+            pub preprocessed: #path::Claim,
+        }
+    });
+
+    let claim_from_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             #op: traces.#op
                 .first()
@@ -99,16 +190,28 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                 .unwrap_or(0),
         }
     });
+    let preprocessed_claim_from = preprocessed.as_ref().map(|_| {
+        quote! {
+            preprocessed: (&traces.preprocessed).into(),
+        }
+    });
 
     // Generate Claim::mix_into() body
-    let claim_mix_into_body = opcodes.iter().map(|op| {
+    let claim_mix_into_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             channel.mix_u64(self.#op as u64);
         }
     });
+    let preprocessed_claim_mix_into = preprocessed.as_ref().map(|_| {
+        quote! {
+            self.preprocessed.mix_into(channel);
+        }
+    });
 
     // Generate Claim::log_sizes() body
-    let claim_log_sizes_body = opcodes.iter().map(|op| {
+    let claim_log_sizes_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         let op_str = op.to_string();
         let pascal = to_pascal_case(&op_str);
         let columns_type = format_ident!("{}Columns", pascal);
@@ -117,70 +220,179 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             sizes.extend(std::iter::repeat(self.#op).take(count));
         }
     });
+    let preprocessed_claim_log_sizes = preprocessed.as_ref().map(|_| {
+        quote! {
+            sizes.extend(self.preprocessed.log_sizes());
+        }
+    });
 
     // Generate ClaimedSum fields
-    let claimed_sum_fields = opcodes.iter().map(|op| {
+    let claimed_sum_fields = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! { pub #op: QM31, }
+    });
+    let preprocessed_claimed_sum_field = preprocessed.as_ref().map(|path| {
+        quote! {
+            pub preprocessed: #path::ClaimedSum,
+        }
     });
 
     // Generate ClaimedSum::sum() body
-    let claimed_sum_body = opcodes.iter().map(|op| {
+    let claimed_sum_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! { total += self.#op; }
+    });
+    let preprocessed_claimed_sum_body = preprocessed.as_ref().map(|_| {
+        quote! {
+            total += self.preprocessed.sum();
+        }
     });
 
     // Generate ClaimedSum::mix_into() body
-    let claimed_sum_mix_into = opcodes.iter().map(|op| {
+    let claimed_sum_mix_into = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! {
             channel.mix_felts(&[self.#op]);
         }
     });
+    let preprocessed_claimed_sum_mix_into = preprocessed.as_ref().map(|_| {
+        quote! {
+            self.preprocessed.mix_into(channel);
+        }
+    });
 
     // Generate Components struct fields
-    let components_fields = opcodes.iter().map(|op| {
+    let components_fields = opcodes.iter().map(|component| {
+        let op = &component.name;
+        let module = &component.module;
         quote! {
-            pub #op: #op::air::Component,
+            pub #op: #module::air::Component,
+        }
+    });
+    let preprocessed_components_field = preprocessed.as_ref().map(|path| {
+        quote! {
+            pub preprocessed: #path::Components,
         }
     });
 
     // Generate gen_trace() body
-    let gen_trace_body = opcodes.iter().map(|op| {
-        quote! {
-            #op: tracer.#op.into_witness(),
-        }
-    });
+    let gen_trace_locals: Vec<_> = opcodes
+        .iter()
+        .map(|component| {
+            let op = &component.name;
+            quote! {
+                let #op = tracer.#op.into_witness();
+            }
+        })
+        .collect();
+    let gen_trace_fields: Vec<_> = opcodes
+        .iter()
+        .map(|component| {
+            let op = &component.name;
+            quote! { #op, }
+        })
+        .collect();
+    let gen_trace_counters_ref = if preprocessed.is_some() {
+        quote! { &mut counters }
+    } else {
+        quote! { counters }
+    };
 
-    let register_multiplicities_body = opcodes.iter().map(|op| {
+    let register_multiplicities_body: Vec<_> = opcodes
+        .iter()
+        .map(|component| {
+            let op = &component.name;
+            let module = &component.module;
+            quote! {
+                #module::witness::register_multiplicities(#op.as_slice(), #gen_trace_counters_ref);
+            }
+        })
+        .collect();
+    let preprocessed_gen_trace_local = preprocessed.as_ref().map(|path| {
         quote! {
-            #op::witness::register_multiplicities(traces.#op.as_slice(), counters);
+            let preprocessed = #path::Traces::from_counters(counters);
         }
     });
+    let preprocessed_gen_trace_field = preprocessed.as_ref().map(|_| {
+        quote! {
+            preprocessed,
+        }
+    });
+    let gen_trace_function = if preprocessed.is_some() {
+        quote! {
+            pub fn gen_trace(
+                tracer: runner::trace::Tracer,
+            ) -> Traces {
+                let mut counters = crate::relations::Counters::new();
+                #(#gen_trace_locals)*
+                #(#register_multiplicities_body)*
+                #preprocessed_gen_trace_local
+
+                Traces {
+                    #(#gen_trace_fields)*
+                    #preprocessed_gen_trace_field
+                }
+            }
+        }
+    } else {
+        quote! {
+            pub fn gen_trace(
+                tracer: runner::trace::Tracer,
+                counters: &mut crate::relations::Counters,
+            ) -> Traces {
+                #(#gen_trace_locals)*
+                #(#register_multiplicities_body)*
+
+                Traces {
+                    #(#gen_trace_fields)*
+                }
+            }
+        }
+    };
 
     // Generate gen_interaction_trace() body
-    let gen_interaction_trace_vars = opcodes.iter().map(|op| {
+    let gen_interaction_trace_vars = opcodes.iter().map(|component| {
+        let op = &component.name;
+        let module = &component.module;
         let claimed_var = format_ident!("{}_claimed", op);
         quote! {
-            let (cols, claimed) = #op::witness::gen_interaction_trace(
-                traces.#op.as_slice(),
+            let (cols, claimed) = #module::witness::gen_interaction_trace(
+                &traces.#op,
                 relations,
             );
             all_columns.extend(cols);
             let #claimed_var = claimed;
         }
     });
+    let preprocessed_interaction_trace = preprocessed.as_ref().map(|path| {
+        quote! {
+            let (preprocessed_columns, preprocessed_claimed) =
+                #path::gen_interaction_trace(&traces.preprocessed, relations);
+            all_columns.extend(preprocessed_columns);
+        }
+    });
 
-    let claimed_sum_inits = opcodes.iter().map(|op| {
+    let claimed_sum_inits = opcodes.iter().map(|component| {
+        let op = &component.name;
         let claimed_var = format_ident!("{}_claimed", op);
         quote! {
             #op: #claimed_var,
         }
     });
+    let preprocessed_claimed_sum_init = preprocessed.as_ref().map(|_| {
+        quote! {
+            preprocessed: preprocessed_claimed,
+        }
+    });
 
     // Generate Components::new() body
-    let components_new_body = opcodes.iter().map(|op| {
+    let components_new_body = opcodes.iter().map(|component| {
+        let op = &component.name;
+        let module = &component.module;
         quote! {
-            #op: #op::air::Component::new(
+            #op: #module::air::Component::new(
                 location_allocator,
-                #op::air::Eval {
+                #module::air::Eval {
                     log_size: claim.#op,
                     relations: relations.clone(),
                 },
@@ -188,36 +400,72 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             ),
         }
     });
+    let preprocessed_components_new = preprocessed.as_ref().map(|path| {
+        quote! {
+            preprocessed: #path::Components::new(
+                &claim.preprocessed,
+                location_allocator,
+                relations.clone(),
+                &claimed_sum.preprocessed,
+            ),
+        }
+    });
 
     // Generate Components::provers() body
-    let provers_body = opcodes.iter().map(|op| {
-        quote! { &self.#op, }
+    let provers_body = opcodes.iter().map(|component| {
+        let op = &component.name;
+        quote! { &self.#op as &dyn stwo::prover::ComponentProver<SimdBackend>, }
+    });
+    let preprocessed_provers = preprocessed.as_ref().map(|_| {
+        quote! {
+            provers.extend(self.preprocessed.provers());
+        }
     });
 
     // Generate Components::verifiers() body
-    let verifiers_body = opcodes.iter().map(|op| {
+    let verifiers_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! { &self.#op as &dyn stwo::core::air::Component, }
+    });
+    let preprocessed_verifiers = preprocessed.as_ref().map(|_| {
+        quote! {
+            verifiers.extend(self.preprocessed.verifiers());
+        }
     });
 
     // Generate relation_entries() body
     let relation_entries_body = if opcodes.is_empty() {
         quote! { std::iter::empty() }
     } else {
-        let chain_items = opcodes.iter().map(|op| {
+        let chain_items = opcodes.iter().map(|component| {
+            let op = &component.name;
             quote! { add_to_relation_entries(&self.#op, trace) }
         });
         quote! {
             itertools::chain!(#(#chain_items),*)
         }
     };
+    let preprocessed_relation_entries = preprocessed.as_ref().map(|_| {
+        quote! {
+            entries.extend(self.preprocessed.relation_entries(trace));
+        }
+    });
 
     // Generate trace_log_degree_bounds() body
-    let trace_log_degree_bounds_body = opcodes.iter().map(|op| {
+    let trace_log_degree_bounds_body = opcodes.iter().map(|component| {
+        let op = &component.name;
         quote! { self.#op.trace_log_degree_bounds(), }
+    });
+    let preprocessed_trace_log_degree_bounds = preprocessed.as_ref().map(|_| {
+        quote! {
+            bounds.extend(self.preprocessed.trace_log_degree_bounds());
+        }
     });
 
     // Generate assert_constraints_on_polys() body
-    let assert_constraints_body = opcodes.iter().map(|op| {
+    let assert_constraints_body = opcodes.iter().map(|component| {
+        let op = &component.name;
+        let module = &component.module;
         let op_str = op.to_string();
         quote! {
             if !traces.#op.is_empty() {
@@ -226,14 +474,14 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                     .unwrap_or(0);
                 if log_size > 0 {
                     let (interaction_trace, claimed_sum) =
-                        #op::witness::gen_interaction_trace(traces.#op.as_slice(), relations);
+                        #module::witness::gen_interaction_trace(&traces.#op, relations);
                     let trace_tree = TreeVec::new(vec![
                         vec![], // preprocessed
                         traces.#op.clone(),
                         interaction_trace,
                     ]);
                     let trace_polys = trace_tree.map_cols(|c| c.interpolate());
-                    let eval = #op::air::Eval {
+                    let eval = #module::air::Eval {
                         log_size,
                         relations: relations.clone(),
                     };
@@ -242,6 +490,42 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                         |assert_eval| { eval.evaluate(assert_eval); }, claimed_sum);
                     info!("{} constraints OK", #op_str);
                 }
+            }
+        }
+    });
+    let preprocessed_assert_constraints = preprocessed.as_ref().map(|path| {
+        quote! {
+            #path::Components::assert_constraints_on_polys(&traces.preprocessed, relations);
+        }
+    });
+    let track_relations_impl = preprocessed.as_ref().map(|_| {
+        quote! {
+            pub fn track_relations(
+                &self,
+                preprocessed_trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                traces: &Traces,
+            ) -> stwo_constraint_framework::relation_tracker::RelationSummary {
+                use stwo::core::pcs::TreeVec;
+                use stwo::prover::backend::Column;
+
+                let preprocessed_cpu: Vec<Vec<BaseField>> = preprocessed_trace
+                    .iter()
+                    .map(|col| col.values.to_cpu())
+                    .collect();
+                let main_columns = traces.columns_cloned();
+                let main_cpu: Vec<Vec<BaseField>> =
+                    main_columns.iter().map(|col| col.values.to_cpu()).collect();
+
+                let cpu_trace = TreeVec::new(vec![preprocessed_cpu, main_cpu]);
+                let trace_refs = TreeVec::new(
+                    cpu_trace.iter().map(|tree| tree.iter().collect()).collect(),
+                );
+
+                let entries = self.relation_entries(&trace_refs);
+                stwo_constraint_framework::relation_tracker::RelationSummary::summarize_relations(
+                    &entries,
+                )
+                .cleaned()
             }
         }
     });
@@ -259,6 +543,7 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
         /// Trace columns for all components.
         pub struct Traces {
             #(#traces_fields)*
+            #preprocessed_traces_field
         }
 
         impl Traces {
@@ -269,18 +554,21 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             pub fn log_sizes(&self) -> Vec<u32> {
                 let mut sizes = vec![];
                 #(#log_sizes_body)*
+                #preprocessed_log_sizes
                 sizes
             }
 
             pub fn columns_cloned(&self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let mut columns = vec![];
                 #(#columns_cloned_body)*
+                #preprocessed_columns_cloned
                 columns
             }
 
             pub fn into_columns(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let mut columns = vec![];
                 #(#into_columns_body)*
+                #preprocessed_into_columns
                 columns
             }
 
@@ -289,18 +577,21 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                 use stwo::prover::backend::Column;
                 debug_utils::set_display_options(max_rows, max_cols);
                 #(#print_tables_body)*
+                #preprocessed_print_tables
             }
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct Claim {
             #(#claim_fields)*
+            #preprocessed_claim_field
         }
 
         impl From<&Traces> for Claim {
             fn from(traces: &Traces) -> Self {
                 Self {
                     #(#claim_from_body)*
+                    #preprocessed_claim_from
                 }
             }
         }
@@ -308,18 +599,25 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
         impl Claim {
             pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
                 #(#claim_mix_into_body)*
+                #preprocessed_claim_mix_into
             }
 
             pub fn log_sizes(&self) -> Vec<u32> {
                 let mut sizes = vec![];
                 #(#claim_log_sizes_body)*
+                #preprocessed_claim_log_sizes
                 sizes
+            }
+
+            pub fn main_trace_log_sizes(&self) -> Vec<u32> {
+                self.log_sizes()
             }
         }
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
         pub struct ClaimedSum {
             #(#claimed_sum_fields)*
+            #preprocessed_claimed_sum_field
         }
 
         impl ClaimedSum {
@@ -327,28 +625,26 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                 use num_traits::Zero;
                 let mut total = QM31::zero();
                 #(#claimed_sum_body)*
+                #preprocessed_claimed_sum_body
                 total
+            }
+
+            pub fn total(&self) -> QM31 {
+                self.sum()
             }
 
             pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
                 #(#claimed_sum_mix_into)*
+                #preprocessed_claimed_sum_mix_into
             }
         }
 
         pub struct Components {
             #(#components_fields)*
+            #preprocessed_components_field
         }
 
-        pub fn gen_trace(
-            tracer: runner::trace::Tracer,
-            counters: &mut crate::relations::Counters,
-        ) -> Traces {
-            let traces = Traces {
-                #(#gen_trace_body)*
-            };
-            #(#register_multiplicities_body)*
-            traces
-        }
+        #gen_trace_function
 
         pub fn gen_interaction_trace(
             traces: &Traces,
@@ -359,9 +655,11 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
         ) {
             let mut all_columns = vec![];
             #(#gen_interaction_trace_vars)*
+            #preprocessed_interaction_trace
 
             let claimed_sum = ClaimedSum {
                 #(#claimed_sum_inits)*
+                #preprocessed_claimed_sum_init
             };
 
             (all_columns, claimed_sum)
@@ -376,15 +674,20 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
             ) -> Self {
                 Self {
                     #(#components_new_body)*
+                    #preprocessed_components_new
                 }
             }
 
             pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
-                vec![ #(#provers_body)* ]
+                let mut provers = vec![ #(#provers_body)* ];
+                #preprocessed_provers
+                provers
             }
 
             pub fn verifiers(&self) -> Vec<&dyn stwo::core::air::Component> {
-                vec![ #(#verifiers_body)* ]
+                let mut verifiers = vec![ #(#verifiers_body)* ];
+                #preprocessed_verifiers
+                verifiers
             }
 
             pub fn relation_entries(
@@ -392,13 +695,17 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                 trace: &stwo::core::pcs::TreeVec<Vec<&Vec<BaseField>>>,
             ) -> Vec<stwo_constraint_framework::relation_tracker::RelationTrackerEntry> {
                 use stwo_constraint_framework::relation_tracker::add_to_relation_entries;
-                #relation_entries_body.collect()
+                let mut entries: Vec<_> = #relation_entries_body.collect();
+                #preprocessed_relation_entries
+                entries
             }
 
             pub fn trace_log_degree_bounds(&self) -> Vec<stwo::core::pcs::TreeVec<ColumnVec<u32>>> {
-                vec![
+                let mut bounds = vec![
                     #(#trace_log_degree_bounds_body)*
-                ]
+                ];
+                #preprocessed_trace_log_degree_bounds
+                bounds
             }
 
             pub fn assert_constraints_on_polys(
@@ -411,7 +718,10 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
                 use tracing::info;
 
                 #(#assert_constraints_body)*
+                #preprocessed_assert_constraints
             }
+
+            #track_relations_impl
         }
     }
     .into()
@@ -422,7 +732,7 @@ pub fn opcode_components(input: TokenStream) -> TokenStream {
 // =============================================================================
 
 pub fn preprocessed_components(input: TokenStream) -> TokenStream {
-    let OpcodeList { opcodes: tables } = syn::parse_macro_input!(input as OpcodeList);
+    let IdentList { idents: tables } = syn::parse_macro_input!(input as IdentList);
 
     // Generate inner modules for each preprocessed component
     let inner_modules = tables.iter().map(|table| {
@@ -655,7 +965,7 @@ pub fn preprocessed_components(input: TokenStream) -> TokenStream {
 
     // Generate Components::provers() body
     let provers_body = tables.iter().map(|table| {
-        quote! { &self.#table, }
+        quote! { &self.#table as &dyn stwo::prover::ComponentProver<SimdBackend>, }
     });
 
     // Generate Components::verifiers() body
