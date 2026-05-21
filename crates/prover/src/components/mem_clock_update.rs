@@ -16,34 +16,7 @@ use crate::relations::Relations;
 use runner::trace::DEFAULT_MAX_CLOCK_DIFF;
 
 pub mod columns {
-    use stwo_constraint_framework::EvalAtRow;
-
-    #[derive(Debug, Clone)]
-    pub struct MemClockUpdateColumns<T> {
-        pub enabler: T,
-        pub addr: T,
-        pub clock_prev: T,
-        pub value_0: T,
-        pub value_1: T,
-        pub value_2: T,
-        pub value_3: T,
-    }
-
-    impl<T> MemClockUpdateColumns<T> {
-        pub const SIZE: usize = 7;
-
-        pub fn from_eval<E: EvalAtRow<F = T>>(eval: &mut E) -> Self {
-            Self {
-                enabler: eval.next_trace_mask(),
-                addr: eval.next_trace_mask(),
-                clock_prev: eval.next_trace_mask(),
-                value_0: eval.next_trace_mask(),
-                value_1: eval.next_trace_mask(),
-                value_2: eval.next_trace_mask(),
-                value_3: eval.next_trace_mask(),
-            }
-        }
-    }
+    pub use runner::trace::prover_columns::MemClockUpdateColumns;
 }
 
 pub mod air {
