@@ -155,7 +155,7 @@ pub fn run_with_input(
             );
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
-                cycles: tracer.clk as u64,
+                cycles: tracer.clock as u64,
                 initial_pc,
                 final_pc: cpu.pc,
                 initial_regs,
@@ -205,7 +205,7 @@ pub fn run_with_input(
             );
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
-                cycles: tracer.clk as u64,
+                cycles: tracer.clock as u64,
                 initial_pc,
                 final_pc: cpu.pc,
                 initial_regs,
@@ -224,7 +224,7 @@ pub fn run_with_input(
         }
 
         // Update tracer clock before executing instruction
-        tracer.clk += 1;
+        tracer.clock += 1;
 
         execute(&mut cpu, &mut mem, &inst, &mut tracer);
 
@@ -245,7 +245,7 @@ pub fn run_with_input(
             );
             tracer.finalize_commitments(&mem, &layout)?;
             return Ok(RunResult {
-                cycles: tracer.clk as u64,
+                cycles: tracer.clock as u64,
                 initial_pc,
                 final_pc: prev_pc,
                 initial_regs,
@@ -264,9 +264,9 @@ pub fn run_with_input(
         }
 
         // Safety limit
-        if tracer.clk as u64 > max_cycles {
+        if tracer.clock as u64 > max_cycles {
             return Err(RunError::MaxCyclesExceeded {
-                cycles: tracer.clk as u64,
+                cycles: tracer.clock as u64,
                 max: max_cycles,
             });
         }

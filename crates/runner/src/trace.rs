@@ -20,7 +20,7 @@ stwo_macros::define_trace_tables! {
     // 1. Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
     // ==========================================================================
     base_alu_reg: {
-        clk, pc, rd, rs1, rs2,
+        clock, pc, rd, rs1, rs2,
         opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
     },
 
@@ -28,7 +28,7 @@ stwo_macros::define_trace_tables! {
     // 2. Base ALU Imm (addi/xori/ori/andi) - airs.md Section 2
     // ==========================================================================
     base_alu_imm: {
-        clk, pc, rd, rs1,
+        clock, pc, rd, rs1,
         imm_0, imm_1, imm_msb,
         opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
     },
@@ -37,7 +37,7 @@ stwo_macros::define_trace_tables! {
     // 3. Shifts Reg (sll/srl/sra) - airs.md Section 3
     // ==========================================================================
     shifts_reg: {
-        clk, pc, rd, rs1, rs2,
+        clock, pc, rd, rs1, rs2,
         rs1_sign,
         opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
         bit_multiplier_left, bit_multiplier_right,
@@ -51,7 +51,7 @@ stwo_macros::define_trace_tables! {
     // 4. Shifts Imm (slli/srli/srai) - airs.md Section 4
     // ==========================================================================
     shifts_imm: {
-        clk, pc, rd, rs1,
+        clock, pc, rd, rs1,
         rs1_sign, imm_truncated,
         opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
         bit_multiplier_left, bit_multiplier_right,
@@ -65,7 +65,7 @@ stwo_macros::define_trace_tables! {
     // 5. Less Than Reg (slt/sltu) - airs.md Section 5
     // ==========================================================================
     lt_reg: {
-        clk, pc, rd, rs1, rs2,
+        clock, pc, rd, rs1, rs2,
         cmp_result, rs1_msl_felt, rs2_msl_felt,
         opcode_slt_flag, opcode_sltu_flag,
         diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
@@ -76,7 +76,7 @@ stwo_macros::define_trace_tables! {
     // 6. Less Than Imm (slti/sltiu) - airs.md Section 6
     // ==========================================================================
     lt_imm: {
-        clk, pc, rd, rs1,
+        clock, pc, rd, rs1,
         cmp_result, rs1_msl_felt,
         imm_0, imm_1, imm_msb,
         opcode_slti_flag, opcode_sltiu_flag,
@@ -88,7 +88,7 @@ stwo_macros::define_trace_tables! {
     // 7. Branch Equal (beq/bne) - airs.md Section 7
     // ==========================================================================
     branch_eq: {
-        clk, pc, rs1, rs2,
+        clock, pc, rs1, rs2,
         imm_felt, cmp_result,
         diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2, diff_inv_marker_3,
         opcode_beq_flag, opcode_bne_flag
@@ -98,7 +98,7 @@ stwo_macros::define_trace_tables! {
     // 8. Branch Less Than (blt/bltu/bge/bgeu) - airs.md Section 8
     // ==========================================================================
     branch_lt: {
-        clk, pc, rs1, rs2,
+        clock, pc, rs1, rs2,
         rs1_msl_felt, rs2_msl_felt,
         imm_felt, cmp_result, cmp_lt,
         diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
@@ -110,7 +110,7 @@ stwo_macros::define_trace_tables! {
     // 9. LUI - airs.md Section 9
     // ==========================================================================
     lui: {
-        clk, pc, rd,
+        clock, pc, rd,
         imm_0, imm_1, imm_2
     },
 
@@ -118,7 +118,7 @@ stwo_macros::define_trace_tables! {
     // 10. AUIPC - airs.md Section 10
     // ==========================================================================
     auipc: {
-        clk, pc, rd,
+        clock, pc, rd,
         imm_felt
     },
 
@@ -126,7 +126,7 @@ stwo_macros::define_trace_tables! {
     // 11. JALR - airs.md Section 11
     // ==========================================================================
     jalr: {
-        clk, pc, rd, rs1,
+        clock, pc, rd, rs1,
         to_pc_over_two, to_pc_lsb,
         imm_felt
     },
@@ -135,7 +135,7 @@ stwo_macros::define_trace_tables! {
     // 12. JAL - airs.md Section 12
     // ==========================================================================
     jal: {
-        clk, pc, rd,
+        clock, pc, rd,
         imm_felt
     },
 
@@ -143,7 +143,7 @@ stwo_macros::define_trace_tables! {
     // 13. Load/Store (lb/lbu/lh/lhu/lw/sb/sh/sw) - airs.md Section 13
     // ==========================================================================
     load_store: {
-        clk, pc, dst, rs1, src,
+        clock, pc, dst, rs1, src,
         r2_idx, imm_felt, src_msb,
         shift_amount,
         src_addr_selector, dst_addr_selector,
@@ -156,14 +156,14 @@ stwo_macros::define_trace_tables! {
     // 14. MUL - airs.md Section 14
     // ==========================================================================
     mul: {
-        clk, pc, rd, rs1, rs2
+        clock, pc, rd, rs1, rs2
     },
 
     // ==========================================================================
     // 15. MULH (mulh/mulhsu/mulhu) - airs.md Section 15
     // ==========================================================================
     mulh: {
-        clk, pc, rd, rs1, rs2,
+        clock, pc, rd, rs1, rs2,
         rd_high_0, rd_high_1, rd_high_2, rd_high_3,
         rs1_sign, rs2_sign,
         opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag
@@ -173,7 +173,7 @@ stwo_macros::define_trace_tables! {
     // 16. DIV (div/divu/rem/remu) - airs.md Section 16
     // ==========================================================================
     div: {
-        clk, pc, rd, rs1, rs2,
+        clock, pc, rd, rs1, rs2,
         zero_divisor, r_zero,
         q_0, q_1, q_2, q_3,
         r_0, r_1, r_2, r_3,
@@ -197,7 +197,7 @@ stwo_macros::define_trace_tables! {
     // 18. Memory commitment table (initial/final)
     // ==========================================================================
     memory: {
-        addr, clk,
+        addr, clock,
         value_0, value_1, value_2, value_3,
         multiplicity, root
     },
@@ -298,13 +298,13 @@ stwo_macros::define_trace_tables! {
 /// - For memory: `addr` is the byte address
 /// - Values stored as `[u8; 4]` little-endian limbs (1-4 bytes meaningful)
 ///
-/// Note: The current clock (`clk`) is not stored here because it's redundant
-/// with the VM's `tracer.clk` at the time of the access.
+/// Note: The current clock (`clock`) is not stored here because it's redundant
+/// with the VM's `tracer.clock` at the time of the access.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct Access {
     pub addr: u32,
     pub prev: u32,
-    pub clk_prev: u32,
+    pub clock_prev: u32,
     pub next: u32,
 }
 
@@ -313,7 +313,7 @@ impl std::fmt::Debug for Access {
         f.debug_struct("Access")
             .field("addr", &format_args!("{:#x}", self.addr))
             .field("prev", &format_args!("{:#x}", self.prev))
-            .field("clk_prev", &self.clk_prev)
+            .field("clock_prev", &self.clock_prev)
             .field("next", &format_args!("{:#x}", self.next))
             .finish()
     }
@@ -327,12 +327,12 @@ impl std::fmt::Debug for Access {
 ///
 /// Simplified storage since for clock catch-up:
 /// - `prev == next` (value unchanged)
-/// - `clk == clk_prev + max_clock_diff` (fixed increment)
+/// - `clock == clock_prev + max_clock_diff` (fixed increment)
 #[derive(Clone)]
 pub struct AccessTable {
     pub addr: AlignedVec<u32>,
     pub value: AlignedVec<u32>,
-    pub clk_prev: AlignedVec<u32>,
+    pub clock_prev: AlignedVec<u32>,
     pub max_clock_diff: u32,
 }
 
@@ -341,7 +341,7 @@ impl Default for AccessTable {
         Self {
             addr: AlignedVec::new(),
             value: AlignedVec::new(),
-            clk_prev: AlignedVec::new(),
+            clock_prev: AlignedVec::new(),
             max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
         }
     }
@@ -354,7 +354,7 @@ impl std::fmt::Debug for AccessTable {
             list.entry(&Access {
                 addr: self.addr[i],
                 prev: self.value[i],
-                clk_prev: self.clk_prev[i],
+                clock_prev: self.clock_prev[i],
                 next: self.value[i],
             });
         }
@@ -371,7 +371,7 @@ impl AccessTable {
         Self {
             addr: AlignedVec::with_capacity(cap),
             value: AlignedVec::with_capacity(cap),
-            clk_prev: AlignedVec::with_capacity(cap),
+            clock_prev: AlignedVec::with_capacity(cap),
             max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
         }
     }
@@ -401,7 +401,7 @@ impl AccessTable {
         );
         self.addr.push(access.addr);
         self.value.push(access.prev);
-        self.clk_prev.push(access.clk_prev);
+        self.clock_prev.push(access.clock_prev);
     }
 
     /// Consumes the table and returns columns in canonical order.
@@ -428,7 +428,7 @@ impl AccessTable {
         vec![
             enabler,
             self.addr,
-            self.clk_prev,
+            self.clock_prev,
             value_0,
             value_1,
             value_2,
@@ -488,61 +488,61 @@ impl Tracer {
         table: GapTable,
         addr: u32,
         value: u32,
-        clk_prev: u32,
-        target_clk: u32,
+        clock_prev: u32,
+        target_clock: u32,
     ) -> u32 {
-        let mut current_clk = clk_prev;
+        let mut current_clock = clock_prev;
 
-        while target_clk.saturating_sub(current_clk) > self.max_clock_diff {
-            let next_clk = current_clk.saturating_add(self.max_clock_diff);
+        while target_clock.saturating_sub(current_clock) > self.max_clock_diff {
+            let next_clock = current_clock.saturating_add(self.max_clock_diff);
             let access = Access {
                 addr,
                 prev: value,
-                clk_prev: current_clk,
+                clock_prev: current_clock,
                 next: value,
             };
             match table {
-                GapTable::Reg => self.reg_clk_update.push(access),
-                GapTable::Mem => self.mem_clk_update.push(access),
+                GapTable::Reg => self.reg_clock_update.push(access),
+                GapTable::Mem => self.mem_clock_update.push(access),
             }
-            current_clk = next_clk;
+            current_clock = next_clock;
         }
 
-        current_clk
+        current_clock
     }
 
     /// Trace a register access with gap-filling.
-    /// Intermediate accesses are pushed to `reg_clk_update`.
+    /// Intermediate accesses are pushed to `reg_clock_update`.
     /// Returns only the final access.
     pub fn trace_reg_access(&mut self, idx: u8, prev: u32, next: u32) -> Access {
-        let clk_prev = self.reg_clk[idx as usize];
+        let clock_prev = self.reg_clock[idx as usize];
         let addr = idx as u32;
 
-        // Generate intermediate catch-up accesses and get final clk_prev
-        let final_clk_prev = self.fill_gap(GapTable::Reg, addr, prev, clk_prev, self.clk);
+        // Generate intermediate catch-up accesses and get final clock_prev
+        let final_clock_prev = self.fill_gap(GapTable::Reg, addr, prev, clock_prev, self.clock);
 
         // Update the register's clock after gap-filling
-        if final_clk_prev != clk_prev {
-            self.reg_clk[idx as usize] = final_clk_prev;
+        if final_clock_prev != clock_prev {
+            self.reg_clock[idx as usize] = final_clock_prev;
         }
 
-        // Create the final access (clk is available from tracer.clk at call site)
+        // Create the final access (clock is available from tracer.clock at call site)
         let final_access = Access {
             addr,
             prev,
-            clk_prev: final_clk_prev,
+            clock_prev: final_clock_prev,
             next,
         };
 
         // Update the register's clock
-        self.reg_clk[idx as usize] = self.clk;
+        self.reg_clock[idx as usize] = self.clock;
 
         final_access
     }
 
     /// Trace a memory access with gap-filling.
     /// All memory accesses are traced at 4-byte aligned addresses.
-    /// Intermediate accesses are pushed to `mem_clk_update`.
+    /// Intermediate accesses are pushed to `mem_clock_update`.
     /// Returns only the final access.
     pub fn trace_mem_access(&mut self, addr: u32, prev: u32, next: u32) -> Access {
         // Always use 4-byte aligned address
@@ -550,26 +550,27 @@ impl Tracer {
 
         self.mem_initial.entry(aligned_addr).or_insert(prev);
 
-        let clk_prev = self.mem_clk.get(&aligned_addr).copied().unwrap_or(0);
+        let clock_prev = self.mem_clock.get(&aligned_addr).copied().unwrap_or(0);
 
-        // Generate intermediate catch-up accesses and get final clk_prev
-        let final_clk_prev = self.fill_gap(GapTable::Mem, aligned_addr, prev, clk_prev, self.clk);
+        // Generate intermediate catch-up accesses and get final clock_prev
+        let final_clock_prev =
+            self.fill_gap(GapTable::Mem, aligned_addr, prev, clock_prev, self.clock);
 
-        // Update mem_clk after gap-filling
-        if final_clk_prev != clk_prev {
-            self.mem_clk.insert(aligned_addr, final_clk_prev);
+        // Update mem_clock after gap-filling
+        if final_clock_prev != clock_prev {
+            self.mem_clock.insert(aligned_addr, final_clock_prev);
         }
 
-        // Create the final access (clk is available from tracer.clk at call site)
+        // Create the final access (clock is available from tracer.clock at call site)
         let final_access = Access {
             addr: aligned_addr,
             prev,
-            clk_prev: final_clk_prev,
+            clock_prev: final_clock_prev,
             next,
         };
 
         // Update the memory word's clock
-        self.mem_clk.insert(aligned_addr, self.clk);
+        self.mem_clock.insert(aligned_addr, self.clock);
 
         final_access
     }
@@ -614,12 +615,12 @@ mod tests {
             if self.idx >= self.table.len() {
                 None
             } else {
-                let clk_prev = self.table.clk_prev[self.idx];
+                let clock_prev = self.table.clock_prev[self.idx];
                 let value = self.table.value[self.idx];
                 let access = Access {
                     addr: self.table.addr[self.idx],
                     prev: value,
-                    clk_prev,
+                    clock_prev,
                     next: value, // For gap-filling, prev == next
                 };
                 self.idx += 1;
@@ -651,10 +652,10 @@ mod tests {
     #[test]
     fn test_default_tracer() {
         let tracer = Tracer::default();
-        assert_eq!(tracer.clk, 0);
+        assert_eq!(tracer.clock, 0);
         assert_eq!(tracer.max_clock_diff, DEFAULT_MAX_CLOCK_DIFF);
-        assert_eq!(tracer.reg_clk, [0; 32]);
-        assert!(tracer.mem_clk.is_empty());
+        assert_eq!(tracer.reg_clock, [0; 32]);
+        assert!(tracer.mem_clock.is_empty());
         assert!(tracer.mem_initial.is_empty());
         assert!(tracer.program_reads.is_empty());
     }
@@ -663,7 +664,7 @@ mod tests {
     fn test_with_max_clock_diff() {
         let tracer = Tracer::with_max_clock_diff(100);
         assert_eq!(tracer.max_clock_diff, 100);
-        assert_eq!(tracer.clk, 0);
+        assert_eq!(tracer.clock, 0);
     }
 
     // =========================================================================
@@ -673,93 +674,93 @@ mod tests {
     #[test]
     fn test_trace_mem_access_first_access() {
         let mut tracer = Tracer::default();
-        tracer.clk = 10;
+        tracer.clock = 10;
 
         let access = tracer.trace_mem_access(MEM_ADDR, 0x42, 0x42);
 
         assert_eq!(access.addr, MEM_ADDR);
         assert_eq!(access.prev, 0x42);
         assert_eq!(access.next, 0x42);
-        assert_eq!(access.clk_prev, 0);
-        // Note: access.clk is no longer stored; use tracer.clk at call site
-        assert!(tracer.mem_clk_update.is_empty());
+        assert_eq!(access.clock_prev, 0);
+        // Note: access.clock is no longer stored; use tracer.clock at call site
+        assert!(tracer.mem_clock_update.is_empty());
     }
 
     #[test]
     fn test_trace_mem_access_consecutive() {
         let mut tracer = Tracer::default();
 
-        tracer.clk = 1;
+        tracer.clock = 1;
         tracer.trace_mem_access(MEM_ADDR, 0x11, 0x11);
 
-        tracer.clk = 2;
+        tracer.clock = 2;
         let access = tracer.trace_mem_access(MEM_ADDR, 0x11, 0x22);
 
-        assert_eq!(access.clk_prev, 1);
-        // Note: access.clk is no longer stored; current clk is tracer.clk=2
+        assert_eq!(access.clock_prev, 1);
+        // Note: access.clock is no longer stored; current clock is tracer.clock=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
-        assert!(tracer.mem_clk_update.is_empty());
+        assert!(tracer.mem_clock_update.is_empty());
     }
 
     #[test]
     fn test_trace_mem_access_gap_filling() {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
-        tracer.clk = 0;
+        tracer.clock = 0;
         tracer.trace_mem_access(MEM_ADDR, 0x42, 0x42);
 
-        tracer.clk = 350;
+        tracer.clock = 350;
         let access = tracer.trace_mem_access(MEM_ADDR, 0x42, 0x42);
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
-            tracer.mem_clk_update.len(),
+            tracer.mem_clock_update.len(),
             3,
             "Expected 3 intermediates, got {}",
-            tracer.mem_clk_update.len()
+            tracer.mem_clock_update.len()
         );
 
-        // Verify intermediates have correct clk_prev progression
-        // Each intermediate's clk was clk_prev + max_clock_diff (now implicit)
+        // Verify intermediates have correct clock_prev progression
+        // Each intermediate's clock was clock_prev + max_clock_diff (now implicit)
         // Sequence: 0 -> 100 -> 200 -> 300 -> 350 (final)
-        assert_eq!(tracer.mem_clk_update.clk_prev[0], 0);
-        assert_eq!(tracer.mem_clk_update.clk_prev[1], 100);
-        assert_eq!(tracer.mem_clk_update.clk_prev[2], 200);
+        assert_eq!(tracer.mem_clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.mem_clock_update.clock_prev[1], 100);
+        assert_eq!(tracer.mem_clock_update.clock_prev[2], 200);
 
-        // Final access's clk_prev should be 300 (after 3 intermediates)
-        assert_eq!(access.clk_prev, 300);
-        // Final access's clk is tracer.clk=350, diff is 50 which is <= 100
+        // Final access's clock_prev should be 300 (after 3 intermediates)
+        assert_eq!(access.clock_prev, 300);
+        // Final access's clock is tracer.clock=350, diff is 50 which is <= 100
     }
 
     #[test]
     fn test_trace_mem_access_exact_max_diff() {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
-        tracer.clk = 0;
+        tracer.clock = 0;
         tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
-        tracer.clk = 100;
+        tracer.clock = 100;
         let access = tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // Exactly at max_clock_diff - no intermediate needed
-        assert!(tracer.mem_clk_update.is_empty());
-        assert_eq!(access.clk_prev, 0);
-        // Note: access.clk is no longer stored; current clk is tracer.clk=100
+        assert!(tracer.mem_clock_update.is_empty());
+        assert_eq!(access.clock_prev, 0);
+        // Note: access.clock is no longer stored; current clock is tracer.clock=100
     }
 
     #[test]
     fn test_trace_mem_access_preserves_value() {
         let mut tracer = Tracer::with_max_clock_diff(50);
 
-        tracer.clk = 0;
+        tracer.clock = 0;
         tracer.trace_mem_access(MEM_ADDR, 0xAB, 0xAB);
 
-        tracer.clk = 200;
+        tracer.clock = 200;
         let access = tracer.trace_mem_access(MEM_ADDR, 0xAB, 0xAB);
 
         // All intermediate accesses should preserve the value
-        for intermediate in &tracer.mem_clk_update {
+        for intermediate in &tracer.mem_clock_update {
             assert_eq!(intermediate.prev, 0xAB);
             assert_eq!(intermediate.next, 0xAB);
         }
@@ -769,13 +770,13 @@ mod tests {
     }
 
     #[test]
-    fn test_trace_mem_access_updates_mem_clk() {
+    fn test_trace_mem_access_updates_mem_clock() {
         let mut tracer = Tracer::default();
-        tracer.clk = 10;
+        tracer.clock = 10;
 
         tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
-        assert_eq!(tracer.mem_clk.get(&MEM_ADDR), Some(&10));
+        assert_eq!(tracer.mem_clock.get(&MEM_ADDR), Some(&10));
     }
 
     // =========================================================================
@@ -785,69 +786,69 @@ mod tests {
     #[test]
     fn test_trace_reg_access_first_access() {
         let mut tracer = Tracer::default();
-        tracer.clk = 10;
+        tracer.clock = 10;
 
         let access = tracer.trace_reg_access(5, 0x42, 0x42);
 
         assert_eq!(access.addr, 5);
         assert_eq!(access.prev, 0x42);
         assert_eq!(access.next, 0x42);
-        assert_eq!(access.clk_prev, 0);
-        // Note: access.clk is no longer stored; use tracer.clk at call site
-        assert!(tracer.reg_clk_update.is_empty());
+        assert_eq!(access.clock_prev, 0);
+        // Note: access.clock is no longer stored; use tracer.clock at call site
+        assert!(tracer.reg_clock_update.is_empty());
     }
 
     #[test]
     fn test_trace_reg_access_consecutive() {
         let mut tracer = Tracer::default();
 
-        tracer.clk = 1;
+        tracer.clock = 1;
         tracer.trace_reg_access(5, 0x11, 0x11);
 
-        tracer.clk = 2;
+        tracer.clock = 2;
         let access = tracer.trace_reg_access(5, 0x11, 0x22);
 
-        assert_eq!(access.clk_prev, 1);
-        // Note: access.clk is no longer stored; current clk is tracer.clk=2
+        assert_eq!(access.clock_prev, 1);
+        // Note: access.clock is no longer stored; current clock is tracer.clock=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
-        assert!(tracer.reg_clk_update.is_empty());
+        assert!(tracer.reg_clock_update.is_empty());
     }
 
     #[test]
     fn test_trace_reg_access_gap_filling() {
         let mut tracer = Tracer::with_max_clock_diff(100);
 
-        tracer.clk = 0;
+        tracer.clock = 0;
         tracer.trace_reg_access(5, 0x42, 0x42);
 
-        tracer.clk = 350;
+        tracer.clock = 350;
         let access = tracer.trace_reg_access(5, 0x42, 0x42);
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
-            tracer.reg_clk_update.len(),
+            tracer.reg_clock_update.len(),
             3,
             "Expected 3 intermediates, got {}",
-            tracer.reg_clk_update.len()
+            tracer.reg_clock_update.len()
         );
 
-        // Verify intermediates have correct clk_prev progression
-        // Each intermediate's clk was clk_prev + max_clock_diff (now implicit)
+        // Verify intermediates have correct clock_prev progression
+        // Each intermediate's clock was clock_prev + max_clock_diff (now implicit)
         // Sequence: 0 -> 100 -> 200 -> 300 -> 350 (final)
-        assert_eq!(tracer.reg_clk_update.clk_prev[0], 0);
-        assert_eq!(tracer.reg_clk_update.clk_prev[1], 100);
-        assert_eq!(tracer.reg_clk_update.clk_prev[2], 200);
+        assert_eq!(tracer.reg_clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.reg_clock_update.clock_prev[1], 100);
+        assert_eq!(tracer.reg_clock_update.clock_prev[2], 200);
 
-        // Final access's clk_prev should be 300 (after 3 intermediates)
-        assert_eq!(access.clk_prev, 300);
-        // Final access's clk is tracer.clk=350, diff is 50 which is <= 100
+        // Final access's clock_prev should be 300 (after 3 intermediates)
+        assert_eq!(access.clock_prev, 300);
+        // Final access's clock is tracer.clock=350, diff is 50 which is <= 100
     }
 
     #[test]
     fn test_trace_reg_access_x0() {
         let mut tracer = Tracer::default();
-        tracer.clk = 10;
+        tracer.clock = 10;
 
         // x0 can still be traced - the caller handles x0 semantics
         let access = tracer.trace_reg_access(0, 0, 0);
@@ -855,17 +856,17 @@ mod tests {
         assert_eq!(access.addr, 0);
         assert_eq!(access.prev, 0);
         assert_eq!(access.next, 0);
-        assert!(tracer.reg_clk_update.is_empty());
+        assert!(tracer.reg_clock_update.is_empty());
     }
 
     #[test]
-    fn test_trace_reg_access_updates_reg_clk() {
+    fn test_trace_reg_access_updates_reg_clock() {
         let mut tracer = Tracer::default();
-        tracer.clk = 10;
+        tracer.clock = 10;
 
         tracer.trace_reg_access(5, 0, 0);
 
-        assert_eq!(tracer.reg_clk[5], 10);
+        assert_eq!(tracer.reg_clock[5], 10);
     }
 
     // =========================================================================
@@ -876,38 +877,38 @@ mod tests {
     fn test_max_clock_diff_one() {
         let mut tracer = Tracer::with_max_clock_diff(1);
 
-        tracer.clk = 0;
+        tracer.clock = 0;
         tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
-        tracer.clk = 5;
+        tracer.clock = 5;
         let access = tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // With max_clock_diff=1, gap of 5 needs 4 intermediates + 1 final
-        assert_eq!(tracer.mem_clk_update.len(), 4);
+        assert_eq!(tracer.mem_clock_update.len(), 4);
 
-        // Verify intermediates have correct clk_prev progression: 0, 1, 2, 3
-        // Each intermediate's clk was clk_prev + 1 (now implicit)
-        assert_eq!(tracer.mem_clk_update.clk_prev[0], 0);
-        assert_eq!(tracer.mem_clk_update.clk_prev[1], 1);
-        assert_eq!(tracer.mem_clk_update.clk_prev[2], 2);
-        assert_eq!(tracer.mem_clk_update.clk_prev[3], 3);
+        // Verify intermediates have correct clock_prev progression: 0, 1, 2, 3
+        // Each intermediate's clock was clock_prev + 1 (now implicit)
+        assert_eq!(tracer.mem_clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.mem_clock_update.clock_prev[1], 1);
+        assert_eq!(tracer.mem_clock_update.clock_prev[2], 2);
+        assert_eq!(tracer.mem_clock_update.clock_prev[3], 3);
 
-        // Final access's clk_prev is 4, and tracer.clk=5, so diff is 1
-        assert_eq!(access.clk_prev, 4);
+        // Final access's clock_prev is 4, and tracer.clock=5, so diff is 1
+        assert_eq!(access.clock_prev, 4);
     }
 
     #[test]
     fn test_max_clock_diff_max() {
         let mut tracer = Tracer::with_max_clock_diff(u32::MAX);
 
-        tracer.clk = 0;
+        tracer.clock = 0;
         tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
-        tracer.clk = u32::MAX - 1;
+        tracer.clock = u32::MAX - 1;
         tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // No intermediate ever needed
-        assert!(tracer.mem_clk_update.is_empty());
+        assert!(tracer.mem_clock_update.is_empty());
     }
 
     // =========================================================================
@@ -921,19 +922,19 @@ mod tests {
         let rd = Access {
             addr: 1,
             prev: 0,
-            clk_prev: 0,
+            clock_prev: 0,
             next: 10,
         };
         let rs1 = Access {
             addr: 2,
             prev: 5,
-            clk_prev: 0,
+            clock_prev: 0,
             next: 5,
         };
         let rs2 = Access {
             addr: 3,
             prev: 5,
-            clk_prev: 0,
+            clock_prev: 0,
             next: 5,
         };
 
@@ -941,7 +942,7 @@ mod tests {
         table.push(1, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
 
         assert_eq!(table.len(), 1);
-        assert_eq!(table.clk[0], 1);
+        assert_eq!(table.clock[0], 1);
         assert_eq!(table.pc[0], 0x1000);
         assert_eq!(table.rd_addr[0], 1);
         assert_eq!(table.rd_next[0], 10);
@@ -960,7 +961,7 @@ mod tests {
         let access = Access {
             addr: 100,
             prev: value,
-            clk_prev: 0,
+            clock_prev: 0,
             next: value,
         };
         table.push(access);
@@ -991,7 +992,7 @@ mod tests {
     #[test]
     fn test_trace_op_macro() {
         let mut tracer = Tracer::default();
-        tracer.clk = 1;
+        tracer.clock = 1;
 
         let rd = Access::default();
         let rs1 = Access::default();
@@ -1000,7 +1001,7 @@ mod tests {
         trace_op!(base_alu_reg: tracer, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
 
         assert_eq!(tracer.base_alu_reg.len(), 1);
-        assert_eq!(tracer.base_alu_reg.clk[0], 1);
+        assert_eq!(tracer.base_alu_reg.clock[0], 1);
         assert_eq!(tracer.base_alu_reg.pc[0], 0x1000);
     }
 
@@ -1010,27 +1011,27 @@ mod tests {
 
         #[test]
         fn test_base_alu_reg_columns_size() {
-            // base_alu_reg: clk, pc, rd (10), rs1 (10), rs2 (10),
+            // base_alu_reg: clock, pc, rd (10), rs1 (10), rs2 (10),
             // + 5 opcode flags = 37 total (no enabler - has flags)
             assert_eq!(BaseAluRegColumns::<()>::SIZE, 37);
         }
 
         #[test]
         fn test_base_alu_imm_columns_size() {
-            // base_alu_imm: clk, pc, rd (10), rs1 (10),
+            // base_alu_imm: clock, pc, rd (10), rs1 (10),
             // + imm_0, imm_1, imm_msb (3) + 4 opcode flags = 29 total (no enabler - has flags)
             assert_eq!(BaseAluImmColumns::<()>::SIZE, 29);
         }
 
         #[test]
         fn test_lui_columns_size() {
-            // LUI: enabler (1), clk, pc, rd (10), imm_0, imm_1, imm_2 = 16 total
+            // LUI: enabler (1), clock, pc, rd (10), imm_0, imm_1, imm_2 = 16 total
             assert_eq!(LuiColumns::<()>::SIZE, 16);
         }
 
         #[test]
         fn test_load_store_columns_size() {
-            // load_store: clk (1), pc (1), dst (10), rs1 (10), src (10),
+            // load_store: clock (1), pc (1), dst (10), rs1 (10), src (10),
             // + r2_idx, imm_felt, src_msb, shift_amount (4)
             // + src_addr_selector, dst_addr_selector (2)
             // + marker_0..3 (4) + 8 opcode flags = 50 total (no enabler - has flags)
@@ -1039,20 +1040,20 @@ mod tests {
 
         #[test]
         fn test_branch_eq_columns_size() {
-            // branch_eq: clk (1), pc (1), rs1 (10), rs2 (10),
+            // branch_eq: clock (1), pc (1), rs1 (10), rs2 (10),
             // + imm_felt (1), cmp_result (1) + diff_inv_marker_0..3 (4) + 2 opcode flags = 30 total (no enabler - has flags)
             assert_eq!(BranchEqColumns::<()>::SIZE, 30);
         }
 
         #[test]
         fn test_jal_columns_size() {
-            // JAL: enabler (1), clk, pc, rd (10), imm_felt = 14 total
+            // JAL: enabler (1), clock, pc, rd (10), imm_felt = 14 total
             assert_eq!(JalColumns::<()>::SIZE, 14);
         }
 
         #[test]
         fn test_mul_columns_size() {
-            // MUL: enabler (1), clk, pc, rd (10), rs1 (10), rs2 (10) = 33 total
+            // MUL: enabler (1), clock, pc, rd (10), rs1 (10), rs2 (10) = 33 total
             assert_eq!(MulColumns::<()>::SIZE, 33);
         }
     }
@@ -1071,19 +1072,19 @@ mod tests {
             let rd = Access {
                 addr: 1,
                 prev: 0,
-                clk_prev: 0,
+                clock_prev: 0,
                 next: 10,
             };
             let rs1 = Access {
                 addr: 2,
                 prev: 5,
-                clk_prev: 1,
+                clock_prev: 1,
                 next: 5,
             };
             let rs2 = Access {
                 addr: 3,
                 prev: 7,
-                clk_prev: 2,
+                clock_prev: 2,
                 next: 7,
             };
 
@@ -1102,7 +1103,7 @@ mod tests {
             let rd = Access {
                 addr: 10,
                 prev: 0,
-                clk_prev: 0,
+                clock_prev: 0,
                 next: 0x12345000,
             };
 
@@ -1120,7 +1121,7 @@ mod tests {
             let output = table.to_table().to_string();
 
             // Empty table should still have headers
-            assert!(output.contains("clk"));
+            assert!(output.contains("clock"));
         }
 
         #[test]

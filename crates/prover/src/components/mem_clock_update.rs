@@ -22,7 +22,7 @@ pub mod columns {
     pub struct MemClockUpdateColumns<T> {
         pub enabler: T,
         pub addr: T,
-        pub clk_prev: T,
+        pub clock_prev: T,
         pub value_0: T,
         pub value_1: T,
         pub value_2: T,
@@ -36,7 +36,7 @@ pub mod columns {
             Self {
                 enabler: eval.next_trace_mask(),
                 addr: eval.next_trace_mask(),
-                clk_prev: eval.next_trace_mask(),
+                clock_prev: eval.next_trace_mask(),
                 value_0: eval.next_trace_mask(),
                 value_1: eval.next_trace_mask(),
                 value_2: eval.next_trace_mask(),
@@ -71,7 +71,7 @@ pub mod air {
             let cols = MemClockUpdateColumns::from_eval(&mut eval);
             let enabler = cols.enabler.clone();
             let addr = cols.addr.clone();
-            let clk_prev = cols.clk_prev.clone();
+            let clock_prev = cols.clock_prev.clone();
             let value_0 = cols.value_0.clone();
             let value_1 = cols.value_1.clone();
             let value_2 = cols.value_2.clone();
@@ -89,7 +89,7 @@ pub mod air {
                 -enabler.clone(),
                 rw_as.clone(),
                 addr.clone(),
-                clk_prev.clone(),
+                clock_prev.clone(),
                 value_0.clone(),
                 value_1.clone(),
                 value_2.clone(),
@@ -101,7 +101,7 @@ pub mod air {
                 enabler,
                 rw_as,
                 addr,
-                clk_prev + diff,
+                clock_prev + diff,
                 value_0,
                 value_1,
                 value_2,
@@ -130,7 +130,7 @@ pub mod witness {
         // Column order matches MemClockUpdateColumns.
         let enabler = &trace[0].data;
         let addr = &trace[1].data;
-        let clk_prev = &trace[2].data;
+        let clock_prev = &trace[2].data;
         let value_0 = &trace[3].data;
         let value_1 = &trace[4].data;
         let value_2 = &trace[5].data;
@@ -144,8 +144,8 @@ pub mod witness {
 
         let rw_as = PackedM31::broadcast(M31::one());
         let rw_as_col = vec![rw_as; simd_size];
-        let clk_prev_plus_diff: Vec<PackedM31> =
-            (0..simd_size).map(|i| clk_prev[i] + diff).collect();
+        let clock_prev_plus_diff: Vec<PackedM31> =
+            (0..simd_size).map(|i| clock_prev[i] + diff).collect();
 
         let neg_enabler: Vec<PackedQM31> = (0..simd_size)
             .map(|i| -PackedQM31::from(enabler[i]))
@@ -157,7 +157,7 @@ pub mod witness {
         let prev_denom = combine!(
             relations.memory_access,
             [
-                &rw_as_col, addr, clk_prev, value_0, value_1, value_2, value_3
+                &rw_as_col, addr, clock_prev, value_0, value_1, value_2, value_3
             ]
         );
         let next_denom = combine!(
@@ -165,7 +165,7 @@ pub mod witness {
             [
                 &rw_as_col,
                 addr,
-                &clk_prev_plus_diff,
+                &clock_prev_plus_diff,
                 value_0,
                 value_1,
                 value_2,

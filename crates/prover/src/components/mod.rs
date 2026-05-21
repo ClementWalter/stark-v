@@ -513,8 +513,8 @@ pub fn gen_trace(mut tracer: runner::trace::Tracer) -> Traces {
     let tracer_memory = std::mem::take(&mut tracer.memory);
     let tracer_merkle = std::mem::take(&mut tracer.merkle);
     let tracer_poseidon2 = std::mem::take(&mut tracer.poseidon2);
-    let tracer_mem_clock_update = std::mem::take(&mut tracer.mem_clk_update);
-    let tracer_reg_clock_update = std::mem::take(&mut tracer.reg_clk_update);
+    let tracer_mem_clock_update = std::mem::take(&mut tracer.mem_clock_update);
+    let tracer_reg_clock_update = std::mem::take(&mut tracer.reg_clock_update);
 
     // Generate opcode traces (populates counters during generation)
     let opcodes = opcodes::gen_trace(tracer, &mut counters);

@@ -44,7 +44,7 @@ pub mod air {
             let cols = MemoryColumns::from_eval(&mut eval);
             let enabler = cols.enabler.clone();
             let addr = cols.addr.clone();
-            let clk = cols.clk.clone();
+            let clock = cols.clock.clone();
             let value_0 = cols.value_0.clone();
             let value_1 = cols.value_1.clone();
             let value_2 = cols.value_2.clone();
@@ -85,7 +85,7 @@ pub mod air {
                 multiplicity.clone(),
                 rw_as,
                 addr,
-                clk,
+                clock,
                 value_0,
                 value_1,
                 value_2,
@@ -191,7 +191,7 @@ pub mod witness {
             [
                 &rw_as_col,
                 cols.addr,
-                cols.clk,
+                cols.clock,
                 cols.value_0,
                 cols.value_1,
                 cols.value_2,

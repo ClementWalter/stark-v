@@ -109,91 +109,91 @@ impl FrameworkEval for Eval {
         );
 
         // Read from rs1
-        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0..3])
+        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clock, rs1[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -enabler.clone(),
             reg_as.clone(),
             cols.rs1_addr,
-            cols.rs1_clk_prev,
+            cols.rs1_clock_prev,
             cols.rs1_prev_0,
             cols.rs1_prev_1,
             cols.rs1_prev_2,
             cols.rs1_prev_3
         );
-        // + enabler * Memory(REG_AS, rs1_idx, clk, rs1[0..3])
+        // + enabler * Memory(REG_AS, rs1_idx, clock, rs1[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             enabler.clone(),
             reg_as.clone(),
             cols.rs1_addr,
-            cols.clk,
+            cols.clock,
             cols.rs1_next_0,
             cols.rs1_next_1,
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // - RC_20(clock - rs1_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clk.clone() - cols.rs1_clk_prev.clone()
+            cols.clock.clone() - cols.rs1_clock_prev.clone()
         );
 
         // Read from rs2
-        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0..3])
+        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clock, rs2[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -enabler.clone(),
             reg_as.clone(),
             cols.rs2_addr,
-            cols.rs2_clk_prev,
+            cols.rs2_clock_prev,
             cols.rs2_prev_0,
             cols.rs2_prev_1,
             cols.rs2_prev_2,
             cols.rs2_prev_3
         );
-        // + enabler * Memory(REG_AS, rs2_idx, clk, rs2[0..3])
+        // + enabler * Memory(REG_AS, rs2_idx, clock, rs2[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             enabler.clone(),
             reg_as.clone(),
             cols.rs2_addr,
-            cols.clk,
+            cols.clock,
             cols.rs2_next_0,
             cols.rs2_next_1,
             cols.rs2_next_2,
             cols.rs2_next_3
         );
-        // - RC_20(clk - rs2_prev_clk)
+        // - RC_20(clock - rs2_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clk.clone() - cols.rs2_clk_prev.clone()
+            cols.clock.clone() - cols.rs2_clock_prev.clone()
         );
 
         // Register state transition (conditional branch)
-        // - enabler * Registers(pc, clk)
+        // - enabler * Registers(pc, clock)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             -enabler.clone(),
             cols.pc,
-            cols.clk
+            cols.clock
         );
-        // + enabler * Registers(to_pc, clk + 1)
+        // + enabler * Registers(to_pc, clock + 1)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             enabler.clone(),
             to_pc,
-            cols.clk.clone() + E::F::one()
+            cols.clock.clone() + E::F::one()
         );
 
         eval.finalize_logup_in_pairs();

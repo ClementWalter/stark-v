@@ -10,8 +10,8 @@ pub const INTERACTION_POW_BITS: u32 = 10;
 
 stwo_macros::relations! {
     relations {
-        registers_state: pc, clk;
-        memory_access: addr_space, addr, clk, limb_0, limb_1, limb_2, limb_3;
+        registers_state: pc, clock;
+        memory_access: addr_space, addr, clock, limb_0, limb_1, limb_2, limb_3;
         program_access: addr, value_0, value_1, value_2, value_3;
         merkle: index, depth, value, root;
         poseidon2: state0, state1, state2, state3, state4, state5, state6, state7,

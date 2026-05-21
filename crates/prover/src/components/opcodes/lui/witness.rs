@@ -32,7 +32,7 @@ pub fn gen_interaction_trace(
 
     // Get named column access - use .data to access the underlying Vec<PackedM31>
     let cols = LuiColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
-    let simd_size = cols.clk.len();
+    let simd_size = cols.clock.len();
 
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
@@ -58,15 +58,15 @@ pub fn gen_interaction_trace(
     // pc + 4
     let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.pc[i] + four).collect();
 
-    // clk + 1
-    let clk_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.clk[i] + one).collect();
+    // clock + 1
+    let clock_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.clock[i] + one).collect();
 
     // imm_0 * 16 (for rd write value)
     let imm_0_times_16: Vec<PackedM31> = (0..simd_size).map(|i| cols.imm_0[i] * pow2_4).collect();
 
-    // clk - rd_clk_prev (for range check)
-    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+    // clock - rd_clock_prev (for range check)
+    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
         .collect();
 
     // Compute numerators
@@ -87,8 +87,8 @@ pub fn gen_interaction_trace(
         [cols.pc, &opcode_lui_id_col, cols.rd_addr, &imm, &zero_col]
     );
 
-    // 2. registers_state: -enabler * (pc, clk)
-    let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clk]);
+    // 2. registers_state: -enabler * (pc, clock)
+    let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clock]);
 
     // Pair 1+2: both have -enabler numerator
     write_pair!(
@@ -99,8 +99,8 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 3. registers_state: +enabler * (pc+4, clk+1)
-    let registers_write_denom = combine!(relations.registers_state, [&pc_plus_4, &clk_plus_1]);
+    // 3. registers_state: +enabler * (pc+4, clock+1)
+    let registers_write_denom = combine!(relations.registers_state, [&pc_plus_4, &clock_plus_1]);
 
     // 4. range_check_8_8_4: -1 * (imm_1, imm_2, imm_0)
     let rc_8_8_4_denom = combine!(
@@ -117,13 +117,13 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 5. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
+    // 5. memory_access: -enabler * (0, rd_addr, rd_clock_prev, rd_prev_0..3)
     let mem_read_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rd_addr,
-            cols.rd_clk_prev,
+            cols.rd_clock_prev,
             cols.rd_prev_0,
             cols.rd_prev_1,
             cols.rd_prev_2,
@@ -131,13 +131,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. memory_access: +enabler * (0, rd_addr, clk, 0, imm_0*16, imm_1, imm_2)
+    // 6. memory_access: +enabler * (0, rd_addr, clock, 0, imm_0*16, imm_1, imm_2)
     let mem_write_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rd_addr,
-            cols.clk,
+            cols.clock,
             &zero_col,
             &imm_0_times_16,
             cols.imm_1,
@@ -154,8 +154,8 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. range_check_20: -1 * (clk - rd_clk_prev)
-    let rc_20_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
+    // 7. range_check_20: -1 * (clock - rd_clock_prev)
+    let rc_20_denom = combine!(relations.range_check_20, [&clock_minus_rd_clock_prev]);
 
     // Leftover entry 7: -1 numerator
     write_col!(&neg_enabler, &rc_20_denom, logup_gen);
@@ -174,14 +174,14 @@ pub fn register_multiplicities(
     }
 
     let cols = LuiColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
-    let simd_size = cols.clk.len();
+    let simd_size = cols.clock.len();
 
     // Numerator: negated enabler (to match gen_interaction_trace)
     let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
     // Derived columns (same as gen_interaction_trace)
-    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
         .collect();
 
     // Register range_check_8_8_4: (imm_1, imm_2, imm_0) with negated multiplicity
@@ -189,8 +189,8 @@ pub fn register_multiplicities(
         .range_check_8_8_4
         .register_many(&neg_enabler, &[cols.imm_1, cols.imm_2, cols.imm_0]);
 
-    // Register range_check_20: (clk - rd_clk_prev) with negated multiplicity
+    // Register range_check_20: (clock - rd_clock_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clock_minus_rd_clock_prev]);
 }

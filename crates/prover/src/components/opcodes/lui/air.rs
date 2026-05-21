@@ -62,21 +62,21 @@ impl FrameworkEval for Eval {
         );
 
         // Register state transition
-        // - enabler * Registers(pc, clk)
+        // - enabler * Registers(pc, clock)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             -cols.enabler.clone(),
             cols.pc,
-            cols.clk
+            cols.clock
         );
-        // + enabler * Registers(pc + 4, clk + 1)
+        // + enabler * Registers(pc + 4, clock + 1)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             cols.enabler.clone(),
             cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clk.clone() + E::F::one()
+            cols.clock.clone() + E::F::one()
         );
 
         // Range check imm limbs: - RC_8_8_4(imm_1, imm_2, imm_0)
@@ -90,38 +90,38 @@ impl FrameworkEval for Eval {
         );
 
         // Write to rd
-        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0..3])
+        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clock, rd_prev[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -cols.enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.rd_clk_prev,
+            cols.rd_clock_prev,
             cols.rd_prev_0,
             cols.rd_prev_1,
             cols.rd_prev_2,
             cols.rd_prev_3
         );
-        // + enabler * Memory(REG_AS, rd_idx, clk, 0, imm_0 * 2^4, imm_1, imm_2)
+        // + enabler * Memory(REG_AS, rd_idx, clock, 0, imm_0 * 2^4, imm_1, imm_2)
         add_to_relation!(
             eval,
             self.relations.memory_access,
             cols.enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.clk,
+            cols.clock,
             E::F::zero(),
             cols.imm_0.clone() * pow2::<E>(4),
             cols.imm_1,
             cols.imm_2
         );
-        // - RC_20(clk - rd_prev_clk)
+        // - RC_20(clock - rd_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clk.clone() - cols.rd_clk_prev.clone()
+            cols.clock.clone() - cols.rd_clock_prev.clone()
         );
 
         eval.finalize_logup_in_pairs();

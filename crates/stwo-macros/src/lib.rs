@@ -46,9 +46,9 @@ mod trace_tables;
 /// # Example
 /// ```ignore
 /// define_trace_tables! {
-///     add: { clk, pc, rd, rs1, rs2 },
-///     lui: { clk, pc, rd },
-///     sb: { clk, pc, rs1, rs2, mem },
+///     add: { clock, pc, rd, rs1, rs2 },
+///     lui: { clock, pc, rd },
+///     sb: { clock, pc, rs1, rs2, mem },
 /// }
 /// ```
 #[proc_macro]
@@ -183,8 +183,8 @@ pub fn add_to_relation(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// relations! {
 ///     relations {
-///         program_access: addr, clk, value;
-///         memory_access: addr, clk, limb_0, limb_1, limb_2, limb_3;
+///         program_access: addr, clock, value;
+///         memory_access: addr, clock, limb_0, limb_1, limb_2, limb_3;
 ///     }
 ///     preprocessed {
 ///         range_check_20: value;
