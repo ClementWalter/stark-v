@@ -234,4 +234,11 @@ pub mod witness {
 
         interaction_trace.finalize_last()
     }
+
+    /// Program rows do not request preprocessed lookup multiplicities.
+    pub fn register_multiplicities(
+        _trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+        _counters: &mut crate::relations::Counters,
+    ) {
+    }
 }
