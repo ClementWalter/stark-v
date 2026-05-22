@@ -20,8 +20,7 @@
 //!
 //! ## Prover Infrastructure Macros
 //! - `relations!` - Generate Relations struct and preprocessed table infrastructure
-//! - `tracer_components!` - Generate AIR component infrastructure for trace-backed components
-//! - `components!` - Compose trace-backed and preprocessed component infrastructure
+//! - `components!` - Compose trace-backed and lookup multiplicity component infrastructure
 
 use proc_macro::TokenStream;
 
@@ -202,30 +201,13 @@ pub fn relations(input: TokenStream) -> TokenStream {
     relations::relations(input)
 }
 
-/// Generate AIR component infrastructure for trace-backed components.
-///
-/// # Example
-/// ```ignore
-/// tracer_components!(add, nested::mul);
-/// ```
-///
-/// Generates:
-/// - `Traces` struct with one field per trace-backed component
-/// - `Claim` struct with log_size for each component
-/// - `ClaimedSum` struct with QM31 field per component
-/// - `Components` struct with one `air::Component` field per component
-#[proc_macro]
-pub fn tracer_components(input: TokenStream) -> TokenStream {
-    components::tracer_components(input)
-}
-
-/// Compose trace-backed and preprocessed component infrastructure.
+/// Compose trace-backed and lookup multiplicity component infrastructure.
 ///
 /// # Example
 /// ```ignore
 /// components! {
 ///     trace: { nested::mul, memory },
-///     preprocessed: { bitwise, range_check_20 },
+///     lookup: { bitwise, range_check_20 },
 /// }
 /// ```
 #[proc_macro]

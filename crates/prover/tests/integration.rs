@@ -1,8 +1,8 @@
 //! Integration tests for component aggregation.
 
 use num_traits::Zero;
-use prover::components::opcodes::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
-use prover::relations::{Counters, Relations};
+use prover::components::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
+use prover::relations::Relations;
 use runner::trace::Tracer;
 use stwo::core::pcs::PcsConfig;
 use stwo::prover::backend::Column;
@@ -13,9 +13,7 @@ fn test_all_components_aggregate() {
     // Create an empty tracer
     let tracer = Tracer::default();
 
-    // Generate traces for all components
-    let mut counters = Counters::new();
-    let traces: Traces = gen_trace(tracer, &mut counters);
+    let traces: Traces = gen_trace(tracer);
 
     // Generate interaction traces with default relations
     let relations = Relations::dummy();
@@ -31,9 +29,7 @@ fn test_traces_struct_has_all_opcodes() {
     // Create an empty tracer
     let tracer = Tracer::default();
 
-    // Generate traces for all components
-    let mut counters = Counters::new();
-    let traces: Traces = gen_trace(tracer, &mut counters);
+    let traces: Traces = gen_trace(tracer);
 
     // Verify we can access each opcode family trace (16 families total).
     assert!(!traces.base_alu_reg.is_empty());

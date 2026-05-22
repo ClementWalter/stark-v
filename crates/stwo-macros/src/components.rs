@@ -21,7 +21,7 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 // =============================================================================
-// tracer_components! and components! macros
+// components! macros
 // =============================================================================
 
 struct ComponentEntry {
@@ -57,7 +57,7 @@ struct ComponentList {
 
 struct ComponentsInput {
     trace: Vec<ComponentEntry>,
-    preprocessed: Vec<Ident>,
+    lookup: Vec<Ident>,
 }
 
 struct IdentList {
@@ -99,43 +99,30 @@ impl Parse for ComponentsInput {
 
         input.parse::<Token![,]>()?;
 
-        let preprocessed_label: Ident = input.parse()?;
-        if preprocessed_label != "preprocessed" {
+        let lookup_label: Ident = input.parse()?;
+        if lookup_label != "lookup" {
             return Err(syn::Error::new_spanned(
-                preprocessed_label,
-                "expected `preprocessed: path` section",
+                lookup_label,
+                "expected `lookup: { ... }` section",
             ));
         }
         input.parse::<Token![:]>()?;
-        let preprocessed_content;
-        braced!(preprocessed_content in input);
-        let IdentList {
-            idents: preprocessed,
-        } = preprocessed_content.parse()?;
+        let lookup_content;
+        braced!(lookup_content in input);
+        let IdentList { idents: lookup } = lookup_content.parse()?;
         let _ = input.parse::<Token![,]>();
 
-        Ok(Self {
-            trace,
-            preprocessed,
-        })
+        Ok(Self { trace, lookup })
     }
 }
 
-pub fn tracer_components(input: TokenStream) -> TokenStream {
-    let ComponentList { components } = syn::parse_macro_input!(input as ComponentList);
-    render_components(None, components).into()
-}
-
 pub fn components(input: TokenStream) -> TokenStream {
-    let ComponentsInput {
-        trace,
-        preprocessed,
-    } = syn::parse_macro_input!(input as ComponentsInput);
-    let preprocessed_components = render_preprocessed_components(preprocessed);
-    let components = render_components(Some(syn::parse_quote!(preprocessed)), trace);
+    let ComponentsInput { trace, lookup } = syn::parse_macro_input!(input as ComponentsInput);
+    let lookup_components = render_lookup_components(lookup);
+    let components = render_components(Some(syn::parse_quote!(lookups)), trace);
     quote! {
-        pub mod preprocessed {
-            #preprocessed_components
+        pub mod lookups {
+            #lookup_components
         }
 
         #components
@@ -153,7 +140,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_traces_field = preprocessed.as_ref().map(|path| {
         quote! {
-            pub preprocessed: #path::Traces,
+            pub lookups: #path::Traces,
         }
     });
 
@@ -168,7 +155,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_log_sizes = preprocessed.as_ref().map(|_| {
         quote! {
-            sizes.extend(self.preprocessed.log_sizes());
+            sizes.extend(self.lookups.log_sizes());
         }
     });
 
@@ -181,7 +168,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_columns_cloned = preprocessed.as_ref().map(|_| {
         quote! {
-            columns.extend(self.preprocessed.columns_cloned());
+            columns.extend(self.lookups.columns_cloned());
         }
     });
 
@@ -194,7 +181,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_into_columns = preprocessed.as_ref().map(|_| {
         quote! {
-            columns.extend(self.preprocessed.into_columns());
+            columns.extend(self.lookups.into_columns());
         }
     });
 
@@ -216,7 +203,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_print_tables = preprocessed.as_ref().map(|_| {
         quote! {
-            self.preprocessed.print_tables(max_rows, max_cols);
+            self.lookups.print_tables(max_rows, max_cols);
         }
     });
 
@@ -227,7 +214,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claim_field = preprocessed.as_ref().map(|path| {
         quote! {
-            pub preprocessed: #path::Claim,
+            pub lookups: #path::Claim,
         }
     });
 
@@ -242,7 +229,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claim_from = preprocessed.as_ref().map(|_| {
         quote! {
-            preprocessed: (&traces.preprocessed).into(),
+            lookups: (&traces.lookups).into(),
         }
     });
 
@@ -255,7 +242,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claim_mix_into = preprocessed.as_ref().map(|_| {
         quote! {
-            self.preprocessed.mix_into(channel);
+            self.lookups.mix_into(channel);
         }
     });
 
@@ -272,7 +259,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claim_log_sizes = preprocessed.as_ref().map(|_| {
         quote! {
-            sizes.extend(self.preprocessed.log_sizes());
+            sizes.extend(self.lookups.log_sizes());
         }
     });
 
@@ -283,7 +270,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claimed_sum_field = preprocessed.as_ref().map(|path| {
         quote! {
-            pub preprocessed: #path::ClaimedSum,
+            pub lookups: #path::ClaimedSum,
         }
     });
 
@@ -294,7 +281,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claimed_sum_body = preprocessed.as_ref().map(|_| {
         quote! {
-            total += self.preprocessed.sum();
+            total += self.lookups.sum();
         }
     });
 
@@ -307,7 +294,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claimed_sum_mix_into = preprocessed.as_ref().map(|_| {
         quote! {
-            self.preprocessed.mix_into(channel);
+            self.lookups.mix_into(channel);
         }
     });
 
@@ -321,7 +308,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_components_field = preprocessed.as_ref().map(|path| {
         quote! {
-            pub preprocessed: #path::Components,
+            pub lookups: #path::Components,
         }
     });
 
@@ -360,12 +347,12 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         .collect();
     let preprocessed_gen_trace_local = preprocessed.as_ref().map(|path| {
         quote! {
-            let preprocessed = #path::Traces::from_counters(counters);
+            let lookups = #path::Traces::from_counters(counters);
         }
     });
     let preprocessed_gen_trace_field = preprocessed.as_ref().map(|_| {
         quote! {
-            preprocessed,
+            lookups,
         }
     });
     let gen_trace_function = if preprocessed.is_some() {
@@ -416,9 +403,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_interaction_trace = preprocessed.as_ref().map(|path| {
         quote! {
-            let (preprocessed_columns, preprocessed_claimed) =
-                #path::gen_interaction_trace(&traces.preprocessed, relations);
-            all_columns.extend(preprocessed_columns);
+            let (lookup_columns, lookup_claimed) =
+                #path::gen_interaction_trace(&traces.lookups, relations);
+            all_columns.extend(lookup_columns);
         }
     });
 
@@ -431,7 +418,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_claimed_sum_init = preprocessed.as_ref().map(|_| {
         quote! {
-            preprocessed: preprocessed_claimed,
+            lookups: lookup_claimed,
         }
     });
 
@@ -452,11 +439,11 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_components_new = preprocessed.as_ref().map(|path| {
         quote! {
-            preprocessed: #path::Components::new(
-                &claim.preprocessed,
+            lookups: #path::Components::new(
+                &claim.lookups,
                 location_allocator,
                 relations.clone(),
-                &claimed_sum.preprocessed,
+                &claimed_sum.lookups,
             ),
         }
     });
@@ -468,7 +455,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_provers = preprocessed.as_ref().map(|_| {
         quote! {
-            provers.extend(self.preprocessed.provers());
+            provers.extend(self.lookups.provers());
         }
     });
 
@@ -479,7 +466,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_verifiers = preprocessed.as_ref().map(|_| {
         quote! {
-            verifiers.extend(self.preprocessed.verifiers());
+            verifiers.extend(self.lookups.verifiers());
         }
     });
 
@@ -497,7 +484,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     };
     let preprocessed_relation_entries = preprocessed.as_ref().map(|_| {
         quote! {
-            entries.extend(self.preprocessed.relation_entries(trace));
+            entries.extend(self.lookups.relation_entries(trace));
         }
     });
 
@@ -508,7 +495,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_trace_log_degree_bounds = preprocessed.as_ref().map(|_| {
         quote! {
-            bounds.extend(self.preprocessed.trace_log_degree_bounds());
+            bounds.extend(self.lookups.trace_log_degree_bounds());
         }
     });
 
@@ -545,7 +532,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     });
     let preprocessed_assert_constraints = preprocessed.as_ref().map(|path| {
         quote! {
-            #path::Components::assert_constraints_on_polys(&traces.preprocessed, relations);
+            #path::Components::assert_constraints_on_polys(&traces.lookups, relations);
         }
     });
     let track_relations_impl = preprocessed.as_ref().map(|_| {
@@ -776,12 +763,12 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     }
 }
 
-fn render_preprocessed_components(tables: Vec<Ident>) -> TokenStream2 {
-    // Generate inner modules for each preprocessed component
+fn render_lookup_components(tables: Vec<Ident>) -> TokenStream2 {
+    // Lookup components are generated beside trace components because they prove counter-backed multiplicities.
     let inner_modules = tables.iter().map(|table| {
         quote! {
             pub mod #table {
-                //! Preprocessed multiplicity component.
+                //! Lookup multiplicity component for a preprocessed table.
 
                 pub mod air {
                     use stwo_constraint_framework::{
@@ -815,9 +802,7 @@ fn render_preprocessed_components(tables: Vec<Ident>) -> TokenStream2 {
                                 .map(|id| eval.get_preprocessed_column(id.clone()))
                                 .collect();
 
-                            // Add to relation with negated multiplicity (emit side)
-                            // Preprocessed tables emit their LogUp contributions
-                            // Negation here balances the negated multiplicity stored by register_multiplicities
+                            // The lookup component emits the stored multiplicity so trace-backed consumers balance it.
                             eval.add_to_relation(RelationEntry::new(
                                 &self.relations.#table,
                                 -E::EF::from(multiplicity),
@@ -860,8 +845,7 @@ fn render_preprocessed_components(tables: Vec<Ident>) -> TokenStream2 {
                         let preprocessed_cols = crate::preprocessed::#table::Table::gen_columns();
                         let multiplicity = &trace[0].values.data;
 
-                        // Convert multiplicity to PackedQM31 for write_col!
-                        // Negate to balance the negated multiplicity stored by register_multiplicities
+                        // The interaction trace uses the relation sign that balances trace-backed lookup consumers.
                         let multiplicity_qm31: Vec<PackedQM31> = multiplicity
                             .iter()
                             .map(|&m| -PackedQM31::from(m))

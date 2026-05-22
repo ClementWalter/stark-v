@@ -33,7 +33,7 @@ stwo_macros::components! {
         mem_clock_update,
         reg_clock_update,
     },
-    preprocessed: {
+    lookup: {
         bitwise,
         range_check_20,
         range_check_8_11,
@@ -45,22 +45,22 @@ stwo_macros::components! {
 
 #[cfg(test)]
 mod tests {
-    crate::test_preprocessed_e2e!(base_alu_reg, bitwise, and);
-    crate::test_preprocessed_e2e!(base_alu_reg, bitwise, or);
-    crate::test_preprocessed_e2e!(base_alu_reg, bitwise, xor);
+    crate::test_lookup_e2e!(base_alu_reg, bitwise, and);
+    crate::test_lookup_e2e!(base_alu_reg, bitwise, or);
+    crate::test_lookup_e2e!(base_alu_reg, bitwise, xor);
 
-    crate::test_preprocessed_e2e!(base_alu_imm, range_check_8_8, addi);
-    crate::test_preprocessed_e2e!(base_alu_reg, range_check_8_8, add);
-    crate::test_preprocessed_e2e!(base_alu_reg, range_check_8_8, sub);
+    crate::test_lookup_e2e!(base_alu_imm, range_check_8_8, addi);
+    crate::test_lookup_e2e!(base_alu_reg, range_check_8_8, add);
+    crate::test_lookup_e2e!(base_alu_reg, range_check_8_8, sub);
 
-    crate::test_preprocessed_e2e!(shifts_reg, range_check_8_11, sll);
-    crate::test_preprocessed_e2e!(shifts_reg, range_check_8_11, srl);
+    crate::test_lookup_e2e!(shifts_reg, range_check_8_11, sll);
+    crate::test_lookup_e2e!(shifts_reg, range_check_8_11, srl);
 
-    crate::test_preprocessed_e2e!(load_store, range_check_8_8_4, lb);
-    crate::test_preprocessed_e2e!(load_store, range_check_8_8_4, sb);
+    crate::test_lookup_e2e!(load_store, range_check_8_8_4, lb);
+    crate::test_lookup_e2e!(load_store, range_check_8_8_4, sb);
 
-    crate::test_preprocessed_e2e!(div, range_check_m31, div);
+    crate::test_lookup_e2e!(div, range_check_m31, div);
 
-    crate::test_preprocessed_e2e!(base_alu_reg, range_check_20, add);
-    crate::test_preprocessed_e2e!(load_store, range_check_20, lw);
+    crate::test_lookup_e2e!(base_alu_reg, range_check_20, add);
+    crate::test_lookup_e2e!(load_store, range_check_20, lw);
 }
