@@ -1,7 +1,6 @@
 //! Clock update component derived from register gap-filling traces.
 
 pub mod air;
-pub mod columns;
 pub mod witness;
 
 use num_traits::{One, Zero};

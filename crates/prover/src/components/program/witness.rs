@@ -1,6 +1,6 @@
 //! Witness and interaction trace generation for the program component.
 
-use super::columns::ProgramColumns;
+use runner::trace::prover_columns::ProgramColumns;
 
 use super::*;
 

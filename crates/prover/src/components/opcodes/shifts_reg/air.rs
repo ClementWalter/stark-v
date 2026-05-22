@@ -6,7 +6,7 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::ShiftsRegColumns;
+use runner::trace::prover_columns::ShiftsRegColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 

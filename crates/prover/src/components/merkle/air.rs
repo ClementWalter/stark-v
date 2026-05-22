@@ -1,7 +1,7 @@
 //! AIR evaluation for the Merkle component.
 
-use super::columns::MerkleColumns;
 use super::*;
+use runner::trace::prover_columns::MerkleColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 

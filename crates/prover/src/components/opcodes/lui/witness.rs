@@ -13,7 +13,7 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
-use super::columns::LuiColumns;
+use runner::trace::prover_columns::LuiColumns;
 
 /// Generate interaction trace for LogUp.
 ///

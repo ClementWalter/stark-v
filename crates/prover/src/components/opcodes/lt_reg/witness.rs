@@ -12,7 +12,7 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
-use super::columns::LtRegColumns;
+use runner::trace::prover_columns::LtRegColumns;
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(

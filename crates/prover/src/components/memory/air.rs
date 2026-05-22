@@ -1,7 +1,7 @@
 //! AIR evaluation for the memory commitment component.
 
-use super::columns::MemoryColumns;
 use super::*;
+use runner::trace::prover_columns::MemoryColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 

@@ -1,7 +1,6 @@
 //! Poseidon2 hash component for Merkle commitments.
 
 pub mod air;
-pub mod columns;
 pub mod witness;
 
 use std::ops::{Add, AddAssign, Mul, Sub};

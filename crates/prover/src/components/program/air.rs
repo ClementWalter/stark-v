@@ -1,7 +1,7 @@
 //! AIR evaluation for the program component.
 
-use super::columns::ProgramColumns;
 use super::*;
+use runner::trace::prover_columns::ProgramColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 

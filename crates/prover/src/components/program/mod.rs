@@ -1,7 +1,6 @@
 //! Program component for decoded instruction rows.
 
 pub mod air;
-pub mod columns;
 pub mod witness;
 
 use num_traits::{One, Zero};

@@ -12,7 +12,7 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
-use super::columns::MulhColumns;
+use runner::trace::prover_columns::MulhColumns;
 
 fn write_single_batch(
     logup_gen: &mut LogupTraceGenerator,

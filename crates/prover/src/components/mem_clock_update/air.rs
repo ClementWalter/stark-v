@@ -1,7 +1,7 @@
 //! AIR evaluation for the memory clock update component.
 
-use super::columns::MemClockUpdateColumns;
 use super::*;
+use runner::trace::prover_columns::MemClockUpdateColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 

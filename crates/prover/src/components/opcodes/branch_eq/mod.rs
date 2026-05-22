@@ -1,7 +1,6 @@
 //! Branch Equal component (beq/bne) - airs.md Section 7
 
 pub mod air;
-pub mod columns;
 pub mod witness;
 
 #[cfg(test)]

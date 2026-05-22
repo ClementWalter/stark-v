@@ -1,7 +1,7 @@
 //! AIR evaluation for the register clock update component.
 
-use super::columns::RegClockUpdateColumns;
 use super::*;
+use runner::trace::prover_columns::RegClockUpdateColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 

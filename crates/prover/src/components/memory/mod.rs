@@ -1,7 +1,6 @@
 //! Memory commitment component (initial/final values).
 
 pub mod air;
-pub mod columns;
 pub mod witness;
 
 use num_traits::{One, Zero};

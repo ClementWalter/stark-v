@@ -5,8 +5,8 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::LuiColumns;
 use crate::relations::Relations;
+use runner::trace::prover_columns::LuiColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 
