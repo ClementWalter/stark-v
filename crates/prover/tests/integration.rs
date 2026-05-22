@@ -1,8 +1,8 @@
 //! Integration tests for component aggregation.
 
 use num_traits::Zero;
-use prover::components::opcodes::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
-use prover::relations::{Counters, Relations};
+use prover::components::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
+use prover::relations::Relations;
 use runner::trace::Tracer;
 use stwo::core::pcs::PcsConfig;
 use stwo::prover::backend::Column;
@@ -13,9 +13,7 @@ fn test_all_components_aggregate() {
     // Create an empty tracer
     let tracer = Tracer::default();
 
-    // Generate traces for all components
-    let mut counters = Counters::new();
-    let traces: Traces = gen_trace(tracer, &mut counters);
+    let traces: Traces = gen_trace(tracer);
 
     // Generate interaction traces with default relations
     let relations = Relations::dummy();
@@ -31,9 +29,7 @@ fn test_traces_struct_has_all_opcodes() {
     // Create an empty tracer
     let tracer = Tracer::default();
 
-    // Generate traces for all components
-    let mut counters = Counters::new();
-    let traces: Traces = gen_trace(tracer, &mut counters);
+    let traces: Traces = gen_trace(tracer);
 
     // Verify we can access each opcode family trace (16 families total).
     assert!(!traces.base_alu_reg.is_empty());
@@ -309,7 +305,7 @@ fn test_mul_interaction_trace_prev_cur_deltas() {
     let single_traces = components::gen_trace(single_run.tracer);
     let single_rel = Relations::dummy();
     let (single_interaction, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &single_traces.opcodes.mul,
+        &single_traces.mul,
         &single_rel,
     );
 
@@ -321,7 +317,7 @@ fn test_mul_interaction_trace_prev_cur_deltas() {
     let many_traces = components::gen_trace(many_run.tracer);
     let many_rel = Relations::dummy();
     let (many_interaction, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &many_traces.opcodes.mul,
+        &many_traces.mul,
         &many_rel,
     );
 
@@ -407,13 +403,11 @@ fn test_mul_offset_sampling_matches_domain_extension() {
     let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run mul_output");
     let traces = components::gen_trace(run_result.tracer);
     let relations = Relations::dummy();
-    let (interaction_trace, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &traces.opcodes.mul,
-        &relations,
-    );
+    let (interaction_trace, _) =
+        prover::components::opcodes::mul::witness::gen_interaction_trace(&traces.mul, &relations);
 
     let eval = prover::components::opcodes::mul::air::Eval {
-        log_size: traces.opcodes.mul[0].domain.log_size(),
+        log_size: traces.mul[0].domain.log_size(),
         relations,
     };
     let info = stwo_constraint_framework::FrameworkEval::evaluate(

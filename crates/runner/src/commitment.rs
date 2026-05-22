@@ -273,7 +273,7 @@ impl Tracer {
                 mem_addrs.insert(addr & !3);
             }
         }
-        for addr in self.mem_clk.keys().copied() {
+        for addr in self.mem_clock.keys().copied() {
             if layout.is_rw_addr(addr) {
                 mem_addrs.insert(addr & !3);
             }
@@ -282,8 +282,8 @@ impl Tracer {
         for addr in mem_addrs {
             let is_input = layout.is_input_addr(addr);
             let is_public_output = layout.is_public_output_addr(addr, output_len);
-            let accessed_clk = self.mem_clk.get(&addr).copied().unwrap_or(0);
-            let accessed = accessed_clk > 0;
+            let accessed_clock = self.mem_clock.get(&addr).copied().unwrap_or(0);
+            let accessed = accessed_clock > 0;
             let include_initial = !is_input;
             let include_final = if is_input {
                 accessed
@@ -294,9 +294,9 @@ impl Tracer {
             let initial_word = self.mem_initial.get(&addr).copied().unwrap_or(final_word);
             let initial_bytes = initial_word.to_le_bytes();
             let final_bytes = final_word.to_le_bytes();
-            let final_clk = accessed_clk;
+            let final_clock = accessed_clock;
 
-            mem_entries.push((addr, initial_word, final_word, final_clk));
+            mem_entries.push((addr, initial_word, final_word, final_clock));
 
             for limb in 0..4u32 {
                 let idx = addr + limb;
@@ -322,12 +322,12 @@ impl Tracer {
             build_partial_merkle_tree(&rw_final_leaves, &mut self.poseidon2);
 
         // Create memory trace
-        for (addr, initial_word, final_word, final_clk) in mem_entries {
+        for (addr, initial_word, final_word, final_clock) in mem_entries {
             let is_input = layout.is_input_addr(addr);
             let is_public_output = layout.is_public_output_addr(addr, output_len);
             let include_initial = !is_input;
             let include_final = if is_input {
-                final_clk > 0
+                final_clock > 0
             } else {
                 !is_public_output
             };
@@ -350,7 +350,7 @@ impl Tracer {
             if include_final {
                 self.memory.push(
                     addr,
-                    final_clk,
+                    final_clock,
                     final_bytes[0] as u32,
                     final_bytes[1] as u32,
                     final_bytes[2] as u32,
@@ -437,7 +437,7 @@ mod tests {
                 );
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
-                    cycles: tracer.clk as u64,
+                    cycles: tracer.clock as u64,
                     initial_pc,
                     final_pc: cpu.pc,
                     initial_regs,
@@ -484,7 +484,7 @@ mod tests {
                 );
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
-                    cycles: tracer.clk as u64,
+                    cycles: tracer.clock as u64,
                     initial_pc,
                     final_pc: cpu.pc,
                     initial_regs,
@@ -502,7 +502,7 @@ mod tests {
                 });
             }
 
-            tracer.clk += 1;
+            tracer.clock += 1;
             execute(&mut cpu, &mut mem, &inst, &mut tracer);
 
             if cpu.pc == prev_pc {
@@ -521,7 +521,7 @@ mod tests {
                 );
                 tracer.finalize_commitments(&mem, &layout)?;
                 return Ok(RunResult {
-                    cycles: tracer.clk as u64,
+                    cycles: tracer.clock as u64,
                     initial_pc,
                     final_pc: prev_pc,
                     initial_regs,
@@ -539,9 +539,9 @@ mod tests {
                 });
             }
 
-            if tracer.clk as u64 > max_cycles {
+            if tracer.clock as u64 > max_cycles {
                 return Err(RunError::MaxCyclesExceeded {
-                    cycles: tracer.clk as u64,
+                    cycles: tracer.clock as u64,
                     max: max_cycles,
                 });
             }
@@ -582,6 +582,6 @@ mod tests {
         assert!(!tracer.program.is_empty());
         assert!(!tracer.merkle.is_empty());
         assert!(!tracer.poseidon2.is_empty());
-        assert!(!tracer.mem_clk_update.is_empty());
+        assert!(!tracer.mem_clock_update.is_empty());
     }
 }

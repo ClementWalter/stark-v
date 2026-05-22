@@ -19,22 +19,3 @@ pub mod mul; // Section 14: mul
 pub mod mulh; // Section 15: mulh, mulhsu, mulhu
 pub mod shifts_imm; // Section 4: slli, srli, srai
 pub mod shifts_reg; // Section 3: sll, srl, sra // Section 16: div, divu, rem, remu
-
-stwo_macros::opcode_components! {
-    auipc,
-    base_alu_imm,
-    base_alu_reg,
-    branch_eq,
-    branch_lt,
-    div,
-    jal,
-    jalr,
-    load_store,
-    lt_imm,
-    lt_reg,
-    lui,
-    mul,
-    mulh,
-    shifts_imm,
-    shifts_reg,
-}

@@ -5,8 +5,8 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::JalColumns;
 use crate::relations::Relations;
+use runner::trace::prover_columns::JalColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -79,21 +79,21 @@ impl FrameworkEval for Eval {
         );
 
         // Register state transition (unconditional jump)
-        // - enabler * Registers(pc, clk)
+        // - enabler * Registers(pc, clock)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             -cols.enabler.clone(),
             cols.pc,
-            cols.clk
+            cols.clock
         );
-        // + enabler * Registers(pc + imm_felt, clk + 1)
+        // + enabler * Registers(pc + imm_felt, clock + 1)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             cols.enabler.clone(),
             cols.pc.clone() + cols.imm_felt.clone(),
-            cols.clk.clone() + E::F::one()
+            cols.clock.clone() + E::F::one()
         );
 
         // Range check rd (rd is pc+4, so it's a M31)
@@ -115,38 +115,38 @@ impl FrameworkEval for Eval {
         );
 
         // Write to rd
-        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0..3])
+        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clock, rd_prev[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -cols.enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.rd_clk_prev,
+            cols.rd_clock_prev,
             cols.rd_prev_0,
             cols.rd_prev_1,
             cols.rd_prev_2,
             cols.rd_prev_3
         );
-        // + enabler * Memory(REG_AS, rd_idx, clk, rd[0..3])
+        // + enabler * Memory(REG_AS, rd_idx, clock, rd[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             cols.enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.clk,
+            cols.clock,
             rd[0].clone(),
             rd[1].clone(),
             rd[2].clone(),
             rd[3].clone()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // - RC_20(clock - rd_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clk.clone() - cols.rd_clk_prev.clone()
+            cols.clock.clone() - cols.rd_clock_prev.clone()
         );
 
         eval.finalize_logup_in_pairs();

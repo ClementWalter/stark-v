@@ -5,8 +5,8 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::MulColumns;
 use crate::relations::Relations;
+use runner::trace::prover_columns::MulColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -84,91 +84,91 @@ impl FrameworkEval for Eval {
         );
 
         // Register state transition
-        // - enabler * Registers(pc, clk)
+        // - enabler * Registers(pc, clock)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             -cols.enabler.clone(),
             cols.pc,
-            cols.clk
+            cols.clock
         );
-        // + enabler * Registers(pc + 4, clk + 1)
+        // + enabler * Registers(pc + 4, clock + 1)
         add_to_relation!(
             eval,
             self.relations.registers_state,
             cols.enabler.clone(),
             cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clk.clone() + E::F::one()
+            cols.clock.clone() + E::F::one()
         );
 
         // Read from rs1
-        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clk, rs1[0..3])
+        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clock, rs1[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -cols.enabler.clone(),
             reg_as.clone(),
             cols.rs1_addr,
-            cols.rs1_clk_prev,
+            cols.rs1_clock_prev,
             cols.rs1_prev_0,
             cols.rs1_prev_1,
             cols.rs1_prev_2,
             cols.rs1_prev_3
         );
-        // + enabler * Memory(REG_AS, rs1_idx, clk, rs1[0..3])
+        // + enabler * Memory(REG_AS, rs1_idx, clock, rs1[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             cols.enabler.clone(),
             reg_as.clone(),
             cols.rs1_addr,
-            cols.clk,
+            cols.clock,
             cols.rs1_next_0,
             cols.rs1_next_1,
             cols.rs1_next_2,
             cols.rs1_next_3
         );
-        // - RC_20(clk - rs1_prev_clk)
+        // - RC_20(clock - rs1_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clk.clone() - cols.rs1_clk_prev.clone()
+            cols.clock.clone() - cols.rs1_clock_prev.clone()
         );
 
         // Read from rs2
-        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clk, rs2[0..3])
+        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clock, rs2[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -cols.enabler.clone(),
             reg_as.clone(),
             cols.rs2_addr,
-            cols.rs2_clk_prev,
+            cols.rs2_clock_prev,
             cols.rs2_prev_0,
             cols.rs2_prev_1,
             cols.rs2_prev_2,
             cols.rs2_prev_3
         );
-        // + enabler * Memory(REG_AS, rs2_idx, clk, rs2[0..3])
+        // + enabler * Memory(REG_AS, rs2_idx, clock, rs2[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             cols.enabler.clone(),
             reg_as.clone(),
             cols.rs2_addr,
-            cols.clk,
+            cols.clock,
             cols.rs2_next_0,
             cols.rs2_next_1,
             cols.rs2_next_2,
             cols.rs2_next_3
         );
-        // - RC_20(clk - rs2_prev_clk)
+        // - RC_20(clock - rs2_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clk.clone() - cols.rs2_clk_prev.clone()
+            cols.clock.clone() - cols.rs2_clock_prev.clone()
         );
 
         // Check carries
@@ -208,38 +208,38 @@ impl FrameworkEval for Eval {
         );
 
         // Write to rd
-        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clk, rd_prev[0..3])
+        // - enabler * Memory(REG_AS, rd_idx, rd_prev_clock, rd_prev[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             -cols.enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.rd_clk_prev,
+            cols.rd_clock_prev,
             cols.rd_prev_0,
             cols.rd_prev_1,
             cols.rd_prev_2,
             cols.rd_prev_3
         );
-        // + enabler * Memory(REG_AS, rd_idx, clk, rd[0..3])
+        // + enabler * Memory(REG_AS, rd_idx, clock, rd[0..3])
         add_to_relation!(
             eval,
             self.relations.memory_access,
             cols.enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.clk,
+            cols.clock,
             rd[0].clone(),
             rd[1].clone(),
             rd[2].clone(),
             rd[3].clone()
         );
-        // - RC_20(clk - rd_prev_clk)
+        // - RC_20(clock - rd_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clk.clone() - cols.rd_clk_prev.clone()
+            cols.clock.clone() - cols.rd_clock_prev.clone()
         );
 
         // Keep carry-related RC_8_8 entries as singleton batches to avoid multiplying

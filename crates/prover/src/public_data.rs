@@ -17,7 +17,7 @@ use crate::relations::Relations;
 pub struct OutputWord {
     pub addr: u32,
     pub value: u32,
-    pub clk: u32,
+    pub clock: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -45,14 +45,14 @@ pub struct PublicData {
     pub initial_pc: u32,
     /// PC at end of execution (next instruction after last).
     pub final_pc: u32,
-    /// Total number of executed cycles (last instruction clk).
+    /// Total number of executed cycles (last instruction clock).
     pub clock: u32,
     /// Register values at start (x0..x31).
     pub initial_regs: [u32; 32],
     /// Register values at end (x0..x31).
     pub final_regs: [u32; 32],
     /// Last access clock per register (0 if never accessed).
-    pub reg_last_clk: [u32; 32],
+    pub reg_last_clock: [u32; 32],
     /// Program tree root (if program table is non-empty).
     pub program_root: Option<u32>,
     /// RW initial memory tree root (if memory table is non-empty).
@@ -96,11 +96,11 @@ impl PublicData {
         let output_len_word_addr = run_result.output_len_addr & !3;
         let mut output_words = Vec::new();
         for word in &run_result.output_words {
-            if let Some(&clk) = tracer.mem_clk.get(&word.addr) {
+            if let Some(&clock) = tracer.mem_clock.get(&word.addr) {
                 output_words.push(OutputWord {
                     addr: word.addr,
                     value: word.value,
-                    clk,
+                    clock,
                 });
                 continue;
             }
@@ -126,7 +126,7 @@ impl PublicData {
             clock,
             initial_regs: run_result.initial_regs,
             final_regs: run_result.final_regs,
-            reg_last_clk: tracer.reg_clk,
+            reg_last_clock: tracer.reg_clock,
             program_root,
             initial_rw_root,
             final_rw_root,
@@ -139,7 +139,7 @@ impl PublicData {
         channel.mix_u32s(&[self.initial_pc, self.final_pc, self.clock]);
         channel.mix_u32s(&self.initial_regs);
         channel.mix_u32s(&self.final_regs);
-        channel.mix_u32s(&self.reg_last_clk);
+        channel.mix_u32s(&self.reg_last_clock);
 
         let root_flags = [
             self.program_root.is_some() as u32,
@@ -164,7 +164,7 @@ impl PublicData {
         ]);
         channel.mix_u32s(&self.io_entries.input_words);
         for word in &self.io_entries.output_words {
-            channel.mix_u32s(&[word.addr, word.value, word.clk]);
+            channel.mix_u32s(&[word.addr, word.value, word.clock]);
         }
     }
 
@@ -172,21 +172,21 @@ impl PublicData {
     pub fn logup_sum(&self, relations: &Relations) -> QM31 {
         let mut values_to_inverse: Vec<QM31> = Vec::new();
 
-        // Registers state: emit initial (pc, clk=1), consume final (pc, clk=clock+1).
-        let initial_clk = M31::from(1u32);
-        let final_clk = M31::from(
+        // Registers state: emit initial (pc, clock=1), consume final (pc, clock=clock+1).
+        let initial_clock = M31::from(1u32);
+        let final_clock = M31::from(
             self.clock
                 .checked_add(1)
-                .expect("clock overflow when computing final clk"),
+                .expect("clock overflow when computing final clock"),
         );
         values_to_inverse.push(
             relations
                 .registers_state
-                .combine(&[M31::from(self.initial_pc), initial_clk]),
+                .combine(&[M31::from(self.initial_pc), initial_clock]),
         );
         let final_state: QM31 = relations
             .registers_state
-            .combine(&[M31::from(self.final_pc), final_clk]);
+            .combine(&[M31::from(self.final_pc), final_clock]);
         values_to_inverse.push(-final_state);
 
         // Merkle roots: emit each tree root once.
@@ -202,9 +202,9 @@ impl PublicData {
             ]));
         }
 
-        // Register memory access: emit initial state (clk=0), consume final state (clk=last).
+        // Register memory access: emit initial state (clock=0), consume final state (clock=last).
         let reg_as = M31::zero();
-        for (idx, &last_clk) in self.reg_last_clk.iter().enumerate() {
+        for (idx, &last_clock) in self.reg_last_clock.iter().enumerate() {
             let addr = M31::from(idx as u32);
             let init_bytes = self.initial_regs[idx].to_le_bytes();
             values_to_inverse.push(relations.memory_access.combine(&[
@@ -221,7 +221,7 @@ impl PublicData {
             let final_access: QM31 = relations.memory_access.combine(&[
                 reg_as,
                 addr,
-                M31::from(last_clk),
+                M31::from(last_clock),
                 M31::from(final_bytes[0] as u32),
                 M31::from(final_bytes[1] as u32),
                 M31::from(final_bytes[2] as u32),
@@ -230,7 +230,7 @@ impl PublicData {
             values_to_inverse.push(-final_access);
         }
 
-        // Input memory: emit initial values at clk=0.
+        // Input memory: emit initial values at clock=0.
         let rw_as = M31::one();
         for (idx, &word) in self.io_entries.input_words.iter().enumerate() {
             let addr = self
@@ -255,7 +255,7 @@ impl PublicData {
             let final_access: QM31 = relations.memory_access.combine(&[
                 rw_as,
                 M31::from(word.addr),
-                M31::from(word.clk),
+                M31::from(word.clock),
                 M31::from(bytes[0] as u32),
                 M31::from(bytes[1] as u32),
                 M31::from(bytes[2] as u32),
@@ -302,7 +302,7 @@ mod tests {
             clock: 0,
             initial_regs: [0; 32],
             final_regs: [0; 32],
-            reg_last_clk: [0; 32],
+            reg_last_clock: [0; 32],
             program_root: None,
             initial_rw_root: None,
             final_rw_root: None,
@@ -321,9 +321,9 @@ mod tests {
     fn output_clock_run_result(with_output_len_clock: bool) -> RunResult {
         let mut tracer = Tracer::default();
         if with_output_len_clock {
-            tracer.mem_clk.insert(0x1004, 3);
+            tracer.mem_clock.insert(0x1004, 3);
         }
-        tracer.mem_clk.insert(0x1008, 4);
+        tracer.mem_clock.insert(0x1008, 4);
 
         RunResult {
             cycles: 1,
@@ -398,6 +398,6 @@ mod tests {
         let public_data = PublicData::new(&run_result);
         assert_eq!(public_data.io_entries.output_words.len(), 2);
         assert_eq!(public_data.io_entries.output_words[0].addr, 0x1004);
-        assert_eq!(public_data.io_entries.output_words[0].clk, 3);
+        assert_eq!(public_data.io_entries.output_words[0].clock, 3);
     }
 }

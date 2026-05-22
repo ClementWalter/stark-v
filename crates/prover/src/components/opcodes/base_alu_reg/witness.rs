@@ -12,7 +12,7 @@ use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo_constraint_framework::LogupTraceGenerator;
 
-use super::columns::BaseAluRegColumns;
+use runner::trace::prover_columns::BaseAluRegColumns;
 
 /// Generate interaction trace for LogUp.
 pub fn gen_interaction_trace(
@@ -27,7 +27,7 @@ pub fn gen_interaction_trace(
     }
 
     let cols = BaseAluRegColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
-    let simd_size = cols.clk.len();
+    let simd_size = cols.clock.len();
 
     let log_size = trace[0].domain.log_size();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
@@ -77,15 +77,15 @@ pub fn gen_interaction_trace(
         .collect();
 
     let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.pc[i] + four).collect();
-    let clk_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.clk[i] + one).collect();
-    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+    let clock_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.clock[i] + one).collect();
+    let clock_minus_rs1_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rs1_clock_prev[i])
         .collect();
-    let clk_minus_rs2_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
+    let clock_minus_rs2_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rs2_clock_prev[i])
         .collect();
-    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
         .collect();
 
     // Numerators
@@ -110,8 +110,8 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 2. registers_state: -enabler * (pc, clk)
-    let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clk]);
+    // 2. registers_state: -enabler * (pc, clock)
+    let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clock]);
 
     write_pair!(
         &neg_enabler,
@@ -121,16 +121,16 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 3. registers_state: +enabler * (pc + 4, clk + 1)
-    let registers_write_denom = combine!(relations.registers_state, [&pc_plus_4, &clk_plus_1]);
+    // 3. registers_state: +enabler * (pc + 4, clock + 1)
+    let registers_write_denom = combine!(relations.registers_state, [&pc_plus_4, &clock_plus_1]);
 
-    // 4. memory_access: -enabler * (0, rs1_addr, rs1_clk_prev, rs1_prev_0..3)
+    // 4. memory_access: -enabler * (0, rs1_addr, rs1_clock_prev, rs1_prev_0..3)
     let rs1_read_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rs1_addr,
-            cols.rs1_clk_prev,
+            cols.rs1_clock_prev,
             cols.rs1_prev_0,
             cols.rs1_prev_1,
             cols.rs1_prev_2,
@@ -146,13 +146,13 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 5. memory_access: +enabler * (0, rs1_addr, clk, rs1_next_0..3)
+    // 5. memory_access: +enabler * (0, rs1_addr, clock, rs1_next_0..3)
     let rs1_write_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rs1_addr,
-            cols.clk,
+            cols.clock,
             cols.rs1_next_0,
             cols.rs1_next_1,
             cols.rs1_next_2,
@@ -160,8 +160,8 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 6. range_check_20: -1 * (clk - rs1_clk_prev)
-    let rc_20_rs1_denom = combine!(relations.range_check_20, [&clk_minus_rs1_clk_prev]);
+    // 6. range_check_20: -1 * (clock - rs1_clock_prev)
+    let rc_20_rs1_denom = combine!(relations.range_check_20, [&clock_minus_rs1_clock_prev]);
 
     write_pair!(
         &pos_enabler,
@@ -171,13 +171,13 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 7. memory_access: -enabler * (0, rs2_addr, rs2_clk_prev, rs2_prev_0..3)
+    // 7. memory_access: -enabler * (0, rs2_addr, rs2_clock_prev, rs2_prev_0..3)
     let rs2_read_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rs2_addr,
-            cols.rs2_clk_prev,
+            cols.rs2_clock_prev,
             cols.rs2_prev_0,
             cols.rs2_prev_1,
             cols.rs2_prev_2,
@@ -185,13 +185,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 8. memory_access: +enabler * (0, rs2_addr, clk, rs2_next_0..3)
+    // 8. memory_access: +enabler * (0, rs2_addr, clock, rs2_next_0..3)
     let rs2_write_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rs2_addr,
-            cols.clk,
+            cols.clock,
             cols.rs2_next_0,
             cols.rs2_next_1,
             cols.rs2_next_2,
@@ -207,8 +207,8 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 9. range_check_20: -1 * (clk - rs2_clk_prev)
-    let rc_20_rs2_denom = combine!(relations.range_check_20, [&clk_minus_rs2_clk_prev]);
+    // 9. range_check_20: -1 * (clock - rs2_clock_prev)
+    let rc_20_rs2_denom = combine!(relations.range_check_20, [&clock_minus_rs2_clock_prev]);
 
     // 10. bitwise: -is_bitwise * (rs1[0], rs2[0], rd[0], bitwise_id)
     let bitwise_0_denom = combine!(
@@ -270,13 +270,13 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 14. memory_access: -enabler * (0, rd_addr, rd_clk_prev, rd_prev_0..3)
+    // 14. memory_access: -enabler * (0, rd_addr, rd_clock_prev, rd_prev_0..3)
     let rd_read_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rd_addr,
-            cols.rd_clk_prev,
+            cols.rd_clock_prev,
             cols.rd_prev_0,
             cols.rd_prev_1,
             cols.rd_prev_2,
@@ -292,13 +292,13 @@ pub fn gen_interaction_trace(
         logup_gen
     );
 
-    // 15. memory_access: +enabler * (0, rd_addr, clk, rd_next_0..3)
+    // 15. memory_access: +enabler * (0, rd_addr, clock, rd_next_0..3)
     let rd_write_denom = combine!(
         relations.memory_access,
         [
             &zero_col,
             cols.rd_addr,
-            cols.clk,
+            cols.clock,
             cols.rd_next_0,
             cols.rd_next_1,
             cols.rd_next_2,
@@ -306,8 +306,8 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    // 16. range_check_20: -1 * (clk - rd_clk_prev)
-    let rc_20_rd_denom = combine!(relations.range_check_20, [&clk_minus_rd_clk_prev]);
+    // 16. range_check_20: -1 * (clock - rd_clock_prev)
+    let rc_20_rd_denom = combine!(relations.range_check_20, [&clock_minus_rd_clock_prev]);
 
     write_pair!(
         &pos_enabler,
@@ -331,7 +331,7 @@ pub fn register_multiplicities(
     }
 
     let cols = BaseAluRegColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
-    let simd_size = cols.clk.len();
+    let simd_size = cols.clock.len();
 
     // Constants (same as gen_interaction_trace)
     let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
@@ -351,14 +351,14 @@ pub fn register_multiplicities(
         .collect();
 
     // Derived columns (same as gen_interaction_trace)
-    let clk_minus_rs1_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rs1_clk_prev[i])
+    let clock_minus_rs1_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rs1_clock_prev[i])
         .collect();
-    let clk_minus_rs2_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rs2_clk_prev[i])
+    let clock_minus_rs2_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rs2_clock_prev[i])
         .collect();
-    let clk_minus_rd_clk_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clk[i] - cols.rd_clk_prev[i])
+    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
+        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
         .collect();
 
     // Match preprocessed bitwise table: and=0, or=1, xor=2
@@ -366,15 +366,15 @@ pub fn register_multiplicities(
         .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
         .collect();
 
-    // Register range_check_20: (clk - rs1_clk_prev) with negated multiplicity
+    // Register range_check_20: (clock - rs1_clock_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&neg_enabler, &[&clk_minus_rs1_clk_prev]);
+        .register_many(&neg_enabler, &[&clock_minus_rs1_clock_prev]);
 
-    // Register range_check_20: (clk - rs2_clk_prev) with negated multiplicity
+    // Register range_check_20: (clock - rs2_clock_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&neg_enabler, &[&clk_minus_rs2_clk_prev]);
+        .register_many(&neg_enabler, &[&clock_minus_rs2_clock_prev]);
 
     // Register bitwise: 4 limbs (rs1_next[i], rs2_next[i], rd_next[i], bitwise_id)
     counters.bitwise.register_many(
@@ -414,8 +414,8 @@ pub fn register_multiplicities(
         ],
     );
 
-    // Register range_check_20: (clk - rd_clk_prev) with negated multiplicity
+    // Register range_check_20: (clock - rd_clock_prev) with negated multiplicity
     counters
         .range_check_20
-        .register_many(&neg_enabler, &[&clk_minus_rd_clk_prev]);
+        .register_many(&neg_enabler, &[&clock_minus_rd_clock_prev]);
 }

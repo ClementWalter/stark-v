@@ -92,20 +92,20 @@ fn table_name(opcode: &Ident) -> Ident {
 fn generate_field_decls(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
-        // Access fields expand to 4 columns: addr, prev, clk_prev, next
-        // Note: clk is NOT stored - it's redundant with tracer.clk at call site
+        // Access fields expand to 4 columns: addr, prev, clock_prev, next
+        // Note: clock is NOT stored - it's redundant with tracer.clock at call site
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
+        let clock_prev = format_ident!("{}_clock_prev", name);
         let next = format_ident!("{}_next", name);
         quote! {
             pub #addr: simd::AlignedVec<u32>,
             pub #prev: simd::AlignedVec<u32>,
-            pub #clk_prev: simd::AlignedVec<u32>,
+            pub #clock_prev: simd::AlignedVec<u32>,
             pub #next: simd::AlignedVec<u32>,
         }
     } else {
-        // Scalar field (clk, pc)
+        // Scalar field (clock, pc)
         quote! {
             pub #field: simd::AlignedVec<u32>,
         }
@@ -116,15 +116,15 @@ fn generate_field_decls(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_field_init(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
-        // Access fields expand to 4 columns (no clk)
+        // Access fields expand to 4 columns (no clock)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
+        let clock_prev = format_ident!("{}_clock_prev", name);
         let next = format_ident!("{}_next", name);
         quote! {
             #addr: simd::AlignedVec::new(),
             #prev: simd::AlignedVec::new(),
-            #clk_prev: simd::AlignedVec::new(),
+            #clock_prev: simd::AlignedVec::new(),
             #next: simd::AlignedVec::new(),
         }
     } else {
@@ -138,15 +138,15 @@ fn generate_field_init(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_field_init_cap(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
-        // Access fields expand to 4 columns (no clk)
+        // Access fields expand to 4 columns (no clock)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
+        let clock_prev = format_ident!("{}_clock_prev", name);
         let next = format_ident!("{}_next", name);
         quote! {
             #addr: simd::AlignedVec::with_capacity(cap),
             #prev: simd::AlignedVec::with_capacity(cap),
-            #clk_prev: simd::AlignedVec::with_capacity(cap),
+            #clock_prev: simd::AlignedVec::with_capacity(cap),
             #next: simd::AlignedVec::with_capacity(cap),
         }
     } else {
@@ -170,15 +170,15 @@ fn generate_push_param(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_push_stmt(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
-        // Access fields expand to 4 columns (no clk - it's available from tracer.clk)
+        // Access fields expand to 4 columns (no clock - it's available from tracer.clock)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
+        let clock_prev = format_ident!("{}_clock_prev", name);
         let next = format_ident!("{}_next", name);
         quote! {
             self.#addr.push(#field.addr);
             self.#prev.push(#field.prev);
-            self.#clk_prev.push(#field.clk_prev);
+            self.#clock_prev.push(#field.clock_prev);
             self.#next.push(#field.next);
         }
     } else {
@@ -195,14 +195,14 @@ fn generate_push_row_stmt(field: &Ident) -> proc_macro2::TokenStream {
         // Access fields expand to 4 columns in trace order
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
+        let clock_prev = format_ident!("{}_clock_prev", name);
         let next = format_ident!("{}_next", name);
         quote! {
             self.#addr.push(row[idx]);
             idx += 1;
             self.#prev.push(row[idx]);
             idx += 1;
-            self.#clk_prev.push(row[idx]);
+            self.#clock_prev.push(row[idx]);
             idx += 1;
             self.#next.push(row[idx]);
             idx += 1;
@@ -219,18 +219,18 @@ fn generate_push_row_stmt(field: &Ident) -> proc_macro2::TokenStream {
 fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
     let name = field.to_string();
     if is_access_field(&name) {
-        // Access fields expand to 4 columns (no clk)
+        // Access fields expand to 4 columns (no clock)
         let addr = format_ident!("{}_addr", name);
         let prev = format_ident!("{}_prev", name);
-        let clk_prev = format_ident!("{}_clk_prev", name);
+        let clock_prev = format_ident!("{}_clock_prev", name);
         let next = format_ident!("{}_next", name);
         let field_name = &name;
         quote! {
             .field(#field_name, &format_args!(
-                "Access {{ addr: {:#x}, prev: {:#x}, clk_prev: {}, next: {:#x} }}",
+                "Access {{ addr: {:#x}, prev: {:#x}, clock_prev: {}, next: {:#x} }}",
                 self.table.#addr[i],
                 self.table.#prev[i],
-                self.table.#clk_prev[i],
+                self.table.#clock_prev[i],
                 self.table.#next[i]
             ))
         }
@@ -247,7 +247,7 @@ fn generate_debug_field(field: &Ident) -> proc_macro2::TokenStream {
 /// Access fields expand to 10 columns:
 /// - addr (1 column)
 /// - prev_0..prev_3 (4 limbs for u32 value)
-/// - clk_prev (1 column)
+/// - clock_prev (1 column)
 /// - next_0..next_3 (4 limbs for u32 value)
 fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
     let mut result = Vec::new();
@@ -266,7 +266,7 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
             for i in 0usize..4 {
                 result.push(format_ident!("{}_prev_{}", name, i));
             }
-            result.push(format_ident!("{}_clk_prev", name));
+            result.push(format_ident!("{}_clock_prev", name));
             // next as 4 u8 limbs (little-endian)
             for i in 0usize..4 {
                 result.push(format_ident!("{}_next_{}", name, i));
@@ -309,7 +309,7 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
         if is_access_field(&name) {
             let addr = format_ident!("{}_addr", name);
             let prev = format_ident!("{}_prev", name);
-            let clk_prev = format_ident!("{}_clk_prev", name);
+            let clock_prev = format_ident!("{}_clock_prev", name);
             let next = format_ident!("{}_next", name);
 
             // addr column
@@ -329,8 +329,8 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
                 });
             }
 
-            // clk_prev column
-            column_exprs.push(quote! { self.#clk_prev });
+            // clock_prev column
+            column_exprs.push(quote! { self.#clock_prev });
 
             // next as 4 limbs (little-endian: limb 0 is least significant byte)
             for i in 0u8..4 {
@@ -346,7 +346,7 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
                 });
             }
         } else {
-            // Scalar field (clk, pc) - return directly
+            // Scalar field (clock, pc) - return directly
             column_exprs.push(quote! { self.#field });
         }
     }
@@ -380,20 +380,20 @@ fn generate_table_columns(
     for field in fields {
         let name = field.to_string();
         if is_access_field(&name) {
-            // Access fields have 4 columns: addr, prev, clk_prev, next
+            // Access fields have 4 columns: addr, prev, clock_prev, next
             let addr = format_ident!("{}_addr", name);
             let prev = format_ident!("{}_prev", name);
-            let clk_prev = format_ident!("{}_clk_prev", name);
+            let clock_prev = format_ident!("{}_clock_prev", name);
             let next = format_ident!("{}_next", name);
 
             let addr_name = format!("{name}_addr");
             let prev_name = format!("{name}_prev");
-            let clk_prev_name = format!("{name}_clk_prev");
+            let clock_prev_name = format!("{name}_clock_prev");
             let next_name = format!("{name}_next");
 
             columns.push(quote! { (#addr_name, &self.#addr[..]) });
             columns.push(quote! { (#prev_name, &self.#prev[..]) });
-            columns.push(quote! { (#clk_prev_name, &self.#clk_prev[..]) });
+            columns.push(quote! { (#clock_prev_name, &self.#clock_prev[..]) });
             columns.push(quote! { (#next_name, &self.#next[..]) });
         } else {
             // Scalar field
@@ -464,6 +464,72 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 let mut iter = iter.into_iter();
                 Self {
                     #(#from_iter_fields),*
+                }
+            }
+        }
+    }
+}
+
+fn generate_clock_update_columns(name: &str) -> proc_macro2::TokenStream {
+    let struct_name = format_ident!("{}ClockUpdateColumns", name);
+
+    quote! {
+        /// Column struct for clock update AIR evaluation.
+        #[derive(Debug, Clone)]
+        pub struct #struct_name<T> {
+            pub enabler: T,
+            pub addr: T,
+            pub clock_prev: T,
+            pub value_0: T,
+            pub value_1: T,
+            pub value_2: T,
+            pub value_3: T,
+        }
+
+        impl<T> #struct_name<T> {
+            /// Number of columns in this struct.
+            pub const SIZE: usize = 7;
+
+            /// Column names as strings.
+            pub const NAMES: &'static [&'static str] = &[
+                "enabler",
+                "addr",
+                "clock_prev",
+                "value_0",
+                "value_1",
+                "value_2",
+                "value_3",
+            ];
+
+            /// Construct from an AIR evaluator by reading trace masks.
+            #[inline(always)]
+            pub fn from_eval<E>(eval: &mut E) -> Self
+            where E: EvalAtRow<F = T>
+            {
+                Self {
+                    enabler: eval.next_trace_mask(),
+                    addr: eval.next_trace_mask(),
+                    clock_prev: eval.next_trace_mask(),
+                    value_0: eval.next_trace_mask(),
+                    value_1: eval.next_trace_mask(),
+                    value_2: eval.next_trace_mask(),
+                    value_3: eval.next_trace_mask(),
+                }
+            }
+
+            /// Construct from an iterator of column values.
+            /// Panics if iterator has fewer elements than the number of columns.
+            #[inline(always)]
+            pub fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+                let mut iter = iter.into_iter();
+                Self {
+                    enabler: iter.next().expect("not enough columns for field: enabler"),
+                    addr: iter.next().expect("not enough columns for field: addr"),
+                    clock_prev: iter.next().expect("not enough columns for field: clock_prev"),
+                    value_0: iter.next().expect("not enough columns for field: value_0"),
+                    value_1: iter.next().expect("not enough columns for field: value_1"),
+                    value_2: iter.next().expect("not enough columns for field: value_2"),
+                    value_3: iter.next().expect("not enough columns for field: value_3"),
                 }
             }
         }
@@ -747,23 +813,23 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
         /// Main tracer structure holding all per-opcode columnar trace tables.
         pub struct Tracer {
             /// Global clock counter, incremented by 1 at each instruction.
-            pub clk: u32,
+            pub clock: u32,
             /// Maximum allowed clock difference between consecutive accesses.
             pub max_clock_diff: u32,
 
             /// Last access clock for each register (0-31).
-            pub reg_clk: [u32; 32],
+            pub reg_clock: [u32; 32],
             /// Last access clock for each memory address.
-            pub mem_clk: rustc_hash::FxHashMap<u32, u32>,
+            pub mem_clock: rustc_hash::FxHashMap<u32, u32>,
             /// Value at first access for each memory word (4-byte aligned address).
             pub mem_initial: rustc_hash::FxHashMap<u32, u32>,
             /// Program fetch counts per PC.
             pub program_reads: rustc_hash::FxHashMap<u32, u32>,
 
             /// Intermediate register clock update accesses (gap-filling).
-            pub reg_clk_update: AccessTable,
+            pub reg_clock_update: AccessTable,
             /// Intermediate memory clock update accesses (gap-filling).
-            pub mem_clk_update: AccessTable,
+            pub mem_clock_update: AccessTable,
 
             // Per-opcode trace tables
             #(#table_fields,)*
@@ -790,14 +856,14 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
                 }
 
                 f.debug_struct("Tracer")
-                    .field("clk", &self.clk)
+                    .field("clock", &self.clock)
                     .field("max_clock_diff", &self.max_clock_diff)
-                    .field("reg_clk", &self.reg_clk)
-                    .field("mem_clk", &HexKeyMap(&self.mem_clk))
+                    .field("reg_clock", &self.reg_clock)
+                    .field("mem_clock", &HexKeyMap(&self.mem_clock))
                     .field("mem_initial", &HexKeyMap(&self.mem_initial))
                     .field("program_reads", &HexKeyMap(&self.program_reads))
-                    .field("reg_clk_update", &self.reg_clk_update)
-                    .field("mem_clk_update", &self.mem_clk_update)
+                    .field("reg_clock_update", &self.reg_clock_update)
+                    .field("mem_clock_update", &self.mem_clock_update)
                     #(#debug_table_fields)*
                     .finish()
             }
@@ -806,14 +872,14 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
         impl Default for Tracer {
             fn default() -> Self {
                 Self {
-                    clk: 0,
+                    clock: 0,
                     max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
-                    reg_clk: [0; 32],
-                    mem_clk: rustc_hash::FxHashMap::default(),
+                    reg_clock: [0; 32],
+                    mem_clock: rustc_hash::FxHashMap::default(),
                     mem_initial: rustc_hash::FxHashMap::default(),
                     program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clk_update: AccessTable::new(),
-                    mem_clk_update: AccessTable::new(),
+                    reg_clock_update: AccessTable::new(),
+                    mem_clock_update: AccessTable::new(),
                     #(#table_inits,)*
                 }
             }
@@ -824,8 +890,8 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
             pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
                 Self {
                     max_clock_diff,
-                    reg_clk_update: AccessTable::with_max_clock_diff(max_clock_diff),
-                    mem_clk_update: AccessTable::with_max_clock_diff(max_clock_diff),
+                    reg_clock_update: AccessTable::with_max_clock_diff(max_clock_diff),
+                    mem_clock_update: AccessTable::with_max_clock_diff(max_clock_diff),
                     ..Default::default()
                 }
             }
@@ -834,14 +900,14 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
             pub fn with_capacity(est_instructions: usize) -> Self {
                 let cap = est_instructions / 40 + 1;
                 Self {
-                    clk: 0,
+                    clock: 0,
                     max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
-                    reg_clk: [0; 32],
-                    mem_clk: rustc_hash::FxHashMap::default(),
+                    reg_clock: [0; 32],
+                    mem_clock: rustc_hash::FxHashMap::default(),
                     mem_initial: rustc_hash::FxHashMap::default(),
                     program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clk_update: AccessTable::new(),
-                    mem_clk_update: AccessTable::new(),
+                    reg_clock_update: AccessTable::new(),
+                    mem_clock_update: AccessTable::new(),
                     #(#table_inits_cap,)*
                 }
             }
@@ -870,13 +936,13 @@ fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
         .iter()
         .map(|op| {
             let name = &op.name;
-            // Filter out clk and pc - they're added automatically
+            // Filter out clock and pc - they're added automatically
             let user_fields: Vec<_> = op
                 .fields
                 .iter()
                 .filter(|f| {
                     let s = f.to_string();
-                    s != "clk" && s != "pc"
+                    s != "clock" && s != "pc"
                 })
                 .collect();
 
@@ -885,7 +951,7 @@ fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
 
             quote! {
                 (#name: $tracer:expr, $pc:expr, #(#field_patterns),*) => {
-                    $tracer.#name.push($tracer.clk, $pc, #(#field_args),*);
+                    $tracer.#name.push($tracer.clock, $pc, #(#field_args),*);
                 };
             }
         })
@@ -908,9 +974,9 @@ fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
 ///
 /// ```ignore
 /// define_trace_tables! {
-///     add: { clk, pc, rd, rs1, rs2 },
-///     lui: { clk, pc, rd },
-///     sb: { clk, pc, rs1, rs2, mem },
+///     add: { clock, pc, rd, rs1, rs2 },
+///     lui: { clock, pc, rd },
+///     sb: { clock, pc, rs1, rs2, mem },
 /// }
 /// ```
 ///
@@ -927,6 +993,8 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
 
     // Generate prover columns
     let prover_columns: Vec<_> = def.opcodes.iter().map(generate_prover_columns).collect();
+    let mem_clock_update_columns = generate_clock_update_columns("Mem");
+    let reg_clock_update_columns = generate_clock_update_columns("Reg");
 
     let output = quote! {
         // Runner code (existing)
@@ -941,6 +1009,8 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
             use stwo_constraint_framework::EvalAtRow;
 
             #(#prover_columns)*
+            #mem_clock_update_columns
+            #reg_clock_update_columns
         }
     };
 

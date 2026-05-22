@@ -1,7 +1,6 @@
 //! Base ALU Reg component (add/sub/xor/or/and) - airs.md Section 1
 
 pub mod air;
-pub mod columns;
 pub mod witness;
 
 #[cfg(test)]

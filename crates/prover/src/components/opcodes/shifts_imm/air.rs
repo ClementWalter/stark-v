@@ -6,7 +6,7 @@ use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
-use super::columns::ShiftsImmColumns;
+use runner::trace::prover_columns::ShiftsImmColumns;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -239,14 +239,14 @@ impl FrameworkEval for Eval {
             self.relations.registers_state,
             -enabler.clone(),
             cols.pc,
-            cols.clk
+            cols.clock
         );
         add_to_relation!(
             eval,
             self.relations.registers_state,
             enabler.clone(),
             cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clk.clone() + E::F::one()
+            cols.clock.clone() + E::F::one()
         );
 
         // Read from rs1
@@ -256,7 +256,7 @@ impl FrameworkEval for Eval {
             -enabler.clone(),
             reg_as.clone(),
             cols.rs1_addr,
-            cols.rs1_clk_prev,
+            cols.rs1_clock_prev,
             cols.rs1_prev_0,
             cols.rs1_prev_1,
             cols.rs1_prev_2,
@@ -268,7 +268,7 @@ impl FrameworkEval for Eval {
             enabler.clone(),
             reg_as.clone(),
             cols.rs1_addr,
-            cols.clk,
+            cols.clock,
             cols.rs1_next_0,
             cols.rs1_next_1,
             cols.rs1_next_2,
@@ -278,7 +278,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clk.clone() - cols.rs1_clk_prev.clone()
+            cols.clock.clone() - cols.rs1_clock_prev.clone()
         );
 
         // TODO: Range check shift carries (scaled by 2^8 / bit_multiplier)
@@ -307,7 +307,7 @@ impl FrameworkEval for Eval {
             -enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.rd_clk_prev,
+            cols.rd_clock_prev,
             cols.rd_prev_0,
             cols.rd_prev_1,
             cols.rd_prev_2,
@@ -319,7 +319,7 @@ impl FrameworkEval for Eval {
             enabler.clone(),
             reg_as.clone(),
             cols.rd_addr,
-            cols.clk,
+            cols.clock,
             rd[0].clone(),
             rd[1].clone(),
             rd[2].clone(),
@@ -329,7 +329,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clk.clone() - cols.rd_clk_prev.clone()
+            cols.clock.clone() - cols.rd_clock_prev.clone()
         );
 
         eval.finalize_logup_in_pairs();
