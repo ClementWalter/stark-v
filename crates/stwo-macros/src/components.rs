@@ -143,6 +143,12 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
             pub #lookup: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         }
     });
+    let trace_table_coverage_fields = opcodes.iter().map(|component| {
+        let op = &component.name;
+        quote! {
+            #op: _,
+        }
+    });
 
     // Generate Traces::max_log_size() and log_sizes() body
     let log_sizes_body = opcodes.iter().map(|component| {
@@ -578,6 +584,20 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
         use stwo::prover::backend::simd::SimdBackend;
         use stwo::prover::poly::circle::CircleEvaluation;
         use stwo::prover::poly::BitReversedOrder;
+
+        #[allow(dead_code)]
+        fn assert_trace_table_coverage(tracer: runner::trace::Tracer) {
+            // The pattern has no `..` so every runner trace table must have a prover component entry.
+            let runner::trace::Tracer {
+                clock: _,
+                max_clock_diff: _,
+                reg_clock: _,
+                mem_clock: _,
+                mem_initial: _,
+                program_reads: _,
+                #(#trace_table_coverage_fields)*
+            } = tracer;
+        }
 
         /// Trace columns for all components.
         pub struct Traces {
