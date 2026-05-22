@@ -24,5 +24,8 @@ pub mod range_check_8_8;
 pub mod range_check_8_8_4;
 pub mod range_check_m31;
 
+mod preprocessing;
+
 // Re-export core types from relations module
 pub use crate::relations::{Counter, Counters, PreProcessedTrace, PreprocessedTable};
+pub use preprocessing::{Preprocessing, preprocess};
