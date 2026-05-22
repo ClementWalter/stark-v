@@ -118,8 +118,8 @@ impl Parse for ComponentsInput {
 
 pub fn components(input: TokenStream) -> TokenStream {
     let ComponentsInput { trace, lookup } = syn::parse_macro_input!(input as ComponentsInput);
-    let lookup_components = render_lookup_components(lookup);
-    let components = render_components(Some(syn::parse_quote!(lookups)), trace);
+    let lookup_components = render_lookup_components(&lookup);
+    let components = render_components(trace, lookup);
     quote! {
         pub mod lookups {
             #lookup_components
@@ -130,7 +130,7 @@ pub fn components(input: TokenStream) -> TokenStream {
     .into()
 }
 
-fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -> TokenStream2 {
+fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> TokenStream2 {
     // Generate Traces struct fields
     let traces_fields = opcodes.iter().map(|component| {
         let op = &component.name;
@@ -138,9 +138,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             pub #op: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         }
     });
-    let preprocessed_traces_field = preprocessed.as_ref().map(|path| {
+    let lookup_traces_fields = lookups.iter().map(|lookup| {
         quote! {
-            pub lookups: #path::Traces,
+            pub #lookup: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         }
     });
 
@@ -153,9 +153,11 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             }
         }
     });
-    let preprocessed_log_sizes = preprocessed.as_ref().map(|_| {
+    let lookup_log_sizes_body = lookups.iter().map(|lookup| {
         quote! {
-            sizes.extend(self.lookups.log_sizes());
+            if let Some(first) = self.#lookup.first() {
+                sizes.push(first.domain.log_size());
+            }
         }
     });
 
@@ -166,9 +168,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             columns.extend(self.#op.clone());
         }
     });
-    let preprocessed_columns_cloned = preprocessed.as_ref().map(|_| {
+    let lookup_columns_cloned_body = lookups.iter().map(|lookup| {
         quote! {
-            columns.extend(self.lookups.columns_cloned());
+            columns.extend(self.#lookup.clone());
         }
     });
 
@@ -179,9 +181,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             columns.extend(self.#op);
         }
     });
-    let preprocessed_into_columns = preprocessed.as_ref().map(|_| {
+    let lookup_into_columns_body = lookups.iter().map(|lookup| {
         quote! {
-            columns.extend(self.lookups.into_columns());
+            columns.extend(self.#lookup);
         }
     });
 
@@ -201,9 +203,17 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             }
         }
     });
-    let preprocessed_print_tables = preprocessed.as_ref().map(|_| {
+    let lookup_print_tables_body = lookups.iter().map(|lookup| {
+        let lookup_str = lookup.to_string();
         quote! {
-            self.lookups.print_tables(max_rows, max_cols);
+            if !self.#lookup.is_empty() {
+                let table_name = #lookup_str;
+                let column_ids = crate::preprocessed::#lookup::Table::column_ids();
+                let names: Vec<&str> = column_ids.iter().map(|id| id.id.as_str()).collect();
+                let table = self.#lookup.to_table_named(&names);
+                println!("\n=== {} ({} rows) ===", table_name, self.#lookup.first().unwrap().values.to_cpu().len());
+                println!("{}", table);
+            }
         }
     });
 
@@ -212,10 +222,8 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         let op = &component.name;
         quote! { pub #op: u32, }
     });
-    let preprocessed_claim_field = preprocessed.as_ref().map(|path| {
-        quote! {
-            pub lookups: #path::Claim,
-        }
+    let lookup_claim_fields = lookups.iter().map(|lookup| {
+        quote! { pub #lookup: u32, }
     });
 
     let claim_from_body = opcodes.iter().map(|component| {
@@ -227,9 +235,12 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
                 .unwrap_or(0),
         }
     });
-    let preprocessed_claim_from = preprocessed.as_ref().map(|_| {
+    let lookup_claim_from_body = lookups.iter().map(|lookup| {
         quote! {
-            lookups: (&traces.lookups).into(),
+            #lookup: traces.#lookup
+                .first()
+                .map(|eval| eval.domain.log_size())
+                .unwrap_or(0),
         }
     });
 
@@ -240,9 +251,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             channel.mix_u64(self.#op as u64);
         }
     });
-    let preprocessed_claim_mix_into = preprocessed.as_ref().map(|_| {
+    let lookup_claim_mix_into_body = lookups.iter().map(|lookup| {
         quote! {
-            self.lookups.mix_into(channel);
+            channel.mix_u64(self.#lookup as u64);
         }
     });
 
@@ -257,9 +268,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             sizes.extend(std::iter::repeat(self.#op).take(count));
         }
     });
-    let preprocessed_claim_log_sizes = preprocessed.as_ref().map(|_| {
+    let lookup_claim_log_sizes_body = lookups.iter().map(|lookup| {
         quote! {
-            sizes.extend(self.lookups.log_sizes());
+            sizes.push(self.#lookup);
         }
     });
 
@@ -268,10 +279,8 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         let op = &component.name;
         quote! { pub #op: QM31, }
     });
-    let preprocessed_claimed_sum_field = preprocessed.as_ref().map(|path| {
-        quote! {
-            pub lookups: #path::ClaimedSum,
-        }
+    let lookup_claimed_sum_fields = lookups.iter().map(|lookup| {
+        quote! { pub #lookup: QM31, }
     });
 
     // Generate ClaimedSum::sum() body
@@ -279,9 +288,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         let op = &component.name;
         quote! { total += self.#op; }
     });
-    let preprocessed_claimed_sum_body = preprocessed.as_ref().map(|_| {
+    let lookup_claimed_sum_body = lookups.iter().map(|lookup| {
         quote! {
-            total += self.lookups.sum();
+            total += self.#lookup;
         }
     });
 
@@ -292,9 +301,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             channel.mix_felts(&[self.#op]);
         }
     });
-    let preprocessed_claimed_sum_mix_into = preprocessed.as_ref().map(|_| {
+    let lookup_claimed_sum_mix_into = lookups.iter().map(|lookup| {
         quote! {
-            self.lookups.mix_into(channel);
+            channel.mix_felts(&[self.#lookup]);
         }
     });
 
@@ -306,9 +315,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             pub #op: #module::air::Component,
         }
     });
-    let preprocessed_components_field = preprocessed.as_ref().map(|path| {
+    let lookup_components_fields = lookups.iter().map(|lookup| {
         quote! {
-            pub lookups: #path::Components,
+            pub #lookup: lookups::#lookup::air::Component,
         }
     });
 
@@ -329,11 +338,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             quote! { #op, }
         })
         .collect();
-    let gen_trace_counters_ref = if preprocessed.is_some() {
-        quote! { &mut counters }
-    } else {
-        quote! { counters }
-    };
+    let gen_trace_counters_ref = quote! { &mut counters };
 
     let register_multiplicities_body: Vec<_> = opcodes
         .iter()
@@ -345,44 +350,20 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             }
         })
         .collect();
-    let preprocessed_gen_trace_local = preprocessed.as_ref().map(|path| {
-        quote! {
-            let lookups = #path::Traces::from_counters(counters);
-        }
+    let lookup_gen_trace_fields = lookups.iter().map(|lookup| {
+        quote! { #lookup: counters.#lookup.into_trace(), }
     });
-    let preprocessed_gen_trace_field = preprocessed.as_ref().map(|_| {
-        quote! {
-            lookups,
-        }
-    });
-    let gen_trace_function = if preprocessed.is_some() {
-        quote! {
-            pub fn gen_trace(
-                tracer: runner::trace::Tracer,
-            ) -> Traces {
-                let mut counters = crate::relations::Counters::new();
-                #(#gen_trace_locals)*
-                #(#register_multiplicities_body)*
-                #preprocessed_gen_trace_local
+    let gen_trace_function = quote! {
+        pub fn gen_trace(
+            tracer: runner::trace::Tracer,
+        ) -> Traces {
+            let mut counters = crate::relations::Counters::new();
+            #(#gen_trace_locals)*
+            #(#register_multiplicities_body)*
 
-                Traces {
-                    #(#gen_trace_fields)*
-                    #preprocessed_gen_trace_field
-                }
-            }
-        }
-    } else {
-        quote! {
-            pub fn gen_trace(
-                tracer: runner::trace::Tracer,
-                counters: &mut crate::relations::Counters,
-            ) -> Traces {
-                #(#gen_trace_locals)*
-                #(#register_multiplicities_body)*
-
-                Traces {
-                    #(#gen_trace_fields)*
-                }
+            Traces {
+                #(#gen_trace_fields)*
+                #(#lookup_gen_trace_fields)*
             }
         }
     };
@@ -401,11 +382,15 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             let #claimed_var = claimed;
         }
     });
-    let preprocessed_interaction_trace = preprocessed.as_ref().map(|path| {
+    let lookup_interaction_trace = lookups.iter().map(|lookup| {
+        let claimed_var = format_ident!("{}_claimed", lookup);
         quote! {
-            let (lookup_columns, lookup_claimed) =
-                #path::gen_interaction_trace(&traces.lookups, relations);
-            all_columns.extend(lookup_columns);
+            let (cols, claimed) = lookups::#lookup::witness::gen_interaction_trace(
+                &traces.#lookup,
+                relations,
+            );
+            all_columns.extend(cols);
+            let #claimed_var = claimed;
         }
     });
 
@@ -416,10 +401,9 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             #op: #claimed_var,
         }
     });
-    let preprocessed_claimed_sum_init = preprocessed.as_ref().map(|_| {
-        quote! {
-            lookups: lookup_claimed,
-        }
+    let lookup_claimed_sum_inits = lookups.iter().map(|lookup| {
+        let claimed_var = format_ident!("{}_claimed", lookup);
+        quote! { #lookup: #claimed_var, }
     });
 
     // Generate Components::new() body
@@ -437,13 +421,15 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             ),
         }
     });
-    let preprocessed_components_new = preprocessed.as_ref().map(|path| {
+    let lookup_components_new = lookups.iter().map(|lookup| {
         quote! {
-            lookups: #path::Components::new(
-                &claim.lookups,
+            #lookup: lookups::#lookup::air::Component::new(
                 location_allocator,
-                relations.clone(),
-                &claimed_sum.lookups,
+                lookups::#lookup::air::Eval {
+                    log_size: claim.#lookup,
+                    relations: relations.clone(),
+                },
+                claimed_sum.#lookup,
             ),
         }
     });
@@ -453,10 +439,8 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         let op = &component.name;
         quote! { &self.#op as &dyn stwo::prover::ComponentProver<SimdBackend>, }
     });
-    let preprocessed_provers = preprocessed.as_ref().map(|_| {
-        quote! {
-            provers.extend(self.lookups.provers());
-        }
+    let lookup_provers = lookups.iter().map(|lookup| {
+        quote! { &self.#lookup as &dyn stwo::prover::ComponentProver<SimdBackend>, }
     });
 
     // Generate Components::verifiers() body
@@ -464,10 +448,8 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         let op = &component.name;
         quote! { &self.#op as &dyn stwo::core::air::Component, }
     });
-    let preprocessed_verifiers = preprocessed.as_ref().map(|_| {
-        quote! {
-            verifiers.extend(self.lookups.verifiers());
-        }
+    let lookup_verifiers = lookups.iter().map(|lookup| {
+        quote! { &self.#lookup as &dyn stwo::core::air::Component, }
     });
 
     // Generate relation_entries() body
@@ -482,10 +464,8 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             itertools::chain!(#(#chain_items),*)
         }
     };
-    let preprocessed_relation_entries = preprocessed.as_ref().map(|_| {
-        quote! {
-            entries.extend(self.lookups.relation_entries(trace));
-        }
+    let lookup_relation_entries = lookups.iter().map(|lookup| {
+        quote! { add_to_relation_entries(&self.#lookup, trace) }
     });
 
     // Generate trace_log_degree_bounds() body
@@ -493,10 +473,8 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         let op = &component.name;
         quote! { self.#op.trace_log_degree_bounds(), }
     });
-    let preprocessed_trace_log_degree_bounds = preprocessed.as_ref().map(|_| {
-        quote! {
-            bounds.extend(self.lookups.trace_log_degree_bounds());
-        }
+    let lookup_trace_log_degree_bounds = lookups.iter().map(|lookup| {
+        quote! { self.#lookup.trace_log_degree_bounds(), }
     });
 
     // Generate assert_constraints_on_polys() body
@@ -530,42 +508,66 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             }
         }
     });
-    let preprocessed_assert_constraints = preprocessed.as_ref().map(|path| {
+    let lookup_assert_constraints = lookups.iter().map(|lookup| {
+        let lookup_str = lookup.to_string();
         quote! {
-            #path::Components::assert_constraints_on_polys(&traces.lookups, relations);
-        }
-    });
-    let track_relations_impl = preprocessed.as_ref().map(|_| {
-        quote! {
-            pub fn track_relations(
-                &self,
-                preprocessed_trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-                traces: &Traces,
-            ) -> stwo_constraint_framework::relation_tracker::RelationSummary {
-                use stwo::core::pcs::TreeVec;
-                use stwo::prover::backend::Column;
+            if !traces.#lookup.is_empty() {
+                let log_size = traces.#lookup.first()
+                    .map(|t| t.domain.log_size())
+                    .unwrap_or(0);
+                if log_size > 0 {
+                    let (interaction_trace, claimed_sum) =
+                        lookups::#lookup::witness::gen_interaction_trace(&traces.#lookup, relations);
 
-                let preprocessed_cpu: Vec<Vec<BaseField>> = preprocessed_trace
-                    .iter()
-                    .map(|col| col.values.to_cpu())
-                    .collect();
-                let main_columns = traces.columns_cloned();
-                let main_cpu: Vec<Vec<BaseField>> =
-                    main_columns.iter().map(|col| col.values.to_cpu()).collect();
+                    let preprocessed_cols = crate::preprocessed::#lookup::Table::gen_columns();
 
-                let cpu_trace = TreeVec::new(vec![preprocessed_cpu, main_cpu]);
-                let trace_refs = TreeVec::new(
-                    cpu_trace.iter().map(|tree| tree.iter().collect()).collect(),
-                );
-
-                let entries = self.relation_entries(&trace_refs);
-                stwo_constraint_framework::relation_tracker::RelationSummary::summarize_relations(
-                    &entries,
-                )
-                .cleaned()
+                    let trace_tree = TreeVec::new(vec![
+                        preprocessed_cols,
+                        traces.#lookup.clone(),
+                        interaction_trace,
+                    ]);
+                    let trace_polys = trace_tree.map_cols(|c| c.interpolate());
+                    let eval = lookups::#lookup::air::Eval {
+                        log_size,
+                        relations: relations.clone(),
+                    };
+                    info!("Testing {} constraints (log_size={})", #lookup_str, log_size);
+                    assert_constraints_on_polys(&trace_polys, CanonicCoset::new(log_size),
+                        |assert_eval| { eval.evaluate(assert_eval); }, claimed_sum);
+                    info!("{} constraints OK", #lookup_str);
+                }
             }
         }
     });
+    let track_relations_impl = quote! {
+        pub fn track_relations(
+            &self,
+            preprocessed_trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+            traces: &Traces,
+        ) -> stwo_constraint_framework::relation_tracker::RelationSummary {
+            use stwo::core::pcs::TreeVec;
+            use stwo::prover::backend::Column;
+
+            let preprocessed_cpu: Vec<Vec<BaseField>> = preprocessed_trace
+                .iter()
+                .map(|col| col.values.to_cpu())
+                .collect();
+            let main_columns = traces.columns_cloned();
+            let main_cpu: Vec<Vec<BaseField>> =
+                main_columns.iter().map(|col| col.values.to_cpu()).collect();
+
+            let cpu_trace = TreeVec::new(vec![preprocessed_cpu, main_cpu]);
+            let trace_refs = TreeVec::new(
+                cpu_trace.iter().map(|tree| tree.iter().collect()).collect(),
+            );
+
+            let entries = self.relation_entries(&trace_refs);
+            stwo_constraint_framework::relation_tracker::RelationSummary::summarize_relations(
+                &entries,
+            )
+            .cleaned()
+        }
+    };
 
     quote! {
         use serde::{Serialize, Deserialize};
@@ -580,7 +582,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         /// Trace columns for all components.
         pub struct Traces {
             #(#traces_fields)*
-            #preprocessed_traces_field
+            #(#lookup_traces_fields)*
         }
 
         impl Traces {
@@ -591,44 +593,45 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             pub fn log_sizes(&self) -> Vec<u32> {
                 let mut sizes = vec![];
                 #(#log_sizes_body)*
-                #preprocessed_log_sizes
+                #(#lookup_log_sizes_body)*
                 sizes
             }
 
             pub fn columns_cloned(&self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let mut columns = vec![];
                 #(#columns_cloned_body)*
-                #preprocessed_columns_cloned
+                #(#lookup_columns_cloned_body)*
                 columns
             }
 
             pub fn into_columns(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
                 let mut columns = vec![];
                 #(#into_columns_body)*
-                #preprocessed_into_columns
+                #(#lookup_into_columns_body)*
                 columns
             }
 
             pub fn print_tables(&self, max_rows: Option<usize>, max_cols: Option<usize>) {
                 use debug_utils::ToTable;
                 use stwo::prover::backend::Column;
+                use crate::preprocessed::PreprocessedTable;
                 debug_utils::set_display_options(max_rows, max_cols);
                 #(#print_tables_body)*
-                #preprocessed_print_tables
+                #(#lookup_print_tables_body)*
             }
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct Claim {
             #(#claim_fields)*
-            #preprocessed_claim_field
+            #(#lookup_claim_fields)*
         }
 
         impl From<&Traces> for Claim {
             fn from(traces: &Traces) -> Self {
                 Self {
                     #(#claim_from_body)*
-                    #preprocessed_claim_from
+                    #(#lookup_claim_from_body)*
                 }
             }
         }
@@ -636,13 +639,13 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         impl Claim {
             pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
                 #(#claim_mix_into_body)*
-                #preprocessed_claim_mix_into
+                #(#lookup_claim_mix_into_body)*
             }
 
             pub fn log_sizes(&self) -> Vec<u32> {
                 let mut sizes = vec![];
                 #(#claim_log_sizes_body)*
-                #preprocessed_claim_log_sizes
+                #(#lookup_claim_log_sizes_body)*
                 sizes
             }
 
@@ -654,7 +657,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         #[derive(Clone, Debug, Serialize, Deserialize)]
         pub struct ClaimedSum {
             #(#claimed_sum_fields)*
-            #preprocessed_claimed_sum_field
+            #(#lookup_claimed_sum_fields)*
         }
 
         impl ClaimedSum {
@@ -662,7 +665,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
                 use num_traits::Zero;
                 let mut total = QM31::zero();
                 #(#claimed_sum_body)*
-                #preprocessed_claimed_sum_body
+                #(#lookup_claimed_sum_body)*
                 total
             }
 
@@ -672,13 +675,13 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
 
             pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
                 #(#claimed_sum_mix_into)*
-                #preprocessed_claimed_sum_mix_into
+                #(#lookup_claimed_sum_mix_into)*
             }
         }
 
         pub struct Components {
             #(#components_fields)*
-            #preprocessed_components_field
+            #(#lookup_components_fields)*
         }
 
         #gen_trace_function
@@ -692,11 +695,11 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
         ) {
             let mut all_columns = vec![];
             #(#gen_interaction_trace_vars)*
-            #preprocessed_interaction_trace
+            #(#lookup_interaction_trace)*
 
             let claimed_sum = ClaimedSum {
                 #(#claimed_sum_inits)*
-                #preprocessed_claimed_sum_init
+                #(#lookup_claimed_sum_inits)*
             };
 
             (all_columns, claimed_sum)
@@ -711,20 +714,16 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             ) -> Self {
                 Self {
                     #(#components_new_body)*
-                    #preprocessed_components_new
+                    #(#lookup_components_new)*
                 }
             }
 
             pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
-                let mut provers = vec![ #(#provers_body)* ];
-                #preprocessed_provers
-                provers
+                vec![ #(#provers_body)* #(#lookup_provers)* ]
             }
 
             pub fn verifiers(&self) -> Vec<&dyn stwo::core::air::Component> {
-                let mut verifiers = vec![ #(#verifiers_body)* ];
-                #preprocessed_verifiers
-                verifiers
+                vec![ #(#verifiers_body)* #(#lookup_verifiers)* ]
             }
 
             pub fn relation_entries(
@@ -733,16 +732,15 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
             ) -> Vec<stwo_constraint_framework::relation_tracker::RelationTrackerEntry> {
                 use stwo_constraint_framework::relation_tracker::add_to_relation_entries;
                 let mut entries: Vec<_> = #relation_entries_body.collect();
-                #preprocessed_relation_entries
+                #(entries.extend(#lookup_relation_entries);)*
                 entries
             }
 
             pub fn trace_log_degree_bounds(&self) -> Vec<stwo::core::pcs::TreeVec<ColumnVec<u32>>> {
-                let mut bounds = vec![
+                vec![
                     #(#trace_log_degree_bounds_body)*
-                ];
-                #preprocessed_trace_log_degree_bounds
-                bounds
+                    #(#lookup_trace_log_degree_bounds)*
+                ]
             }
 
             pub fn assert_constraints_on_polys(
@@ -753,9 +751,10 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
                 use stwo::core::poly::circle::CanonicCoset;
                 use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
                 use tracing::info;
+                use crate::preprocessed::PreprocessedTable;
 
                 #(#assert_constraints_body)*
-                #preprocessed_assert_constraints
+                #(#lookup_assert_constraints)*
             }
 
             #track_relations_impl
@@ -763,7 +762,7 @@ fn render_components(preprocessed: Option<Path>, opcodes: Vec<ComponentEntry>) -
     }
 }
 
-fn render_lookup_components(tables: Vec<Ident>) -> TokenStream2 {
+fn render_lookup_components(tables: &[Ident]) -> TokenStream2 {
     // Lookup components are generated beside trace components because they prove counter-backed multiplicities.
     let inner_modules = tables.iter().map(|table| {
         quote! {
@@ -872,348 +871,7 @@ fn render_lookup_components(tables: Vec<Ident>) -> TokenStream2 {
         }
     });
 
-    // Generate Traces struct fields
-    let traces_fields = tables.iter().map(|table| {
-        quote! {
-            pub #table: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        }
-    });
-
-    // Generate Traces::from_counters() body
-    let from_counters_body = tables.iter().map(|table| {
-        quote! { #table: counters.#table.into_trace(), }
-    });
-
-    // Generate Traces::log_sizes() body
-    let log_sizes_body = tables.iter().map(|table| {
-        quote! {
-            if let Some(first) = self.#table.first() {
-                sizes.push(first.domain.log_size());
-            }
-        }
-    });
-
-    // Generate Traces::columns_cloned() body
-    let columns_cloned_body = tables.iter().map(|table| {
-        quote! { columns.extend(self.#table.clone()); }
-    });
-
-    // Generate Traces::into_columns() body
-    let into_columns_body = tables.iter().map(|table| {
-        quote! { columns.extend(self.#table); }
-    });
-
-    // Generate Traces::print_tables() body
-    let print_tables_body = tables.iter().map(|table| {
-        let table_str = table.to_string();
-        quote! {
-            if !self.#table.is_empty() {
-                let table_name = #table_str;
-                let column_ids = crate::preprocessed::#table::Table::column_ids();
-                let names: Vec<&str> = column_ids.iter().map(|id| id.id.as_str()).collect();
-                let table = self.#table.to_table_named(&names);
-                println!("\n=== {} ({} rows) ===", table_name, self.#table.first().unwrap().values.to_cpu().len());
-                println!("{}", table);
-            }
-        }
-    });
-
-    // Generate Claim fields and From impl
-    let claim_fields = tables.iter().map(|table| {
-        quote! { pub #table: u32, }
-    });
-
-    let claim_from_body = tables.iter().map(|table| {
-        quote! {
-            #table: traces.#table
-                .first()
-                .map(|eval| eval.domain.log_size())
-                .unwrap_or(0),
-        }
-    });
-
-    let claim_mix_into_body = tables.iter().map(|table| {
-        quote! { channel.mix_u64(self.#table as u64); }
-    });
-
-    let claim_log_sizes_body = tables.iter().map(|table| {
-        quote! { self.#table }
-    });
-
-    // Generate ClaimedSum fields
-    let claimed_sum_fields = tables.iter().map(|table| {
-        quote! { pub #table: QM31, }
-    });
-
-    let claimed_sum_body = tables.iter().map(|table| {
-        quote! { total += self.#table; }
-    });
-
-    let claimed_sum_mix_into = tables.iter().map(|table| {
-        quote! { channel.mix_felts(&[self.#table]); }
-    });
-
-    // Generate Components fields
-    let components_fields = tables.iter().map(|table| {
-        quote! { pub #table: #table::air::Component, }
-    });
-
-    // Generate gen_interaction_trace() body
-    let gen_interaction_trace_vars = tables.iter().map(|table| {
-        let claimed_var = format_ident!("{}_claimed", table);
-        quote! {
-            let (cols, claimed) = #table::witness::gen_interaction_trace(
-                &traces.#table,
-                relations,
-            );
-            all_columns.extend(cols);
-            let #claimed_var = claimed;
-        }
-    });
-
-    let claimed_sum_inits = tables.iter().map(|table| {
-        let claimed_var = format_ident!("{}_claimed", table);
-        quote! { #table: #claimed_var, }
-    });
-
-    // Generate Components::new() body
-    let components_new_body = tables.iter().map(|table| {
-        quote! {
-            #table: #table::air::Component::new(
-                location_allocator,
-                #table::air::Eval {
-                    log_size: claim.#table,
-                    relations: relations.clone(),
-                },
-                claimed_sum.#table,
-            ),
-        }
-    });
-
-    // Generate Components::provers() body
-    let provers_body = tables.iter().map(|table| {
-        quote! { &self.#table as &dyn stwo::prover::ComponentProver<SimdBackend>, }
-    });
-
-    // Generate Components::verifiers() body
-    let verifiers_body = tables.iter().map(|table| {
-        quote! { &self.#table as &dyn stwo::core::air::Component, }
-    });
-
-    // Generate relation_entries() body
-    let relation_entries_body = if tables.is_empty() {
-        quote! { std::iter::empty() }
-    } else {
-        let chain_items = tables.iter().map(|table| {
-            quote! { add_to_relation_entries(&self.#table, trace) }
-        });
-        quote! {
-            itertools::chain!(#(#chain_items),*)
-        }
-    };
-
-    // Generate trace_log_degree_bounds() body
-    let trace_log_degree_bounds_body = tables.iter().map(|table| {
-        quote! { self.#table.trace_log_degree_bounds(), }
-    });
-
-    // Generate assert_constraints_on_polys() body
-    let assert_constraints_body = tables.iter().map(|table| {
-        let table_str = table.to_string();
-        quote! {
-            if !traces.#table.is_empty() {
-                let log_size = traces.#table.first()
-                    .map(|t| t.domain.log_size())
-                    .unwrap_or(0);
-                if log_size > 0 {
-                    let (interaction_trace, claimed_sum) =
-                        #table::witness::gen_interaction_trace(&traces.#table, relations);
-
-                    let preprocessed_cols = crate::preprocessed::#table::Table::gen_columns();
-
-                    let trace_tree = TreeVec::new(vec![
-                        preprocessed_cols,
-                        traces.#table.clone(),
-                        interaction_trace,
-                    ]);
-                    let trace_polys = trace_tree.map_cols(|c| c.interpolate());
-                    let eval = #table::air::Eval {
-                        log_size,
-                        relations: relations.clone(),
-                    };
-                    info!("Testing {} constraints (log_size={})", #table_str, log_size);
-                    assert_constraints_on_polys(&trace_polys, CanonicCoset::new(log_size),
-                        |assert_eval| { eval.evaluate(assert_eval); }, claimed_sum);
-                    info!("{} constraints OK", #table_str);
-                }
-            }
-        }
-    });
-
     quote! {
-        use serde::{Serialize, Deserialize};
-        use stwo::core::fields::qm31::QM31;
-        use stwo::core::fields::m31::BaseField;
-        use stwo::core::ColumnVec;
-        use stwo::core::air::Component as AirComponent;
-        use stwo::prover::backend::simd::SimdBackend;
-        use stwo::prover::poly::circle::CircleEvaluation;
-        use stwo::prover::poly::BitReversedOrder;
-
         #(#inner_modules)*
-
-        pub struct Traces {
-            #(#traces_fields)*
-        }
-
-        impl Traces {
-            pub fn from_counters(counters: crate::relations::Counters) -> Self {
-                Self {
-                    #(#from_counters_body)*
-                }
-            }
-
-            pub fn max_log_size(&self) -> u32 {
-                self.log_sizes().into_iter().max().unwrap_or(4)
-            }
-
-            pub fn log_sizes(&self) -> Vec<u32> {
-                let mut sizes = vec![];
-                #(#log_sizes_body)*
-                sizes
-            }
-
-            pub fn columns_cloned(&self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-                let mut columns = vec![];
-                #(#columns_cloned_body)*
-                columns
-            }
-
-            pub fn into_columns(self) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-                let mut columns = vec![];
-                #(#into_columns_body)*
-                columns
-            }
-
-            pub fn print_tables(&self, max_rows: Option<usize>, max_cols: Option<usize>) {
-                use debug_utils::ToTable;
-                use stwo::prover::backend::Column;
-                use crate::preprocessed::PreprocessedTable;
-                debug_utils::set_display_options(max_rows, max_cols);
-                #(#print_tables_body)*
-            }
-        }
-
-        #[derive(Debug, Clone, Serialize, Deserialize)]
-        pub struct Claim {
-            #(#claim_fields)*
-        }
-
-        impl From<&Traces> for Claim {
-            fn from(traces: &Traces) -> Self {
-                Self {
-                    #(#claim_from_body)*
-                }
-            }
-        }
-
-        impl Claim {
-            pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
-                #(#claim_mix_into_body)*
-            }
-
-            pub fn log_sizes(&self) -> Vec<u32> {
-                vec![
-                    #(#claim_log_sizes_body),*
-                ]
-            }
-        }
-
-        #[derive(Clone, Debug, Serialize, Deserialize)]
-        pub struct ClaimedSum {
-            #(#claimed_sum_fields)*
-        }
-
-        impl ClaimedSum {
-            pub fn sum(&self) -> QM31 {
-                use num_traits::Zero;
-                let mut total = QM31::zero();
-                #(#claimed_sum_body)*
-                total
-            }
-
-            pub fn mix_into(&self, channel: &mut impl stwo::core::channel::Channel) {
-                #(#claimed_sum_mix_into)*
-            }
-        }
-
-        pub struct Components {
-            #(#components_fields)*
-        }
-
-        pub fn gen_interaction_trace(
-            traces: &Traces,
-            relations: &crate::relations::Relations,
-        ) -> (
-            ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-            ClaimedSum,
-        ) {
-            let mut all_columns = vec![];
-            #(#gen_interaction_trace_vars)*
-
-            let claimed_sum = ClaimedSum {
-                #(#claimed_sum_inits)*
-            };
-
-            (all_columns, claimed_sum)
-        }
-
-        impl Components {
-            pub fn new(
-                claim: &Claim,
-                location_allocator: &mut stwo_constraint_framework::TraceLocationAllocator,
-                relations: crate::relations::Relations,
-                claimed_sum: &ClaimedSum,
-            ) -> Self {
-                Self {
-                    #(#components_new_body)*
-                }
-            }
-
-            pub fn provers(&self) -> Vec<&dyn stwo::prover::ComponentProver<SimdBackend>> {
-                vec![ #(#provers_body)* ]
-            }
-
-            pub fn verifiers(&self) -> Vec<&dyn stwo::core::air::Component> {
-                vec![ #(#verifiers_body)* ]
-            }
-
-            pub fn relation_entries(
-                &self,
-                trace: &stwo::core::pcs::TreeVec<Vec<&Vec<BaseField>>>,
-            ) -> Vec<stwo_constraint_framework::relation_tracker::RelationTrackerEntry> {
-                use stwo_constraint_framework::relation_tracker::add_to_relation_entries;
-                #relation_entries_body.collect()
-            }
-
-            pub fn trace_log_degree_bounds(&self) -> Vec<stwo::core::pcs::TreeVec<ColumnVec<u32>>> {
-                vec![
-                    #(#trace_log_degree_bounds_body)*
-                ]
-            }
-
-            pub fn assert_constraints_on_polys(
-                traces: &Traces,
-                relations: &crate::relations::Relations,
-            ) {
-                use stwo::core::pcs::TreeVec;
-                use stwo::core::poly::circle::CanonicCoset;
-                use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
-                use tracing::info;
-                use crate::preprocessed::PreprocessedTable;
-
-                #(#assert_constraints_body)*
-            }
-        }
     }
 }

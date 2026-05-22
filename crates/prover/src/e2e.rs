@@ -153,8 +153,6 @@ macro_rules! test_bin_e2e {
                     let mut counters = $crate::relations::Counters::new();
                     witness::register_multiplicities(trace.as_slice(), &mut counters);
 
-                    let lookup_traces = $crate::components::lookups::Traces::from_counters(counters);
-
                     let mut all_entries: Vec<RelationTrackerEntry> = vec![];
 
                     // 1. Collect entries from the opcode component
@@ -176,13 +174,13 @@ macro_rules! test_bin_e2e {
                         ($lookup:ident) => {{
                             use $crate::components::lookups::$lookup::{air as lookup_air, witness as lookup_witness};
 
-                            let multiplicity_trace = &lookup_traces.$lookup;
+                            let multiplicity_trace = counters.$lookup.into_trace();
                             if !multiplicity_trace.is_empty() {
                                 let lookup_log_size = $crate::preprocessed::$lookup::Table::LOG_SIZE;
                                 let preprocessed_columns = $crate::preprocessed::$lookup::Table::gen_columns();
 
                                 let (_lookup_interaction, lookup_claimed) =
-                                    lookup_witness::gen_interaction_trace(multiplicity_trace, &relations);
+                                    lookup_witness::gen_interaction_trace(&multiplicity_trace, &relations);
 
                                 let lookup_eval = lookup_air::Eval {
                                     log_size: lookup_log_size,
