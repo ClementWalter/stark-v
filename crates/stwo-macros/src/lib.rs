@@ -42,12 +42,43 @@ mod trace_tables;
 /// - `trace_op!` macro for recording traces
 /// - `prover_columns` module with column structs for AIR evaluation
 ///
+/// Each table can declare `derived:` columns and `constraints:` using
+/// closure syntax. The closure parameters name the trace columns (or
+/// previously defined derived columns) the expression reads; the body is
+/// field arithmetic over them. Each derived column becomes a generic method
+/// on the `*Columns<T>` struct usable both in AIR constraints (`T = E::F`)
+/// and in witness generation (`T = PackedM31` via the `at(i)` row extractor),
+/// so the expression is written exactly once.
+///
+/// Supported in expressions:
+/// - `+`, `-`, `*`, unary `-`, parentheses
+/// - integer literals and constant integer sub-expressions (folded at
+///   expansion time into a single field constant)
+/// - `pow2(n)`: the constant 2^n
+/// - `inv(c)`: the multiplicative inverse of constant `c` (e.g. `inv(pow2(8))`)
+/// - `constant(expr)`: an arbitrary `u32` const expression evaluated at the
+///   invocation site (e.g. `constant(crate::decode::Opcode::Addi as u32)`)
+///
+/// The generated `constraints()` method returns expressions that must each be
+/// zero on every row: booleanity of the enabler and of every `opcode_*_flag`
+/// (always included), followed by the declared constraints. Flag tables also
+/// get a synthesized `enabler()` method (sum of flags).
+///
 /// # Example
 /// ```ignore
 /// define_trace_tables! {
 ///     add: { clock, pc, rd, rs1, rs2 },
-///     lui: { clock, pc, rd },
-///     sb: { clock, pc, rs1, rs2, mem },
+///     lui: {
+///         clock, pc, rd,
+///         imm_0, imm_1, imm_2,
+///         derived: {
+///             imm: |imm_0, imm_1, imm_2| imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
+///             pc_next: |pc| pc + 4,
+///         },
+///         constraints: {
+///             |imm_2| imm_2 * (1 - imm_2),
+///         },
+///     },
 /// }
 /// ```
 #[proc_macro]

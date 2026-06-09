@@ -1,6 +1,6 @@
 //! AIR component for LUI - airs.md Section 9
 
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
@@ -9,11 +9,6 @@ use crate::relations::Relations;
 use runner::trace::prover_columns::LuiColumns;
 
 pub type Component = FrameworkComponent<Eval>;
-
-/// Helper: 2^n as field element
-fn pow2<E: EvalAtRow>(n: u32) -> E::F {
-    E::F::from(BaseField::from_u32_unchecked(1 << n))
-}
 
 #[derive(Clone)]
 pub struct Eval {
@@ -33,17 +28,17 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = LuiColumns::from_eval(&mut eval);
 
-        // Section 9.2: Variables
-        let imm = cols.imm_0.clone()
-            + pow2::<E>(4) * cols.imm_1.clone()
-            + pow2::<E>(12) * cols.imm_2.clone();
+        // Section 9.2: Variables (derived columns from define_trace_tables!)
+        let imm = cols.imm();
         let opcode_lui_id = E::F::from(BaseField::from_u32_unchecked(Opcode::Lui as u32));
 
         // REG_AS = 0 for register address space
         let reg_as = E::F::zero();
 
-        // enabler is boolean (single opcode family)
-        eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
+        // Booleanity of the enabler (single opcode family)
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
+        }
 
         // =====================================================================
         // LogUp Relations (Section 9.3 from airs.md)
@@ -75,8 +70,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             cols.enabler.clone(),
-            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clock.clone() + E::F::one()
+            cols.pc_next(),
+            cols.clock_next()
         );
 
         // Range check imm limbs: - RC_8_8_4(imm_1, imm_2, imm_0)
@@ -112,7 +107,7 @@ impl FrameworkEval for Eval {
             cols.rd_addr,
             cols.clock,
             E::F::zero(),
-            cols.imm_0.clone() * pow2::<E>(4),
+            cols.rd_val_1(),
             cols.imm_1,
             cols.imm_2
         );
@@ -121,7 +116,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clock.clone() - cols.rd_clock_prev.clone()
+            cols.rd_clock_diff()
         );
 
         eval.finalize_logup_in_pairs();

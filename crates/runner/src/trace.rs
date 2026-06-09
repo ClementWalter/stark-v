@@ -30,7 +30,45 @@ stwo_macros::define_trace_tables! {
     base_alu_imm: {
         clock, pc, rd, rs1,
         imm_0, imm_1, imm_msb,
-        opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
+        opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
+        derived: {
+            // Opcode id encoded in the program segment, selected by the active flag
+            expected_opcode_id: |opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag|
+                opcode_add_flag * constant(crate::decode::Opcode::Addi as u32)
+                + opcode_xor_flag * constant(crate::decode::Opcode::Xori as u32)
+                + opcode_or_flag * constant(crate::decode::Opcode::Ori as u32)
+                + opcode_and_flag * constant(crate::decode::Opcode::Andi as u32),
+            // I-type immediate: imm_0 (8 bits) + imm_1 (3 bits) + sign bit (airs.md 2.2)
+            imm: |imm_0, imm_1, imm_msb| imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
+            // Sign-extended immediate limbs; limb 0 is imm_0 and limb 3 equals limb 2
+            sext_imm_1: |imm_1, imm_msb| imm_1 + ((1 << 3) * ((1 << 5) - 1)) * imm_msb,
+            sext_imm_2: |imm_msb| ((1 << 8) - 1) * imm_msb,
+            is_bitwise: |opcode_xor_flag, opcode_or_flag, opcode_and_flag|
+                opcode_xor_flag + opcode_or_flag + opcode_and_flag,
+            // Preprocessed bitwise table id: and=0, or=1, xor=2
+            bitwise_id: |opcode_xor_flag, opcode_or_flag| 2 * opcode_xor_flag + opcode_or_flag,
+            imm_1_shifted: |imm_1| pow2(8) * imm_1,
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            // Carry chain of rd = rs1 + sext_imm over 8-bit limbs; each carry is 0 or 1
+            carry_0: |rs1_next_0, imm_0, rd_next_0|
+                (rs1_next_0 + imm_0 - rd_next_0) * inv(pow2(8)),
+            carry_1: |rs1_next_1, sext_imm_1, rd_next_1, carry_0|
+                (rs1_next_1 + sext_imm_1 + carry_0 - rd_next_1) * inv(pow2(8)),
+            carry_2: |rs1_next_2, sext_imm_2, rd_next_2, carry_1|
+                (rs1_next_2 + sext_imm_2 + carry_1 - rd_next_2) * inv(pow2(8)),
+            carry_3: |rs1_next_3, sext_imm_2, rd_next_3, carry_2|
+                (rs1_next_3 + sext_imm_2 + carry_2 - rd_next_3) * inv(pow2(8)),
+        },
+        constraints: {
+            |imm_msb| imm_msb * (1 - imm_msb),
+            |opcode_add_flag, carry_0| opcode_add_flag * carry_0 * (1 - carry_0),
+            |opcode_add_flag, carry_1| opcode_add_flag * carry_1 * (1 - carry_1),
+            |opcode_add_flag, carry_2| opcode_add_flag * carry_2 * (1 - carry_2),
+            |opcode_add_flag, carry_3| opcode_add_flag * carry_3 * (1 - carry_3),
+        },
     },
 
     // ==========================================================================
@@ -111,7 +149,16 @@ stwo_macros::define_trace_tables! {
     // ==========================================================================
     lui: {
         clock, pc, rd,
-        imm_0, imm_1, imm_2
+        imm_0, imm_1, imm_2,
+        derived: {
+            // imm = imm_0 + 2^4 * imm_1 + 2^12 * imm_2 (U-type immediate, airs.md 9.2)
+            imm: |imm_0, imm_1, imm_2| imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            // Limb 1 of the value written to rd: imm << 12 has limbs (0, imm_0 * 2^4, imm_1, imm_2)
+            rd_val_1: |imm_0| imm_0 * pow2(4),
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
     },
 
     // ==========================================================================
@@ -1055,6 +1102,126 @@ mod tests {
         fn test_mul_columns_size() {
             // MUL: enabler (1), clock, pc, rd (10), rs1 (10), rs2 (10) = 33 total
             assert_eq!(MulColumns::<()>::SIZE, 33);
+        }
+    }
+
+    // Test derived columns and constraints declared in define_trace_tables!
+    mod derived_column_tests {
+        use super::prover_columns::*;
+        use stwo::core::fields::m31::BaseField;
+
+        fn f(v: u32) -> BaseField {
+            BaseField::from_u32_unchecked(v)
+        }
+
+        /// All-zero LUI columns, mutated per test.
+        fn zero_lui_cols() -> LuiColumns<BaseField> {
+            LuiColumns::from_iter(std::iter::repeat_n(f(0), LuiColumns::<()>::SIZE))
+        }
+
+        /// All-zero Base ALU Imm columns, mutated per test.
+        fn zero_base_alu_imm_cols() -> BaseAluImmColumns<BaseField> {
+            BaseAluImmColumns::from_iter(std::iter::repeat_n(f(0), BaseAluImmColumns::<()>::SIZE))
+        }
+
+        #[test]
+        fn test_lui_imm_combines_limbs() {
+            let mut cols = zero_lui_cols();
+            cols.imm_0 = f(3);
+            cols.imm_1 = f(5);
+            cols.imm_2 = f(7);
+            assert_eq!(cols.imm(), f(3 + 5 * (1 << 4) + 7 * (1 << 12)));
+        }
+
+        #[test]
+        fn test_lui_pc_next_adds_four() {
+            let mut cols = zero_lui_cols();
+            cols.pc = f(0x1000);
+            assert_eq!(cols.pc_next(), f(0x1004));
+        }
+
+        #[test]
+        fn test_lui_rd_clock_diff() {
+            let mut cols = zero_lui_cols();
+            cols.clock = f(10);
+            cols.rd_clock_prev = f(4);
+            assert_eq!(cols.rd_clock_diff(), f(6));
+        }
+
+        #[test]
+        fn test_lui_enabler_booleanity_holds_for_one() {
+            let mut cols = zero_lui_cols();
+            cols.enabler = f(1);
+            assert_eq!(cols.constraints()[0], f(0));
+        }
+
+        #[test]
+        fn test_lui_enabler_booleanity_fails_for_two() {
+            let mut cols = zero_lui_cols();
+            cols.enabler = f(2);
+            assert_ne!(cols.constraints()[0], f(0));
+        }
+
+        #[test]
+        fn test_base_alu_imm_enabler_sums_flags() {
+            let mut cols = zero_base_alu_imm_cols();
+            cols.opcode_add_flag = f(1);
+            cols.opcode_or_flag = f(1);
+            assert_eq!(cols.enabler(), f(2));
+        }
+
+        #[test]
+        fn test_base_alu_imm_expected_opcode_id_selects_active_flag() {
+            let mut cols = zero_base_alu_imm_cols();
+            cols.opcode_xor_flag = f(1);
+            assert_eq!(
+                cols.expected_opcode_id(),
+                f(crate::decode::Opcode::Xori as u32)
+            );
+        }
+
+        #[test]
+        fn test_base_alu_imm_carry_0_detects_limb_overflow() {
+            let mut cols = zero_base_alu_imm_cols();
+            // 255 + 1 = 256 = 0 with carry 1 over an 8-bit limb
+            cols.rs1_next_0 = f(255);
+            cols.imm_0 = f(1);
+            cols.rd_next_0 = f(0);
+            assert_eq!(cols.carry_0(), f(1));
+        }
+
+        #[test]
+        fn test_base_alu_imm_carry_1_chains_carry_0() {
+            let mut cols = zero_base_alu_imm_cols();
+            // Limb 0 overflows; limb 1 receives the carry and overflows too
+            cols.rs1_next_0 = f(255);
+            cols.imm_0 = f(1);
+            cols.rd_next_0 = f(0);
+            cols.rs1_next_1 = f(255);
+            cols.rd_next_1 = f(0);
+            assert_eq!(cols.carry_1(), f(1));
+        }
+
+        #[test]
+        fn test_base_alu_imm_carry_booleanity_holds_for_valid_add() {
+            let mut cols = zero_base_alu_imm_cols();
+            cols.opcode_add_flag = f(1);
+            // rs1 = 255, imm = 1: rd = 256, i.e. limb 0 wraps to 0 and limb 1 is 1
+            cols.rs1_next_0 = f(255);
+            cols.imm_0 = f(1);
+            cols.rd_next_0 = f(0);
+            cols.rd_next_1 = f(1);
+            assert!(cols.constraints().iter().all(|c| *c == f(0)));
+        }
+
+        #[test]
+        fn test_at_extracts_row_values() {
+            // Column c holds [c, c + 100]; pc is the third column (index 2)
+            let data: Vec<Vec<BaseField>> = (0..LuiColumns::<()>::SIZE as u32)
+                .map(|c| vec![f(c), f(c + 100)])
+                .collect();
+            let cols = LuiColumns::from_iter(data.iter());
+            assert_eq!(cols.at(1).pc, f(102));
         }
     }
 

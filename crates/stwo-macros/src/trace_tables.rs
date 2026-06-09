@@ -3,20 +3,46 @@
 //! Provides:
 //! - `define_trace_tables!` macro for generating columnar trace tables
 
+use std::collections::HashMap;
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Ident, Token, braced, parse_macro_input};
+use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, parse_macro_input};
 
 // =============================================================================
 // define_trace_tables! proc-macro
 // =============================================================================
 
-/// A single opcode definition: `name: { field1, field2, ... }`
+/// A derived (computed) column: `name: |col_a, col_b| col_a + pow2(4) * col_b`.
+///
+/// The closure parameters name the trace columns (or previously defined derived
+/// columns) the expression reads. The body is a field expression over those
+/// parameters, integer literals, and `pow2(n)` constants. It is compiled once
+/// into a generic method usable both in AIR constraints (`T = E::F`) and in
+/// witness generation (`T = PackedM31` via `at(i)`).
+struct DerivedDef {
+    name: Ident,
+    closure: ExprClosure,
+}
+
+impl Parse for DerivedDef {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let closure: ExprClosure = input.parse()?;
+        Ok(DerivedDef { name, closure })
+    }
+}
+
+/// A single opcode definition:
+/// `name: { field1, field2, ..., derived: { ... }, constraints: { ... } }`
 struct OpcodeDef {
     name: Ident,
     fields: Vec<Ident>,
+    derived: Vec<DerivedDef>,
+    constraints: Vec<ExprClosure>,
 }
 
 impl Parse for OpcodeDef {
@@ -25,11 +51,50 @@ impl Parse for OpcodeDef {
         input.parse::<Token![:]>()?;
         let content;
         braced!(content in input);
-        let fields: Punctuated<Ident, Token![,]> =
-            content.parse_terminated(Ident::parse, Token![,])?;
+
+        let mut fields = Vec::new();
+        let mut derived = Vec::new();
+        let mut constraints = Vec::new();
+
+        while !content.is_empty() {
+            let ident: Ident = content.parse()?;
+            // `derived:`/`constraints:` are keywords only when followed by a
+            // colon; plain column names are never followed by one.
+            if content.peek(Token![:]) {
+                content.parse::<Token![:]>()?;
+                let block;
+                braced!(block in content);
+                match ident.to_string().as_str() {
+                    "derived" => {
+                        let defs: Punctuated<DerivedDef, Token![,]> =
+                            block.parse_terminated(DerivedDef::parse, Token![,])?;
+                        derived.extend(defs);
+                    }
+                    "constraints" => {
+                        let defs: Punctuated<ExprClosure, Token![,]> =
+                            block.parse_terminated(ExprClosure::parse, Token![,])?;
+                        constraints.extend(defs);
+                    }
+                    other => {
+                        return Err(syn::Error::new(
+                            ident.span(),
+                            format!("unknown block `{other}`, expected `derived` or `constraints`"),
+                        ));
+                    }
+                }
+            } else {
+                fields.push(ident);
+            }
+            if content.peek(Token![,]) {
+                content.parse::<Token![,]>()?;
+            }
+        }
+
         Ok(OpcodeDef {
             name,
-            fields: fields.into_iter().collect(),
+            fields,
+            derived,
+            constraints,
         })
     }
 }
@@ -278,6 +343,246 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
     result
 }
 
+// =============================================================================
+// Derived columns and constraints: closure-expression compilation
+// =============================================================================
+
+/// How a closure parameter resolves inside a derived/constraint expression.
+#[derive(Clone, Copy)]
+enum ParamKind {
+    /// A flattened trace column: rewritten to `self.name.clone()`.
+    RawColumn,
+    /// A derived column (or the synthesized `enabler`): rewritten to `self.name()`.
+    Derived,
+}
+
+/// Extract the parameter identifiers of a derived/constraint closure.
+fn closure_param_idents(closure: &ExprClosure) -> syn::Result<Vec<Ident>> {
+    closure
+        .inputs
+        .iter()
+        .map(|pat| match pat {
+            Pat::Ident(p) => Ok(p.ident.clone()),
+            other => Err(syn::Error::new_spanned(
+                other,
+                "closure parameters must be plain column identifiers",
+            )),
+        })
+        .collect()
+}
+
+/// Resolve closure parameters against the flattened trace columns and the
+/// derived columns defined so far. Errors on unknown names so typos surface at
+/// macro expansion time instead of as missing-field errors in generated code.
+fn resolve_params(
+    params: &[Ident],
+    flat_columns: &[Ident],
+    derived_names: &[Ident],
+) -> syn::Result<HashMap<String, ParamKind>> {
+    let mut map = HashMap::new();
+    for param in params {
+        let name = param.to_string();
+        let kind = if flat_columns.iter().any(|c| *c == name) {
+            ParamKind::RawColumn
+        } else if derived_names.iter().any(|c| *c == name) {
+            ParamKind::Derived
+        } else {
+            return Err(syn::Error::new(
+                param.span(),
+                format!("`{name}` is not a trace column or previously defined derived column"),
+            ));
+        };
+        map.insert(name, kind);
+    }
+    Ok(map)
+}
+
+/// Emit a field constant `T::from(BaseField::from_u32_unchecked(value))`.
+fn field_constant(value: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    quote! {
+        T::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(#value))
+    }
+}
+
+/// The M31 prime, modulus of the base field.
+const M31_PRIME: u64 = (1 << 31) - 1;
+
+/// Modular exponentiation in M31, used to invert constants at expansion time.
+fn m31_pow(mut base: u64, mut exp: u64) -> u64 {
+    let mut result = 1u64;
+    base %= M31_PRIME;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result * base % M31_PRIME;
+        }
+        base = base * base % M31_PRIME;
+        exp >>= 1;
+    }
+    result
+}
+
+/// Evaluate a constant integer sub-expression at expansion time: integer
+/// literals, `pow2(n)`, parentheses, and `+`, `-`, `*`, `<<` thereof.
+fn const_eval(expr: &Expr) -> syn::Result<u64> {
+    let err = || {
+        syn::Error::new_spanned(
+            expr,
+            "expected a constant integer expression (literals, pow2(n), +, -, *, <<)",
+        )
+    };
+    match expr {
+        Expr::Lit(lit) => match &lit.lit {
+            syn::Lit::Int(int) => Ok(int.base10_parse::<u64>()? % M31_PRIME),
+            _ => Err(err()),
+        },
+        Expr::Call(call) => {
+            if let Expr::Path(func) = call.func.as_ref()
+                && func.path.is_ident("pow2")
+                && call.args.len() == 1
+            {
+                let exp = const_eval(&call.args[0])?;
+                return Ok(m31_pow(2, exp));
+            }
+            Err(err())
+        }
+        Expr::Binary(bin) => {
+            let left = const_eval(&bin.left)?;
+            let right = const_eval(&bin.right)?;
+            match bin.op {
+                syn::BinOp::Add(_) => Ok((left + right) % M31_PRIME),
+                syn::BinOp::Sub(_) => Ok((left + M31_PRIME - right) % M31_PRIME),
+                syn::BinOp::Mul(_) => Ok(left * right % M31_PRIME),
+                syn::BinOp::Shl(_) => Ok(m31_pow(2, right) * left % M31_PRIME),
+                _ => Err(err()),
+            }
+        }
+        Expr::Paren(paren) => const_eval(&paren.expr),
+        Expr::Group(group) => const_eval(&group.expr),
+        _ => Err(err()),
+    }
+}
+
+/// Rewrite a closure-body expression into generic field arithmetic over `T`:
+/// - closure parameters become `self.col.clone()` (raw) or `self.col()` (derived)
+/// - integer literals become `T::from(BaseField::from_u32_unchecked(lit))`
+/// - `pow2(n)` becomes the constant `T::from(BaseField::from_u32_unchecked(1 << n))`
+/// - `+`, `-`, `*`, unary `-`, and parentheses recurse
+fn rewrite_expr(
+    expr: &Expr,
+    params: &HashMap<String, ParamKind>,
+) -> syn::Result<proc_macro2::TokenStream> {
+    // Any integer-only subtree (e.g. `(1 << 3) * ((1 << 5) - 1)`) folds to a
+    // single field constant at expansion time.
+    if let Ok(value) = const_eval(expr) {
+        let value = value as u32;
+        return Ok(field_constant(&quote! { #value }));
+    }
+    match expr {
+        Expr::Path(p) => {
+            if let Some(ident) = p.path.get_ident() {
+                match params.get(&ident.to_string()) {
+                    Some(ParamKind::RawColumn) => return Ok(quote! { self.#ident.clone() }),
+                    Some(ParamKind::Derived) => return Ok(quote! { self.#ident() }),
+                    None => {
+                        return Err(syn::Error::new(
+                            ident.span(),
+                            format!(
+                                "`{ident}` is not a closure parameter; list every column the expression reads"
+                            ),
+                        ));
+                    }
+                }
+            }
+            Err(syn::Error::new_spanned(
+                p,
+                "only plain column identifiers are supported in derived expressions",
+            ))
+        }
+        Expr::Lit(lit) => {
+            if let syn::Lit::Int(int) = &lit.lit {
+                let value = int.base10_parse::<u32>()?;
+                Ok(field_constant(&quote! { #value }))
+            } else {
+                Err(syn::Error::new_spanned(
+                    lit,
+                    "only integer literals are supported in derived expressions",
+                ))
+            }
+        }
+        Expr::Call(call) => {
+            // Intrinsics, all field constants resolved at expansion time:
+            // - `pow2(n)`: 2^n
+            // - `inv(c)`: multiplicative inverse of the constant expression `c`
+            // - `constant(expr)`: an arbitrary `u32` const expression from the
+            //   invocation site (e.g. `constant(crate::decode::Opcode::Addi as u32)`)
+            if let Expr::Path(func) = call.func.as_ref() {
+                if func.path.is_ident("pow2") && call.args.len() == 1 {
+                    let value = m31_pow(2, const_eval(&call.args[0])?) as u32;
+                    return Ok(field_constant(&quote! { #value }));
+                }
+                if func.path.is_ident("inv") && call.args.len() == 1 {
+                    let value = const_eval(&call.args[0])?;
+                    if value == 0 {
+                        return Err(syn::Error::new_spanned(call, "cannot invert zero"));
+                    }
+                    let inverse = m31_pow(value, M31_PRIME - 2) as u32;
+                    return Ok(field_constant(&quote! { #inverse }));
+                }
+                if func.path.is_ident("constant") && call.args.len() == 1 {
+                    let arg = &call.args[0];
+                    return Ok(field_constant(&quote! { (#arg) }));
+                }
+            }
+            Err(syn::Error::new_spanned(
+                call,
+                "only the pow2(n), inv(c), and constant(expr) intrinsics are callable in derived expressions",
+            ))
+        }
+        Expr::Binary(bin) => {
+            let op = &bin.op;
+            match op {
+                syn::BinOp::Add(_) | syn::BinOp::Sub(_) | syn::BinOp::Mul(_) => {
+                    let left = rewrite_expr(&bin.left, params)?;
+                    let right = rewrite_expr(&bin.right, params)?;
+                    Ok(quote! { (#left #op #right) })
+                }
+                _ => Err(syn::Error::new_spanned(
+                    bin,
+                    "only +, -, * are supported in derived expressions",
+                )),
+            }
+        }
+        Expr::Unary(unary) => {
+            if matches!(unary.op, syn::UnOp::Neg(_)) {
+                let inner = rewrite_expr(&unary.expr, params)?;
+                Ok(quote! { (-#inner) })
+            } else {
+                Err(syn::Error::new_spanned(
+                    unary,
+                    "only unary minus is supported in derived expressions",
+                ))
+            }
+        }
+        Expr::Paren(paren) => rewrite_expr(&paren.expr, params),
+        Expr::Group(group) => rewrite_expr(&group.expr, params),
+        other => Err(syn::Error::new_spanned(
+            other,
+            "unsupported expression in derived column or constraint",
+        )),
+    }
+}
+
+/// Compile a closure into a generic expression body over `T`.
+fn compile_closure(
+    closure: &ExprClosure,
+    flat_columns: &[Ident],
+    derived_names: &[Ident],
+) -> syn::Result<proc_macro2::TokenStream> {
+    let params = closure_param_idents(closure)?;
+    let params = resolve_params(&params, flat_columns, derived_names)?;
+    rewrite_expr(&closure.body, &params)
+}
+
 /// Count trace columns (enabler + fields, with Access fields expanding to 4 columns).
 fn trace_columns_len(fields: &[Ident], include_enabler: bool) -> usize {
     let mut count = if include_enabler { 1 } else { 0 };
@@ -405,8 +710,148 @@ fn generate_table_columns(
     columns
 }
 
+/// Generate the generic expression impl: derived column methods, the
+/// synthesized `enabler()` for flag tables, and `constraints()`.
+///
+/// The impl is generic over `T` with field-arithmetic bounds satisfied both by
+/// `E::F` (symbolic AIR evaluation) and `PackedM31` (SIMD witness generation),
+/// so each expression is written once and used in both worlds.
+fn generate_expr_impl(
+    opcode: &OpcodeDef,
+    struct_name: &Ident,
+    flat_fields: &[Ident],
+    include_enabler: bool,
+) -> syn::Result<proc_macro2::TokenStream> {
+    let opcode_flags: Vec<Ident> = opcode
+        .fields
+        .iter()
+        .filter(|f| is_opcode_flag(&f.to_string()))
+        .cloned()
+        .collect();
+
+    // Flag tables get a synthesized `enabler()` (sum of flags) unless the user
+    // defines their own derived `enabler`.
+    let user_defines_enabler = opcode.derived.iter().any(|d| d.name == "enabler");
+    let synthesize_enabler = !include_enabler && !user_defines_enabler;
+
+    let mut derived_names: Vec<Ident> = Vec::new();
+    if synthesize_enabler {
+        derived_names.push(format_ident!("enabler"));
+    }
+
+    let mut methods: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    if synthesize_enabler {
+        let sum = opcode_flags
+            .iter()
+            .map(|f| quote! { self.#f.clone() })
+            .reduce(|acc, f| quote! { (#acc + #f) })
+            .expect("flag tables have at least one opcode flag");
+        methods.push(quote! {
+            /// Row activity indicator: sum of the opcode flags.
+            #[inline(always)]
+            pub fn enabler(&self) -> T {
+                #sum
+            }
+        });
+    }
+
+    for def in &opcode.derived {
+        if flat_fields.contains(&def.name) {
+            return Err(syn::Error::new(
+                def.name.span(),
+                format!("derived column `{}` collides with a trace column", def.name),
+            ));
+        }
+        let body = compile_closure(&def.closure, flat_fields, &derived_names)?;
+        let name = &def.name;
+        let closure = &def.closure;
+        let doc = format!("Derived column: `{}`.", quote!(#closure));
+        methods.push(quote! {
+            #[doc = #doc]
+            #[inline(always)]
+            pub fn #name(&self) -> T {
+                #body
+            }
+        });
+        derived_names.push(def.name.clone());
+    }
+
+    // Booleanity is structural: the enabler (and each opcode flag) is 0 or 1.
+    // These constraints are always emitted so components don't repeat them.
+    let one = field_constant(&quote! { 1u32 });
+    let mut constraint_exprs: Vec<proc_macro2::TokenStream> = Vec::new();
+    let enabler_access = if include_enabler {
+        quote! { self.enabler.clone() }
+    } else {
+        quote! { self.enabler() }
+    };
+    constraint_exprs.push(quote! {
+        {
+            let e = #enabler_access;
+            e.clone() * (#one - e)
+        }
+    });
+    for flag in &opcode_flags {
+        constraint_exprs.push(quote! {
+            {
+                let f = self.#flag.clone();
+                f.clone() * (#one - f)
+            }
+        });
+    }
+    for closure in &opcode.constraints {
+        constraint_exprs.push(compile_closure(closure, flat_fields, &derived_names)?);
+    }
+
+    Ok(quote! {
+        impl<T> #struct_name<T>
+        where
+            T: Clone
+                + From<stwo::core::fields::m31::BaseField>
+                + core::ops::Add<Output = T>
+                + core::ops::Sub<Output = T>
+                + core::ops::Mul<Output = T>
+                + core::ops::Neg<Output = T>,
+        {
+            #(#methods)*
+
+            /// Constraint expressions; each must evaluate to zero on every row.
+            ///
+            /// Includes booleanity of the enabler and opcode flags, followed by
+            /// the constraints declared in `define_trace_tables!`.
+            pub fn constraints(&self) -> Vec<T> {
+                vec![
+                    #(#constraint_exprs),*
+                ]
+            }
+        }
+    })
+}
+
+/// Generate the `at(i)` row extractor: turns a columns-of-vectors view (as
+/// built by `from_iter` over the witness trace) into a single row of scalars,
+/// so derived columns and constraints evaluate per SIMD row.
+fn generate_at_impl(struct_name: &Ident, flat_fields: &[Ident]) -> proc_macro2::TokenStream {
+    let field_extracts: Vec<_> = flat_fields
+        .iter()
+        .map(|f| quote! { #f: self.#f[i] })
+        .collect();
+    quote! {
+        impl<'a, T: Copy> #struct_name<&'a Vec<T>> {
+            /// Extract row `i` as scalar values.
+            #[inline(always)]
+            pub fn at(&self, i: usize) -> #struct_name<T> {
+                #struct_name {
+                    #(#field_extracts),*
+                }
+            }
+        }
+    }
+}
+
 /// Generate prover column struct for AIR evaluation
-fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
+fn generate_prover_columns(opcode: &OpcodeDef) -> syn::Result<proc_macro2::TokenStream> {
     let struct_name = column_struct_name(&opcode.name);
     // Include enabler only if no opcode flags are present
     let include_enabler = count_opcode_flags(&opcode.fields) == 0;
@@ -431,7 +876,10 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
         })
         .collect();
 
-    quote! {
+    let expr_impl = generate_expr_impl(opcode, &struct_name, &flat_fields, include_enabler)?;
+    let at_impl = generate_at_impl(&struct_name, &flat_fields);
+
+    Ok(quote! {
         /// Column struct for AIR evaluation.
         #[derive(Debug, Clone)]
         pub struct #struct_name<T> {
@@ -467,7 +915,11 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
                 }
             }
         }
-    }
+
+        #expr_impl
+
+        #at_impl
+    })
 }
 
 fn generate_clock_update_columns(name: &str) -> proc_macro2::TokenStream {
@@ -975,15 +1427,25 @@ fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
 /// ```ignore
 /// define_trace_tables! {
 ///     add: { clock, pc, rd, rs1, rs2 },
-///     lui: { clock, pc, rd },
-///     sb: { clock, pc, rs1, rs2, mem },
+///     lui: {
+///         clock, pc, rd, imm_0, imm_1, imm_2,
+///         derived: {
+///             imm: |imm_0, imm_1, imm_2| imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
+///         },
+///         constraints: {
+///             |imm| imm * (1 - imm),
+///         },
+///     },
 /// }
 /// ```
 ///
 /// This generates:
-/// - `AddTable`, `LuiTable`, `SbTable` structs with columnar fields
+/// - `AddTable`, `LuiTable` structs with columnar fields
 /// - `Tracer` struct with all tables
 /// - `trace_op!` macro for recording traces
+/// - `prover_columns::*Columns<T>` structs with one generic method per derived
+///   column and a `constraints()` method, both usable in AIR evaluation
+///   (`T = E::F`) and witness generation (`T = PackedM31` via `at(i)`)
 pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let def = parse_macro_input!(input as TraceTablesDef);
 
@@ -991,8 +1453,13 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let tracer = generate_tracer(&def.opcodes);
     let trace_op_macro = generate_trace_op_macro(&def.opcodes);
 
-    // Generate prover columns
-    let prover_columns: Vec<_> = def.opcodes.iter().map(generate_prover_columns).collect();
+    // Generate prover columns; expression errors surface as compile errors
+    // pointing at the offending closure.
+    let prover_columns: Vec<_> = def
+        .opcodes
+        .iter()
+        .map(|op| generate_prover_columns(op).unwrap_or_else(|e| e.to_compile_error()))
+        .collect();
     let mem_clock_update_columns = generate_clock_update_columns("Mem");
     let reg_clock_update_columns = generate_clock_update_columns("Reg");
 

@@ -13,6 +13,7 @@ words:
   - bitmask
   - bitmaski
   - bltu
+  - booleanity
   - bytemuck
   - cfgs
   - circom

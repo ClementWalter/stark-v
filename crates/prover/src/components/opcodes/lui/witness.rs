@@ -1,6 +1,5 @@
 //! Witness generation for lui component.
 
-use num_traits::One;
 use num_traits::Zero;
 use runner::decode::Opcode;
 use stwo::core::ColumnVec;
@@ -40,34 +39,18 @@ pub fn gen_interaction_trace(
     // Constants as column vectors
     let opcode_lui_id = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Lui as u32));
     let zero = PackedM31::zero();
-    let one = PackedM31::one();
-    let four = PackedM31::broadcast(BaseField::from_u32_unchecked(4));
-    let pow2_4 = PackedM31::broadcast(BaseField::from_u32_unchecked(16));
-    let pow2_12 = PackedM31::broadcast(BaseField::from_u32_unchecked(4096));
 
     // Create constant columns
     let opcode_lui_id_col: Vec<PackedM31> = vec![opcode_lui_id; simd_size];
     let zero_col: Vec<PackedM31> = vec![zero; simd_size];
 
-    // Compute derived columns
-    // imm = imm_0 + 2^4 * imm_1 + 2^12 * imm_2
-    let imm: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.imm_0[i] + cols.imm_1[i] * pow2_4 + cols.imm_2[i] * pow2_12)
-        .collect();
-
-    // pc + 4
-    let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.pc[i] + four).collect();
-
-    // clock + 1
-    let clock_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.clock[i] + one).collect();
-
-    // imm_0 * 16 (for rd write value)
-    let imm_0_times_16: Vec<PackedM31> = (0..simd_size).map(|i| cols.imm_0[i] * pow2_4).collect();
-
-    // clock - rd_clock_prev (for range check)
-    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
-        .collect();
+    // Derived columns from define_trace_tables! — same expressions as the AIR.
+    let imm: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).imm()).collect();
+    let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).pc_next()).collect();
+    let clock_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).clock_next()).collect();
+    let imm_0_times_16: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).rd_val_1()).collect();
+    let clock_minus_rd_clock_prev: Vec<PackedM31> =
+        (0..simd_size).map(|i| cols.at(i).rd_clock_diff()).collect();
 
     // Compute numerators
     let neg_enabler: Vec<PackedQM31> = (0..simd_size)
@@ -180,9 +163,8 @@ pub fn register_multiplicities(
     let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.enabler[i]).collect();
 
     // Derived columns (same as gen_interaction_trace)
-    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
-        .collect();
+    let clock_minus_rd_clock_prev: Vec<PackedM31> =
+        (0..simd_size).map(|i| cols.at(i).rd_clock_diff()).collect();
 
     // Register range_check_8_8_4: (imm_1, imm_2, imm_0) with negated multiplicity
     counters

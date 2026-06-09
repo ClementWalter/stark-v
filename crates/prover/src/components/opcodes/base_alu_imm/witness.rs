@@ -1,7 +1,6 @@
 //! Witness generation for base_alu_imm component.
 
-use num_traits::{One, Zero};
-use runner::decode::Opcode;
+use num_traits::Zero;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::QM31;
@@ -34,75 +33,33 @@ pub fn gen_interaction_trace(
 
     // Constants
     let zero = PackedM31::zero();
-    let one = PackedM31::broadcast(BaseField::one());
-    let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
-    let four = PackedM31::broadcast(BaseField::from_u32_unchecked(4));
-    let pow2_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(256));
-    let pow2_11 = PackedM31::broadcast(BaseField::from_u32_unchecked(2048));
-
-    let opcode_addi = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Addi as u32));
-    let opcode_xori = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Xori as u32));
-    let opcode_ori = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Ori as u32));
-    let opcode_andi = PackedM31::broadcast(BaseField::from_u32_unchecked(Opcode::Andi as u32));
-
-    let sext_mask_1 =
-        PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 3) * ((1 << 5) - 1)));
-    let sext_mask_2 = PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 8) - 1));
-
     let zero_col: Vec<PackedM31> = vec![zero; simd_size];
 
-    // Compute derived columns
-    let enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            cols.opcode_add_flag[i]
-                + cols.opcode_xor_flag[i]
-                + cols.opcode_or_flag[i]
-                + cols.opcode_and_flag[i]
-        })
-        .collect();
-
+    // Derived columns from define_trace_tables! — same expressions as the AIR.
+    let enabler: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).enabler()).collect();
     let expected_opcode_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            cols.opcode_add_flag[i] * opcode_addi
-                + cols.opcode_xor_flag[i] * opcode_xori
-                + cols.opcode_or_flag[i] * opcode_ori
-                + cols.opcode_and_flag[i] * opcode_andi
-        })
+        .map(|i| cols.at(i).expected_opcode_id())
         .collect();
+    let imm: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).imm()).collect();
 
-    let imm: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.imm_0[i] + pow2_8 * cols.imm_1[i] + pow2_11 * cols.imm_msb[i])
-        .collect();
-
-    // Sign-extended immediate limbs
+    // Sign-extended immediate limbs; limb 0 is imm_0 and limb 3 equals limb 2
     let sext_imm_0: Vec<PackedM31> = cols.imm_0.to_vec();
-    let sext_imm_1: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.imm_1[i] + sext_mask_1 * cols.imm_msb[i])
-        .collect();
-    let sext_imm_2: Vec<PackedM31> = (0..simd_size)
-        .map(|i| sext_mask_2 * cols.imm_msb[i])
-        .collect();
+    let sext_imm_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).sext_imm_1()).collect();
+    let sext_imm_2: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).sext_imm_2()).collect();
     let sext_imm_3 = sext_imm_2.clone();
 
-    let is_bitwise: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i])
-        .collect();
+    let is_bitwise: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).is_bitwise()).collect();
+    let bitwise_id: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).bitwise_id()).collect();
+    let imm_1_times_256: Vec<PackedM31> =
+        (0..simd_size).map(|i| cols.at(i).imm_1_shifted()).collect();
 
-    // Match preprocessed bitwise table: and=0, or=1, xor=2
-    let bitwise_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
-        .collect();
-
-    let imm_1_times_256: Vec<PackedM31> = (0..simd_size).map(|i| pow2_8 * cols.imm_1[i]).collect();
-
-    let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.pc[i] + four).collect();
-    let clock_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.clock[i] + one).collect();
+    let pc_plus_4: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).pc_next()).collect();
+    let clock_plus_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).clock_next()).collect();
     let clock_minus_rs1_clock_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clock[i] - cols.rs1_clock_prev[i])
+        .map(|i| cols.at(i).rs1_clock_diff())
         .collect();
-    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
-        .collect();
+    let clock_minus_rd_clock_prev: Vec<PackedM31> =
+        (0..simd_size).map(|i| cols.at(i).rd_clock_diff()).collect();
 
     // Numerators
     let neg_enabler: Vec<PackedQM31> = enabler.iter().map(|&e| -PackedQM31::from(e)).collect();
@@ -307,50 +264,27 @@ pub fn register_multiplicities(
     let cols = BaseAluImmColumns::from_iter(trace.iter().map(|eval| &eval.values.data));
     let simd_size = cols.clock.len();
 
-    // Constants (same as gen_interaction_trace)
-    let pow2_8 = PackedM31::broadcast(BaseField::from_u32_unchecked(256));
-    let two = PackedM31::broadcast(BaseField::from_u32_unchecked(2));
-    let sext_mask_1 =
-        PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 3) * ((1 << 5) - 1)));
-    let sext_mask_2 = PackedM31::broadcast(BaseField::from_u32_unchecked((1 << 8) - 1));
-
     // Numerators (same as gen_interaction_trace, but negated to match)
-    let neg_enabler: Vec<PackedM31> = (0..simd_size)
-        .map(|i| {
-            -(cols.opcode_add_flag[i]
-                + cols.opcode_xor_flag[i]
-                + cols.opcode_or_flag[i]
-                + cols.opcode_and_flag[i])
-        })
-        .collect();
-    let neg_is_bitwise: Vec<PackedM31> = (0..simd_size)
-        .map(|i| -(cols.opcode_xor_flag[i] + cols.opcode_or_flag[i] + cols.opcode_and_flag[i]))
-        .collect();
+    let neg_enabler: Vec<PackedM31> = (0..simd_size).map(|i| -cols.at(i).enabler()).collect();
+    let neg_is_bitwise: Vec<PackedM31> = (0..simd_size).map(|i| -cols.at(i).is_bitwise()).collect();
 
     // Derived columns (same as gen_interaction_trace)
-    let imm_1_times_256: Vec<PackedM31> = (0..simd_size).map(|i| pow2_8 * cols.imm_1[i]).collect();
+    let imm_1_times_256: Vec<PackedM31> =
+        (0..simd_size).map(|i| cols.at(i).imm_1_shifted()).collect();
 
     let clock_minus_rs1_clock_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clock[i] - cols.rs1_clock_prev[i])
+        .map(|i| cols.at(i).rs1_clock_diff())
         .collect();
-    let clock_minus_rd_clock_prev: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.clock[i] - cols.rd_clock_prev[i])
-        .collect();
+    let clock_minus_rd_clock_prev: Vec<PackedM31> =
+        (0..simd_size).map(|i| cols.at(i).rd_clock_diff()).collect();
 
-    // Sign-extended immediate limbs
+    // Sign-extended immediate limbs; limb 0 is imm_0 and limb 3 equals limb 2
     let sext_imm_0: Vec<PackedM31> = cols.imm_0.to_vec();
-    let sext_imm_1: Vec<PackedM31> = (0..simd_size)
-        .map(|i| cols.imm_1[i] + sext_mask_1 * cols.imm_msb[i])
-        .collect();
-    let sext_imm_2: Vec<PackedM31> = (0..simd_size)
-        .map(|i| sext_mask_2 * cols.imm_msb[i])
-        .collect();
+    let sext_imm_1: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).sext_imm_1()).collect();
+    let sext_imm_2: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).sext_imm_2()).collect();
     let sext_imm_3 = sext_imm_2.clone();
 
-    // Match preprocessed bitwise table: and=0, or=1, xor=2
-    let bitwise_id: Vec<PackedM31> = (0..simd_size)
-        .map(|i| two * cols.opcode_xor_flag[i] + cols.opcode_or_flag[i])
-        .collect();
+    let bitwise_id: Vec<PackedM31> = (0..simd_size).map(|i| cols.at(i).bitwise_id()).collect();
 
     // Register range_check_8_11: (imm_0, imm_1 * 256) with negated multiplicity
     counters
