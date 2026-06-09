@@ -16,7 +16,7 @@ mod ops;
 use decode::get_or_decode;
 use thiserror::Error;
 
-pub use commitment::{CommitmentError, MAX_TREE_HEIGHT};
+pub use commitment::{CommitmentError, MAX_TREE_HEIGHT, SegmentRole};
 pub use cpu::Cpu;
 pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
@@ -114,15 +114,51 @@ pub fn run_with_input(
     input: &[u8],
     max_cycles: u64,
 ) -> Result<RunResult, RunError> {
+    let mut segments = run_segments_with_input(elf_bytes, input, None, max_cycles)?;
+    Ok(segments
+        .pop()
+        .expect("execution produces at least one segment"))
+}
+
+/// Run an ELF program to completion, splitting the execution trace into
+/// segments of at most `segment_cycles` cycles each.
+///
+/// Each segment gets its own tracer with the clock restarting at 0, so each
+/// can be proven independently; consecutive segments chain on
+/// `(final_pc, final_regs, final_rw_root) == (initial_pc, initial_regs, initial_rw_root)`.
+/// Input is anchored in the first segment and outputs in the last (see
+/// [`SegmentRole`]). With `segment_cycles = None` the whole execution is a
+/// single segment, identical to [`run_with_input`].
+pub fn run_segments_with_input(
+    elf_bytes: &[u8],
+    input: &[u8],
+    segment_cycles: Option<u32>,
+    max_cycles: u64,
+) -> Result<Vec<RunResult>, RunError> {
+    if let Some(n) = segment_cycles {
+        // Clock differences within a segment must stay range-checkable
+        // (RangeCheck20), and a zero-length segment cannot make progress.
+        assert!(
+            n > 0 && n < (1 << 20),
+            "segment_cycles must be in 1..2^20, got {n}"
+        );
+    }
+
     let loaded = load_elf(elf_bytes)?;
     let layout = commitment::MemoryLayout::from_loaded(&loaded);
 
     let mut cpu = Cpu::new(loaded.entry, loaded.sp, loaded.gp);
-    let initial_pc = cpu.pc;
-    let initial_regs = cpu.regs();
+    let io_addrs = IoAddrs {
+        input_start: loaded.input_start_addr,
+        input_end: loaded.input_end_addr,
+        halt_flag: loaded.halt_flag_addr,
+        output_len: loaded.output_len_addr,
+        output_data: loaded.output_data_addr,
+        output_end: loaded.output_end_addr,
+    };
     let mut mem = loaded.memory;
-    let input_start = loaded.input_start_addr;
-    let input_end = loaded.input_end_addr;
+    let input_start = io_addrs.input_start;
+    let input_end = io_addrs.input_end;
     let input_capacity = input_end.saturating_sub(input_start) as usize;
     if input.len() > input_capacity {
         return Err(RunError::InputTooLarge {
@@ -137,40 +173,48 @@ pub fn run_with_input(
     let mut cache: InstCache = InstCache::default();
     let mut tracer = Tracer::default();
 
-    loop {
+    let mut segments: Vec<RunResult> = Vec::new();
+    let mut completed_cycles: u64 = 0;
+    let mut seg_initial_pc = cpu.pc;
+    let mut seg_initial_regs = cpu.regs();
+
+    let final_pc = loop {
         // Check halt flag before executing next instruction
-        if mem.read_u32(loaded.halt_flag_addr) != 0 {
-            let output_len = mem.read_u32(loaded.output_len_addr);
-            let output = io::read_output(
+        if mem.read_u32(io_addrs.halt_flag) != 0 {
+            break cpu.pc;
+        }
+
+        // Segment boundary: close the current tracer and start a fresh one.
+        // The next instruction belongs to the next segment.
+        if segment_cycles.is_some_and(|n| tracer.clock >= n) {
+            let role = SegmentRole {
+                is_first: segments.is_empty(),
+                is_last: false,
+            };
+            tracer.finalize_commitments_with_role(&mem, &layout, role)?;
+            let finished = std::mem::take(&mut tracer);
+            completed_cycles += finished.clock as u64;
+            let mut result = make_run_result(
+                finished,
+                seg_initial_pc,
+                cpu.pc,
+                seg_initial_regs,
+                cpu.regs(),
+                input,
                 &mem,
-                loaded.output_len_addr,
-                loaded.output_data_addr,
-                loaded.output_end_addr,
+                io_addrs,
             );
-            let output_words = collect_output_words(
-                &mem,
-                loaded.output_len_addr,
-                loaded.output_data_addr,
-                output_len,
-            );
-            tracer.finalize_commitments(&mem, &layout)?;
-            return Ok(RunResult {
-                cycles: tracer.clock as u64,
-                initial_pc,
-                final_pc: cpu.pc,
-                initial_regs,
-                final_regs: cpu.regs(),
-                output,
-                input: input.to_vec(),
-                input_start,
-                input_end,
-                output_len,
-                output_len_addr: loaded.output_len_addr,
-                output_data_addr: loaded.output_data_addr,
-                output_end_addr: loaded.output_end_addr,
-                output_words,
-                tracer,
-            });
+            // Outputs are anchored in the last segment only; inputs in
+            // the first only.
+            result.output = None;
+            result.output_len = 0;
+            result.output_words = Vec::new();
+            if !role.is_first {
+                result.input = Vec::new();
+            }
+            segments.push(result);
+            seg_initial_pc = cpu.pc;
+            seg_initial_regs = cpu.regs();
         }
 
         let prev_pc = cpu.pc;
@@ -190,37 +234,7 @@ pub fn run_with_input(
             _ => false,
         };
         if is_self_loop {
-            let output_len = mem.read_u32(loaded.output_len_addr);
-            let output = io::read_output(
-                &mem,
-                loaded.output_len_addr,
-                loaded.output_data_addr,
-                loaded.output_end_addr,
-            );
-            let output_words = collect_output_words(
-                &mem,
-                loaded.output_len_addr,
-                loaded.output_data_addr,
-                output_len,
-            );
-            tracer.finalize_commitments(&mem, &layout)?;
-            return Ok(RunResult {
-                cycles: tracer.clock as u64,
-                initial_pc,
-                final_pc: cpu.pc,
-                initial_regs,
-                final_regs: cpu.regs(),
-                output,
-                input: input.to_vec(),
-                input_start,
-                input_end,
-                output_len,
-                output_len_addr: loaded.output_len_addr,
-                output_data_addr: loaded.output_data_addr,
-                output_end_addr: loaded.output_end_addr,
-                output_words,
-                tracer,
-            });
+            break cpu.pc;
         }
 
         // Update tracer clock before executing instruction
@@ -230,46 +244,91 @@ pub fn run_with_input(
 
         // Halt on infinite loop (PC unchanged after execution) - backup detection
         if cpu.pc == prev_pc {
-            let output_len = mem.read_u32(loaded.output_len_addr);
-            let output = io::read_output(
-                &mem,
-                loaded.output_len_addr,
-                loaded.output_data_addr,
-                loaded.output_end_addr,
-            );
-            let output_words = collect_output_words(
-                &mem,
-                loaded.output_len_addr,
-                loaded.output_data_addr,
-                output_len,
-            );
-            tracer.finalize_commitments(&mem, &layout)?;
-            return Ok(RunResult {
-                cycles: tracer.clock as u64,
-                initial_pc,
-                final_pc: prev_pc,
-                initial_regs,
-                final_regs: cpu.regs(),
-                output,
-                input: input.to_vec(),
-                input_start,
-                input_end,
-                output_len,
-                output_len_addr: loaded.output_len_addr,
-                output_data_addr: loaded.output_data_addr,
-                output_end_addr: loaded.output_end_addr,
-                output_words,
-                tracer,
-            });
+            break prev_pc;
         }
 
         // Safety limit
-        if tracer.clock as u64 > max_cycles {
+        if completed_cycles + tracer.clock as u64 > max_cycles {
             return Err(RunError::MaxCyclesExceeded {
-                cycles: tracer.clock as u64,
+                cycles: completed_cycles + tracer.clock as u64,
                 max: max_cycles,
             });
         }
+    };
+
+    // Final segment: anchor outputs (and input, if this is also the first).
+    let role = SegmentRole {
+        is_first: segments.is_empty(),
+        is_last: true,
+    };
+    tracer.finalize_commitments_with_role(&mem, &layout, role)?;
+    let mut result = make_run_result(
+        tracer,
+        seg_initial_pc,
+        final_pc,
+        seg_initial_regs,
+        cpu.regs(),
+        input,
+        &mem,
+        io_addrs,
+    );
+    if !role.is_first {
+        result.input = Vec::new();
+    }
+    segments.push(result);
+    Ok(segments)
+}
+
+/// IO-region addresses captured from the loaded ELF before its memory is
+/// moved into the execution loop.
+#[derive(Clone, Copy)]
+struct IoAddrs {
+    input_start: u32,
+    input_end: u32,
+    halt_flag: u32,
+    output_len: u32,
+    output_data: u32,
+    output_end: u32,
+}
+
+/// Assemble a [`RunResult`] for a finished segment, reading the current
+/// output region from memory.
+#[allow(clippy::too_many_arguments)]
+fn make_run_result(
+    tracer: Tracer,
+    initial_pc: u32,
+    final_pc: u32,
+    initial_regs: [u32; 32],
+    final_regs: [u32; 32],
+    input: &[u8],
+    mem: &Memory,
+    io_addrs: IoAddrs,
+) -> RunResult {
+    let output_len = mem.read_u32(io_addrs.output_len);
+    let output = io::read_output(
+        mem,
+        io_addrs.output_len,
+        io_addrs.output_data,
+        io_addrs.output_end,
+    );
+    let output_words =
+        collect_output_words(mem, io_addrs.output_len, io_addrs.output_data, output_len);
+    RunResult {
+        cycles: tracer.clock as u64,
+        initial_pc,
+        final_pc,
+        initial_regs,
+        final_regs,
+        output,
+        input: input.to_vec(),
+        input_start: io_addrs.input_start,
+        input_end: io_addrs.input_end,
+        output_len,
+        output_len_addr: io_addrs.output_len,
+        output_data_addr: io_addrs.output_data,
+        output_end_addr: io_addrs.output_end,
+        output_words,
+        tracer,
     }
 }
 

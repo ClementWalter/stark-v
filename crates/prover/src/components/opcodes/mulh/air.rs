@@ -341,11 +341,11 @@ impl FrameworkEval for Eval {
             cols.clock.clone() - cols.rd_clock_prev.clone()
         );
 
-        // Keep carry-related RC_8_8 entries as singleton batches to avoid multiplying
-        // quadratic carry denominators with other denominators in the same batch.
-        eval.finalize_logup_batched(&vec![
-            0, 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 8, 4, 9, 9, 10, 10, 11, 11,
-        ]);
+        // The carry range-check denominators are quadratic in the trace, so
+        // they cannot share a batch with any other denominator without
+        // breaching the constraint degree bound; the framework only supports
+        // uniform batch sizes, hence batch size 1 for the whole component.
+        eval.finalize_logup_batched(1);
         eval
     }
 }

@@ -17,6 +17,7 @@
 //!   composition evaluation from sampled mask values, which the verifier
 //!   AIR's witness generator replays.
 
+pub mod segments;
 pub mod transcript;
 
 use stwo_constraint_framework::expr::ExprEvaluator;
@@ -64,10 +65,10 @@ mod tests {
     }
 
     #[test]
-    fn test_lui_logup_fracs_extracted() {
+    fn test_lui_logup_batches_become_constraints() {
         let exprs = constraint_exprs(&lui_eval());
-        // lui adds 7 LogUp entries (see its air.rs relation entries)
-        assert_eq!(exprs.logup.fracs.len(), 7);
+        // 1 enabler booleanity + ceil(7 LogUp entries / 2) = 4 batch constraints
+        assert_eq!(exprs.constraints.len(), 5);
     }
 
     #[test]

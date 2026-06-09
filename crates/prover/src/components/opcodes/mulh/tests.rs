@@ -44,6 +44,6 @@ fn test_mulh_constraint_degree_bounds() {
     };
     let expr_eval = eval.evaluate(ExprEvaluator::new());
     let degrees = expr_eval.constraint_degree_bounds();
-    assert_eq!(degrees.len(), 20);
+    assert_eq!(degrees.len(), 28);
     eprintln!("mulh constraint degrees: {degrees:?}");
 }

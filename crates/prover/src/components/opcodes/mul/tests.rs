@@ -42,7 +42,7 @@ fn test_mul_constraint_degree_bounds() {
     };
     let expr_eval = eval.evaluate(ExprEvaluator::new());
     let degrees = expr_eval.constraint_degree_bounds();
-    assert_eq!(degrees.len(), 11);
+    assert_eq!(degrees.len(), 17);
     eprintln!("mul constraint degrees: {degrees:?}");
 }
 

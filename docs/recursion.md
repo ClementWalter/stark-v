@@ -73,7 +73,17 @@ shape), so aggregation composes up the tree.
 - **M2 — segmentation**: runner support for stopping at N steps with entry/exit
   boundary public data; prove/verify a 2-segment run on the host (no recursion
   yet). Boundary soundness comes from the existing `registers_state` /
-  `memory_access` relations.
+  `memory_access` relations plus Merkle-root chaining:
+  `final_rw_root(k) == initial_rw_root(k + 1)`. Chaining works because the
+  partial Merkle trees use zero-valued default leaves, so an address first
+  written in segment `k + 1` (present in its initial tree as 0) hashes
+  identically to its absence from segment `k`'s final tree. IO special-casing is
+  gated by `runner::SegmentRole`: inputs are LogUp-anchored in the first segment
+  only, public outputs consumed in the last only; middle segments treat the IO
+  regions as ordinary RW memory. Constraint: a guest taking input must access
+  every input word within the first segment (unconsumed input emissions make
+  segment 1's LogUp sum non-zero — verification fails safe, but the run is
+  unprovable).
 - **M3 — QM31 arithmetic components**: verifier-AIR building blocks for QM31
   mul/inverse, point operations, and FRI folding steps.
 - **M4 — Blake2s channel + Merkle components**: hash sub-AIR and decommitment

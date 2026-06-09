@@ -182,14 +182,6 @@ pub fn gen_interaction_trace(
     // 2. registers_state: -enabler * (pc, clock)
     let registers_read_denom = combine!(relations.registers_state, [cols.pc, cols.clock]);
 
-    write_pair!(
-        &neg_enabler,
-        &program_denom,
-        &neg_enabler,
-        &registers_read_denom,
-        logup_gen
-    );
-
     // 3. registers_state: +enabler * (pc + 4, clock + 1)
     let registers_write_denom = combine!(relations.registers_state, [&pc_plus_4, &clock_plus_1]);
 
@@ -205,14 +197,6 @@ pub fn gen_interaction_trace(
             cols.rs1_prev_2,
             cols.rs1_prev_3
         ]
-    );
-
-    write_pair!(
-        &pos_enabler,
-        &registers_write_denom,
-        &neg_enabler,
-        &rs1_read_denom,
-        logup_gen
     );
 
     // 5. memory_access: +enabler * (0, rs1_addr, clock, rs1_next_0..3)
@@ -231,14 +215,6 @@ pub fn gen_interaction_trace(
 
     // 6. range_check_20: -1 * (clock - rs1_clock_prev)
     let rc_20_rs1_denom = combine!(relations.range_check_20, [&clock_minus_rs1_clock_prev]);
-
-    write_pair!(
-        &pos_enabler,
-        &rs1_write_denom,
-        &neg_enabler,
-        &rc_20_rs1_denom,
-        logup_gen
-    );
 
     // 7. memory_access: -enabler * (0, rs2_addr, rs2_clock_prev, rs2_prev_0..3)
     let rs2_read_denom = combine!(
@@ -268,14 +244,6 @@ pub fn gen_interaction_trace(
         ]
     );
 
-    write_pair!(
-        &neg_enabler,
-        &rs2_read_denom,
-        &pos_enabler,
-        &rs2_write_denom,
-        logup_gen
-    );
-
     // 9. range_check_20: -1 * (clock - rs2_clock_prev)
     let rc_20_rs2_denom = combine!(relations.range_check_20, [&clock_minus_rs2_clock_prev]);
 
@@ -295,18 +263,6 @@ pub fn gen_interaction_trace(
     let rc_8_8_rd_low_0_denom =
         combine!(relations.range_check_8_8, [cols.rd_high_0, cols.rd_high_1]);
 
-    write_pair!(
-        &neg_enabler,
-        &rc_20_rs2_denom,
-        &neg_enabler,
-        &rc_8_8_rd_low_0_denom,
-        logup_gen
-    );
-    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_0_denom);
-    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_1_denom);
-    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_2_denom);
-    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_3_denom);
-
     // 15. range_check_8_8: -1 * (rd_low[2], rd_low[3])
     let rc_8_8_rd_low_1_denom =
         combine!(relations.range_check_8_8, [cols.rd_high_2, cols.rd_high_3]);
@@ -314,14 +270,6 @@ pub fn gen_interaction_trace(
     // 16. range_check_8_8: -1 * (rd_high[0], rd_high[1])
     let rc_8_8_rd_high_0_denom =
         combine!(relations.range_check_8_8, [cols.rd_next_0, cols.rd_next_1]);
-
-    write_pair!(
-        &neg_enabler,
-        &rc_8_8_rd_low_1_denom,
-        &neg_enabler,
-        &rc_8_8_rd_high_0_denom,
-        logup_gen
-    );
 
     // 17. range_check_8_8: -1 * (rd_high[2], rd_high[3])
     let rc_8_8_rd_high_1_denom =
@@ -358,20 +306,31 @@ pub fn gen_interaction_trace(
     // 20. range_check_20: -1 * (clock - rd_clock_prev)
     let rc_20_rd_denom = combine!(relations.range_check_20, [&clock_minus_rd_clock_prev]);
 
-    write_pair!(
-        &neg_enabler,
-        &rc_8_8_rd_high_1_denom,
-        &neg_enabler,
-        &rd_read_denom,
-        logup_gen
-    );
-    write_pair!(
-        &pos_enabler,
-        &rd_write_denom,
-        &neg_enabler,
-        &rc_20_rd_denom,
-        logup_gen
-    );
+    // One interaction column per LogUp entry, in AIR fraction order. The
+    // carry range-check denominators are quadratic in the trace, so they
+    // cannot share a batch with any other denominator without breaching the
+    // constraint degree bound; the framework only supports uniform batch
+    // sizes, hence batch size 1 for the whole component (see air.rs).
+    write_single_batch(&mut logup_gen, &neg_enabler, &program_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &registers_read_denom);
+    write_single_batch(&mut logup_gen, &pos_enabler, &registers_write_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rs1_read_denom);
+    write_single_batch(&mut logup_gen, &pos_enabler, &rs1_write_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_20_rs1_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rs2_read_denom);
+    write_single_batch(&mut logup_gen, &pos_enabler, &rs2_write_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_20_rs2_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_0_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_1_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_2_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_carry_3_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_rd_low_0_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_rd_low_1_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_rd_high_0_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_8_8_rd_high_1_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rd_read_denom);
+    write_single_batch(&mut logup_gen, &pos_enabler, &rd_write_denom);
+    write_single_batch(&mut logup_gen, &neg_enabler, &rc_20_rd_denom);
 
     logup_gen.finalize_last()
 }

@@ -239,11 +239,46 @@ pub fn build_partial_merkle_tree(
     (nodes, root)
 }
 
+/// Position of a segment within a (possibly segmented) execution.
+///
+/// Input words are anchored via public-data LogUp emission only in the first
+/// segment, and public outputs are consumed via LogUp only in the last; in
+/// every other segment the IO regions are ordinary read-write memory anchored
+/// by the Merkle roots, so consecutive segments chain on
+/// `final_rw_root(k) == initial_rw_root(k + 1)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentRole {
+    pub is_first: bool,
+    pub is_last: bool,
+}
+
+impl SegmentRole {
+    /// A non-segmented execution: single segment, both first and last.
+    pub fn single() -> Self {
+        Self {
+            is_first: true,
+            is_last: true,
+        }
+    }
+}
+
 impl Tracer {
+    /// Single-segment convenience used by unit tests; production paths go
+    /// through `finalize_commitments_with_role`.
+    #[cfg(test)]
     pub(crate) fn finalize_commitments(
         &mut self,
         memory: &Memory,
         layout: &MemoryLayout,
+    ) -> Result<(), CommitmentError> {
+        self.finalize_commitments_with_role(memory, layout, SegmentRole::single())
+    }
+
+    pub(crate) fn finalize_commitments_with_role(
+        &mut self,
+        memory: &Memory,
+        layout: &MemoryLayout,
+        role: SegmentRole,
     ) -> Result<(), CommitmentError> {
         // Create trace tables
         self.program = ProgramTable::new();
@@ -280,8 +315,8 @@ impl Tracer {
         }
 
         for addr in mem_addrs {
-            let is_input = layout.is_input_addr(addr);
-            let is_public_output = layout.is_public_output_addr(addr, output_len);
+            let is_input = role.is_first && layout.is_input_addr(addr);
+            let is_public_output = role.is_last && layout.is_public_output_addr(addr, output_len);
             let accessed_clock = self.mem_clock.get(&addr).copied().unwrap_or(0);
             let accessed = accessed_clock > 0;
             let include_initial = !is_input;
@@ -323,8 +358,8 @@ impl Tracer {
 
         // Create memory trace
         for (addr, initial_word, final_word, final_clock) in mem_entries {
-            let is_input = layout.is_input_addr(addr);
-            let is_public_output = layout.is_public_output_addr(addr, output_len);
+            let is_input = role.is_first && layout.is_input_addr(addr);
+            let is_public_output = role.is_last && layout.is_public_output_addr(addr, output_len);
             let include_initial = !is_input;
             let include_final = if is_input {
                 final_clock > 0
