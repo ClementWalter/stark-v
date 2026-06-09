@@ -1,108 +1,97 @@
-# 2-to-1 Recursion Design
+# 2-to-1 Recursion Design (native stwo verifier AIR)
 
 Goal: prove unlimited program lengths by splitting execution into fixed-size
-segments (e.g. 100k or 1M steps), proving each segment independently, then
+segments (e.g. 100k or 1M steps, configurable), proving each segment, then
 aggregating proofs pairwise (2-to-1) up a binary tree until a single root proof
 remains.
+
+The aggregator is **not** a RISC-V guest re-executing a Rust verifier. It is a
+**native stwo AIR**: a set of stwo components whose constraints assert "these
+two stark-v proofs verify, and their boundaries chain". The recursion prover
+takes two stwo proofs as witness input and produces a stwo proof of their
+verification.
+
+Working in our favor: the inner and outer proofs share the same field
+(M31/QM31), so no field emulation is needed anywhere — channel, FRI, and
+composition arithmetic are all native.
 
 ## Single source of definition
 
 The hard requirement: **no copy of any constraint, ever**. Editing
-`define_trace_tables!` must flow to the recursive verifier automatically.
+`define_trace_tables!` must flow through to the recursive verifier.
 
-This already holds structurally, through two mechanisms:
+The mechanism is `EvalAtRow` genericity, and it is already load-bearing in stwo:
 
-1. **The macro DSL** (`stwo_macros::define_trace_tables!`): columns, derived
-   columns, and constraints are declared once per table. The macro generates
-   generic methods on `*Columns<T>` used by trace generation (`T = PackedM31`),
-   AIR evaluation (`T = E::F`), and any future evaluator.
+- The prover instantiates each component's
+  `FrameworkEval::evaluate<E: EvalAtRow>` with a SIMD trace evaluator.
+- The verifier instantiates the same function with `PointEvaluator`
+  (`constraint-framework/src/point.rs`) to evaluate the composition polynomial
+  at the OODS point from sampled mask values.
+- `ExprEvaluator` (`constraint-framework/src/expr/`) instantiates it with
+  `F = BaseExpr, EF = ExtExpr`, turning the constraint set into expression
+  _data_ — including formal LogUp parameters — without any transcription.
 
-2. **Stwo's generic `EvalAtRow`**: each component's
-   `FrameworkEval::evaluate<E: EvalAtRow>` is the _single_ constraint
-   implementation. The prover instantiates it with a SIMD trace evaluator;
-   `stwo::core::verifier::verify` instantiates the same function with a point
-   evaluator at the OODS point. A verifier embedded in a guest program therefore
-   links the exact same `prover` crate AIR modules — no transcription, no
-   re-derivation.
+The verifier AIR uses the same seam: its composition-check sub-circuit is driven
+by the inner components' `evaluate()` — either executed at witness generation
+time with `PointEvaluator`-style QM31 values, or instantiated with an evaluator
+whose field type is the verifier AIR's own cell/variable type. Either way, a
+macro edit changes the inner AIR and the recursive verifier in the same
+compilation, with zero copies.
 
-So the recursion verifier is not a re-implementation of the AIR: it is
-`prover::verifier::verify_rv32im` (or its no_std core) compiled to the guest
-target, fed two child proofs.
+## What the verifier AIR must assert
 
-## Architecture
+Mirroring `prover::verifier::verify_rv32im` + `stwo::core::verifier::verify`,
+for each of the two child proofs:
 
-```text
-run(2N steps) ──► segment_0 (N steps) ──► proof_0 ─┐
-                                                   ├─► aggregate(proof_0, proof_1) ──► proof_root
-              └─► segment_1 (N steps) ──► proof_1 ─┘
-```
+1. **Fiat-Shamir channel replay** (Blake2s): mix public data, commitments,
+   claims; draw `Relations`, OODS point, FRI alphas, query positions. Requires a
+   Blake2s hash component (stwo has a Blake AIR example as reference).
+2. **Proof of work** checks (interaction PoW + FRI PoW).
+3. **LogUp sum check**: total claimed sum + public data logup sum = 0. The
+   public-data logup terms reuse the same `Relations::combine` code.
+4. **Composition check at OODS**: recompute the composition polynomial value
+   from the sampled mask values via the inner components' `evaluate()` — the
+   single-source seam described above.
+5. **Merkle decommitments** (Blake2s) of the queried positions against the
+   commitments for every trace tree.
+6. **FRI verification**: fold query evaluations through all FRI layers and check
+   consistency with the last-layer polynomial.
+7. **Boundary chaining** (aggregation logic): `child_0.exit == child_1.entry` on
+   `(pc, clock, memory/register state)` public data, and exposure of
+   `(child_0.entry, child_1.exit)` as the aggregate's public data.
 
-- **Segmentation**: the runner stops every N steps and emits a segment boundary:
-  `(pc, clock, registers commitment, memory commitment)`. Each segment proof
-  exposes its entry and exit boundary as public data. The existing
-  `registers_state` and `memory_access` LogUp relations already make the trace
-  sound relative to those boundaries.
-- **Aggregation guest**: a RISC-V guest program that
-  1. reads two child proofs (+ their public data) from stdin,
-  2. runs the stwo verifier on each (same `Components`, same `Relations`, same
-     `evaluate` code as the host verifier),
-  3. checks the boundary chain: `segment_0.exit == segment_1.entry`,
-  4. commits the combined public data `(segment_0.entry, segment_1.exit)`.
-- **Recursion step**: stark-v proves the aggregation guest's execution. The
-  output proof has the same shape as a segment proof, so aggregation composes up
-  the tree to arbitrary depth.
+The output proof must be verifiable by the same verifier AIR (fixed-point proof
+shape), so aggregation composes up the tree.
 
-## Feasibility findings (verified 2026-06-10)
+## Milestones
 
-- Guest target is `riscv32im-unknown-none-elf`: no_std, no atomic instructions.
-  Guests already have `alloc` via a bump allocator
-  (`guest/guest-bin/src/heap.rs`), which the verifier needs (it allocates
-  freely).
-- The stwo verifier is no_std by design: prover code is behind the `prover`
-  feature, and the `external/stwo/ensure-verifier-no_std/` CI gate compiles the
-  verifier + constraint-framework with `default-features = false` (currently
-  exercised for `wasm32-unknown-unknown`).
-- `cargo check -p stwo --no-default-features --target riscv32im-unknown-none-elf`
-  fails today. Blockers, in dependency order:
-  1. `dashmap` is an unconditional stwo dependency but is used only in
-     prover-side code (`prover/mempool.rs`, `prover/pcs/`,
-     `prover/air/component_prover.rs`). It must become `optional = true`,
-     enabled by the `prover` feature (fork change).
-  2. `tracing-subscriber` is unconditional but used only in `src/tracing/`
-     (gated by the `tracing` feature) — same treatment.
-  3. `once_cell` (via `tracing-core` and `dashmap`) does not build for targets
-     without atomics; with the deps above gated and `tracing` built with
-     `default-features = false`, it drops out or needs the
-     `critical-section`/`portable-atomic` route.
-  4. The stark-v root workspace owns feature resolution for `external/stwo`
-     crates (they are path members), so workspace-level `tracing = "0.1"` (std
-     default) must not leak into the guest build — the aggregation guest builds
-     in its own workspace (like `guest/guest-bin`, which is `exclude`d),
-     avoiding this.
+- **M1 — constraints as data (seam validation)**: expose the full stark-v
+  constraint system programmatically through `ExprEvaluator`/`PointEvaluator`
+  from the existing components; test that composition replay from a real proof's
+  sampled values matches the verifier. This validates the no-copy seam the
+  verifier AIR builds on.
+- **M2 — segmentation**: runner support for stopping at N steps with entry/exit
+  boundary public data; prove/verify a 2-segment run on the host (no recursion
+  yet). Boundary soundness comes from the existing `registers_state` /
+  `memory_access` relations.
+- **M3 — QM31 arithmetic components**: verifier-AIR building blocks for QM31
+  mul/inverse, point operations, and FRI folding steps.
+- **M4 — Blake2s channel + Merkle components**: hash sub-AIR and decommitment
+  paths; channel state replay as a trace.
+- **M5 — composition-check component**: wire the inner `evaluate()` into the
+  verifier AIR (witness side via `PointEvaluator` values; constraint side via
+  the generic seam).
+- **M6 — full verifier AIR + 2-to-1 aggregation**: assemble 1–7, fixed-point
+  proof shape, SDK wiring for the aggregation tree.
 
-## Work plan
+## Notes
 
-1. **Verifier-core extraction** — split the `prover` crate so the AIR side
-   (component `Eval`s, `Claim`, `Relations`, `Components`, `verify_rv32im`)
-   compiles without the witness side (`witness.rs`, SimdBackend, rayon). The
-   per-component `air.rs` / `witness.rs` split already matches this boundary; it
-   becomes a cargo feature (`witness`, on by default).
-2. **no_std-ready codegen** — `define_trace_tables!` output for `prover_columns`
-   uses `core::fmt`/`alloc::vec` instead of `std`, so the generated columns
-   compile in the guest. Single source preserved: only the macro changes.
-3. **Fork gating** — make `dashmap`/`tracing-subscriber` optional in the stwo
-   fork (build-level change only; verifier logic untouched). Gate:
-   `cargo check --no-default-features --target riscv32im-unknown-none-elf` green
-   for `stwo` + `stwo-constraint-framework` + the AIR side of `prover`.
-4. **Segmentation** — runner support for stopping at N steps with boundary
-   export, and public-data plumbing of entry/exit boundaries; prove/verify a
-   2-segment run on the host first (no recursion yet).
-5. **Aggregation guest** — guest program wrapping the no_std verifier; prove it;
-   wire the 2-to-1 tree in the SDK.
-
-Remaining single-source gap (orthogonal to recursion, since the verifier reuses
-`evaluate()`): LogUp relation entries are still written twice — once in `air.rs`
-(`add_to_relation!`) and once in `witness.rs`
-(`combine!`/`write_pair!`/`register_multiplicities`). Extending the macro with a
-per-table `relations:` block would close it and shrink each component to its
-`mod.rs`.
+- stwo's `examples/` contain Blake and Poseidon AIRs to draw on for M4; a
+  Poseidon-based channel variant may be cheaper inside the AIR than Blake2s and
+  is worth evaluating early (it changes the channel of the _inner_ proofs, a
+  config choice, not a constraint copy).
+- The remaining single-source gap inside stark-v itself: LogUp relation entries
+  are written in both `air.rs` (`add_to_relation!`) and `witness.rs`
+  (`combine!`/`write_pair!`). Extending `define_trace_tables!` with a
+  `relations:` block closes it; the verifier AIR is unaffected either way since
+  it consumes `evaluate()`.

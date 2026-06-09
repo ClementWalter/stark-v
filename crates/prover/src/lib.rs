@@ -71,6 +71,7 @@ pub mod errors;
 pub mod preprocessed;
 pub mod prover;
 pub mod public_data;
+pub mod recursion;
 pub mod relations;
 pub mod verifier;
 

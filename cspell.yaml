@@ -23,6 +23,8 @@ words:
   - codegen
   - csrrw
   - dashmap
+  - decommitment
+  - decommitments
   - divu
   - docstrings
   - doctest
@@ -37,8 +39,10 @@ words:
   - Fenzi
   - filesz
   - fondeur
+  - fracs
   - funct
   - futex
+  - genericity
   - globl
   - groth
   - halfword
