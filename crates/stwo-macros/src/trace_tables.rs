@@ -1420,6 +1420,35 @@ fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
     }
 }
 
+/// Proc-macro to define standalone component tables: same table syntax as
+/// `define_trace_tables!` (including `derived:` and `constraints:` blocks)
+/// but without the zkVM-specific `Tracer` struct and `trace_op!` macro, for
+/// AIRs that are not opcode traces (e.g. the recursion verifier components).
+pub fn define_component_tables(input: TokenStream) -> TokenStream {
+    let def = parse_macro_input!(input as TraceTablesDef);
+
+    let tables: Vec<_> = def.opcodes.iter().map(generate_table).collect();
+    let prover_columns: Vec<_> = def
+        .opcodes
+        .iter()
+        .map(|op| generate_prover_columns(op).unwrap_or_else(|e| e.to_compile_error()))
+        .collect();
+
+    let output = quote! {
+        #(#tables)*
+
+        pub mod prover_columns {
+            // Import EvalAtRow for from_eval method
+            #[allow(unused_imports)]
+            use stwo_constraint_framework::EvalAtRow;
+
+            #(#prover_columns)*
+        }
+    };
+
+    output.into()
+}
+
 /// Proc-macro to define columnar trace tables.
 ///
 /// # Example

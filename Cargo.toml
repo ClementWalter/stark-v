@@ -4,6 +4,7 @@ members = [
   "crates/bench-cli",
   "crates/debug-utils",
   "crates/prover",
+  "crates/recursion",
   "crates/runner",
   "crates/stwo-macros",
   "crates/sdk",
@@ -83,6 +84,7 @@ syn = { version = "2.0", features = ["full", "visit-mut"] }
 debug-utils = { path = "crates/debug-utils" }
 guest-lib = { path = "guest/guest-lib" }
 prover = { path = "crates/prover" }
+recursion = { path = "crates/recursion" }
 runner = { path = "crates/runner" }
 stwo-macros = { path = "crates/stwo-macros" }
 simd = { path = "crates/simd" }

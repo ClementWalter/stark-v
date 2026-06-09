@@ -86,6 +86,17 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     trace_tables::define_trace_tables(input)
 }
 
+/// Generate standalone component tables: same syntax and codegen as
+/// `define_trace_tables!` (tables, `prover_columns`, derived columns,
+/// constraints) but without the zkVM `Tracer` and `trace_op!` macro.
+///
+/// For AIRs that are not opcode traces, such as the recursion verifier
+/// components (see docs/recursion.md).
+#[proc_macro]
+pub fn define_component_tables(input: TokenStream) -> TokenStream {
+    trace_tables::define_component_tables(input)
+}
+
 // =============================================================================
 // Helper Macros
 // =============================================================================

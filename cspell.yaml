@@ -110,6 +110,7 @@ words:
   - revm
   - risc0
   - riscv
+  - rngs
   - rodata
   - rstest
   - rustc
@@ -119,6 +120,7 @@ words:
   - Sanso
   - sdiv
   - secp
+  - Seedable
   - serde
   - shamir
   - shamt

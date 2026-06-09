@@ -84,8 +84,12 @@ shape), so aggregation composes up the tree.
   every input word within the first segment (unconsumed input emissions make
   segment 1's LogUp sum non-zero — verification fails safe, but the run is
   unprovable).
-- **M3 — QM31 arithmetic components**: verifier-AIR building blocks for QM31
-  mul/inverse, point operations, and FRI folding steps.
+- **M3 — QM31 arithmetic components** (started): verifier-AIR building blocks
+  for QM31 mul/inverse, point operations, and FRI folding steps. Lives in
+  `crates/recursion`, built on `define_component_tables!` (the trace-table DSL
+  without the zkVM `Tracer`), so recursion constraints share the single-source
+  pipeline. First component: `qm31_mul` (c = a·b over the extension tower, 4
+  degree-2 limb constraints, tested against stwo's field arithmetic).
 - **M4 — Blake2s channel + Merkle components**: hash sub-AIR and decommitment
   paths; channel state replay as a trace.
 - **M5 — composition-check component**: wire the inner `evaluate()` into the
