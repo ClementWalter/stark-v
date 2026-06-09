@@ -19,6 +19,7 @@ words:
   - circom
   - clément
   - clippy
+  - coeff
   - condvar
   - codegen
   - csrrw

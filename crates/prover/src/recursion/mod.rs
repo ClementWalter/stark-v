@@ -17,6 +17,8 @@
 //!   composition evaluation from sampled mask values, which the verifier
 //!   AIR's witness generator replays.
 
+pub mod transcript;
+
 use stwo_constraint_framework::expr::ExprEvaluator;
 use stwo_constraint_framework::{FrameworkEval, InfoEvaluator};
 
