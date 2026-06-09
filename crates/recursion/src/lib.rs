@@ -6,6 +6,7 @@
 //! single source of definition for the whole recursion stack.
 #![allow(clippy::too_many_arguments)] // generated table push takes one arg per column
 
+pub mod qm31_inv;
 pub mod qm31_mul;
 
 use stwo_macros::define_component_tables;
@@ -39,6 +40,28 @@ define_component_tables! {
             // Im(second): Im(AD) + Im(BC)
             |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_3|
                 a_0 * b_3 + a_1 * b_2 + a_2 * b_1 + a_3 * b_0 - c_3,
+        },
+    },
+
+    // QM31 inverse: inv = a^-1, asserted as a * inv = 1 with the same limb
+    // expansion as qm31_mul. The right-hand side is `enabler` for limb 0 so
+    // all-zero padding rows satisfy the constraints, and enabled rows force
+    // `a` to be invertible.
+    qm31_inv: {
+        a_0, a_1, a_2, a_3,
+        inv_0, inv_1, inv_2, inv_3,
+        constraints: {
+            |enabler, a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
+                a_0 * inv_0 - a_1 * inv_1
+                + 2 * (a_2 * inv_2 - a_3 * inv_3) - (a_2 * inv_3 + a_3 * inv_2)
+                - enabler,
+            |a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
+                a_0 * inv_1 + a_1 * inv_0
+                + (a_2 * inv_2 - a_3 * inv_3) + 2 * (a_2 * inv_3 + a_3 * inv_2),
+            |a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
+                a_0 * inv_2 - a_1 * inv_3 + a_2 * inv_0 - a_3 * inv_1,
+            |a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
+                a_0 * inv_3 + a_1 * inv_2 + a_2 * inv_1 + a_3 * inv_0,
         },
     },
 }
