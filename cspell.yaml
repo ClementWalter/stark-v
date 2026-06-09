@@ -20,7 +20,9 @@ words:
   - clément
   - clippy
   - condvar
+  - codegen
   - csrrw
+  - dashmap
   - divu
   - docstrings
   - doctest
@@ -88,6 +90,7 @@ words:
   - noreturn
   - nostack
   - objdump
+  - OODS
   - openvm
   - pairable
   - popcount
