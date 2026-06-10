@@ -36,10 +36,11 @@ impl Parse for DerivedDef {
     }
 }
 
-/// One LogUp lookup entry:
-/// `relation_name: multiplicity_expr => [elem_expr, ...]`,
-/// optionally prefixed with `preprocessed` when the relation is a
-/// preprocessed table whose consumption multiplicities must be registered.
+/// One LogUp lookup entry, written exactly like the spec:
+/// `multiplicity * relation_name(elem, ...)` (or a bare
+/// `relation_name(elem, ...)` for multiplicity 1), optionally prefixed with
+/// `preprocessed` when the relation is a preprocessed table whose
+/// consumption multiplicities must be registered.
 ///
 /// Multiplicity and element expressions use the derived-expression language
 /// with every trace column and derived column in scope (the tuple itself
@@ -49,6 +50,51 @@ struct LookupEntry {
     relation: Ident,
     multiplicity: Expr,
     values: Vec<Expr>,
+}
+
+/// Split a lookup entry expression into (multiplicity, relation, tuple):
+/// the relation call is the rightmost factor; everything multiplying it
+/// (with its sign) is the multiplicity.
+fn decompose_lookup_entry(expr: Expr) -> syn::Result<(Expr, Ident, Vec<Expr>)> {
+    match expr {
+        Expr::Call(call) => {
+            let Expr::Path(func) = call.func.as_ref() else {
+                return Err(syn::Error::new_spanned(
+                    call.func,
+                    "lookup entries call a relation by name",
+                ));
+            };
+            let relation = func.path.require_ident()?.clone();
+            Ok((
+                syn::parse_quote!(1),
+                relation,
+                call.args.into_iter().collect(),
+            ))
+        }
+        Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
+            let (multiplicity, relation, values) = decompose_lookup_entry(*unary.expr)?;
+            Ok((syn::parse_quote!(-(#multiplicity)), relation, values))
+        }
+        Expr::Binary(binary) if matches!(binary.op, syn::BinOp::Mul(_)) => {
+            let left = *binary.left;
+            let (multiplicity, relation, values) = decompose_lookup_entry(*binary.right)?;
+            let multiplicity = if matches!(
+                &multiplicity,
+                Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Int(int) if int.base10_digits() == "1")
+            ) {
+                left
+            } else {
+                syn::parse_quote!((#left) * (#multiplicity))
+            };
+            Ok((multiplicity, relation, values))
+        }
+        Expr::Paren(paren) => decompose_lookup_entry(*paren.expr),
+        Expr::Group(group) => decompose_lookup_entry(*group.expr),
+        other => Err(syn::Error::new_spanned(
+            other,
+            "lookup entries are written `multiplicity * relation(values, ...)`",
+        )),
+    }
 }
 
 /// The `lookups:` block of a table: LogUp entries in AIR/witness order plus
@@ -71,8 +117,15 @@ impl Default for LookupsDef {
 fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
     let mut lookups = LookupsDef::default();
     while !input.is_empty() {
-        let first: Ident = input.parse()?;
-        if first == "batch" {
+        // `batch: N` is the only `key: value` item; entries are expressions.
+        if input.peek(Ident) && input.peek2(Token![:]) {
+            let key: Ident = input.parse()?;
+            if key != "batch" {
+                return Err(syn::Error::new(
+                    key.span(),
+                    "expected `batch: N` or a `multiplicity * relation(...)` entry",
+                ));
+            }
             input.parse::<Token![:]>()?;
             let lit: syn::LitInt = input.parse()?;
             lookups.batch = lit.base10_parse()?;
@@ -80,23 +133,20 @@ fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
                 return Err(syn::Error::new(lit.span(), "batch size must be positive"));
             }
         } else {
-            let (preprocessed, relation) = if first == "preprocessed" {
-                (true, input.parse::<Ident>()?)
-            } else {
-                (false, first)
-            };
-            input.parse::<Token![:]>()?;
-            let multiplicity: Expr = input.parse()?;
-            input.parse::<Token![=>]>()?;
-            let content;
-            bracketed!(content in input);
-            let values: Punctuated<Expr, Token![,]> =
-                content.parse_terminated(Expr::parse, Token![,])?;
+            let preprocessed = input
+                .cursor()
+                .ident()
+                .is_some_and(|(ident, _)| ident == "preprocessed");
+            if preprocessed {
+                input.parse::<Ident>()?;
+            }
+            let entry: Expr = input.parse()?;
+            let (multiplicity, relation, values) = decompose_lookup_entry(entry)?;
             lookups.entries.push(LookupEntry {
                 preprocessed,
                 relation,
                 multiplicity,
-                values: values.into_iter().collect(),
+                values,
             });
         }
         if input.peek(Token![,]) {
