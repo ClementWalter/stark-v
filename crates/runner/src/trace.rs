@@ -789,7 +789,30 @@ stwo_macros::define_trace_tables! {
     // 14. MUL - airs.md Section 14
     // ==========================================================================
     mul: {
-        clock, pc, rd, rs1, rs2
+        clock, pc, rd, rs1, rs2,
+        derived: {
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            // Schoolbook carry chain of rd = (rs1 * rs2) mod 2^32 over 8-bit
+            // limbs (airs.md 14.2); each carry is range-checked, not boolean
+            carry_0: |rs1_next_0, rs2_next_0, rd_next_0|
+                (rs1_next_0 * rs2_next_0 - rd_next_0) * inv(pow2(8)),
+            carry_1: |carry_0, rs1_next_1, rs2_next_0, rs1_next_0, rs2_next_1, rd_next_1|
+                (carry_0 + rs1_next_1 * rs2_next_0 + rs1_next_0 * rs2_next_1 - rd_next_1)
+                    * inv(pow2(8)),
+            carry_2: |carry_1, rs1_next_2, rs2_next_0, rs1_next_1, rs2_next_1, rs1_next_0,
+                rs2_next_2, rd_next_2|
+                (carry_1 + rs1_next_2 * rs2_next_0 + rs1_next_1 * rs2_next_1
+                    + rs1_next_0 * rs2_next_2 - rd_next_2) * inv(pow2(8)),
+            carry_3: |carry_2, rs1_next_3, rs2_next_0, rs1_next_2, rs2_next_1, rs1_next_1,
+                rs2_next_2, rs1_next_0, rs2_next_3, rd_next_3|
+                (carry_2 + rs1_next_3 * rs2_next_0 + rs1_next_2 * rs2_next_1
+                    + rs1_next_1 * rs2_next_2 + rs1_next_0 * rs2_next_3 - rd_next_3)
+                    * inv(pow2(8)),
+        },
     },
 
     // ==========================================================================
@@ -799,7 +822,48 @@ stwo_macros::define_trace_tables! {
         clock, pc, rd, rs1, rs2,
         rd_high_0, rd_high_1, rd_high_2, rd_high_3,
         rs1_sign, rs2_sign,
-        opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag
+        opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag,
+        derived: {
+            expected_opcode_id: |opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag|
+                opcode_mulh_flag * constant(crate::decode::Opcode::Mulh as u32)
+                + opcode_mulhsu_flag * constant(crate::decode::Opcode::Mulhsu as u32)
+                + opcode_mulhu_flag * constant(crate::decode::Opcode::Mulhu as u32),
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            // Sign-extended 64-bit operands: top limbs gain the sign bit,
+            // limbs 4..7 are the sign fill (airs.md 15.2)
+            rs1_top: |rs1_next_3, rs1_sign| rs1_next_3 + rs1_sign * pow2(7),
+            rs2_top: |rs2_next_3, rs2_sign| rs2_next_3 + rs2_sign * pow2(7),
+            rs1_fill: |rs1_sign| rs1_sign * (pow2(8) - 1),
+            rs2_fill: |rs2_sign| rs2_sign * (pow2(8) - 1),
+            carry_0: |rd_high_0, rs1_next_0, rs2_next_0|
+                (rs1_next_0 * rs2_next_0 - rd_high_0) * inv(pow2(8)),
+            carry_1: |carry_0, rd_high_1, rs1_next_0, rs1_next_1, rs2_next_0, rs2_next_1|
+                (carry_0 + rs1_next_0 * rs2_next_1 + rs1_next_1 * rs2_next_0 - rd_high_1) * inv(pow2(8)),
+            carry_2: |carry_1, rd_high_2, rs1_next_0, rs1_next_1, rs1_next_2, rs2_next_0, rs2_next_1, rs2_next_2|
+                (carry_1 + rs1_next_0 * rs2_next_2 + rs1_next_1 * rs2_next_1 + rs1_next_2 * rs2_next_0 - rd_high_2) * inv(pow2(8)),
+            carry_3: |carry_2, rd_high_3, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
+                (carry_2 + rs1_next_0 * rs2_top + rs1_next_1 * rs2_next_2 + rs1_next_2 * rs2_next_1 + rs1_top * rs2_next_0 - rd_high_3) * inv(pow2(8)),
+            carry_4: |carry_3, rd_next_0, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
+                (carry_3 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_top + rs1_next_2 * rs2_next_2 + rs1_top * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_0) * inv(pow2(8)),
+            carry_5: |carry_4, rd_next_1, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
+                (carry_4 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_top + rs1_top * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_1) * inv(pow2(8)),
+            carry_6: |carry_5, rd_next_2, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
+                (carry_5 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_2) * inv(pow2(8)),
+            carry_7: |carry_6, rd_next_3, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
+                (carry_6 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_fill + rs1_fill * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_3) * inv(pow2(8)),
+        },
+        constraints: {
+            |rs1_sign| rs1_sign * (1 - rs1_sign),
+            |rs2_sign| rs2_sign * (1 - rs2_sign),
+            // Unsigned operands force their sign bits to zero
+            |opcode_mulhsu_flag, opcode_mulhu_flag, rs2_sign|
+                (opcode_mulhsu_flag + opcode_mulhu_flag) * rs2_sign,
+            |opcode_mulhu_flag, rs1_sign| opcode_mulhu_flag * rs1_sign,
+        },
     },
 
     // ==========================================================================

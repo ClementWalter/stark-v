@@ -1,6 +1,6 @@
 //! AIR component for MULH (mulh/mulhsu/mulhu) - airs.md Section 15
 
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
@@ -33,114 +33,18 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = MulhColumns::from_eval(&mut eval);
 
-        // Section 15.2: Variables
-        let enabler = cols.opcode_mulh_flag.clone()
-            + cols.opcode_mulhsu_flag.clone()
-            + cols.opcode_mulhu_flag.clone();
-
-        let expected_opcode_id = cols.opcode_mulh_flag.clone()
-            * E::F::from(BaseField::from_u32_unchecked(Opcode::Mulh as u32))
-            + cols.opcode_mulhsu_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Mulhsu as u32))
-            + cols.opcode_mulhu_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Mulhu as u32));
-
-        // rd[0..3] are the low bytes (rd), rd[4..7] are the high bytes (the actual result written)
-        let rd_low = [
-            cols.rd_high_0.clone(),
-            cols.rd_high_1.clone(),
-            cols.rd_high_2.clone(),
-            cols.rd_high_3.clone(),
-        ];
-        let rd_high = [
-            cols.rd_next_0.clone(),
-            cols.rd_next_1.clone(),
-            cols.rd_next_2.clone(),
-            cols.rd_next_3.clone(),
-        ];
-
-        // Sign-extended rs1 and rs2 (only the high bit matters for sign)
-        let rs1_with_sign = [
-            cols.rs1_next_0.clone(),
-            cols.rs1_next_1.clone(),
-            cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone() + cols.rs1_sign.clone() * pow2::<E>(7),
-        ];
-        let rs2_with_sign = [
-            cols.rs2_next_0.clone(),
-            cols.rs2_next_1.clone(),
-            cols.rs2_next_2.clone(),
-            cols.rs2_next_3.clone() + cols.rs2_sign.clone() * pow2::<E>(7),
-        ];
-
-        // Compute carries for 8-byte multiplication
-        let inv_two_pow_8 = BaseField::from_u32_unchecked(1 << 8).inverse();
-        let sign_ext = pow2::<E>(8) - E::F::one();
-
-        // Extended operands for 8-byte multiplication
-        let rs1_ext: [E::F; 8] = std::array::from_fn(|i| {
-            if i < 4 {
-                rs1_with_sign[i].clone()
-            } else {
-                cols.rs1_sign.clone() * sign_ext.clone()
-            }
-        });
-        let rs2_ext: [E::F; 8] = std::array::from_fn(|i| {
-            if i < 4 {
-                rs2_with_sign[i].clone()
-            } else {
-                cols.rs2_sign.clone() * sign_ext.clone()
-            }
-        });
-        let rd_full: [E::F; 8] = std::array::from_fn(|i| {
-            if i < 4 {
-                rd_low[i].clone()
-            } else {
-                rd_high[i - 4].clone()
-            }
-        });
-
-        let mut carry: [E::F; 8] = std::array::from_fn(|_| E::F::zero());
-        for i in 0..8 {
-            let prev_carry = if i == 0 {
-                E::F::zero()
-            } else {
-                carry[i - 1].clone()
-            };
-            let mut limb_sum = prev_carry;
-            for k in 0..=i.min(7) {
-                if i - k < 8 {
-                    limb_sum += rs1_ext[k].clone() * rs2_ext[i - k].clone();
-                }
-            }
-            carry[i] = (limb_sum - rd_full[i].clone()) * inv_two_pow_8;
-        }
+        // Section 15.2/15.3: derived columns (sign-extended operands, the
+        // 8-limb carry chain) and constraints, declared in
+        // define_trace_tables!
+        let enabler = cols.enabler();
+        let expected_opcode_id = cols.expected_opcode_id();
 
         // REG_AS = 0 for register address space
         let reg_as = E::F::zero();
 
-        // Section 15.3: Constraints
-
-        // enabler, opcode_i_flag and rs_signs are booleans
-        eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
-        eval.add_constraint(
-            cols.opcode_mulh_flag.clone() * (E::F::one() - cols.opcode_mulh_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_mulhsu_flag.clone() * (E::F::one() - cols.opcode_mulhsu_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_mulhu_flag.clone() * (E::F::one() - cols.opcode_mulhu_flag.clone()),
-        );
-        eval.add_constraint(cols.rs1_sign.clone() * (E::F::one() - cols.rs1_sign.clone()));
-        eval.add_constraint(cols.rs2_sign.clone() * (E::F::one() - cols.rs2_sign.clone()));
-
-        // check the signs of the operand extensions
-        eval.add_constraint(
-            (cols.opcode_mulhsu_flag.clone() + cols.opcode_mulhu_flag.clone())
-                * cols.rs2_sign.clone(),
-        );
-        eval.add_constraint(cols.opcode_mulhu_flag.clone() * cols.rs1_sign.clone());
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
+        }
 
         // =====================================================================
         // LogUp Relations (Section 15.3 from airs.md)
@@ -172,8 +76,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             enabler.clone(),
-            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clock.clone() + E::F::one()
+            cols.pc_next(),
+            cols.clock_next()
         );
 
         // Read from rs1
@@ -208,7 +112,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs1_clock_prev.clone()
+            cols.rs1_clock_diff()
         );
 
         // Read from rs2
@@ -243,7 +147,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs2_clock_prev.clone()
+            cols.rs2_clock_diff()
         );
 
         // Check carries: - RC_8_8(carry[i], carry[i+1]) for i in 0,2,4,6
@@ -251,29 +155,29 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            carry[0].clone(),
-            carry[1].clone()
+            cols.carry_0(),
+            cols.carry_1()
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            carry[2].clone(),
-            carry[3].clone()
+            cols.carry_2(),
+            cols.carry_3()
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            carry[4].clone(),
-            carry[5].clone()
+            cols.carry_4(),
+            cols.carry_5()
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            carry[6].clone(),
-            carry[7].clone()
+            cols.carry_6(),
+            cols.carry_7()
         );
 
         // Range check rd (low and high parts)
@@ -281,29 +185,29 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            rd_low[0].clone(),
-            rd_low[1].clone()
+            cols.rd_high_0,
+            cols.rd_high_1
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            rd_low[2].clone(),
-            rd_low[3].clone()
+            cols.rd_high_2,
+            cols.rd_high_3
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            rd_high[0].clone(),
-            rd_high[1].clone()
+            cols.rd_next_0,
+            cols.rd_next_1
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            rd_high[2].clone(),
-            rd_high[3].clone()
+            cols.rd_next_2,
+            cols.rd_next_3
         );
 
         // Write to rd (only high bytes, rd[4..7])
@@ -328,17 +232,17 @@ impl FrameworkEval for Eval {
             reg_as.clone(),
             cols.rd_addr,
             cols.clock,
-            rd_high[0].clone(),
-            rd_high[1].clone(),
-            rd_high[2].clone(),
-            rd_high[3].clone()
+            cols.rd_next_0,
+            cols.rd_next_1,
+            cols.rd_next_2,
+            cols.rd_next_3
         );
         // - RC_20(clock - rd_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rd_clock_prev.clone()
+            cols.rd_clock_diff()
         );
 
         // The carry range-check denominators are quadratic in the trace, so
