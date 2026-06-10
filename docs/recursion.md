@@ -113,19 +113,21 @@ The existing `merkle` + `poseidon2` components prove the memory-commitment
 trees, whose node values are single M31 words. Proof commitment trees use 8-word
 digests (`Poseidon2M31Hash`), so:
 
-1. Extend the `relations!` set with a wide permutation relation
-   `poseidon2_perm: in_0..in_15, out_0..out_7` (24 elements).
-2. The `poseidon2` component's AIR already constrains the full 16-word
-   permutation internally; add relation entries emitting the wide tuple (single
-   source: this is an edit to the one existing component, not a copy).
-3. A recursion `merkle_path` table walks a decommitment path: each row consumes
-   `(left || right, parent)` from `poseidon2_perm` (the node hash is
-   `permute(l || r)[..8]`), chains parent into the next row's child slot, and
-   exposes the root for binding against the channel-replayed commitment.
+1. The 16-wide `poseidon2` relation already covers both digest widths: `combine`
+   zero-pads short tuples, so the memory trees' `(l, r)` inputs and the proof
+   trees' `(l_0..l_7, r_0..r_7)` inputs share the relation, as do the `(out_0)`
+   and `(out_0..out_7)` outputs. No new relation.
+2. Add a `wide` flag column to the `poseidon2` component: emit `(out_0)` with
+   multiplicity `(1 - wide) * enabler` and `(out_0..out_7)` with
+   `wide * enabler` (degree-2 numerators keep the same batch degree as the
+   existing pairs). One edit to the one existing component — no copy.
+3. A recursion `merkle_path` table walks a decommitment path: each row emits
+   `(left || right)` (16 words) and consumes `(parent_0..parent_7)` through the
+   poseidon2 relation, chains parent into the next row's child slot, and exposes
+   the root for binding against the channel-replayed commitment.
 4. `prove_recursion` draws the stark-v `Relations` (the recursion crate gains a
-   real `prover` dependency; no cycle — prover does not depend on recursion) and
-   includes the reused `poseidon2` component in its component set with its
-   witness fed from the decommitment paths.
+   real `prover` dependency; no cycle) and instantiates the reused `poseidon2`
+   component with a second table fed from the proofs' decommitment paths.
 
 ## Notes
 
