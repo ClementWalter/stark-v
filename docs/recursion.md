@@ -107,6 +107,26 @@ shape), so aggregation composes up the tree.
 - **M6 — full verifier AIR + 2-to-1 aggregation**: assemble 1–7, fixed-point
   proof shape, SDK wiring for the aggregation tree.
 
+## M4 remaining: proof-tree Merkle paths (integration design)
+
+The existing `merkle` + `poseidon2` components prove the memory-commitment
+trees, whose node values are single M31 words. Proof commitment trees use 8-word
+digests (`Poseidon2M31Hash`), so:
+
+1. Extend the `relations!` set with a wide permutation relation
+   `poseidon2_perm: in_0..in_15, out_0..out_7` (24 elements).
+2. The `poseidon2` component's AIR already constrains the full 16-word
+   permutation internally; add relation entries emitting the wide tuple (single
+   source: this is an edit to the one existing component, not a copy).
+3. A recursion `merkle_path` table walks a decommitment path: each row consumes
+   `(left || right, parent)` from `poseidon2_perm` (the node hash is
+   `permute(l || r)[..8]`), chains parent into the next row's child slot, and
+   exposes the root for binding against the channel-replayed commitment.
+4. `prove_recursion` draws the stark-v `Relations` (the recursion crate gains a
+   real `prover` dependency; no cycle — prover does not depend on recursion) and
+   includes the reused `poseidon2` component in its component set with its
+   witness fed from the decommitment paths.
+
 ## Notes
 
 - stwo's `examples/` contain Blake and Poseidon AIRs to draw on for M4; a
