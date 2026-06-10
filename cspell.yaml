@@ -28,6 +28,8 @@ words:
   - decommit
   - decommitment
   - decommitted
+  - subexpression
+  - sbox
   - decommitments
   - peekable
   - denoms
