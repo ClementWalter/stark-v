@@ -90,6 +90,7 @@ words:
   - mulhu
   - muli
   - mult
+  - multiset
   - mults
   - nocapture
   - nomem

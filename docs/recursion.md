@@ -129,6 +129,31 @@ digests (`Poseidon2M31Hash`), so:
    real `prover` dependency; no cycle) and instantiates the reused `poseidon2`
    component with a second table fed from the proofs' decommitment paths.
 
+## Channel replay (design) and a soundness observation
+
+The Poseidon2-M31 channel is a sponge: every mix/draw is a chain of permutations
+where the full 16-word state carries between chunks. Replaying it in-AIR
+therefore needs each replay row bound to a permutation's **input and output
+atomically**. The current poseidon2 relation emits inputs and outputs as
+separate tuples, and LogUp multiset equality alone does not pair them: with two
+permutation rows, a malicious witness could consume the inputs and outputs in
+swapped combination.
+
+- **Soundness review item (pre-existing pattern):** the memory-tree `merkle`
+  component uses the same split shape — emit `(l, r)`, consume `(out)` as
+  independent poseidon2-relation entries. Whether output-swapping is exploitable
+  there depends on the surrounding tree chaining; it deserves a dedicated
+  review.
+- **Channel-replay design:** add a `poseidon2_io: in_0..in_15, out_0..out_15`
+  relation (32 elements) to the `relations!` set, emitted by the poseidon2
+  component under a third flag (`io`), binding each permutation's ends
+  atomically. Replay rows then: consume `(prev_state, prev_out)` pairs along a
+  `sponge_step(channel_id, step, state16)` chain (mirroring `merkle_node`), add
+  the absorbed chunk into the rate in-row (degree-1 arithmetic), and anchor the
+  final digest against the channel claim. Mixed-data binding (what gets
+  absorbed: commitments, claims) comes from the recursion proof's public claim,
+  exactly like `RootClaim`.
+
 ## Notes
 
 - stwo's `examples/` contain Blake and Poseidon AIRs to draw on for M4; a
