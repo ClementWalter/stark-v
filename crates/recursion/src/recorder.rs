@@ -366,42 +366,55 @@ impl EvalAtRow for Recorder {
     }
 
     /// Same batching semantics as the framework's `logup_proxy!` (which is
-    /// crate-private): consecutive groups of `batch_size`, cumulative-sum
-    /// columns from the interaction masks, the shifted check on the last.
-    fn finalize_logup_batched(&mut self, batch_size: usize) {
+    /// crate-private): per-fraction batch assignments, batches summed in
+    /// order with cumulative-sum columns from the interaction masks, the
+    /// shifted check on the last batch.
+    fn finalize_logup_batched(&mut self, batching: &Vec<usize>) {
         assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
-        assert!(batch_size > 0, "Batch size must be positive");
-
         let fracs = core::mem::take(&mut self.logup.fracs);
-        let n_batches = fracs.len().div_ceil(batch_size);
-        assert!(n_batches > 0, "No fractions to finalize");
+        assert_eq!(
+            batching.len(),
+            fracs.len(),
+            "Batching must be of the same length as the number of entries"
+        );
+        let last_batch = *batching.iter().max().expect("at least one fraction");
+
+        let mut fracs_by_batch: Vec<Vec<stwo::core::Fraction<Self::EF, Self::EF>>> =
+            vec![Vec::new(); last_batch + 1];
+        for (&batch, frac) in batching.iter().zip(fracs.iter()) {
+            fracs_by_batch[batch].push(frac.clone());
+        }
+        assert!(
+            fracs_by_batch.iter().all(|batch| !batch.is_empty()),
+            "Batching must contain all consecutive batches"
+        );
 
         let mut prev_col_cumsum = <Self::EF as Zero>::zero();
-        for (batch_idx, chunk) in fracs.chunks(batch_size).enumerate() {
-            let cur_frac: stwo::core::Fraction<Self::EF, Self::EF> = chunk.iter().cloned().sum();
-            if batch_idx + 1 < n_batches {
-                let [cur_cumsum] =
-                    self.next_extension_interaction_mask(self.logup.interaction, [0]);
-                let diff = cur_cumsum.clone() - prev_col_cumsum.clone();
-                prev_col_cumsum = cur_cumsum;
-                self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
-            } else {
-                let [prev_row_cumsum, cur_cumsum] =
-                    self.next_extension_interaction_mask(self.logup.interaction, [-1, 0]);
-                let diff = cur_cumsum - prev_row_cumsum - prev_col_cumsum.clone();
-                let shifted_diff = diff + self.logup.cumsum_shift;
-                self.add_constraint(shifted_diff * cur_frac.denominator - cur_frac.numerator);
-            }
+        for batch in &fracs_by_batch[..last_batch] {
+            let cur_frac: stwo::core::Fraction<Self::EF, Self::EF> = batch.iter().cloned().sum();
+            let [cur_cumsum] = self.next_extension_interaction_mask(self.logup.interaction, [0]);
+            let diff = cur_cumsum.clone() - prev_col_cumsum.clone();
+            prev_col_cumsum = cur_cumsum;
+            self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
         }
+        let cur_frac: stwo::core::Fraction<Self::EF, Self::EF> =
+            fracs_by_batch[last_batch].iter().cloned().sum();
+        let [prev_row_cumsum, cur_cumsum] =
+            self.next_extension_interaction_mask(self.logup.interaction, [-1, 0]);
+        let diff = cur_cumsum - prev_row_cumsum - prev_col_cumsum.clone();
+        let shifted_diff = diff + self.logup.cumsum_shift;
+        self.add_constraint(shifted_diff * cur_frac.denominator - cur_frac.numerator);
         self.logup.is_finalized = true;
     }
 
     fn finalize_logup(&mut self) {
-        self.finalize_logup_batched(1)
+        let batches = (0..self.logup.fracs.len()).collect();
+        self.finalize_logup_batched(&batches)
     }
 
     fn finalize_logup_in_pairs(&mut self) {
-        self.finalize_logup_batched(2)
+        let batches = (0..self.logup.fracs.len()).map(|n| n / 2).collect();
+        self.finalize_logup_batched(&batches)
     }
 }
 

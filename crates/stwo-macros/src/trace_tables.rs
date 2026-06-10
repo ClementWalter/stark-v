@@ -1018,8 +1018,12 @@ fn generate_lookup_macros(opcode: &OpcodeDef, include_enabler: bool) -> proc_mac
         .collect();
     let finalize = if batch == 2 {
         quote! { $eval.finalize_logup_in_pairs(); }
+    } else if batch == 1 {
+        quote! { $eval.finalize_logup(); }
     } else {
-        quote! { $eval.finalize_logup_batched(#batch); }
+        // Per-fraction batch assignments, computed at expansion time.
+        let assignments: Vec<usize> = (0..n_entries).map(|entry| entry / batch).collect();
+        quote! { $eval.finalize_logup_batched(&vec![#(#assignments),*]); }
     };
 
     // Witness side: per-row entry evaluation through the same
