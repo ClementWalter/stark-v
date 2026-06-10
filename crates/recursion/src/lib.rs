@@ -14,6 +14,7 @@ pub mod merkle_path;
 pub mod prover;
 pub mod qm31_inv;
 pub mod qm31_mul;
+pub mod recorder;
 pub mod relations;
 
 // combine!/write_pair! are used by witness modules.

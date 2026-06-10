@@ -23,6 +23,7 @@ words:
   - condvar
   - codegen
   - csrrw
+  - cumsum
   - dashmap
   - decommitment
   - decommitments
