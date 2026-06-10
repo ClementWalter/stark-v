@@ -59,14 +59,14 @@ stwo_macros::define_trace_tables! {
                 (rd_next_3 + rs2_next_3 - rs1_next_3 + carry_sub_2) * inv(pow2(8)),
         },
         constraints: {
-            |opcode_add_flag, carry_add_0| opcode_add_flag * carry_add_0 * (1 - carry_add_0),
-            |opcode_add_flag, carry_add_1| opcode_add_flag * carry_add_1 * (1 - carry_add_1),
-            |opcode_add_flag, carry_add_2| opcode_add_flag * carry_add_2 * (1 - carry_add_2),
-            |opcode_add_flag, carry_add_3| opcode_add_flag * carry_add_3 * (1 - carry_add_3),
-            |opcode_sub_flag, carry_sub_0| opcode_sub_flag * carry_sub_0 * (1 - carry_sub_0),
-            |opcode_sub_flag, carry_sub_1| opcode_sub_flag * carry_sub_1 * (1 - carry_sub_1),
-            |opcode_sub_flag, carry_sub_2| opcode_sub_flag * carry_sub_2 * (1 - carry_sub_2),
-            |opcode_sub_flag, carry_sub_3| opcode_sub_flag * carry_sub_3 * (1 - carry_sub_3),
+            opcode_add_flag * carry_add_0 * (1 - carry_add_0),
+            opcode_add_flag * carry_add_1 * (1 - carry_add_1),
+            opcode_add_flag * carry_add_2 * (1 - carry_add_2),
+            opcode_add_flag * carry_add_3 * (1 - carry_add_3),
+            opcode_sub_flag * carry_sub_0 * (1 - carry_sub_0),
+            opcode_sub_flag * carry_sub_1 * (1 - carry_sub_1),
+            opcode_sub_flag * carry_sub_2 * (1 - carry_sub_2),
+            opcode_sub_flag * carry_sub_3 * (1 - carry_sub_3),
         },
         lookups: {
             // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
@@ -138,11 +138,11 @@ stwo_macros::define_trace_tables! {
                 (rs1_next_3 + sext_imm_2 + carry_2 - rd_next_3) * inv(pow2(8)),
         },
         constraints: {
-            |imm_msb| imm_msb * (1 - imm_msb),
-            |opcode_add_flag, carry_0| opcode_add_flag * carry_0 * (1 - carry_0),
-            |opcode_add_flag, carry_1| opcode_add_flag * carry_1 * (1 - carry_1),
-            |opcode_add_flag, carry_2| opcode_add_flag * carry_2 * (1 - carry_2),
-            |opcode_add_flag, carry_3| opcode_add_flag * carry_3 * (1 - carry_3),
+            imm_msb * (1 - imm_msb),
+            opcode_add_flag * carry_0 * (1 - carry_0),
+            opcode_add_flag * carry_1 * (1 - carry_1),
+            opcode_add_flag * carry_2 * (1 - carry_2),
+            opcode_add_flag * carry_3 * (1 - carry_3),
         },
         lookups: {
             // Program access (I-type): Program(pc, opcode, rd_idx, rs1_idx, imm)
@@ -226,118 +226,90 @@ stwo_macros::define_trace_tables! {
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
         },
         constraints: {
-            |rs1_sign| rs1_sign * (1 - rs1_sign),
-            |bit_shift_marker_0| bit_shift_marker_0 * (1 - bit_shift_marker_0),
-            |bit_shift_marker_1| bit_shift_marker_1 * (1 - bit_shift_marker_1),
-            |bit_shift_marker_2| bit_shift_marker_2 * (1 - bit_shift_marker_2),
-            |bit_shift_marker_3| bit_shift_marker_3 * (1 - bit_shift_marker_3),
-            |bit_shift_marker_4| bit_shift_marker_4 * (1 - bit_shift_marker_4),
-            |bit_shift_marker_5| bit_shift_marker_5 * (1 - bit_shift_marker_5),
-            |bit_shift_marker_6| bit_shift_marker_6 * (1 - bit_shift_marker_6),
-            |bit_shift_marker_7| bit_shift_marker_7 * (1 - bit_shift_marker_7),
-            |limb_shift_marker_0| limb_shift_marker_0 * (1 - limb_shift_marker_0),
-            |limb_shift_marker_1| limb_shift_marker_1 * (1 - limb_shift_marker_1),
-            |limb_shift_marker_2| limb_shift_marker_2 * (1 - limb_shift_marker_2),
-            |limb_shift_marker_3| limb_shift_marker_3 * (1 - limb_shift_marker_3),
+            rs1_sign * (1 - rs1_sign),
+            bit_shift_marker_0 * (1 - bit_shift_marker_0),
+            bit_shift_marker_1 * (1 - bit_shift_marker_1),
+            bit_shift_marker_2 * (1 - bit_shift_marker_2),
+            bit_shift_marker_3 * (1 - bit_shift_marker_3),
+            bit_shift_marker_4 * (1 - bit_shift_marker_4),
+            bit_shift_marker_5 * (1 - bit_shift_marker_5),
+            bit_shift_marker_6 * (1 - bit_shift_marker_6),
+            bit_shift_marker_7 * (1 - bit_shift_marker_7),
+            limb_shift_marker_0 * (1 - limb_shift_marker_0),
+            limb_shift_marker_1 * (1 - limb_shift_marker_1),
+            limb_shift_marker_2 * (1 - limb_shift_marker_2),
+            limb_shift_marker_3 * (1 - limb_shift_marker_3),
             // Exactly one bit marker and one limb marker fire on enabled rows
-            |bit_marker_sum, enabler| bit_marker_sum - enabler,
-            |limb_marker_sum, enabler| limb_marker_sum - enabler,
-            |bit_multiplier_left, opcode_sll_flag, bit_multiplier|
-                bit_multiplier_left - opcode_sll_flag * bit_multiplier,
-            |bit_multiplier_right, right_shift, bit_multiplier|
-                bit_multiplier_right - right_shift * bit_multiplier,
+            bit_marker_sum - enabler,
+            limb_marker_sum - enabler,
+            bit_multiplier_left - opcode_sll_flag * bit_multiplier,
+            bit_multiplier_right - right_shift * bit_multiplier,
             // Left shift by 8*i + b: rd limbs below i vanish, limb i carries
             // out, higher limbs chain the carries (airs.md 3.3)
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_0, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_0 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_0 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_0 * rs1_next_0 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_1, bit_shift_carry_0, bit_shift_carry_1, rs1_next_1, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_1 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_1 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
                 - limb_shift_marker_0 * rs1_next_1 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_2, bit_shift_carry_1, bit_shift_carry_2, rs1_next_2, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_2 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_2 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
                 - limb_shift_marker_0 * rs1_next_2 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_3, bit_shift_carry_2, bit_shift_carry_3, rs1_next_3, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_3 - (bit_shift_carry_2 - pow2(8) * bit_shift_carry_3))
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_3 - (bit_shift_carry_2 - pow2(8) * bit_shift_carry_3))
                 - limb_shift_marker_0 * rs1_next_3 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_0| opcode_sll_flag * limb_shift_marker_1 * rd_next_0,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_1, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_1 * (rd_next_1 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_1 * rd_next_0,
+            opcode_sll_flag * limb_shift_marker_1 * (rd_next_1 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_1 * rs1_next_0 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_2, bit_shift_carry_0, bit_shift_carry_1, rs1_next_1, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_1 * (rd_next_2 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
+            opcode_sll_flag * limb_shift_marker_1 * (rd_next_2 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
                 - limb_shift_marker_1 * rs1_next_1 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_3, bit_shift_carry_1, bit_shift_carry_2, rs1_next_2, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_1 * (rd_next_3 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
+            opcode_sll_flag * limb_shift_marker_1 * (rd_next_3 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
                 - limb_shift_marker_1 * rs1_next_2 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_0| opcode_sll_flag * limb_shift_marker_2 * rd_next_0,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_1| opcode_sll_flag * limb_shift_marker_2 * rd_next_1,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_2, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_2 * (rd_next_2 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_2 * rd_next_0,
+            opcode_sll_flag * limb_shift_marker_2 * rd_next_1,
+            opcode_sll_flag * limb_shift_marker_2 * (rd_next_2 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_2 * rs1_next_0 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_3, bit_shift_carry_0, bit_shift_carry_1, rs1_next_1, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_2 * (rd_next_3 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
+            opcode_sll_flag * limb_shift_marker_2 * (rd_next_3 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
                 - limb_shift_marker_2 * rs1_next_1 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_0| opcode_sll_flag * limb_shift_marker_3 * rd_next_0,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_1| opcode_sll_flag * limb_shift_marker_3 * rd_next_1,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_2| opcode_sll_flag * limb_shift_marker_3 * rd_next_2,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_3, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_3 * (rd_next_3 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_3 * rd_next_0,
+            opcode_sll_flag * limb_shift_marker_3 * rd_next_1,
+            opcode_sll_flag * limb_shift_marker_3 * rd_next_2,
+            opcode_sll_flag * limb_shift_marker_3 * (rd_next_3 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_3 * rs1_next_0 * bit_multiplier_left,
             // Right shift: high limbs sign-fill, limb 3-i takes the top, lower
             // limbs chain carries downward
-            |limb_shift_marker_0, bit_shift_carry_1, right_shift, rs1_next_0, bit_shift_carry_0, rd_next_0, bit_multiplier_right|
-                limb_shift_marker_0 * (bit_shift_carry_1 * right_shift * pow2(8)
+            limb_shift_marker_0 * (bit_shift_carry_1 * right_shift * pow2(8)
                 + right_shift * (rs1_next_0 - bit_shift_carry_0)
                 - rd_next_0 * bit_multiplier_right),
-            |limb_shift_marker_0, bit_shift_carry_2, right_shift, rs1_next_1, bit_shift_carry_1, rd_next_1, bit_multiplier_right|
-                limb_shift_marker_0 * (bit_shift_carry_2 * right_shift * pow2(8)
+            limb_shift_marker_0 * (bit_shift_carry_2 * right_shift * pow2(8)
                 + right_shift * (rs1_next_1 - bit_shift_carry_1)
                 - rd_next_1 * bit_multiplier_right),
-            |limb_shift_marker_0, bit_shift_carry_3, right_shift, rs1_next_2, bit_shift_carry_2, rd_next_2, bit_multiplier_right|
-                limb_shift_marker_0 * (bit_shift_carry_3 * right_shift * pow2(8)
+            limb_shift_marker_0 * (bit_shift_carry_3 * right_shift * pow2(8)
                 + right_shift * (rs1_next_2 - bit_shift_carry_2)
                 - rd_next_2 * bit_multiplier_right),
-            |limb_shift_marker_0, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_3|
-                limb_shift_marker_0 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            limb_shift_marker_0 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_3 * bit_multiplier_right),
-            |limb_shift_marker_1, bit_shift_carry_2, right_shift, rs1_next_1, bit_shift_carry_1, rd_next_0, bit_multiplier_right|
-                limb_shift_marker_1 * (bit_shift_carry_2 * right_shift * pow2(8)
+            limb_shift_marker_1 * (bit_shift_carry_2 * right_shift * pow2(8)
                 + right_shift * (rs1_next_1 - bit_shift_carry_1)
                 - rd_next_0 * bit_multiplier_right),
-            |limb_shift_marker_1, bit_shift_carry_3, right_shift, rs1_next_2, bit_shift_carry_2, rd_next_1, bit_multiplier_right|
-                limb_shift_marker_1 * (bit_shift_carry_3 * right_shift * pow2(8)
+            limb_shift_marker_1 * (bit_shift_carry_3 * right_shift * pow2(8)
                 + right_shift * (rs1_next_2 - bit_shift_carry_2)
                 - rd_next_1 * bit_multiplier_right),
-            |limb_shift_marker_1, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_2|
-                limb_shift_marker_1 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            limb_shift_marker_1 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_2 * bit_multiplier_right),
-            |right_shift, limb_shift_marker_1, rd_next_3, rs1_sign|
-                right_shift * limb_shift_marker_1 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
-            |limb_shift_marker_2, bit_shift_carry_3, right_shift, rs1_next_2, bit_shift_carry_2, rd_next_0, bit_multiplier_right|
-                limb_shift_marker_2 * (bit_shift_carry_3 * right_shift * pow2(8)
+            right_shift * limb_shift_marker_1 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
+            limb_shift_marker_2 * (bit_shift_carry_3 * right_shift * pow2(8)
                 + right_shift * (rs1_next_2 - bit_shift_carry_2)
                 - rd_next_0 * bit_multiplier_right),
-            |limb_shift_marker_2, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_1|
-                limb_shift_marker_2 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            limb_shift_marker_2 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_1 * bit_multiplier_right),
-            |right_shift, limb_shift_marker_2, rd_next_2, rs1_sign|
-                right_shift * limb_shift_marker_2 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
-            |right_shift, limb_shift_marker_2, rd_next_3, rs1_sign|
-                right_shift * limb_shift_marker_2 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
-            |limb_shift_marker_3, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_0|
-                limb_shift_marker_3 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            right_shift * limb_shift_marker_2 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_2 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
+            limb_shift_marker_3 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_0 * bit_multiplier_right),
-            |right_shift, limb_shift_marker_3, rd_next_1, rs1_sign|
-                right_shift * limb_shift_marker_3 * (rd_next_1 - rs1_sign * (pow2(8) - 1)),
-            |right_shift, limb_shift_marker_3, rd_next_2, rs1_sign|
-                right_shift * limb_shift_marker_3 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
-            |right_shift, limb_shift_marker_3, rd_next_3, rs1_sign|
-                right_shift * limb_shift_marker_3 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_3 * (rd_next_1 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_3 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_3 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
         },
         lookups: {
             // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
@@ -419,117 +391,89 @@ stwo_macros::define_trace_tables! {
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
         },
         constraints: {
-            |rs1_sign| rs1_sign * (1 - rs1_sign),
-            |bit_shift_marker_0| bit_shift_marker_0 * (1 - bit_shift_marker_0),
-            |bit_shift_marker_1| bit_shift_marker_1 * (1 - bit_shift_marker_1),
-            |bit_shift_marker_2| bit_shift_marker_2 * (1 - bit_shift_marker_2),
-            |bit_shift_marker_3| bit_shift_marker_3 * (1 - bit_shift_marker_3),
-            |bit_shift_marker_4| bit_shift_marker_4 * (1 - bit_shift_marker_4),
-            |bit_shift_marker_5| bit_shift_marker_5 * (1 - bit_shift_marker_5),
-            |bit_shift_marker_6| bit_shift_marker_6 * (1 - bit_shift_marker_6),
-            |bit_shift_marker_7| bit_shift_marker_7 * (1 - bit_shift_marker_7),
-            |limb_shift_marker_0| limb_shift_marker_0 * (1 - limb_shift_marker_0),
-            |limb_shift_marker_1| limb_shift_marker_1 * (1 - limb_shift_marker_1),
-            |limb_shift_marker_2| limb_shift_marker_2 * (1 - limb_shift_marker_2),
-            |limb_shift_marker_3| limb_shift_marker_3 * (1 - limb_shift_marker_3),
-            |bit_marker_sum, enabler| bit_marker_sum - enabler,
-            |limb_marker_sum, enabler| limb_marker_sum - enabler,
-            |bit_multiplier_left, opcode_sll_flag, bit_multiplier|
-                bit_multiplier_left - opcode_sll_flag * bit_multiplier,
-            |bit_multiplier_right, right_shift, bit_multiplier|
-                bit_multiplier_right - right_shift * bit_multiplier,
+            rs1_sign * (1 - rs1_sign),
+            bit_shift_marker_0 * (1 - bit_shift_marker_0),
+            bit_shift_marker_1 * (1 - bit_shift_marker_1),
+            bit_shift_marker_2 * (1 - bit_shift_marker_2),
+            bit_shift_marker_3 * (1 - bit_shift_marker_3),
+            bit_shift_marker_4 * (1 - bit_shift_marker_4),
+            bit_shift_marker_5 * (1 - bit_shift_marker_5),
+            bit_shift_marker_6 * (1 - bit_shift_marker_6),
+            bit_shift_marker_7 * (1 - bit_shift_marker_7),
+            limb_shift_marker_0 * (1 - limb_shift_marker_0),
+            limb_shift_marker_1 * (1 - limb_shift_marker_1),
+            limb_shift_marker_2 * (1 - limb_shift_marker_2),
+            limb_shift_marker_3 * (1 - limb_shift_marker_3),
+            bit_marker_sum - enabler,
+            limb_marker_sum - enabler,
+            bit_multiplier_left - opcode_sll_flag * bit_multiplier,
+            bit_multiplier_right - right_shift * bit_multiplier,
             // The immediate encodes the decoded shift amount (airs.md 4.3)
-            |imm_truncated, shift_amount| imm_truncated - shift_amount,
+            imm_truncated - shift_amount,
             // Left shift by 8*i + b (airs.md 4.3)
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_0, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_0 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_0 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_0 * rs1_next_0 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_1, bit_shift_carry_0, bit_shift_carry_1, rs1_next_1, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_1 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_1 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
                 - limb_shift_marker_0 * rs1_next_1 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_2, bit_shift_carry_1, bit_shift_carry_2, rs1_next_2, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_2 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_2 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
                 - limb_shift_marker_0 * rs1_next_2 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_0, rd_next_3, bit_shift_carry_2, bit_shift_carry_3, rs1_next_3, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_0 * (rd_next_3 - (bit_shift_carry_2 - pow2(8) * bit_shift_carry_3))
+            opcode_sll_flag * limb_shift_marker_0 * (rd_next_3 - (bit_shift_carry_2 - pow2(8) * bit_shift_carry_3))
                 - limb_shift_marker_0 * rs1_next_3 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_0| opcode_sll_flag * limb_shift_marker_1 * rd_next_0,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_1, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_1 * (rd_next_1 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_1 * rd_next_0,
+            opcode_sll_flag * limb_shift_marker_1 * (rd_next_1 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_1 * rs1_next_0 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_2, bit_shift_carry_0, bit_shift_carry_1, rs1_next_1, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_1 * (rd_next_2 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
+            opcode_sll_flag * limb_shift_marker_1 * (rd_next_2 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
                 - limb_shift_marker_1 * rs1_next_1 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_1, rd_next_3, bit_shift_carry_1, bit_shift_carry_2, rs1_next_2, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_1 * (rd_next_3 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
+            opcode_sll_flag * limb_shift_marker_1 * (rd_next_3 - (bit_shift_carry_1 - pow2(8) * bit_shift_carry_2))
                 - limb_shift_marker_1 * rs1_next_2 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_0| opcode_sll_flag * limb_shift_marker_2 * rd_next_0,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_1| opcode_sll_flag * limb_shift_marker_2 * rd_next_1,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_2, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_2 * (rd_next_2 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_2 * rd_next_0,
+            opcode_sll_flag * limb_shift_marker_2 * rd_next_1,
+            opcode_sll_flag * limb_shift_marker_2 * (rd_next_2 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_2 * rs1_next_0 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_2, rd_next_3, bit_shift_carry_0, bit_shift_carry_1, rs1_next_1, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_2 * (rd_next_3 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
+            opcode_sll_flag * limb_shift_marker_2 * (rd_next_3 - (bit_shift_carry_0 - pow2(8) * bit_shift_carry_1))
                 - limb_shift_marker_2 * rs1_next_1 * bit_multiplier_left,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_0| opcode_sll_flag * limb_shift_marker_3 * rd_next_0,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_1| opcode_sll_flag * limb_shift_marker_3 * rd_next_1,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_2| opcode_sll_flag * limb_shift_marker_3 * rd_next_2,
-            |opcode_sll_flag, limb_shift_marker_3, rd_next_3, bit_shift_carry_0, rs1_next_0, bit_multiplier_left|
-                opcode_sll_flag * limb_shift_marker_3 * (rd_next_3 + pow2(8) * bit_shift_carry_0)
+            opcode_sll_flag * limb_shift_marker_3 * rd_next_0,
+            opcode_sll_flag * limb_shift_marker_3 * rd_next_1,
+            opcode_sll_flag * limb_shift_marker_3 * rd_next_2,
+            opcode_sll_flag * limb_shift_marker_3 * (rd_next_3 + pow2(8) * bit_shift_carry_0)
                 - limb_shift_marker_3 * rs1_next_0 * bit_multiplier_left,
             // Right shift with sign fill
-            |limb_shift_marker_0, bit_shift_carry_1, right_shift, rs1_next_0, bit_shift_carry_0, rd_next_0, bit_multiplier_right|
-                limb_shift_marker_0 * (bit_shift_carry_1 * right_shift * pow2(8)
+            limb_shift_marker_0 * (bit_shift_carry_1 * right_shift * pow2(8)
                 + right_shift * (rs1_next_0 - bit_shift_carry_0)
                 - rd_next_0 * bit_multiplier_right),
-            |limb_shift_marker_0, bit_shift_carry_2, right_shift, rs1_next_1, bit_shift_carry_1, rd_next_1, bit_multiplier_right|
-                limb_shift_marker_0 * (bit_shift_carry_2 * right_shift * pow2(8)
+            limb_shift_marker_0 * (bit_shift_carry_2 * right_shift * pow2(8)
                 + right_shift * (rs1_next_1 - bit_shift_carry_1)
                 - rd_next_1 * bit_multiplier_right),
-            |limb_shift_marker_0, bit_shift_carry_3, right_shift, rs1_next_2, bit_shift_carry_2, rd_next_2, bit_multiplier_right|
-                limb_shift_marker_0 * (bit_shift_carry_3 * right_shift * pow2(8)
+            limb_shift_marker_0 * (bit_shift_carry_3 * right_shift * pow2(8)
                 + right_shift * (rs1_next_2 - bit_shift_carry_2)
                 - rd_next_2 * bit_multiplier_right),
-            |limb_shift_marker_0, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_3|
-                limb_shift_marker_0 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            limb_shift_marker_0 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_3 * bit_multiplier_right),
-            |limb_shift_marker_1, bit_shift_carry_2, right_shift, rs1_next_1, bit_shift_carry_1, rd_next_0, bit_multiplier_right|
-                limb_shift_marker_1 * (bit_shift_carry_2 * right_shift * pow2(8)
+            limb_shift_marker_1 * (bit_shift_carry_2 * right_shift * pow2(8)
                 + right_shift * (rs1_next_1 - bit_shift_carry_1)
                 - rd_next_0 * bit_multiplier_right),
-            |limb_shift_marker_1, bit_shift_carry_3, right_shift, rs1_next_2, bit_shift_carry_2, rd_next_1, bit_multiplier_right|
-                limb_shift_marker_1 * (bit_shift_carry_3 * right_shift * pow2(8)
+            limb_shift_marker_1 * (bit_shift_carry_3 * right_shift * pow2(8)
                 + right_shift * (rs1_next_2 - bit_shift_carry_2)
                 - rd_next_1 * bit_multiplier_right),
-            |limb_shift_marker_1, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_2|
-                limb_shift_marker_1 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            limb_shift_marker_1 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_2 * bit_multiplier_right),
-            |right_shift, limb_shift_marker_1, rd_next_3, rs1_sign|
-                right_shift * limb_shift_marker_1 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
-            |limb_shift_marker_2, bit_shift_carry_3, right_shift, rs1_next_2, bit_shift_carry_2, rd_next_0, bit_multiplier_right|
-                limb_shift_marker_2 * (bit_shift_carry_3 * right_shift * pow2(8)
+            right_shift * limb_shift_marker_1 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
+            limb_shift_marker_2 * (bit_shift_carry_3 * right_shift * pow2(8)
                 + right_shift * (rs1_next_2 - bit_shift_carry_2)
                 - rd_next_0 * bit_multiplier_right),
-            |limb_shift_marker_2, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_1|
-                limb_shift_marker_2 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            limb_shift_marker_2 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_1 * bit_multiplier_right),
-            |right_shift, limb_shift_marker_2, rd_next_2, rs1_sign|
-                right_shift * limb_shift_marker_2 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
-            |right_shift, limb_shift_marker_2, rd_next_3, rs1_sign|
-                right_shift * limb_shift_marker_2 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
-            |limb_shift_marker_3, rs1_sign, bit_multiplier_right, right_shift, rs1_next_3, bit_shift_carry_3, rd_next_0|
-                limb_shift_marker_3 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
+            right_shift * limb_shift_marker_2 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_2 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
+            limb_shift_marker_3 * (rs1_sign * (bit_multiplier_right - 1) * pow2(8)
                 + right_shift * (rs1_next_3 - bit_shift_carry_3)
                 - rd_next_0 * bit_multiplier_right),
-            |right_shift, limb_shift_marker_3, rd_next_1, rs1_sign|
-                right_shift * limb_shift_marker_3 * (rd_next_1 - rs1_sign * (pow2(8) - 1)),
-            |right_shift, limb_shift_marker_3, rd_next_2, rs1_sign|
-                right_shift * limb_shift_marker_3 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
-            |right_shift, limb_shift_marker_3, rd_next_3, rs1_sign|
-                right_shift * limb_shift_marker_3 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_3 * (rd_next_1 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_3 * (rd_next_2 - rs1_sign * (pow2(8) - 1)),
+            right_shift * limb_shift_marker_3 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
         },
         lookups: {
             // Program access (I-type): Program(pc, opcode, rd_idx, rs1_idx, imm)
@@ -586,36 +530,28 @@ stwo_macros::define_trace_tables! {
             cmp_sign: |cmp_result| 2 * cmp_result - 1,
         },
         constraints: {
-            |cmp_result| cmp_result * (1 - cmp_result),
-            |diff_marker_0| diff_marker_0 * (1 - diff_marker_0),
-            |diff_marker_1| diff_marker_1 * (1 - diff_marker_1),
-            |diff_marker_2| diff_marker_2 * (1 - diff_marker_2),
-            |diff_marker_3| diff_marker_3 * (1 - diff_marker_3),
-            |rs1_msl_gap| rs1_msl_gap * (pow2(8) - rs1_msl_gap),
-            |rs2_msl_gap| rs2_msl_gap * (pow2(8) - rs2_msl_gap),
+            cmp_result * (1 - cmp_result),
+            diff_marker_0 * (1 - diff_marker_0),
+            diff_marker_1 * (1 - diff_marker_1),
+            diff_marker_2 * (1 - diff_marker_2),
+            diff_marker_3 * (1 - diff_marker_3),
+            rs1_msl_gap * (pow2(8) - rs1_msl_gap),
+            rs2_msl_gap * (pow2(8) - rs2_msl_gap),
             // Comparison scan from the most significant limb down: limbs
             // above the first difference are equal, and the marked limb's
             // difference equals diff_val (airs.md 5.3)
-            |diff_marker_3, cmp_sign, rs2_msl_felt, rs1_msl_felt|
-                (1 - diff_marker_3) * (cmp_sign * (rs2_msl_felt - rs1_msl_felt)),
-            |diff_marker_3, cmp_sign, rs2_msl_felt, rs1_msl_felt, diff_val|
-                diff_marker_3 * (diff_val - cmp_sign * (rs2_msl_felt - rs1_msl_felt)),
-            |diff_marker_3, diff_marker_2, cmp_sign, rs2_next_2, rs1_next_2|
-                (1 - diff_marker_3 - diff_marker_2) * (cmp_sign * (rs2_next_2 - rs1_next_2)),
-            |diff_marker_2, cmp_sign, rs2_next_2, rs1_next_2, diff_val|
-                diff_marker_2 * (diff_val - cmp_sign * (rs2_next_2 - rs1_next_2)),
-            |diff_marker_3, diff_marker_2, diff_marker_1, cmp_sign, rs2_next_1, rs1_next_1|
-                (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
+            (1 - diff_marker_3) * (cmp_sign * (rs2_msl_felt - rs1_msl_felt)),
+            diff_marker_3 * (diff_val - cmp_sign * (rs2_msl_felt - rs1_msl_felt)),
+            (1 - diff_marker_3 - diff_marker_2) * (cmp_sign * (rs2_next_2 - rs1_next_2)),
+            diff_marker_2 * (diff_val - cmp_sign * (rs2_next_2 - rs1_next_2)),
+            (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
                     * (cmp_sign * (rs2_next_1 - rs1_next_1)),
-            |diff_marker_1, cmp_sign, rs2_next_1, rs1_next_1, diff_val|
-                diff_marker_1 * (diff_val - cmp_sign * (rs2_next_1 - rs1_next_1)),
-            |prefix_sum_final, cmp_sign, rs2_next_0, rs1_next_0|
-                (1 - prefix_sum_final) * (cmp_sign * (rs2_next_0 - rs1_next_0)),
-            |diff_marker_0, cmp_sign, rs2_next_0, rs1_next_0, diff_val|
-                diff_marker_0 * (diff_val - cmp_sign * (rs2_next_0 - rs1_next_0)),
-            |prefix_sum_final| prefix_sum_final * (1 - prefix_sum_final),
+            diff_marker_1 * (diff_val - cmp_sign * (rs2_next_1 - rs1_next_1)),
+            (1 - prefix_sum_final) * (cmp_sign * (rs2_next_0 - rs1_next_0)),
+            diff_marker_0 * (diff_val - cmp_sign * (rs2_next_0 - rs1_next_0)),
+            prefix_sum_final * (1 - prefix_sum_final),
             // Equal operands compare as not-less-than
-            |prefix_sum_final, cmp_result| (1 - prefix_sum_final) * cmp_result,
+            (1 - prefix_sum_final) * cmp_result,
         },
         lookups: {
             // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
@@ -683,33 +619,25 @@ stwo_macros::define_trace_tables! {
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
         },
         constraints: {
-            |imm_msb| imm_msb * (1 - imm_msb),
-            |rs1_msl_gap| rs1_msl_gap * (pow2(8) - rs1_msl_gap),
-            |diff_marker_0| diff_marker_0 * (1 - diff_marker_0),
-            |diff_marker_1| diff_marker_1 * (1 - diff_marker_1),
-            |diff_marker_2| diff_marker_2 * (1 - diff_marker_2),
-            |diff_marker_3| diff_marker_3 * (1 - diff_marker_3),
+            imm_msb * (1 - imm_msb),
+            rs1_msl_gap * (pow2(8) - rs1_msl_gap),
+            diff_marker_0 * (1 - diff_marker_0),
+            diff_marker_1 * (1 - diff_marker_1),
+            diff_marker_2 * (1 - diff_marker_2),
+            diff_marker_3 * (1 - diff_marker_3),
             // Comparison scan from the most significant limb down (airs.md 6.3)
-            |diff_marker_3, cmp_sign, sext_imm_msl_felt, rs1_msl_felt|
-                (1 - diff_marker_3) * (cmp_sign * (sext_imm_msl_felt - rs1_msl_felt)),
-            |diff_marker_3, cmp_sign, sext_imm_msl_felt, rs1_msl_felt, diff_val|
-                diff_marker_3 * (diff_val - cmp_sign * (sext_imm_msl_felt - rs1_msl_felt)),
-            |diff_marker_3, diff_marker_2, cmp_sign, sext_imm_2, rs1_next_2|
-                (1 - diff_marker_3 - diff_marker_2) * (cmp_sign * (sext_imm_2 - rs1_next_2)),
-            |diff_marker_2, cmp_sign, sext_imm_2, rs1_next_2, diff_val|
-                diff_marker_2 * (diff_val - cmp_sign * (sext_imm_2 - rs1_next_2)),
-            |diff_marker_3, diff_marker_2, diff_marker_1, cmp_sign, sext_imm_1, rs1_next_1|
-                (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
+            (1 - diff_marker_3) * (cmp_sign * (sext_imm_msl_felt - rs1_msl_felt)),
+            diff_marker_3 * (diff_val - cmp_sign * (sext_imm_msl_felt - rs1_msl_felt)),
+            (1 - diff_marker_3 - diff_marker_2) * (cmp_sign * (sext_imm_2 - rs1_next_2)),
+            diff_marker_2 * (diff_val - cmp_sign * (sext_imm_2 - rs1_next_2)),
+            (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
                     * (cmp_sign * (sext_imm_1 - rs1_next_1)),
-            |diff_marker_1, cmp_sign, sext_imm_1, rs1_next_1, diff_val|
-                diff_marker_1 * (diff_val - cmp_sign * (sext_imm_1 - rs1_next_1)),
-            |prefix_sum_final, cmp_sign, imm_0, rs1_next_0|
-                (1 - prefix_sum_final) * (cmp_sign * (imm_0 - rs1_next_0)),
-            |diff_marker_0, cmp_sign, imm_0, rs1_next_0, diff_val|
-                diff_marker_0 * (diff_val - cmp_sign * (imm_0 - rs1_next_0)),
-            |prefix_sum_final| prefix_sum_final * (1 - prefix_sum_final),
-            |prefix_sum_final, cmp_result| (1 - prefix_sum_final) * cmp_result,
-            |cmp_result| cmp_result * (1 - cmp_result),
+            diff_marker_1 * (diff_val - cmp_sign * (sext_imm_1 - rs1_next_1)),
+            (1 - prefix_sum_final) * (cmp_sign * (imm_0 - rs1_next_0)),
+            diff_marker_0 * (diff_val - cmp_sign * (imm_0 - rs1_next_0)),
+            prefix_sum_final * (1 - prefix_sum_final),
+            (1 - prefix_sum_final) * cmp_result,
+            cmp_result * (1 - cmp_result),
         },
         lookups: {
             // Program access (I-type): Program(pc, opcode, rd_idx, rs1_idx, imm)
@@ -766,13 +694,13 @@ stwo_macros::define_trace_tables! {
             rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
         },
         constraints: {
-            |cmp_result| cmp_result * (1 - cmp_result),
+            cmp_result * (1 - cmp_result),
             // Equality forced limb-wise when cmp_eq fires
-            |cmp_eq, rs1_next_0, rs2_next_0| cmp_eq * (rs1_next_0 - rs2_next_0),
-            |cmp_eq, rs1_next_1, rs2_next_1| cmp_eq * (rs1_next_1 - rs2_next_1),
-            |cmp_eq, rs1_next_2, rs2_next_2| cmp_eq * (rs1_next_2 - rs2_next_2),
-            |cmp_eq, rs1_next_3, rs2_next_3| cmp_eq * (rs1_next_3 - rs2_next_3),
-            |enabler, diff_inv_sum| enabler * (1 - diff_inv_sum),
+            cmp_eq * (rs1_next_0 - rs2_next_0),
+            cmp_eq * (rs1_next_1 - rs2_next_1),
+            cmp_eq * (rs1_next_2 - rs2_next_2),
+            cmp_eq * (rs1_next_3 - rs2_next_3),
+            enabler * (1 - diff_inv_sum),
         },
         lookups: {
             // Program access (B-type): Program(pc, opcode, rs1_idx, rs2_idx, imm)
@@ -827,39 +755,30 @@ stwo_macros::define_trace_tables! {
             rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
         },
         constraints: {
-            |cmp_result| cmp_result * (1 - cmp_result),
-            |diff_marker_0| diff_marker_0 * (1 - diff_marker_0),
-            |diff_marker_1| diff_marker_1 * (1 - diff_marker_1),
-            |diff_marker_2| diff_marker_2 * (1 - diff_marker_2),
-            |diff_marker_3| diff_marker_3 * (1 - diff_marker_3),
+            cmp_result * (1 - cmp_result),
+            diff_marker_0 * (1 - diff_marker_0),
+            diff_marker_1 * (1 - diff_marker_1),
+            diff_marker_2 * (1 - diff_marker_2),
+            diff_marker_3 * (1 - diff_marker_3),
             // Branch target, gated by enabler (airs.md 8.2)
-            |enabler, branch_target, pc, imm_felt, cmp_result|
-                enabler * (branch_target - (pc + imm_felt * cmp_result + 4 * (1 - cmp_result))),
-            |rs1_msl_gap| rs1_msl_gap * (pow2(8) - rs1_msl_gap),
-            |rs2_msl_gap| rs2_msl_gap * (pow2(8) - rs2_msl_gap),
+            enabler * (branch_target - (pc + imm_felt * cmp_result + 4 * (1 - cmp_result))),
+            rs1_msl_gap * (pow2(8) - rs1_msl_gap),
+            rs2_msl_gap * (pow2(8) - rs2_msl_gap),
             // Comparison scan from the most significant limb down
-            |diff_marker_3, lt_sign, rs2_msl_felt, rs1_msl_felt|
-                (1 - diff_marker_3) * (lt_sign * (rs2_msl_felt - rs1_msl_felt)),
-            |diff_marker_3, lt_sign, rs2_msl_felt, rs1_msl_felt, diff_val|
-                diff_marker_3 * (diff_val - lt_sign * (rs2_msl_felt - rs1_msl_felt)),
-            |diff_marker_3, diff_marker_2, lt_sign, rs2_next_2, rs1_next_2|
-                (1 - diff_marker_3 - diff_marker_2) * (lt_sign * (rs2_next_2 - rs1_next_2)),
-            |diff_marker_2, lt_sign, rs2_next_2, rs1_next_2, diff_val|
-                diff_marker_2 * (diff_val - lt_sign * (rs2_next_2 - rs1_next_2)),
-            |diff_marker_3, diff_marker_2, diff_marker_1, lt_sign, rs2_next_1, rs1_next_1|
-                (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
+            (1 - diff_marker_3) * (lt_sign * (rs2_msl_felt - rs1_msl_felt)),
+            diff_marker_3 * (diff_val - lt_sign * (rs2_msl_felt - rs1_msl_felt)),
+            (1 - diff_marker_3 - diff_marker_2) * (lt_sign * (rs2_next_2 - rs1_next_2)),
+            diff_marker_2 * (diff_val - lt_sign * (rs2_next_2 - rs1_next_2)),
+            (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
                     * (lt_sign * (rs2_next_1 - rs1_next_1)),
-            |diff_marker_1, lt_sign, rs2_next_1, rs1_next_1, diff_val|
-                diff_marker_1 * (diff_val - lt_sign * (rs2_next_1 - rs1_next_1)),
-            |prefix_sum_final, lt_sign, rs2_next_0, rs1_next_0|
-                (1 - prefix_sum_final) * (lt_sign * (rs2_next_0 - rs1_next_0)),
-            |diff_marker_0, lt_sign, rs2_next_0, rs1_next_0, diff_val|
-                diff_marker_0 * (diff_val - lt_sign * (rs2_next_0 - rs1_next_0)),
-            |prefix_sum_final| prefix_sum_final * (1 - prefix_sum_final),
-            |prefix_sum_final, cmp_lt| (1 - prefix_sum_final) * cmp_lt,
+            diff_marker_1 * (diff_val - lt_sign * (rs2_next_1 - rs1_next_1)),
+            (1 - prefix_sum_final) * (lt_sign * (rs2_next_0 - rs1_next_0)),
+            diff_marker_0 * (diff_val - lt_sign * (rs2_next_0 - rs1_next_0)),
+            prefix_sum_final * (1 - prefix_sum_final),
+            (1 - prefix_sum_final) * cmp_lt,
             // cmp_lt selects less-than under lt opcodes, not-less-than
             // under ge opcodes
-            |cmp_lt, cmp_result, lt, ge| cmp_lt - (cmp_result * lt + (1 - cmp_result) * ge),
+            cmp_lt - (cmp_result * lt + (1 - cmp_result) * ge),
         },
         lookups: {
             // Program access (B-type): Program(pc, opcode, rs1_idx, rs2_idx, imm)
@@ -934,7 +853,7 @@ stwo_macros::define_trace_tables! {
         },
         constraints: {
             // rd = pc + imm (airs.md 10.2)
-            |rd_felt, pc, imm_felt| rd_felt - (pc + imm_felt),
+            rd_felt - (pc + imm_felt),
         },
         lookups: {
             // Program access (U-type): Program(pc, AUIPC, rd_idx, imm, 0)
@@ -974,12 +893,11 @@ stwo_macros::define_trace_tables! {
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
         },
         constraints: {
-            |to_pc_lsb| to_pc_lsb * (1 - to_pc_lsb),
+            to_pc_lsb * (1 - to_pc_lsb),
             // 2 * to_pc_over_two + to_pc_lsb = rs1 + imm
-            |to_pc_over_two, to_pc_lsb, rs1_felt, imm_felt|
-                2 * to_pc_over_two + to_pc_lsb - (rs1_felt + imm_felt),
+            2 * to_pc_over_two + to_pc_lsb - (rs1_felt + imm_felt),
             // rd = pc + 4, gated by rd_addr (x0 writes discarded)
-            |enabler, rd_addr, rd_felt, pc| enabler * rd_addr * (rd_felt - (pc + 4)),
+            enabler * rd_addr * (rd_felt - (pc + 4)),
         },
         lookups: {
             // Program access (I-type): Program(pc, JALR, rd_idx, rs1_idx, imm)
@@ -1041,7 +959,7 @@ stwo_macros::define_trace_tables! {
         constraints: {
             // rd = pc + 4, gated by enabler (padding) and rd_addr (x0
             // writes are discarded, airs.md 12.2)
-            |enabler, rd_addr, rd_felt, pc| enabler * rd_addr * (rd_felt - (pc + 4)),
+            enabler * rd_addr * (rd_felt - (pc + 4)),
         },
     },
 
@@ -1099,81 +1017,53 @@ stwo_macros::define_trace_tables! {
             dst_clock_diff: |clock, dst_clock_prev| clock - dst_clock_prev,
         },
         constraints: {
-            |marker_0| marker_0 * (1 - marker_0),
-            |marker_1| marker_1 * (1 - marker_1),
-            |marker_2| marker_2 * (1 - marker_2),
-            |marker_3| marker_3 * (1 - marker_3),
+            marker_0 * (1 - marker_0),
+            marker_1 * (1 - marker_1),
+            marker_2 * (1 - marker_2),
+            marker_3 * (1 - marker_3),
             // Shift amount: byte ops use shift_id, half-word ops (shift_id 1
             // or 5) use (shift_id - 1) / 2 (airs.md 13.3)
-            |shift_amount, opcode_b_flag, shift_id, opcode_h_flag|
-                shift_amount - (opcode_b_flag * shift_id
+            shift_amount - (opcode_b_flag * shift_id
                 + opcode_h_flag * (shift_id - 1) * inv(2)),
             // Load/store dependent source and destination addresses
-            |src_addr_selector, is_load, mem_addr, shift_amount, is_store, r2_idx|
-                src_addr_selector
+            src_addr_selector
                 - (is_load * (mem_addr - shift_amount) + is_store * r2_idx),
-            |dst_addr_selector, is_load, r2_idx, is_store, mem_addr, shift_amount|
-                dst_addr_selector
+            dst_addr_selector
                 - (is_load * r2_idx + is_store * (mem_addr - shift_amount)),
-            |opcode_b_flag, sum_markers| opcode_b_flag * (1 - sum_markers),
-            |opcode_h_flag, sum_markers| opcode_h_flag * (2 - sum_markers),
-            |opcode_h_flag, shift_id| opcode_h_flag * (1 - shift_id) * (5 - shift_id),
+            opcode_b_flag * (1 - sum_markers),
+            opcode_h_flag * (2 - sum_markers),
+            opcode_h_flag * (1 - shift_id) * (5 - shift_id),
             // Byte loads sign-extend the upper bytes
-            |load_b_flag, signed_mask, dst_next_1|
-                load_b_flag * (signed_mask - dst_next_1),
-            |load_b_flag, signed_mask, dst_next_2|
-                load_b_flag * (signed_mask - dst_next_2),
-            |load_b_flag, signed_mask, dst_next_3|
-                load_b_flag * (signed_mask - dst_next_3),
+            load_b_flag * (signed_mask - dst_next_1),
+            load_b_flag * (signed_mask - dst_next_2),
+            load_b_flag * (signed_mask - dst_next_3),
             // Byte selection: loads pull memory byte i into register byte 0,
             // stores push register byte 0 into memory byte i
-            |load_b_flag, dst_next_0, src_next_0, marker_0|
-                load_b_flag * (dst_next_0 - src_next_0) * marker_0,
-            |opcode_sb_flag, dst_next_0, src_next_0, marker_0|
-                opcode_sb_flag * (dst_next_0 - src_next_0) * marker_0,
-            |load_b_flag, dst_next_0, src_next_1, marker_1|
-                load_b_flag * (dst_next_0 - src_next_1) * marker_1,
-            |opcode_sb_flag, dst_next_1, src_next_0, marker_1|
-                opcode_sb_flag * (dst_next_1 - src_next_0) * marker_1,
-            |load_b_flag, dst_next_0, src_next_2, marker_2|
-                load_b_flag * (dst_next_0 - src_next_2) * marker_2,
-            |opcode_sb_flag, dst_next_2, src_next_0, marker_2|
-                opcode_sb_flag * (dst_next_2 - src_next_0) * marker_2,
-            |load_b_flag, dst_next_0, src_next_3, marker_3|
-                load_b_flag * (dst_next_0 - src_next_3) * marker_3,
-            |opcode_sb_flag, dst_next_3, src_next_0, marker_3|
-                opcode_sb_flag * (dst_next_3 - src_next_0) * marker_3,
+            load_b_flag * (dst_next_0 - src_next_0) * marker_0,
+            opcode_sb_flag * (dst_next_0 - src_next_0) * marker_0,
+            load_b_flag * (dst_next_0 - src_next_1) * marker_1,
+            opcode_sb_flag * (dst_next_1 - src_next_0) * marker_1,
+            load_b_flag * (dst_next_0 - src_next_2) * marker_2,
+            opcode_sb_flag * (dst_next_2 - src_next_0) * marker_2,
+            load_b_flag * (dst_next_0 - src_next_3) * marker_3,
+            opcode_sb_flag * (dst_next_3 - src_next_0) * marker_3,
             // Half-word loads sign-extend the upper half
-            |load_h_flag, signed_mask, dst_next_2|
-                load_h_flag * (signed_mask - dst_next_2),
-            |load_h_flag, signed_mask, dst_next_3|
-                load_h_flag * (signed_mask - dst_next_3),
+            load_h_flag * (signed_mask - dst_next_2),
+            load_h_flag * (signed_mask - dst_next_3),
             // Half-word selection by shift_id (1 = low half, 5 = high half)
-            |load_h_flag, shift_id, dst_next_0, src_next_0|
-                load_h_flag * (5 - shift_id) * inv(4) * (dst_next_0 - src_next_0),
-            |load_h_flag, shift_id, dst_next_1, src_next_1|
-                load_h_flag * (5 - shift_id) * inv(4) * (dst_next_1 - src_next_1),
-            |load_h_flag, shift_id, dst_next_0, src_next_2|
-                load_h_flag * (shift_id - 1) * inv(4) * (dst_next_0 - src_next_2),
-            |load_h_flag, shift_id, dst_next_1, src_next_3|
-                load_h_flag * (shift_id - 1) * inv(4) * (dst_next_1 - src_next_3),
-            |opcode_sh_flag, shift_id, dst_next_0, src_next_0|
-                opcode_sh_flag * (5 - shift_id) * inv(4) * (dst_next_0 - src_next_0),
-            |opcode_sh_flag, shift_id, dst_next_1, src_next_1|
-                opcode_sh_flag * (5 - shift_id) * inv(4) * (dst_next_1 - src_next_1),
-            |opcode_sh_flag, shift_id, dst_next_2, src_next_0|
-                opcode_sh_flag * (shift_id - 1) * inv(4) * (dst_next_2 - src_next_0),
-            |opcode_sh_flag, shift_id, dst_next_3, src_next_1|
-                opcode_sh_flag * (shift_id - 1) * inv(4) * (dst_next_3 - src_next_1),
+            load_h_flag * (5 - shift_id) * inv(4) * (dst_next_0 - src_next_0),
+            load_h_flag * (5 - shift_id) * inv(4) * (dst_next_1 - src_next_1),
+            load_h_flag * (shift_id - 1) * inv(4) * (dst_next_0 - src_next_2),
+            load_h_flag * (shift_id - 1) * inv(4) * (dst_next_1 - src_next_3),
+            opcode_sh_flag * (5 - shift_id) * inv(4) * (dst_next_0 - src_next_0),
+            opcode_sh_flag * (5 - shift_id) * inv(4) * (dst_next_1 - src_next_1),
+            opcode_sh_flag * (shift_id - 1) * inv(4) * (dst_next_2 - src_next_0),
+            opcode_sh_flag * (shift_id - 1) * inv(4) * (dst_next_3 - src_next_1),
             // Word ops copy all bytes
-            |opcode_w_flag, dst_next_0, src_next_0|
-                opcode_w_flag * (dst_next_0 - src_next_0),
-            |opcode_w_flag, dst_next_1, src_next_1|
-                opcode_w_flag * (dst_next_1 - src_next_1),
-            |opcode_w_flag, dst_next_2, src_next_2|
-                opcode_w_flag * (dst_next_2 - src_next_2),
-            |opcode_w_flag, dst_next_3, src_next_3|
-                opcode_w_flag * (dst_next_3 - src_next_3),
+            opcode_w_flag * (dst_next_0 - src_next_0),
+            opcode_w_flag * (dst_next_1 - src_next_1),
+            opcode_w_flag * (dst_next_2 - src_next_2),
+            opcode_w_flag * (dst_next_3 - src_next_3),
         },
         lookups: {
             // Program access (I-type for loads, S-type for stores):
@@ -1315,12 +1205,11 @@ stwo_macros::define_trace_tables! {
                 (carry_6 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_fill + rs1_fill * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_3) * inv(pow2(8)),
         },
         constraints: {
-            |rs1_sign| rs1_sign * (1 - rs1_sign),
-            |rs2_sign| rs2_sign * (1 - rs2_sign),
+            rs1_sign * (1 - rs1_sign),
+            rs2_sign * (1 - rs2_sign),
             // Unsigned operands force their sign bits to zero
-            |opcode_mulhsu_flag, opcode_mulhu_flag, rs2_sign|
-                (opcode_mulhsu_flag + opcode_mulhu_flag) * rs2_sign,
-            |opcode_mulhu_flag, rs1_sign| opcode_mulhu_flag * rs1_sign,
+            (opcode_mulhsu_flag + opcode_mulhu_flag) * rs2_sign,
+            opcode_mulhu_flag * rs1_sign,
         },
         lookups: {
             // Quadratic carry denominators: every fraction must stay in a
@@ -1420,81 +1309,70 @@ stwo_macros::define_trace_tables! {
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
         },
         constraints: {
-            |zero_divisor| zero_divisor * (1 - zero_divisor),
-            |r_zero| r_zero * (1 - r_zero),
-            |b_sign| b_sign * (1 - b_sign),
-            |c_sign| c_sign * (1 - c_sign),
-            |q_sign| q_sign * (1 - q_sign),
-            |sign_xor| sign_xor * (1 - sign_xor),
-            |lt_marker_0| lt_marker_0 * (1 - lt_marker_0),
-            |lt_marker_1| lt_marker_1 * (1 - lt_marker_1),
-            |lt_marker_2| lt_marker_2 * (1 - lt_marker_2),
-            |lt_marker_3| lt_marker_3 * (1 - lt_marker_3),
-            |special_case| special_case * (1 - special_case),
-            |valid_not_zero_divisor| valid_not_zero_divisor * (1 - valid_not_zero_divisor),
-            |valid_not_special| valid_not_special * (1 - valid_not_special),
+            zero_divisor * (1 - zero_divisor),
+            r_zero * (1 - r_zero),
+            b_sign * (1 - b_sign),
+            c_sign * (1 - c_sign),
+            q_sign * (1 - q_sign),
+            sign_xor * (1 - sign_xor),
+            lt_marker_0 * (1 - lt_marker_0),
+            lt_marker_1 * (1 - lt_marker_1),
+            lt_marker_2 * (1 - lt_marker_2),
+            lt_marker_3 * (1 - lt_marker_3),
+            special_case * (1 - special_case),
+            valid_not_zero_divisor * (1 - valid_not_zero_divisor),
+            valid_not_special * (1 - valid_not_special),
             // Zero divisor: all-one quotient, zero divisor limbs (airs.md 16.3)
-            |zero_divisor, rs2_next_0| zero_divisor * rs2_next_0,
-            |zero_divisor, rs2_next_1| zero_divisor * rs2_next_1,
-            |zero_divisor, rs2_next_2| zero_divisor * rs2_next_2,
-            |zero_divisor, rs2_next_3| zero_divisor * rs2_next_3,
-            |zero_divisor, q_0| zero_divisor * (q_0 - (pow2(8) - 1)),
-            |zero_divisor, q_1| zero_divisor * (q_1 - (pow2(8) - 1)),
-            |zero_divisor, q_2| zero_divisor * (q_2 - (pow2(8) - 1)),
-            |zero_divisor, q_3| zero_divisor * (q_3 - (pow2(8) - 1)),
-            |valid_not_zero_divisor, c_sum, c_sum_inv|
-                valid_not_zero_divisor * (c_sum * c_sum_inv - 1),
+            zero_divisor * rs2_next_0,
+            zero_divisor * rs2_next_1,
+            zero_divisor * rs2_next_2,
+            zero_divisor * rs2_next_3,
+            zero_divisor * (q_0 - (pow2(8) - 1)),
+            zero_divisor * (q_1 - (pow2(8) - 1)),
+            zero_divisor * (q_2 - (pow2(8) - 1)),
+            zero_divisor * (q_3 - (pow2(8) - 1)),
+            valid_not_zero_divisor * (c_sum * c_sum_inv - 1),
             // Zero remainder detection
-            |r_zero, r_0| r_zero * r_0,
-            |r_zero, r_1| r_zero * r_1,
-            |r_zero, r_2| r_zero * r_2,
-            |r_zero, r_3| r_zero * r_3,
-            |valid_not_special, r_sum, r_sum_inv| valid_not_special * (r_sum * r_sum_inv - 1),
+            r_zero * r_0,
+            r_zero * r_1,
+            r_zero * r_2,
+            r_zero * r_3,
+            valid_not_special * (r_sum * r_sum_inv - 1),
             // Signs only under signed opcodes; sign_xor = b_sign XOR c_sign
-            |is_signed, b_sign| (1 - is_signed) * b_sign,
-            |is_signed, c_sign| (1 - is_signed) * c_sign,
-            |enabler, sign_xor, b_sign, c_sign|
-                enabler * (sign_xor - b_sign - c_sign + 2 * b_sign * c_sign),
+            (1 - is_signed) * b_sign,
+            (1 - is_signed) * c_sign,
+            enabler * (sign_xor - b_sign - c_sign + 2 * b_sign * c_sign),
             // Quotient sign selection
-            |zero_divisor, q_sum, q_sign, sign_xor|
-                (1 - zero_divisor) * q_sum * (q_sign - sign_xor),
-            |zero_divisor, q_sign, sign_xor|
-                (1 - zero_divisor) * (q_sign - sign_xor) * q_sign,
+            (1 - zero_divisor) * q_sum * (q_sign - sign_xor),
+            (1 - zero_divisor) * (q_sign - sign_xor) * q_sign,
             // Absolute remainder: identity without sign flip, two's
             // complement otherwise
-            |sign_xor, r_abs_0, r_0| (1 - sign_xor) * (r_abs_0 - r_0),
-            |sign_xor, carry_lt_0| sign_xor * carry_lt_0 * (carry_lt_0 - 1),
-            |sign_xor, carry_lt_0, r_abs_0| sign_xor * (1 - carry_lt_0) * r_abs_0,
-            |sign_xor, r_abs_0, r_inv_0| sign_xor * ((r_abs_0 - pow2(8)) * r_inv_0 - 1),
-            |sign_xor, r_abs_1, r_1| (1 - sign_xor) * (r_abs_1 - r_1),
-            |sign_xor, carry_lt_1, carry_lt_0|
-                sign_xor * (carry_lt_1 - carry_lt_0) * (carry_lt_1 - 1),
-            |sign_xor, carry_lt_1, r_abs_1| sign_xor * (1 - carry_lt_1) * r_abs_1,
-            |sign_xor, r_abs_1, r_inv_1| sign_xor * ((r_abs_1 - pow2(8)) * r_inv_1 - 1),
-            |sign_xor, r_abs_2, r_2| (1 - sign_xor) * (r_abs_2 - r_2),
-            |sign_xor, carry_lt_2, carry_lt_1|
-                sign_xor * (carry_lt_2 - carry_lt_1) * (carry_lt_2 - 1),
-            |sign_xor, carry_lt_2, r_abs_2| sign_xor * (1 - carry_lt_2) * r_abs_2,
-            |sign_xor, r_abs_2, r_inv_2| sign_xor * ((r_abs_2 - pow2(8)) * r_inv_2 - 1),
-            |sign_xor, r_abs_3, r_3| (1 - sign_xor) * (r_abs_3 - r_3),
-            |sign_xor, carry_lt_3, carry_lt_2|
-                sign_xor * (carry_lt_3 - carry_lt_2) * (carry_lt_3 - 1),
-            |sign_xor, carry_lt_3, r_abs_3| sign_xor * (1 - carry_lt_3) * r_abs_3,
-            |sign_xor, r_abs_3, r_inv_3| sign_xor * ((r_abs_3 - pow2(8)) * r_inv_3 - 1),
-            // |r| < |c| scan from the most significant limb
-            |enabler, prefix_3, diff_3| enabler * (1 - prefix_3) * diff_3,
-            |enabler, lt_marker_3, lt_diff, diff_3|
-                enabler * lt_marker_3 * (lt_diff - diff_3),
-            |enabler, prefix_2, diff_2| enabler * (1 - prefix_2) * diff_2,
-            |enabler, lt_marker_2, lt_diff, diff_2|
-                enabler * lt_marker_2 * (lt_diff - diff_2),
-            |enabler, prefix_1, diff_1| enabler * (1 - prefix_1) * diff_1,
-            |enabler, lt_marker_1, lt_diff, diff_1|
-                enabler * lt_marker_1 * (lt_diff - diff_1),
-            |enabler, prefix_0, diff_0| enabler * (1 - prefix_0) * diff_0,
-            |enabler, lt_marker_0, lt_diff, diff_0|
-                enabler * lt_marker_0 * (lt_diff - diff_0),
-            |enabler, prefix_0| enabler * (1 - prefix_0),
+            (1 - sign_xor) * (r_abs_0 - r_0),
+            sign_xor * carry_lt_0 * (carry_lt_0 - 1),
+            sign_xor * (1 - carry_lt_0) * r_abs_0,
+            sign_xor * ((r_abs_0 - pow2(8)) * r_inv_0 - 1),
+            (1 - sign_xor) * (r_abs_1 - r_1),
+            sign_xor * (carry_lt_1 - carry_lt_0) * (carry_lt_1 - 1),
+            sign_xor * (1 - carry_lt_1) * r_abs_1,
+            sign_xor * ((r_abs_1 - pow2(8)) * r_inv_1 - 1),
+            (1 - sign_xor) * (r_abs_2 - r_2),
+            sign_xor * (carry_lt_2 - carry_lt_1) * (carry_lt_2 - 1),
+            sign_xor * (1 - carry_lt_2) * r_abs_2,
+            sign_xor * ((r_abs_2 - pow2(8)) * r_inv_2 - 1),
+            (1 - sign_xor) * (r_abs_3 - r_3),
+            sign_xor * (carry_lt_3 - carry_lt_2) * (carry_lt_3 - 1),
+            sign_xor * (1 - carry_lt_3) * r_abs_3,
+            sign_xor * ((r_abs_3 - pow2(8)) * r_inv_3 - 1),
+            // < scan from the most significant limb
+            enabler * (1 - prefix_3) * diff_3,
+            enabler * lt_marker_3 * (lt_diff - diff_3),
+            enabler * (1 - prefix_2) * diff_2,
+            enabler * lt_marker_2 * (lt_diff - diff_2),
+            enabler * (1 - prefix_1) * diff_1,
+            enabler * lt_marker_1 * (lt_diff - diff_1),
+            enabler * (1 - prefix_0) * diff_0,
+            enabler * lt_marker_0 * (lt_diff - diff_0),
+            enabler * (1 - prefix_0),
         },
         lookups: {
             // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)

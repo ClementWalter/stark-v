@@ -47,25 +47,21 @@ define_component_tables! {
         // through the wire relation.
         circuit_id, node_id, lhs_id, rhs_id, uses, in_circuit,
         constraints: {
-            |in_circuit| in_circuit * (1 - in_circuit),
+            in_circuit * (1 - in_circuit),
             // Wiring rows are real rows.
-            |in_circuit, enabler| in_circuit * (1 - enabler),
+            in_circuit * (1 - enabler),
             // Re(first): Re(AC) + Re((2 + i) BD)
-            |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_0|
-                a_0 * b_0 - a_1 * b_1
+            a_0 * b_0 - a_1 * b_1
                 + 2 * (a_2 * b_2 - a_3 * b_3) - (a_2 * b_3 + a_3 * b_2)
                 - c_0,
             // Im(first): Im(AC) + Im((2 + i) BD)
-            |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_1|
-                a_0 * b_1 + a_1 * b_0
+            a_0 * b_1 + a_1 * b_0
                 + (a_2 * b_2 - a_3 * b_3) + 2 * (a_2 * b_3 + a_3 * b_2)
                 - c_1,
             // Re(second): Re(AD) + Re(BC)
-            |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_2|
-                a_0 * b_2 - a_1 * b_3 + a_2 * b_0 - a_3 * b_1 - c_2,
+            a_0 * b_2 - a_1 * b_3 + a_2 * b_0 - a_3 * b_1 - c_2,
             // Im(second): Im(AD) + Im(BC)
-            |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_3|
-                a_0 * b_3 + a_1 * b_2 + a_2 * b_1 + a_3 * b_0 - c_3,
+            a_0 * b_3 + a_1 * b_2 + a_2 * b_1 + a_3 * b_0 - c_3,
         },
     },
 
@@ -84,30 +80,26 @@ define_component_tables! {
         folded_0, folded_1, folded_2, folded_3,
         constraints: {
             // x_inv is the inverse of x on enabled rows
-            |enabler, x, x_inv| x * x_inv - enabler,
+            x * x_inv - enabler,
             // t = (f(x) - f(-x)) * x_inv, limb-wise (x_inv is a base scalar)
-            |x_inv, f_x_0, f_neg_x_0, t_0| (f_x_0 - f_neg_x_0) * x_inv - t_0,
-            |x_inv, f_x_1, f_neg_x_1, t_1| (f_x_1 - f_neg_x_1) * x_inv - t_1,
-            |x_inv, f_x_2, f_neg_x_2, t_2| (f_x_2 - f_neg_x_2) * x_inv - t_2,
-            |x_inv, f_x_3, f_neg_x_3, t_3| (f_x_3 - f_neg_x_3) * x_inv - t_3,
+            (f_x_0 - f_neg_x_0) * x_inv - t_0,
+            (f_x_1 - f_neg_x_1) * x_inv - t_1,
+            (f_x_2 - f_neg_x_2) * x_inv - t_2,
+            (f_x_3 - f_neg_x_3) * x_inv - t_3,
             // folded = (f(x) + f(-x)) + alpha * t, with alpha * t expanded
             // over the extension tower exactly as in qm31_mul
-            |f_x_0, f_neg_x_0, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_0|
-                f_x_0 + f_neg_x_0
+            f_x_0 + f_neg_x_0
                 + alpha_0 * t_0 - alpha_1 * t_1
                 + 2 * (alpha_2 * t_2 - alpha_3 * t_3) - (alpha_2 * t_3 + alpha_3 * t_2)
                 - folded_0,
-            |f_x_1, f_neg_x_1, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_1|
-                f_x_1 + f_neg_x_1
+            f_x_1 + f_neg_x_1
                 + alpha_0 * t_1 + alpha_1 * t_0
                 + (alpha_2 * t_2 - alpha_3 * t_3) + 2 * (alpha_2 * t_3 + alpha_3 * t_2)
                 - folded_1,
-            |f_x_2, f_neg_x_2, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_2|
-                f_x_2 + f_neg_x_2
+            f_x_2 + f_neg_x_2
                 + alpha_0 * t_2 - alpha_1 * t_3 + alpha_2 * t_0 - alpha_3 * t_1
                 - folded_2,
-            |f_x_3, f_neg_x_3, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_3|
-                f_x_3 + f_neg_x_3
+            f_x_3 + f_neg_x_3
                 + alpha_0 * t_3 + alpha_1 * t_2 + alpha_2 * t_1 + alpha_3 * t_0
                 - folded_3,
         },
@@ -124,31 +116,23 @@ define_component_tables! {
         r_y_0, r_y_1, r_y_2, r_y_3,
         constraints: {
             // r_x = 2 * p_x^2 - 1
-            |enabler, p_x_0, p_x_1, p_x_2, p_x_3, r_x_0|
-                2 * (p_x_0 * p_x_0 - p_x_1 * p_x_1
+            2 * (p_x_0 * p_x_0 - p_x_1 * p_x_1
                     + 2 * (p_x_2 * p_x_2 - p_x_3 * p_x_3) - 2 * (p_x_2 * p_x_3))
                 - enabler - r_x_0,
-            |p_x_0, p_x_1, p_x_2, p_x_3, r_x_1|
-                2 * (2 * (p_x_0 * p_x_1)
+            2 * (2 * (p_x_0 * p_x_1)
                     + (p_x_2 * p_x_2 - p_x_3 * p_x_3) + 4 * (p_x_2 * p_x_3))
                 - r_x_1,
-            |p_x_0, p_x_1, p_x_2, p_x_3, r_x_2|
-                2 * (2 * (p_x_0 * p_x_2) - 2 * (p_x_1 * p_x_3)) - r_x_2,
-            |p_x_0, p_x_1, p_x_2, p_x_3, r_x_3|
-                2 * (2 * (p_x_0 * p_x_3) + 2 * (p_x_1 * p_x_2)) - r_x_3,
+            2 * (2 * (p_x_0 * p_x_2) - 2 * (p_x_1 * p_x_3)) - r_x_2,
+            2 * (2 * (p_x_0 * p_x_3) + 2 * (p_x_1 * p_x_2)) - r_x_3,
             // r_y = 2 * p_x * p_y
-            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_0|
-                2 * (p_x_0 * p_y_0 - p_x_1 * p_y_1
+            2 * (p_x_0 * p_y_0 - p_x_1 * p_y_1
                     + 2 * (p_x_2 * p_y_2 - p_x_3 * p_y_3) - (p_x_2 * p_y_3 + p_x_3 * p_y_2))
                 - r_y_0,
-            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_1|
-                2 * (p_x_0 * p_y_1 + p_x_1 * p_y_0
+            2 * (p_x_0 * p_y_1 + p_x_1 * p_y_0
                     + (p_x_2 * p_y_2 - p_x_3 * p_y_3) + 2 * (p_x_2 * p_y_3 + p_x_3 * p_y_2))
                 - r_y_1,
-            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_2|
-                2 * (p_x_0 * p_y_2 - p_x_1 * p_y_3 + p_x_2 * p_y_0 - p_x_3 * p_y_1) - r_y_2,
-            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_3|
-                2 * (p_x_0 * p_y_3 + p_x_1 * p_y_2 + p_x_2 * p_y_1 + p_x_3 * p_y_0) - r_y_3,
+            2 * (p_x_0 * p_y_2 - p_x_1 * p_y_3 + p_x_2 * p_y_0 - p_x_3 * p_y_1) - r_y_2,
+            2 * (p_x_0 * p_y_3 + p_x_1 * p_y_2 + p_x_2 * p_y_1 + p_x_3 * p_y_0) - r_y_3,
         },
     },
 
@@ -170,17 +154,17 @@ define_component_tables! {
         parent_0, parent_1, parent_2, parent_3, parent_4, parent_5, parent_6, parent_7,
         child_0, child_1, child_2, child_3, child_4, child_5, child_6, child_7,
         constraints: {
-            |direction| direction * (1 - direction),
-            |is_leaf| is_leaf * (1 - is_leaf),
+            direction * (1 - direction),
+            is_leaf * (1 - is_leaf),
             // child = direction ? right : left, limb-wise
-            |direction, left_0, right_0, child_0| left_0 + direction * (right_0 - left_0) - child_0,
-            |direction, left_1, right_1, child_1| left_1 + direction * (right_1 - left_1) - child_1,
-            |direction, left_2, right_2, child_2| left_2 + direction * (right_2 - left_2) - child_2,
-            |direction, left_3, right_3, child_3| left_3 + direction * (right_3 - left_3) - child_3,
-            |direction, left_4, right_4, child_4| left_4 + direction * (right_4 - left_4) - child_4,
-            |direction, left_5, right_5, child_5| left_5 + direction * (right_5 - left_5) - child_5,
-            |direction, left_6, right_6, child_6| left_6 + direction * (right_6 - left_6) - child_6,
-            |direction, left_7, right_7, child_7| left_7 + direction * (right_7 - left_7) - child_7,
+            left_0 + direction * (right_0 - left_0) - child_0,
+            left_1 + direction * (right_1 - left_1) - child_1,
+            left_2 + direction * (right_2 - left_2) - child_2,
+            left_3 + direction * (right_3 - left_3) - child_3,
+            left_4 + direction * (right_4 - left_4) - child_4,
+            left_5 + direction * (right_5 - left_5) - child_5,
+            left_6 + direction * (right_6 - left_6) - child_6,
+            left_7 + direction * (right_7 - left_7) - child_7,
         },
     },
 
@@ -211,20 +195,16 @@ define_component_tables! {
         out_0, out_1, out_2, out_3,
         uses,
         constraints: {
-            |is_add| is_add * (1 - is_add),
-            |is_sub| is_sub * (1 - is_sub),
-            |is_neg| is_neg * (1 - is_neg),
+            is_add * (1 - is_add),
+            is_sub * (1 - is_sub),
+            is_neg * (1 - is_neg),
             // Exactly one kind per enabled row.
-            |enabler, is_add, is_sub, is_neg| is_add + is_sub + is_neg - enabler,
+            is_add + is_sub + is_neg - enabler,
             // out = lhs + rhs / lhs - rhs / -lhs, limb-wise per kind.
-            |is_add, is_sub, is_neg, lhs_0, rhs_0, out_0|
-                is_add * (lhs_0 + rhs_0) + is_sub * (lhs_0 - rhs_0) - is_neg * lhs_0 - out_0,
-            |is_add, is_sub, is_neg, lhs_1, rhs_1, out_1|
-                is_add * (lhs_1 + rhs_1) + is_sub * (lhs_1 - rhs_1) - is_neg * lhs_1 - out_1,
-            |is_add, is_sub, is_neg, lhs_2, rhs_2, out_2|
-                is_add * (lhs_2 + rhs_2) + is_sub * (lhs_2 - rhs_2) - is_neg * lhs_2 - out_2,
-            |is_add, is_sub, is_neg, lhs_3, rhs_3, out_3|
-                is_add * (lhs_3 + rhs_3) + is_sub * (lhs_3 - rhs_3) - is_neg * lhs_3 - out_3,
+            is_add * (lhs_0 + rhs_0) + is_sub * (lhs_0 - rhs_0) - is_neg * lhs_0 - out_0,
+            is_add * (lhs_1 + rhs_1) + is_sub * (lhs_1 - rhs_1) - is_neg * lhs_1 - out_1,
+            is_add * (lhs_2 + rhs_2) + is_sub * (lhs_2 - rhs_2) - is_neg * lhs_2 - out_2,
+            is_add * (lhs_3 + rhs_3) + is_sub * (lhs_3 - rhs_3) - is_neg * lhs_3 - out_3,
         },
     },
 
@@ -247,19 +227,15 @@ define_component_tables! {
         // Circuit wiring, as in qm31_mul (rhs unused for the unary inverse).
         circuit_id, node_id, lhs_id, uses, in_circuit,
         constraints: {
-            |in_circuit| in_circuit * (1 - in_circuit),
-            |in_circuit, enabler| in_circuit * (1 - enabler),
-            |enabler, a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
-                a_0 * inv_0 - a_1 * inv_1
+            in_circuit * (1 - in_circuit),
+            in_circuit * (1 - enabler),
+            a_0 * inv_0 - a_1 * inv_1
                 + 2 * (a_2 * inv_2 - a_3 * inv_3) - (a_2 * inv_3 + a_3 * inv_2)
                 - enabler,
-            |a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
-                a_0 * inv_1 + a_1 * inv_0
+            a_0 * inv_1 + a_1 * inv_0
                 + (a_2 * inv_2 - a_3 * inv_3) + 2 * (a_2 * inv_3 + a_3 * inv_2),
-            |a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
-                a_0 * inv_2 - a_1 * inv_3 + a_2 * inv_0 - a_3 * inv_1,
-            |a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
-                a_0 * inv_3 + a_1 * inv_2 + a_2 * inv_1 + a_3 * inv_0,
+            a_0 * inv_2 - a_1 * inv_3 + a_2 * inv_0 - a_3 * inv_1,
+            a_0 * inv_3 + a_1 * inv_2 + a_2 * inv_1 + a_3 * inv_0,
         },
     },
 }

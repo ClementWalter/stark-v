@@ -108,11 +108,15 @@ fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
 
 /// A single opcode definition:
 /// `name: { field1, field2, ..., derived: { ... }, constraints: { ... }, lookups: { ... } }`
+///
+/// Constraints are bare expressions with every trace column and derived
+/// column in scope — like lookup entries, the formula itself names what it
+/// reads, so closure parameters would be redundant.
 struct OpcodeDef {
     name: Ident,
     fields: Vec<Ident>,
     derived: Vec<DerivedDef>,
-    constraints: Vec<ExprClosure>,
+    constraints: Vec<Expr>,
     lookups: LookupsDef,
 }
 
@@ -144,8 +148,8 @@ impl Parse for OpcodeDef {
                         derived.extend(defs);
                     }
                     "constraints" => {
-                        let defs: Punctuated<ExprClosure, Token![,]> =
-                            block.parse_terminated(ExprClosure::parse, Token![,])?;
+                        let defs: Punctuated<Expr, Token![,]> =
+                            block.parse_terminated(Expr::parse, Token![,])?;
                         constraints.extend(defs);
                     }
                     "lookups" => {
@@ -652,6 +656,19 @@ fn rewrite_expr(
     }
 }
 
+/// The full expression scope of a table: every flattened trace column and
+/// every derived column (including the synthesized `enabler`).
+fn full_scope(flat_columns: &[Ident], derived_names: &[Ident]) -> HashMap<String, ParamKind> {
+    let mut scope = HashMap::new();
+    for column in flat_columns {
+        scope.insert(column.to_string(), ParamKind::RawColumn);
+    }
+    for derived in derived_names {
+        scope.insert(derived.to_string(), ParamKind::Derived);
+    }
+    scope
+}
+
 /// Compile a closure into a generic expression body over `T`.
 fn compile_closure(
     closure: &ExprClosure,
@@ -880,8 +897,9 @@ fn generate_expr_impl(
             }
         });
     }
-    for closure in &opcode.constraints {
-        constraint_exprs.push(compile_closure(closure, flat_fields, &derived_names)?);
+    let scope = full_scope(flat_fields, &derived_names);
+    for constraint in &opcode.constraints {
+        constraint_exprs.push(rewrite_expr(constraint, &scope)?);
     }
 
     // Lookup entries: multiplicity and tuple expressions over the full column
@@ -890,13 +908,6 @@ fn generate_expr_impl(
     let lookup_method = if opcode.lookups.entries.is_empty() {
         quote! {}
     } else {
-        let mut scope: HashMap<String, ParamKind> = HashMap::new();
-        for column in flat_fields {
-            scope.insert(column.to_string(), ParamKind::RawColumn);
-        }
-        for derived in &derived_names {
-            scope.insert(derived.to_string(), ParamKind::Derived);
-        }
         let mut entry_exprs: Vec<proc_macro2::TokenStream> = Vec::new();
         for entry in &opcode.lookups.entries {
             let multiplicity = rewrite_expr(&entry.multiplicity, &scope)?;
@@ -1823,7 +1834,7 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
 ///             imm: |imm_0, imm_1, imm_2| imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
 ///         },
 ///         constraints: {
-///             |imm| imm * (1 - imm),
+///             imm * (1 - imm),
 ///         },
 ///     },
 /// }
