@@ -17,6 +17,7 @@
 //!   composition evaluation from sampled mask values, which the verifier
 //!   AIR's witness generator replays.
 
+pub mod aggregate;
 pub mod segments;
 pub mod transcript;
 

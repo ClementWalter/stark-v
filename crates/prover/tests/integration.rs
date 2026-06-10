@@ -1090,3 +1090,34 @@ fn test_prove_verify_segmented_run() {
     verify_segments(proofs, PcsConfig::default(), &preprocessing)
         .expect("segmented verification failed");
 }
+
+/// 2-to-1 aggregation tree (docs/recursion.md, M6 structure): segment proofs
+/// fold pairwise up a binary tree; the root boundary must span the whole
+/// execution exactly as an unsegmented run does.
+#[test_log::test]
+fn test_aggregate_segments_root_spans_execution() {
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::recursion::aggregate::aggregate_segments;
+    use prover::recursion::segments::prove_segments;
+    use runner::run_segments_with_input;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("mulhu_alias");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read mulhu_alias ELF");
+
+    let reference = runner::run(&elf_bytes, 10_000_000).expect("Failed to run mulhu_alias");
+    let segment_cycles = u32::try_from(reference.cycles / 4 + 1).expect("cycle count fits u32");
+    let segments = run_segments_with_input(&elf_bytes, &[], Some(segment_cycles), 10_000_000)
+        .expect("Failed to run mulhu_alias segmented");
+    assert!(segments.len() >= 3, "expected a multi-level tree");
+
+    let preprocessing = prover::preprocess(PcsConfig::default());
+    let proofs = prove_segments(segments, PcsConfig::default(), &preprocessing);
+
+    let root = aggregate_segments(proofs, PcsConfig::default(), &preprocessing)
+        .expect("aggregation failed");
+    assert_eq!(root.entry_pc, reference.initial_pc);
+    assert_eq!(root.exit_pc, reference.final_pc);
+    assert_eq!(root.exit_regs, reference.final_regs);
+}
