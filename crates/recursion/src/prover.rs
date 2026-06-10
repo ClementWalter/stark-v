@@ -28,6 +28,8 @@ use stwo_constraint_framework::TraceLocationAllocator;
 use prover::relations::Relations;
 use runner::trace::Poseidon2Table;
 
+use crate::relations::RecursionRelations;
+
 use crate::{
     CircleDoubleTable, FriFoldLineTable, LogupSumTable, MerklePathTable, Qm31InvTable,
     Qm31MulTable, circle_double, fri_fold, logup_sum, merkle_path, prover_columns, qm31_inv,
@@ -54,11 +56,52 @@ pub struct RecursionProof<H: MerkleHasherLifted> {
     pub log_sizes: [u32; 7],
     /// Claimed sum of the logup_sum component: Σ enabler / term.
     pub claimed_sum: SecureField,
-    /// Claimed sums of the merkle_path and poseidon2 components; their total
-    /// must vanish (every hash claim is discharged by a permutation row).
+    /// Claimed sums of the merkle_path and poseidon2 components; together
+    /// with the public root terms their total must vanish (every hash claim
+    /// discharged by a permutation row, every path anchored at a root).
     pub merkle_claimed_sum: SecureField,
     pub poseidon2_claimed_sum: SecureField,
+    /// Merkle roots the decommitment paths anchor to.
+    pub roots: Vec<RootClaim>,
     pub stark_proof: StarkProof<H>,
+}
+
+/// A public root anchor: `n_paths` decommitment paths of tree `tree_id`
+/// terminate at `root`.
+#[derive(Clone, Debug)]
+pub struct RootClaim {
+    pub tree_id: u32,
+    pub root: [u32; 8],
+    pub n_paths: u32,
+}
+
+fn mix_roots<C: Channel>(channel: &mut C, roots: &[RootClaim]) {
+    channel.mix_u32s(&[roots.len() as u32]);
+    for root in roots {
+        channel.mix_u32s(&[root.tree_id, root.n_paths]);
+        channel.mix_u32s(&root.root);
+    }
+}
+
+/// The LogUp contribution of the public root anchors: each path's top row
+/// consumes the root claim, so the public side emits it `n_paths` times.
+fn public_root_terms(roots: &[RootClaim], recursion_relations: &RecursionRelations) -> SecureField {
+    use stwo::core::fields::FieldExpOps;
+    use stwo::core::fields::m31::M31;
+    use stwo_constraint_framework::Relation;
+
+    let mut total = SecureField::zero();
+    for root in roots {
+        let mut tuple = [M31::from(0u32); 11];
+        tuple[0] = M31::from(root.tree_id);
+        // depth = 0, index = 0
+        for (slot, &word) in tuple[3..].iter_mut().zip(root.root.iter()) {
+            *slot = M31::from(word);
+        }
+        let denom: SecureField = recursion_relations.merkle_node.combine(&tuple);
+        total += denom.inverse() * SecureField::from(M31::from(root.n_paths));
+    }
+    total
 }
 
 fn mix_claim<C: Channel>(channel: &mut C, log_sizes: &[u32; 7], sums: [SecureField; 3]) {
@@ -91,6 +134,7 @@ fn components(
     log_sizes: &[u32; 7],
     sums: [SecureField; 3],
     relations: &Relations,
+    recursion_relations: &RecursionRelations,
 ) -> (
     qm31_mul::Component,
     qm31_inv::Component,
@@ -141,6 +185,7 @@ fn components(
             merkle_path::Eval {
                 log_size: log_sizes[5],
                 relations: relations.clone(),
+                recursion_relations: recursion_relations.clone(),
             },
             sums[1],
         ),
@@ -158,9 +203,10 @@ fn components(
 /// Prove the recursion AIR over the given witness tables (Blake2s channel).
 pub fn prove_recursion(
     traces: RecursionTraces,
+    roots: Vec<RootClaim>,
     config: PcsConfig,
 ) -> RecursionProof<<Blake2sMerkleChannel as MerkleChannel>::H> {
-    prove_recursion_with_channel::<Blake2sMerkleChannel>(traces, config)
+    prove_recursion_with_channel::<Blake2sMerkleChannel>(traces, roots, config)
 }
 
 /// Verify a recursion AIR proof (Blake2s channel).
@@ -176,6 +222,7 @@ pub fn verify_recursion(
 /// recursion AIR itself proves.
 pub fn prove_recursion_with_channel<MC: MerkleChannel>(
     traces: RecursionTraces,
+    roots: Vec<RootClaim>,
     config: PcsConfig,
 ) -> RecursionProof<MC::H>
 where
@@ -225,6 +272,7 @@ where
     tree_builder.commit(channel);
 
     channel.mix_u32s(&log_sizes);
+    mix_roots(channel, &roots);
 
     // Tree 1: all component tables, in the fixed commit order.
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -243,11 +291,12 @@ where
 
     // Lookup elements are drawn after the main commitment (Fiat-Shamir).
     let relations = Relations::draw(channel);
+    let recursion_relations = RecursionRelations::draw(channel);
 
     // Interaction traces, in component order.
     let (logup_interaction, claimed_sum) = logup_sum::gen_interaction_trace(&logup_sum_trace);
     let (merkle_interaction, merkle_claimed_sum) =
-        merkle_path::gen_interaction_trace(&merkle_path_trace, &relations);
+        merkle_path::gen_interaction_trace(&merkle_path_trace, &relations, &recursion_relations);
     let (poseidon2_interaction, poseidon2_claimed_sum) =
         prover::components::poseidon2::witness::gen_interaction_trace(&poseidon2_trace, &relations);
 
@@ -266,8 +315,13 @@ where
     tree_builder.commit(channel);
 
     let mut location_allocator = TraceLocationAllocator::default();
-    let (mul, inv, fold, double, sum, merkle, poseidon2) =
-        components(&mut location_allocator, &log_sizes, sums, &relations);
+    let (mul, inv, fold, double, sum, merkle, poseidon2) = components(
+        &mut location_allocator,
+        &log_sizes,
+        sums,
+        &relations,
+        &recursion_relations,
+    );
 
     let stark_proof = prove(
         &[&mul, &inv, &fold, &double, &sum, &merkle, &poseidon2],
@@ -281,6 +335,7 @@ where
         claimed_sum,
         merkle_claimed_sum,
         poseidon2_claimed_sum,
+        roots,
         stark_proof,
     }
 }
@@ -293,36 +348,47 @@ pub fn verify_recursion_with_channel<MC: MerkleChannel>(
     let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
 
-    // Every Merkle hash claim must be discharged by a permutation row.
-    if !(proof.merkle_claimed_sum + proof.poseidon2_claimed_sum).is_zero() {
-        return Err(VerificationError::InvalidStructure(
-            "merkle/poseidon2 logup sums do not cancel".to_string(),
-        ));
-    }
-
     let commitments = &proof.stark_proof.commitments;
     commitment_scheme.commit(commitments[0], &[], channel);
     channel.mix_u32s(&proof.log_sizes);
+    mix_roots(channel, &proof.roots);
     commitment_scheme.commit(commitments[1], &column_log_sizes(&proof.log_sizes), channel);
 
     let relations = Relations::draw(channel);
+    let recursion_relations = RecursionRelations::draw(channel);
+
+    // Every hash claim must be discharged by a permutation row, and every
+    // path must anchor at a public root.
+    let total = proof.merkle_claimed_sum
+        + proof.poseidon2_claimed_sum
+        + public_root_terms(&proof.roots, &recursion_relations);
+    if !total.is_zero() {
+        return Err(VerificationError::InvalidStructure(
+            "merkle/poseidon2/root logup sums do not cancel".to_string(),
+        ));
+    }
     let sums = [
         proof.claimed_sum,
         proof.merkle_claimed_sum,
         proof.poseidon2_claimed_sum,
     ];
     mix_claim(channel, &proof.log_sizes, sums);
-    // Interaction tree: one secure column (4 base) for logup_sum, one for
-    // merkle_path, two for poseidon2.
+    // Interaction tree: one secure column (4 base) for logup_sum, two for
+    // merkle_path (hash binding + node chaining), two for poseidon2.
     let interaction_log_sizes: Vec<u32> = std::iter::repeat_n(proof.log_sizes[4], 4)
-        .chain(std::iter::repeat_n(proof.log_sizes[5], 4))
+        .chain(std::iter::repeat_n(proof.log_sizes[5], 8))
         .chain(std::iter::repeat_n(proof.log_sizes[6], 8))
         .collect();
     commitment_scheme.commit(commitments[2], &interaction_log_sizes, channel);
 
     let mut location_allocator = TraceLocationAllocator::default();
-    let (mul, inv, fold, double, sum, merkle, poseidon2) =
-        components(&mut location_allocator, &proof.log_sizes, sums, &relations);
+    let (mul, inv, fold, double, sum, merkle, poseidon2) = components(
+        &mut location_allocator,
+        &proof.log_sizes,
+        sums,
+        &relations,
+        &recursion_relations,
+    );
 
     verify(
         &[&mul, &inv, &fold, &double, &sum, &merkle, &poseidon2],
@@ -350,7 +416,7 @@ mod tests {
         )
     }
 
-    fn random_traces(seed: u64, rows: usize) -> (RecursionTraces, Vec<QM31>) {
+    fn random_traces(seed: u64, rows: usize) -> (RecursionTraces, Vec<QM31>, Vec<RootClaim>) {
         let mut rng = SmallRng::seed_from_u64(seed);
         let mut traces = RecursionTraces::default();
         let mut terms = Vec::new();
@@ -372,31 +438,64 @@ mod tests {
             );
             crate::logup_sum::push_term(&mut traces.logup_sum, b);
             terms.push(b);
-            // One Merkle hash step per row: random child digests, parent
-            // bound through the poseidon2 relation.
-            let left: [u32; 8] = std::array::from_fn(|_| rng.gen_range(0..(1 << 30)));
-            let right: [u32; 8] = std::array::from_fn(|_| rng.gen_range(0..(1 << 30)));
-            crate::merkle_path::push_hash_step(
+        }
+
+        // Two-level decommitment paths: leaf -> mid -> root, one per tree.
+        let mut roots = Vec::new();
+        for tree_id in 0..4u32 {
+            let child: [u32; 8] = std::array::from_fn(|_| rng.gen_range(0..(1 << 30)));
+            let steps = [
+                crate::merkle_path::PathStep {
+                    direction: rng.gen_range(0..2),
+                    sibling: std::array::from_fn(|_| rng.gen_range(0..(1 << 30))),
+                },
+                crate::merkle_path::PathStep {
+                    direction: rng.gen_range(0..2),
+                    sibling: std::array::from_fn(|_| rng.gen_range(0..(1 << 30))),
+                },
+            ];
+            // Bottom-up: hash the leaf-side step (depth 1), then the root
+            // step (depth 0); indices follow the directions.
+            let mid = crate::merkle_path::push_path_step(
                 &mut traces.merkle_path,
                 &mut traces.poseidon2,
-                left,
-                right,
+                tree_id,
+                1,
+                steps[0].direction,
+                child,
+                steps[1],
+                true,
             );
+            let root = crate::merkle_path::push_path_step(
+                &mut traces.merkle_path,
+                &mut traces.poseidon2,
+                tree_id,
+                0,
+                0,
+                mid,
+                steps[0],
+                false,
+            );
+            roots.push(RootClaim {
+                tree_id,
+                root,
+                n_paths: 1,
+            });
         }
-        (traces, terms)
+        (traces, terms, roots)
     }
 
     #[test]
     fn test_recursion_air_prove_verify_roundtrip() {
-        let (traces, _) = random_traces(0, 50);
-        let proof = prove_recursion(traces, PcsConfig::default());
+        let (traces, _, roots) = random_traces(0, 50);
+        let proof = prove_recursion(traces, roots, PcsConfig::default());
         verify_recursion(proof, PcsConfig::default()).expect("verification failed");
     }
 
     #[test]
     fn test_recursion_air_rejects_tampered_claim() {
-        let (traces, _) = random_traces(1, 50);
-        let mut proof = prove_recursion(traces, PcsConfig::default());
+        let (traces, _, roots) = random_traces(1, 50);
+        let mut proof = prove_recursion(traces, roots, PcsConfig::default());
         // Lying about a component size breaks the channel binding.
         proof.log_sizes[0] += 1;
         assert!(verify_recursion(proof, PcsConfig::default()).is_err());
@@ -404,45 +503,65 @@ mod tests {
 
     #[test]
     fn test_recursion_air_claimed_sum_is_sum_of_inverses() {
-        let (traces, terms) = random_traces(2, 50);
-        let proof = prove_recursion(traces, PcsConfig::default());
+        let (traces, terms, roots) = random_traces(2, 50);
+        let proof = prove_recursion(traces, roots, PcsConfig::default());
         assert_eq!(proof.claimed_sum, crate::logup_sum::expected_sum(&terms));
     }
 
     #[test]
     fn test_recursion_air_prove_verify_roundtrip_poseidon2_channel() {
         use prover::poseidon2_channel::Poseidon2M31MerkleChannel;
-        let (traces, _) = random_traces(4, 50);
-        let proof =
-            prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(traces, PcsConfig::default());
+        let (traces, _, roots) = random_traces(4, 50);
+        let proof = prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(
+            traces,
+            roots,
+            PcsConfig::default(),
+        );
         verify_recursion_with_channel::<Poseidon2M31MerkleChannel>(proof, PcsConfig::default())
             .expect("poseidon2-channel verification failed");
     }
 
     #[test]
     fn test_recursion_air_merkle_and_poseidon2_sums_cancel() {
-        let (traces, _) = random_traces(5, 20);
-        let proof = prove_recursion(traces, PcsConfig::default());
-        assert!(
-            (proof.merkle_claimed_sum + proof.poseidon2_claimed_sum).is_zero(),
-            "hash claims must be discharged by permutation rows"
-        );
+        let (traces, _, roots) = random_traces(5, 20);
+        let proof = prove_recursion(traces, roots, PcsConfig::default());
+        // Hash claims cancel between merkle_path and poseidon2; the node
+        // claims cancel against the public root terms checked in verify.
+        verify_recursion(proof, PcsConfig::default()).expect("verification failed");
     }
 
     #[test]
     fn test_recursion_air_rejects_undischarged_hash_claim() {
-        let (mut traces, _) = random_traces(6, 20);
+        let (mut traces, _, roots) = random_traces(6, 20);
         // Corrupt one parent limb: the merkle_path row now consumes a tuple
-        // no permutation row emits.
+        // no permutation row emits, and its node claim no longer anchors.
         traces.merkle_path.parent_0[0] += 1;
-        let proof = prove_recursion(traces, PcsConfig::default());
+        let proof = prove_recursion(traces, roots, PcsConfig::default());
+        assert!(verify_recursion(proof, PcsConfig::default()).is_err());
+    }
+
+    #[test]
+    fn test_recursion_air_rejects_wrong_root_claim() {
+        let (traces, _, mut roots) = random_traces(7, 20);
+        roots[0].root[0] += 1;
+        let proof = prove_recursion(traces, roots, PcsConfig::default());
+        assert!(verify_recursion(proof, PcsConfig::default()).is_err());
+    }
+
+    #[test]
+    fn test_recursion_air_rejects_broken_path_chaining() {
+        let (mut traces, _, roots) = random_traces(8, 20);
+        // Corrupt an index: the child claim emitted above no longer matches
+        // the claim this row consumes.
+        traces.merkle_path.index[0] += 1;
+        let proof = prove_recursion(traces, roots, PcsConfig::default());
         assert!(verify_recursion(proof, PcsConfig::default()).is_err());
     }
 
     #[test]
     fn test_recursion_air_rejects_tampered_claimed_sum() {
-        let (traces, _) = random_traces(3, 50);
-        let mut proof = prove_recursion(traces, PcsConfig::default());
+        let (traces, _, roots) = random_traces(3, 50);
+        let mut proof = prove_recursion(traces, roots, PcsConfig::default());
         proof.claimed_sum += SecureField::from_u32_unchecked(1, 0, 0, 0);
         assert!(verify_recursion(proof, PcsConfig::default()).is_err());
     }

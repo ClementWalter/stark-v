@@ -22,6 +22,7 @@ use stwo_constraint_framework::{
 
 use crate::MerklePathTable;
 use crate::prover_columns::MerklePathColumns;
+use crate::relations::RecursionRelations;
 
 pub type Component = FrameworkComponent<Eval>;
 
@@ -29,6 +30,7 @@ pub type Component = FrameworkComponent<Eval>;
 pub struct Eval {
     pub log_size: u32,
     pub relations: Relations,
+    pub recursion_relations: RecursionRelations,
 }
 
 impl FrameworkEval for Eval {
@@ -83,19 +85,81 @@ impl FrameworkEval for Eval {
                 cols.parent_7.clone(),
             ],
         ));
+        // Consume this row's own node claim (emitted by the parent row, or
+        // by the public root terms for the top of a path).
+        eval.add_to_relation(RelationEntry::new(
+            &self.recursion_relations.merkle_node,
+            -E::EF::from(cols.enabler.clone()),
+            &[
+                cols.tree_id.clone(),
+                cols.depth.clone(),
+                cols.index.clone(),
+                cols.parent_0.clone(),
+                cols.parent_1.clone(),
+                cols.parent_2.clone(),
+                cols.parent_3.clone(),
+                cols.parent_4.clone(),
+                cols.parent_5.clone(),
+                cols.parent_6.clone(),
+                cols.parent_7.clone(),
+            ],
+        ));
+        // Emit the on-path child claim (consumed by the next row down);
+        // suppressed at the bottom of a path.
+        let two = E::F::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(2));
+        let one = E::F::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(1));
+        eval.add_to_relation(RelationEntry::new(
+            &self.recursion_relations.merkle_node,
+            E::EF::from(cols.enabler.clone() * (one - cols.is_leaf.clone())),
+            &[
+                cols.tree_id.clone(),
+                cols.depth.clone()
+                    + E::F::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(1)),
+                cols.index.clone() * two + cols.direction.clone(),
+                cols.child_0.clone(),
+                cols.child_1.clone(),
+                cols.child_2.clone(),
+                cols.child_3.clone(),
+                cols.child_4.clone(),
+                cols.child_5.clone(),
+                cols.child_6.clone(),
+                cols.child_7.clone(),
+            ],
+        ));
         eval.finalize_logup_in_pairs();
         eval
     }
 }
 
-/// Record one hash step: push the binding row here and the wide permutation
-/// row into the poseidon2 witness table, returning the parent digest.
-pub fn push_hash_step(
+/// One step of a decommitment path, top (root) to bottom (leaf side).
+#[derive(Clone, Copy, Debug)]
+pub struct PathStep {
+    /// 0 if the on-path child is the left input, 1 if the right.
+    pub direction: u32,
+    /// The sibling digest (the off-path input to the hash).
+    pub sibling: [u32; 8],
+}
+
+/// Record one hash step of a path at `(tree_id, depth, index)` whose node
+/// value is `parent`: pushes the binding row here and the wide permutation
+/// row into the poseidon2 witness table, returning the on-path child digest
+/// the caller continues with.
+#[allow(clippy::too_many_arguments)]
+pub fn push_path_step(
     table: &mut MerklePathTable,
     poseidon2: &mut Poseidon2Table,
-    left: [u32; 8],
-    right: [u32; 8],
+    tree_id: u32,
+    depth: u32,
+    index: u32,
+    child: [u32; 8],
+    step: PathStep,
+    is_leaf: bool,
 ) -> [u32; 8] {
+    let (left, right) = if step.direction == 0 {
+        (child, step.sibling)
+    } else {
+        (step.sibling, child)
+    };
     let mut state = [0u32; T];
     state[..8].copy_from_slice(&left);
     state[8..].copy_from_slice(&right);
@@ -107,9 +171,43 @@ pub fn push_hash_step(
         .try_into()
         .expect("8 words");
     table.push(
-        left[0], left[1], left[2], left[3], left[4], left[5], left[6], left[7], right[0], right[1],
-        right[2], right[3], right[4], right[5], right[6], right[7], parent[0], parent[1],
-        parent[2], parent[3], parent[4], parent[5], parent[6], parent[7],
+        tree_id,
+        depth,
+        index,
+        step.direction,
+        is_leaf as u32,
+        left[0],
+        left[1],
+        left[2],
+        left[3],
+        left[4],
+        left[5],
+        left[6],
+        left[7],
+        right[0],
+        right[1],
+        right[2],
+        right[3],
+        right[4],
+        right[5],
+        right[6],
+        right[7],
+        parent[0],
+        parent[1],
+        parent[2],
+        parent[3],
+        parent[4],
+        parent[5],
+        parent[6],
+        parent[7],
+        child[0],
+        child[1],
+        child[2],
+        child[3],
+        child[4],
+        child[5],
+        child[6],
+        child[7],
     );
     parent
 }
@@ -119,6 +217,7 @@ pub fn push_hash_step(
 pub fn gen_interaction_trace(
     trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     relations: &Relations,
+    recursion_relations: &RecursionRelations,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     QM31,
@@ -170,11 +269,62 @@ pub fn gen_interaction_trace(
         ]
     );
 
+    // Per-row node-claim tuples: own claim consumed, child claim emitted.
+    let one = stwo::prover::backend::simd::m31::PackedM31::broadcast(BaseField::from(1));
+    let two = stwo::prover::backend::simd::m31::PackedM31::broadcast(BaseField::from(2));
+    let depth_plus_1: Vec<_> = (0..simd_size).map(|i| cols.depth[i] + one).collect();
+    let child_index: Vec<_> = (0..simd_size)
+        .map(|i| cols.index[i] * two + cols.direction[i])
+        .collect();
+    let child_enabler: Vec<PackedQM31> = (0..simd_size)
+        .map(|i| PackedQM31::from(cols.enabler[i] * (one - cols.is_leaf[i])))
+        .collect();
+
+    let own_denom = combine!(
+        recursion_relations.merkle_node,
+        [
+            cols.tree_id,
+            cols.depth,
+            cols.index,
+            cols.parent_0,
+            cols.parent_1,
+            cols.parent_2,
+            cols.parent_3,
+            cols.parent_4,
+            cols.parent_5,
+            cols.parent_6,
+            cols.parent_7
+        ]
+    );
+    let child_denom = combine!(
+        recursion_relations.merkle_node,
+        [
+            cols.tree_id,
+            &depth_plus_1,
+            &child_index,
+            cols.child_0,
+            cols.child_1,
+            cols.child_2,
+            cols.child_3,
+            cols.child_4,
+            cols.child_5,
+            cols.child_6,
+            cols.child_7
+        ]
+    );
+
     write_pair!(
         &pos_enabler,
         &input_denom,
         &neg_enabler,
         &parent_denom,
+        logup_gen
+    );
+    write_pair!(
+        &neg_enabler,
+        &own_denom,
+        &child_enabler,
+        &child_denom,
         logup_gen
     );
     logup_gen.finalize_last()

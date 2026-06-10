@@ -13,6 +13,7 @@ pub mod merkle_path;
 pub mod prover;
 pub mod qm31_inv;
 pub mod qm31_mul;
+pub mod relations;
 
 // combine!/write_pair! are used by witness modules.
 #[macro_use]
@@ -141,10 +142,30 @@ define_component_tables! {
     // relation (emit the 16-word input, consume the 8-word wide output), so
     // no hash constraint exists here. Path chaining and root anchoring come
     // with the chain relation (docs/recursion.md, M4 remaining).
+    // Path chaining: each row consumes its own node claim
+    // (tree_id, depth, index, parent) and emits the on-path child claim
+    // (tree_id, depth + 1, 2*index + direction, child) through the
+    // merkle_node relation; `is_leaf` suppresses the child emission at the
+    // bottom of a path, and roots are anchored by public claim terms.
     merkle_path: {
+        tree_id, depth, index, direction, is_leaf,
         left_0, left_1, left_2, left_3, left_4, left_5, left_6, left_7,
         right_0, right_1, right_2, right_3, right_4, right_5, right_6, right_7,
         parent_0, parent_1, parent_2, parent_3, parent_4, parent_5, parent_6, parent_7,
+        child_0, child_1, child_2, child_3, child_4, child_5, child_6, child_7,
+        constraints: {
+            |direction| direction * (1 - direction),
+            |is_leaf| is_leaf * (1 - is_leaf),
+            // child = direction ? right : left, limb-wise
+            |direction, left_0, right_0, child_0| left_0 + direction * (right_0 - left_0) - child_0,
+            |direction, left_1, right_1, child_1| left_1 + direction * (right_1 - left_1) - child_1,
+            |direction, left_2, right_2, child_2| left_2 + direction * (right_2 - left_2) - child_2,
+            |direction, left_3, right_3, child_3| left_3 + direction * (right_3 - left_3) - child_3,
+            |direction, left_4, right_4, child_4| left_4 + direction * (right_4 - left_4) - child_4,
+            |direction, left_5, right_5, child_5| left_5 + direction * (right_5 - left_5) - child_5,
+            |direction, left_6, right_6, child_6| left_6 + direction * (right_6 - left_6) - child_6,
+            |direction, left_7, right_7, child_7| left_7 + direction * (right_7 - left_7) - child_7,
+        },
     },
 
     // LogUp sum of inverses: each row contributes enabler / term to the
