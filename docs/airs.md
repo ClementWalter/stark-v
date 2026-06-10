@@ -1341,15 +1341,13 @@ read from rs2
 - `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
 - `- RC_20(clk - rs2_clk_prev)`
 
-check carries
+range check rd limbs (8 bits) and schoolbook carries (11 bits: the limb-1 carry
+honestly reaches 509 for `0xFFFFFFFF` operands)
 
-- `- RC_8_8(carry[0], carry[1])`
-- `- RC_8_8(carry[2], carry[3])`
-
-range check rd
-
-- `- RC_8_8(rd_next_0, rd_next_1)`
-- `- RC_8_8(rd_next_2, rd_next_3)`
+- `- RC_8_11(rd_next_0, carry[0])`
+- `- RC_8_11(rd_next_1, carry[1])`
+- `- RC_8_11(rd_next_2, carry[2])`
+- `- RC_8_11(rd_next_3, carry[3])`
 
 write to rd
 
@@ -1438,19 +1436,17 @@ read from rs2
 - `+ enabler * Memory(REG_AS, rs2_addr, clk, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3)`
 - `- RC_20(clk - rs2_clk_prev)`
 
-check carries
+range check both result halves (8 bits) and the 64-bit schoolbook carries (11
+bits: up to 8 partial products per limb exceed 8 bits for maximal operands)
 
-- `- RC_8_8(carry[0], carry[1])`
-- `- RC_8_8(carry[2], carry[3])`
-- `- RC_8_8(carry[4], carry[5])`
-- `- RC_8_8(carry[6], carry[7])`
-
-range check rd
-
-- `- RC_8_8(rd_next_0, rd_next_1)`
-- `- RC_8_8(rd_next_2, rd_next_3)`
-- `- RC_8_8(rd_high_0, rd_high_1)`
-- `- RC_8_8(rd_high_2, rd_high_3)`
+- `- RC_8_11(rd_next_0, carry[0])`
+- `- RC_8_11(rd_next_1, carry[1])`
+- `- RC_8_11(rd_next_2, carry[2])`
+- `- RC_8_11(rd_next_3, carry[3])`
+- `- RC_8_11(rd_high_0, carry[4])`
+- `- RC_8_11(rd_high_1, carry[5])`
+- `- RC_8_11(rd_high_2, carry[6])`
+- `- RC_8_11(rd_high_3, carry[7])`
 
 write to rd
 
@@ -1539,7 +1535,17 @@ write to rd
 - `c_sum = rs2_next_0 + rs2_next_1 + rs2_next_2 + rs2_next_3`.
 - `r_sum = r_0 + r_1 + r_2 + r_3`.
 - `diff[i] = (1 - 2 * c_sign) * (rs2_next[i] - r_abs[i])`.
-- `carry[0..7]` from limb-wise partial sums (used by RC_8_11 lookups).
+- `c_hi = 255 * c_sign`, `q_hi = 255 * q_sign`, `b_hi = 255 * b_sign`,
+  `r_hi = 255 * b_sign * (1 - r_zero)`: the 64-bit sign-extension limbs (every
+  limb above the low four of a two's complement value equals its sign times
+  `0xFF`; the remainder extends with the dividend's sign except `r = 0`).
+- `carry[k]` for k in [0..7]: the schoolbook carries of
+  `SE(rs2) * SE(q) + SE(r) = SE(rs1)` over the sign-extended limbs, each
+  `carry[k] = (carry[k-1] + Σ_{i+j=k} cse_i * qse_j + rse_k - bse_k) / 2^8` with
+  `carry[-1] = 0`. Bounding every carry to 11 bits makes the limb equations an
+  exact 64-bit two's complement identity, pinning `(q, r)` to the dividend; the
+  overflow case `0x80000000 / -1` is exact too because `q_sign = 0` reads the
+  stored `0x80000000` as `+2^31`.
 - `carry_lt[0] = (r_0 + r_abs_0) / 2^8`.
 - `carry_lt[i] = (carry_lt[i - 1] + r_i + r_abs_i) / 2^8` for i in [1..3].
 
@@ -1592,9 +1598,13 @@ absolute remainder construction
 compare |r| with |c| from the most significant byte, `prefix_sum` starts at
 `special_case`
 
-- `enabler * (1 - prefix_sum) * diff[i]`
-- `enabler * lt_marker_i * (lt_diff - diff[i])`
+- `(1 - prefix_sum) * diff[i]`
+- `lt_marker_i * (lt_diff - diff[i])`
 - `enabler * (1 - prefix_sum)`
+
+(the first two omit the enabler gate: `diff` and `lt_diff` vanish on padding
+rows, and `diff` is already quadratic so the gate would breach the degree-3
+bound)
 
 where for constraints over i, `i` ranges over [0..3] in descending order and
 `carry_lt[-1] = 0`.
@@ -1630,6 +1640,11 @@ check carries to ensure that `rs1 = rs2 * q + r`
 - `- enabler * RC_8_11(r_1, carry[5])`
 - `- enabler * RC_8_11(r_2, carry[6])`
 - `- enabler * RC_8_11(r_3, carry[7])`
+
+`b_sign` and `c_sign` match the operands' top bits under signed opcodes (without
+this, a sign lie with `r = 0` slips past the special-case-gated comparison scan)
+
+- `- enabler * RC_8_8(2 * is_signed * (rs1_next_3 - b_sign * 2^7), 2 * is_signed * (rs2_next_3 - c_sign * 2^7))`
 
 `lt_diff` is non-zero whenever the comparison is executed
 

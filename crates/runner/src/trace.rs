@@ -86,6 +86,10 @@ stwo_macros::define_trace_tables! {
             preprocessed -is_bitwise * bitwise(rs1_next_1, rs2_next_1, rd_next_1, bitwise_id),
             preprocessed -is_bitwise * bitwise(rs1_next_2, rs2_next_2, rd_next_2, bitwise_id),
             preprocessed -is_bitwise * bitwise(rs1_next_3, rs2_next_3, rd_next_3, bitwise_id),
+            // rd byte ranges (spec 1.3): add/sub carry equations alone admit
+            // non-canonical limbs.
+            preprocessed -enabler * range_check_8_8(rd_next_0, rd_next_1),
+            preprocessed -enabler * range_check_8_8(rd_next_2, rd_next_3),
             // Write rd.
             -enabler * memory_access(0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3),
             enabler * memory_access(0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3),
@@ -208,7 +212,11 @@ stwo_macros::define_trace_tables! {
                 limb_shift_marker_0 + limb_shift_marker_1 + limb_shift_marker_2
                 + limb_shift_marker_3,
             // Shift amount comes from the low 5 bits of rs2 (airs.md 3.3)
-            shift_check: |rs2_next_0, shift_amount| pow2(12) * (rs2_next_0 - shift_amount),
+            // 7 - (rs2_next_0 - shift_amount) / 2^5: in range iff the shift
+            // amount is rs2's low 5 bits (the field division by 32 explodes
+            // otherwise) - spec 3.3.
+            shift_check: |rs2_next_0, shift_amount|
+                (pow2(3) - 1) - (rs2_next_0 - shift_amount) * inv(pow2(5)),
             pc_next: |pc| pc + 4,
             clock_next: |clock| clock + 1,
             rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
@@ -316,6 +324,14 @@ stwo_macros::define_trace_tables! {
             preprocessed -enabler * range_check_20(rs2_clock_diff),
             // The decoded shift amount matches rs2's low 5 bits.
             preprocessed -enabler * range_check_20(shift_check),
+            // Shift carries stay below 2^bit_shift (spec 3.3): otherwise the
+            // shift equations absorb arbitrary errors into the carries.
+            preprocessed -enabler * range_check_8_8(
+                bit_multiplier - enabler - bit_shift_carry_0,
+                bit_multiplier - enabler - bit_shift_carry_1),
+            preprocessed -enabler * range_check_8_8(
+                bit_multiplier - enabler - bit_shift_carry_2,
+                bit_multiplier - enabler - bit_shift_carry_3),
             // rd byte ranges.
             preprocessed -enabler * range_check_8_8(rd_next_0, rd_next_1),
             preprocessed -enabler * range_check_8_8(rd_next_2, rd_next_3),
@@ -468,6 +484,13 @@ stwo_macros::define_trace_tables! {
             -enabler * memory_access(0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3),
             enabler * memory_access(0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3),
             preprocessed -enabler * range_check_20(rs1_clock_diff),
+            // Shift carries stay below 2^bit_shift (spec 4.3).
+            preprocessed -enabler * range_check_8_8(
+                bit_multiplier - enabler - bit_shift_carry_0,
+                bit_multiplier - enabler - bit_shift_carry_1),
+            preprocessed -enabler * range_check_8_8(
+                bit_multiplier - enabler - bit_shift_carry_2,
+                bit_multiplier - enabler - bit_shift_carry_3),
             // rd byte ranges.
             preprocessed -enabler * range_check_8_8(rd_next_0, rd_next_1),
             preprocessed -enabler * range_check_8_8(rd_next_2, rd_next_3),
@@ -1085,11 +1108,13 @@ stwo_macros::define_trace_tables! {
             -enabler * memory_access(0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3),
             enabler * memory_access(0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3),
             preprocessed -enabler * range_check_20(rs2_clock_diff),
-            // Multiplication carries are bytes; rd limbs are bytes.
-            preprocessed -enabler * range_check_8_8(carry_0, carry_1),
-            preprocessed -enabler * range_check_8_8(carry_2, carry_3),
-            preprocessed -enabler * range_check_8_8(rd_next_0, rd_next_1),
-            preprocessed -enabler * range_check_8_8(rd_next_2, rd_next_3),
+            // rd limbs are bytes and schoolbook carries fit 11 bits (the
+            // limb-1 carry honestly reaches 509 for 0xFFFFFFFF operands, so
+            // 8 bits is not enough).
+            preprocessed -enabler * range_check_8_11(rd_next_0, carry_0),
+            preprocessed -enabler * range_check_8_11(rd_next_1, carry_1),
+            preprocessed -enabler * range_check_8_11(rd_next_2, carry_2),
+            preprocessed -enabler * range_check_8_11(rd_next_3, carry_3),
             // Write rd.
             -enabler * memory_access(0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3),
             enabler * memory_access(0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3),
@@ -1162,14 +1187,17 @@ stwo_macros::define_trace_tables! {
             enabler * memory_access(0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3),
             preprocessed -enabler * range_check_20(rs2_clock_diff),
             // 64-bit product carries and both result halves are bytes.
-            preprocessed -enabler * range_check_8_8(carry_0, carry_1),
-            preprocessed -enabler * range_check_8_8(carry_2, carry_3),
-            preprocessed -enabler * range_check_8_8(carry_4, carry_5),
-            preprocessed -enabler * range_check_8_8(carry_6, carry_7),
-            preprocessed -enabler * range_check_8_8(rd_high_0, rd_high_1),
-            preprocessed -enabler * range_check_8_8(rd_high_2, rd_high_3),
-            preprocessed -enabler * range_check_8_8(rd_next_0, rd_next_1),
-            preprocessed -enabler * range_check_8_8(rd_next_2, rd_next_3),
+            // Result limbs (both halves) are bytes and the 64-bit schoolbook
+            // carries fit 11 bits (up to 8 partial products per limb exceed
+            // 8 bits for maximal operands).
+            preprocessed -enabler * range_check_8_11(rd_next_0, carry_0),
+            preprocessed -enabler * range_check_8_11(rd_next_1, carry_1),
+            preprocessed -enabler * range_check_8_11(rd_next_2, carry_2),
+            preprocessed -enabler * range_check_8_11(rd_next_3, carry_3),
+            preprocessed -enabler * range_check_8_11(rd_high_0, carry_4),
+            preprocessed -enabler * range_check_8_11(rd_high_1, carry_5),
+            preprocessed -enabler * range_check_8_11(rd_high_2, carry_6),
+            preprocessed -enabler * range_check_8_11(rd_high_3, carry_7),
             // Write rd.
             -enabler * memory_access(0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3),
             enabler * memory_access(0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3),
@@ -1230,6 +1258,54 @@ stwo_macros::define_trace_tables! {
             prefix_1: |prefix_2, lt_marker_1| prefix_2 + lt_marker_1,
             prefix_0: |prefix_1, lt_marker_0| prefix_1 + lt_marker_0,
             lt_diff_minus_1: |lt_diff| lt_diff - 1,
+            // Sign-extension limbs (64-bit two's complement): every limb
+            // above the low four equals sign * 0xFF. The remainder's sign is
+            // the dividend's, except r = 0 which extends with zeros; the
+            // zero-divisor case (r = b) keeps b's sign through b_sign.
+            c_hi: |c_sign| 255 * c_sign,
+            q_hi: |q_sign| 255 * q_sign,
+            b_hi: |b_sign| 255 * b_sign,
+            r_hi: |b_sign, r_zero| 255 * b_sign * (1 - r_zero),
+            // Schoolbook carries of rs1 = rs2 * q + r over the sign-extended
+            // limbs (airs.md 16.2): carry_k integral and below 2^11 makes the
+            // limb equations an exact 64-bit identity, which pins (q, r) to
+            // the dividend (the overflow case is exact too: q_sign = 0 reads
+            // 0x80000000 as +2^31).
+            carry_0: |rs2_next_0, q_0, r_0, rs1_next_0|
+                (rs2_next_0 * q_0 + r_0 - rs1_next_0) * inv(pow2(8)),
+            carry_1: |carry_0, rs2_next_0, q_1, rs2_next_1, q_0, r_1, rs1_next_1|
+                (carry_0 + rs2_next_0 * q_1 + rs2_next_1 * q_0 + r_1 - rs1_next_1)
+                    * inv(pow2(8)),
+            carry_2: |carry_1, rs2_next_0, q_2, rs2_next_1, q_1, rs2_next_2, q_0, r_2,
+                rs1_next_2|
+                (carry_1 + rs2_next_0 * q_2 + rs2_next_1 * q_1 + rs2_next_2 * q_0 + r_2
+                    - rs1_next_2) * inv(pow2(8)),
+            carry_3: |carry_2, rs2_next_0, q_3, rs2_next_1, q_2, rs2_next_2, q_1,
+                rs2_next_3, q_0, r_3, rs1_next_3|
+                (carry_2 + rs2_next_0 * q_3 + rs2_next_1 * q_2 + rs2_next_2 * q_1
+                    + rs2_next_3 * q_0 + r_3 - rs1_next_3) * inv(pow2(8)),
+            carry_4: |carry_3, rs2_next_0, q_hi, rs2_next_1, q_3, rs2_next_2, q_2,
+                rs2_next_3, q_1, c_hi, q_0, r_hi, b_hi|
+                (carry_3 + rs2_next_0 * q_hi + rs2_next_1 * q_3 + rs2_next_2 * q_2
+                    + rs2_next_3 * q_1 + c_hi * q_0 + r_hi - b_hi) * inv(pow2(8)),
+            carry_5: |carry_4, rs2_next_0, rs2_next_1, q_hi, rs2_next_2, q_3,
+                rs2_next_3, q_2, c_hi, q_0, q_1, r_hi, b_hi|
+                (carry_4 + (rs2_next_0 + rs2_next_1) * q_hi + rs2_next_2 * q_3
+                    + rs2_next_3 * q_2 + c_hi * (q_0 + q_1) + r_hi - b_hi)
+                    * inv(pow2(8)),
+            carry_6: |carry_5, c_sum, rs2_next_3, q_hi, q_3, c_hi, q_sum, r_hi, b_hi|
+                (carry_5 + (c_sum - rs2_next_3) * q_hi + rs2_next_3 * q_3
+                    + c_hi * (q_sum - q_3) + r_hi - b_hi) * inv(pow2(8)),
+            carry_7: |carry_6, c_sum, q_hi, c_hi, q_sum, r_hi, b_hi|
+                (carry_6 + c_sum * q_hi + c_hi * q_sum + r_hi - b_hi) * inv(pow2(8)),
+            // Sign bits bound to the operands' top limbs under signed
+            // opcodes: 2 * (top_limb - sign * 2^7) is a byte iff the sign
+            // bit matches (without this, a sign lie with r = 0 slips past
+            // the special-case-gated comparison scan).
+            b_sign_check: |is_signed, rs1_next_3, b_sign|
+                2 * is_signed * (rs1_next_3 - b_sign * pow2(7)),
+            c_sign_check: |is_signed, rs2_next_3, c_sign|
+                2 * is_signed * (rs2_next_3 - c_sign * pow2(7)),
             pc_next: |pc| pc + 4,
             clock_next: |clock| clock + 1,
             rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
@@ -1291,18 +1367,24 @@ stwo_macros::define_trace_tables! {
             sign_xor * (carry_lt_3 - carry_lt_2) * (carry_lt_3 - 1),
             sign_xor * (1 - carry_lt_3) * r_abs_3,
             sign_xor * ((r_abs_3 - pow2(8)) * r_inv_3 - 1),
-            // < scan from the most significant limb
-            enabler * (1 - prefix_3) * diff_3,
-            enabler * lt_marker_3 * (lt_diff - diff_3),
-            enabler * (1 - prefix_2) * diff_2,
-            enabler * lt_marker_2 * (lt_diff - diff_2),
-            enabler * (1 - prefix_1) * diff_1,
-            enabler * lt_marker_1 * (lt_diff - diff_1),
-            enabler * (1 - prefix_0) * diff_0,
-            enabler * lt_marker_0 * (lt_diff - diff_0),
+            // < scan from the most significant limb. The enabler gate is
+            // omitted: diff and lt_diff vanish on padding rows, and without
+            // it the constraints stay within the degree-3 bound (diff is
+            // already quadratic).
+            (1 - prefix_3) * diff_3,
+            lt_marker_3 * (lt_diff - diff_3),
+            (1 - prefix_2) * diff_2,
+            lt_marker_2 * (lt_diff - diff_2),
+            (1 - prefix_1) * diff_1,
+            lt_marker_1 * (lt_diff - diff_1),
+            (1 - prefix_0) * diff_0,
+            lt_marker_0 * (lt_diff - diff_0),
             enabler * (1 - prefix_0),
         },
         lookups: {
+            // Quadratic carry denominators: every fraction must stay in a
+            // singleton batch to hold the constraint degree bound.
+            batch: 1,
             // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
             -enabler * program_access(pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr),
             -enabler * registers_state(pc, clock),
@@ -1315,11 +1397,18 @@ stwo_macros::define_trace_tables! {
             -enabler * memory_access(0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3),
             enabler * memory_access(0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3),
             preprocessed -enabler * range_check_20(rs2_clock_diff),
-            // Quotient and remainder limbs are bytes.
-            preprocessed -enabler * range_check_8_8(q_0, q_1),
-            preprocessed -enabler * range_check_8_8(q_2, q_3),
-            preprocessed -enabler * range_check_8_8(r_0, r_1),
-            preprocessed -enabler * range_check_8_8(r_2, r_3),
+            // Quotient and remainder limbs are bytes and the rs1 = rs2*q + r
+            // schoolbook carries fit 11 bits (airs.md 16.3).
+            preprocessed -enabler * range_check_8_11(q_0, carry_0),
+            preprocessed -enabler * range_check_8_11(q_1, carry_1),
+            preprocessed -enabler * range_check_8_11(q_2, carry_2),
+            preprocessed -enabler * range_check_8_11(q_3, carry_3),
+            preprocessed -enabler * range_check_8_11(r_0, carry_4),
+            preprocessed -enabler * range_check_8_11(r_1, carry_5),
+            preprocessed -enabler * range_check_8_11(r_2, carry_6),
+            preprocessed -enabler * range_check_8_11(r_3, carry_7),
+            // b_sign / c_sign match the operands' top bits.
+            preprocessed -enabler * range_check_8_8(b_sign_check, c_sign_check),
             // |r| < |c| on regular divisions: the comparison scan difference
             // is > 0.
             preprocessed -valid_not_special * range_check_20(lt_diff_minus_1),
