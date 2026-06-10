@@ -19,7 +19,7 @@ use stwo::core::circle::CirclePoint;
 use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::pcs::utils::try_get_lifting_log_size;
-use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError as StwoVerificationError};
 use stwo_constraint_framework::{PREPROCESSED_TRACE_IDX, TraceLocationAllocator};
 
@@ -59,7 +59,7 @@ pub fn replay_composition_oods(
     preprocessing: &Preprocessing,
 ) -> Result<OodsCheck, VerificationError> {
     let (mut channel, mut commitment_scheme, relations) =
-        replay_claim_phase(proof, config, preprocessing)?;
+        replay_claim_phase::<Blake2sMerkleChannel>(proof, config, preprocessing)?;
 
     let preprocessed_ids = preprocessing.column_ids();
     let mut location_allocator =

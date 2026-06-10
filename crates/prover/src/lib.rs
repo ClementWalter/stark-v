@@ -77,10 +77,10 @@ pub mod relations;
 pub mod verifier;
 
 pub use errors::VerificationError;
-pub use preprocessed::{Preprocessing, preprocess};
-pub use prover::prove_rv32im;
+pub use preprocessed::{Preprocessing, preprocess, preprocess_with_channel};
+pub use prover::{prove_rv32im, prove_rv32im_with_channel};
 pub use public_data::PublicData;
-pub use verifier::verify_rv32im;
+pub use verifier::{verify_rv32im, verify_rv32im_with_channel};
 
 // Re-export stwo types needed by external consumers
 pub use stwo::core::fri::FriConfig;

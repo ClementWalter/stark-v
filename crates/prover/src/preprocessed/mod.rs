@@ -28,4 +28,4 @@ mod preprocessing;
 
 // Re-export core types from relations module
 pub use crate::relations::{Counter, Counters, PreProcessedTrace, PreprocessedTable};
-pub use preprocessing::{Preprocessing, preprocess};
+pub use preprocessing::{Preprocessing, preprocess, preprocess_with_channel};

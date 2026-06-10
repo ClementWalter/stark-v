@@ -35,6 +35,25 @@ pub fn prove_rv32im(
     config: PcsConfig,
     preprocessing: &Preprocessing,
 ) -> Proof<Blake2sMerkleHasher> {
+    prove_rv32im_with_channel::<Blake2sMerkleChannel>(run_result, config, preprocessing)
+}
+
+/// Prove an RV32IM execution with any Merkle channel — in particular the
+/// Poseidon2-M31 channel whose hash the recursion verifier AIR proves.
+pub fn prove_rv32im_with_channel<MC: MerkleChannel>(
+    run_result: runner::RunResult,
+    config: PcsConfig,
+    preprocessing: &Preprocessing<MC::H>,
+) -> Proof<MC::H>
+where
+    SimdBackend: stwo::prover::backend::BackendForChannel<MC>
+        + stwo::prover::backend::ColumnOps<
+            <MC::H as stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>::Hash,
+            Column = Vec<
+                <MC::H as stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>::Hash,
+            >,
+        >,
+{
     let public_data = PublicData::new(&run_result);
 
     // 1. Generate traces from execution
@@ -64,9 +83,8 @@ pub fn prove_rv32im(
     span.exit();
 
     // 3. Setup protocol
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let channel = &mut <MC::C as Default>::default();
+    let mut commitment_scheme = CommitmentSchemeProver::<_, MC>::new(config, &twiddles);
 
     // 4. Public data
     public_data.mix_into(channel);
@@ -85,7 +103,7 @@ pub fn prove_rv32im(
             polynomials,
             commitment: merkle_prover,
         }));
-    Blake2sMerkleChannel::mix_root(channel, root);
+    MC::mix_root(channel, root);
     span.exit();
 
     // 6. Main execution trace (opcode + multiplicity columns)

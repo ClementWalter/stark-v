@@ -1,7 +1,7 @@
 //! Verifier for RV32IM proofs.
 
 use num_traits::Zero;
-use stwo::core::channel::{Blake2sChannel, Channel};
+use stwo::core::channel::{Channel, MerkleChannel};
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::verify;
@@ -22,20 +22,13 @@ use crate::relations::{INTERACTION_POW_BITS, Relations};
 /// and OODS draws). Shared by host verification and the recursion transcript
 /// replay (`crate::recursion`), so the protocol prefix has a single
 /// implementation.
-pub(crate) fn replay_claim_phase(
-    proof: &Proof<Blake2sMerkleHasher>,
+pub(crate) fn replay_claim_phase<MC: MerkleChannel>(
+    proof: &Proof<MC::H>,
     config: PcsConfig,
-    preprocessing: &Preprocessing,
-) -> Result<
-    (
-        Blake2sChannel,
-        CommitmentSchemeVerifier<Blake2sMerkleChannel>,
-        Relations,
-    ),
-    VerificationError,
-> {
-    let mut channel = Blake2sChannel::default();
-    let mut commitment_scheme = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+    preprocessing: &Preprocessing<MC::H>,
+) -> Result<(MC::C, CommitmentSchemeVerifier<MC>, Relations), VerificationError> {
+    let mut channel = MC::C::default();
+    let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
 
     // Public data.
     proof.public_data.mix_into(&mut channel);
@@ -86,8 +79,17 @@ pub fn verify_rv32im(
     config: PcsConfig,
     preprocessing: &Preprocessing,
 ) -> Result<(), VerificationError> {
+    verify_rv32im_with_channel::<Blake2sMerkleChannel>(proof, config, preprocessing)
+}
+
+/// Verify an RV32IM proof with any Merkle channel.
+pub fn verify_rv32im_with_channel<MC: MerkleChannel>(
+    proof: Proof<MC::H>,
+    config: PcsConfig,
+    preprocessing: &Preprocessing<MC::H>,
+) -> Result<(), VerificationError> {
     let (mut channel, mut commitment_scheme, relations) =
-        replay_claim_phase(&proof, config, preprocessing)?;
+        replay_claim_phase::<MC>(&proof, config, preprocessing)?;
 
     // Verify LogUp sum (components + public data).
     let total_sum =

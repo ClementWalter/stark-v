@@ -1121,3 +1121,33 @@ fn test_aggregate_segments_root_spans_execution() {
     assert_eq!(root.exit_pc, reference.final_pc);
     assert_eq!(root.exit_regs, reference.final_regs);
 }
+
+/// Full inner proof over the Poseidon2-M31 channel (docs/recursion.md, M4):
+/// the entire stark-v pipeline — preprocessing, proving, verification —
+/// committed with the hash the recursion verifier AIR proves.
+#[test_log::test]
+fn test_prove_verify_poseidon2_channel() {
+    use prover::e2e::{ensure_guest_built, guest_bin_dir};
+    use prover::poseidon2_channel::Poseidon2M31MerkleChannel;
+    use prover::{preprocess_with_channel, prove_rv32im_with_channel, verify_rv32im_with_channel};
+    use runner::run;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("mulhu_alias");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read mulhu_alias ELF");
+    let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run mulhu_alias");
+
+    let preprocessing = preprocess_with_channel::<Poseidon2M31MerkleChannel>(PcsConfig::default());
+    let proof = prove_rv32im_with_channel::<Poseidon2M31MerkleChannel>(
+        run_result,
+        PcsConfig::default(),
+        &preprocessing,
+    );
+    verify_rv32im_with_channel::<Poseidon2M31MerkleChannel>(
+        proof,
+        PcsConfig::default(),
+        &preprocessing,
+    )
+    .expect("poseidon2-channel verification failed");
+}

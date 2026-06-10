@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use stwo::core::pcs::PcsConfig;
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 
 use crate::preprocessed::PreProcessedTrace;
 
@@ -15,7 +17,11 @@ use crate::preprocessed::PreProcessedTrace;
 /// The data can be serialized to disk and reused across multiple proofs,
 /// avoiding the need to rebuild the Merkle tree each time.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Preprocessing {
+#[serde(bound(
+    serialize = "H::Hash: Serialize",
+    deserialize = "H::Hash: serde::de::DeserializeOwned"
+))]
+pub struct Preprocessing<H: MerkleHasherLifted = Blake2sMerkleHasher> {
     /// Column IDs for trace allocation.
     pub ids: Vec<String>,
     /// Original column log sizes before extension for verifier commitments.
@@ -27,10 +33,10 @@ pub struct Preprocessing {
     /// Each inner Vec contains the flattened PackedBaseField data as u32 values.
     pub extended_evals: Vec<Vec<u32>>,
     /// Merkle tree layers ordered from the root layer to the largest layer.
-    pub merkle_layers: Vec<Vec<stwo::core::vcs::blake2_hash::Blake2sHash>>,
+    pub merkle_layers: Vec<Vec<H::Hash>>,
 }
 
-impl Preprocessing {
+impl<H: MerkleHasherLifted> Preprocessing<H> {
     /// Get the preprocessed column IDs as PreProcessedColumnId objects.
     pub fn column_ids(
         &self,
@@ -55,9 +61,13 @@ impl Preprocessing {
         Vec<stwo::prover::Poly<stwo::prover::backend::simd::SimdBackend>>,
         stwo::prover::vcs_lifted::prover::MerkleProverLifted<
             stwo::prover::backend::simd::SimdBackend,
-            stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher,
+            H,
         >,
-    ) {
+    )
+    where
+        stwo::prover::backend::simd::SimdBackend: stwo::prover::vcs_lifted::ops::MerkleOpsLifted<H>
+            + stwo::prover::backend::ColumnOps<H::Hash, Column = Vec<H::Hash>>,
+    {
         use stwo::core::poly::circle::CanonicCoset;
         use stwo::prover::Poly;
         use stwo::prover::backend::simd::column::BaseColumn;
@@ -99,9 +109,21 @@ impl Preprocessing {
 ///
 /// The result can be serialized and reused across multiple prove/verify calls.
 pub fn preprocess(config: PcsConfig) -> Preprocessing {
-    use stwo::core::channel::Blake2sChannel;
+    preprocess_with_channel::<Blake2sMerkleChannel>(config)
+}
+
+/// Generate preprocessed data committed with any Merkle channel.
+pub fn preprocess_with_channel<MC: stwo::core::channel::MerkleChannel>(
+    config: PcsConfig,
+) -> Preprocessing<MC::H>
+where
+    stwo::prover::backend::simd::SimdBackend: stwo::prover::backend::BackendForChannel<MC>
+        + stwo::prover::backend::ColumnOps<
+            <MC::H as MerkleHasherLifted>::Hash,
+            Column = Vec<<MC::H as MerkleHasherLifted>::Hash>,
+        >,
+{
     use stwo::core::poly::circle::CanonicCoset;
-    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::prover::CommitmentSchemeProver;
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::poly::circle::PolyOps;
@@ -135,9 +157,8 @@ pub fn preprocess(config: PcsConfig) -> Preprocessing {
         .collect();
 
     let span_3 = span!(Level::INFO, "Commit").entered();
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let channel = &mut <MC::C as Default>::default();
+    let mut commitment_scheme = CommitmentSchemeProver::<_, MC>::new(config, &twiddles);
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(preprocessed_trace.trace);
