@@ -154,6 +154,63 @@ swapped combination.
   absorbed: commitments, claims) comes from the recursion proof's public claim,
   exactly like `RootClaim`.
 
+## The single final proof (`recursion::final_proof`)
+
+A segmented execution of any length is proven as ONE artifact:
+
+```text
+prove_segments_with_channel::<Poseidon2M31MerkleChannel>  (one proof per segment)
+        |
+prove_final ──────────────► FinalProof {
+   per segment:                recursion_proof   (ONE stwo proof)
+   - composition circuit       segments          (public bodies,
+     (CompositionRecorder       NO decommitments anywhere)
+      → lower_arena)         }
+   - every Merkle opening
+     (openings::replay_pcs_openings
+      → merkle_path rows + poseidon2 rows)
+```
+
+`verify_final` is the only verification step. Its work splits in two:
+
+- **Public-data recomputation** (deterministic, no trust): replay each segment's
+  Fiat-Shamir transcript natively (the bodies are the final proof's public input
+  — hashing them is the cost of reading the proof), re-record the canonical
+  composition circuits from the same `evaluate()`, recompute DEEP quotients
+  (`stwo`'s `fri_answers`), the FRI fold chain, last-layer evaluations, proofs
+  of work, LogUp sums, and the boundary chain across segments.
+- **ONE stwo verification** of the recursion proof, which attests the two things
+  public data cannot: that the composition circuits evaluate to the claimed OODS
+  values (every inner constraint, through the single-source seam), and that the
+  queried values open against the committed roots — the decommitment paths are
+  witness to the recursion proof and absent from the artifact. Leaf digests
+  anchor as public `LeafClaim`s (recomputed by the verifier from queried
+  values), roots as `RootClaim`s (equal to the in-transcript commitments), one
+  path per opened position per tree — trace trees and every FRI layer tree.
+
+Shared upper path rows of converging queries are simply pushed once per path:
+each duplicated row consumes its own node claim and re-emits its child's, so the
+multiset telescopes with `RootClaim.n_paths` at the top.
+
+Validated end to end by `tests/final_proof.rs`: a 2-segment roundtrip with
+tamper vectors (forged queried value, forged root claim, broken boundary), and
+`test_final_proof_of_10m_cycle_run` — the 10.8M-cycle `long_run` guest, 11
+segments, proven as one final proof in ~220s (release, `parallel`).
+
+### Remaining deepening (succinctness, not soundness)
+
+The trust structure above is complete; what remains shrinks the public remainder
+so `verify_final` approaches statement-size work:
+
+1. Record the FRI quotient/fold formulas as Rec circuits (protocol arithmetic,
+   not constraint copy) so queried values can become witness.
+2. Replay the inner transcripts through the in-AIR channel (machinery exists and
+   is validated against the real channel) with absorbed chunks as witness, drawn
+   values and query-index bits bound by wires.
+3. Circuit structure as preprocessed columns (removes the per-proof re-record),
+   then true 2-to-1 node compression (a recursion proof attesting two child
+   recursion proofs) for unbounded depth at constant artifact size.
+
 ## Notes
 
 - stwo's `examples/` contain Blake and Poseidon AIRs to draw on for M4; a
