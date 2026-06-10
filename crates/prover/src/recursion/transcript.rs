@@ -51,6 +51,93 @@ impl OodsCheck {
     }
 }
 
+/// Everything the recursion binding needs to re-evaluate a proof's
+/// composition check in-AIR: the constructed components (with drawn
+/// relations), the channel draws, and the sampled mask values.
+pub struct CompositionBindingData {
+    pub components: Components,
+    pub relations: crate::relations::Relations,
+    pub oods_point: CirclePoint<SecureField>,
+    pub random_coeff: SecureField,
+    pub max_log_degree_bound: u32,
+    /// Sampled mask values, as committed in the proof.
+    pub sampled_values: stwo::core::pcs::TreeVec<Vec<Vec<SecureField>>>,
+    /// The composition value the proof claims at the OODS point.
+    pub claimed_composition: SecureField,
+    /// Per-component claimed LogUp sums, as in the proof.
+    pub claimed_sums: crate::components::ClaimedSum,
+}
+
+/// Replay the transcript and return the full composition-binding data.
+pub fn composition_binding_data(
+    proof: &Proof<Blake2sMerkleHasher>,
+    config: PcsConfig,
+    preprocessing: &Preprocessing,
+) -> Result<CompositionBindingData, VerificationError> {
+    let (mut channel, mut commitment_scheme, relations) =
+        replay_claim_phase::<Blake2sMerkleChannel>(proof, config, preprocessing)?;
+
+    let preprocessed_ids = preprocessing.column_ids();
+    let mut location_allocator =
+        TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_ids);
+    let components = Components::new(
+        &proof.claim,
+        &mut location_allocator,
+        relations.clone(),
+        &proof.interaction_claim.claimed_sum,
+    );
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+        .column_log_sizes
+        .len();
+    let core_components = CoreComponents {
+        n_preprocessed_columns,
+        components: components.verifiers(),
+    };
+
+    let split_composition_log_degree_bound =
+        core_components.composition_log_degree_bound() - COMPOSITION_LOG_SPLIT;
+    let lifting_log_size = try_get_lifting_log_size(
+        &commitment_scheme.config,
+        split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
+    )
+    .map_err(StwoVerificationError::from)?;
+    let max_log_degree_bound =
+        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+
+    let random_coeff = channel.draw_secure_felt();
+    commitment_scheme.commit(
+        *proof
+            .stark_proof
+            .commitments
+            .last()
+            .expect("proof has a composition commitment"),
+        &[max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
+        &mut channel,
+    );
+    let oods_point = CirclePoint::<SecureField>::get_random_point(&mut channel);
+
+    let claimed_composition = extract_composition_oods_eval(
+        proof,
+        oods_point,
+        max_log_degree_bound,
+    )
+    .ok_or_else(|| {
+        StwoVerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
+    })?;
+
+    drop(core_components);
+    Ok(CompositionBindingData {
+        components,
+        relations,
+        oods_point,
+        random_coeff,
+        max_log_degree_bound,
+        sampled_values: proof.stark_proof.sampled_values.clone(),
+        claimed_composition,
+        claimed_sums: proof.interaction_claim.claimed_sum.clone(),
+    })
+}
+
 /// Replay the transcript of a proof up to the OODS point and recompute the
 /// composition polynomial value from the sampled mask values.
 pub fn replay_composition_oods(

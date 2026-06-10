@@ -454,6 +454,15 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
         let op = &component.name;
         quote! { &self.#op as &dyn stwo::core::air::Component, }
     });
+    // Visitor in the same order as verifiers(), so external consumers (the
+    // recursion binding) iterate the composition exactly as the host does.
+    let visit_body = opcodes.iter().map(|component| {
+        let op = &component.name;
+        quote! { visitor.visit(&self.#op, claimed_sum.#op); }
+    });
+    let lookup_visit_body = lookups.iter().map(|lookup| {
+        quote! { visitor.visit(&self.#lookup, claimed_sum.#lookup); }
+    });
     let lookup_verifiers = lookups.iter().map(|lookup| {
         quote! { &self.#lookup as &dyn stwo::core::air::Component, }
     });
@@ -674,6 +683,16 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
             }
         }
 
+        /// Generic visitor over the typed components (the trait-object
+        /// `verifiers()` cannot expose the generic `FrameworkEval`).
+        pub trait ComponentVisitor {
+            fn visit<E: stwo_constraint_framework::FrameworkEval>(
+                &mut self,
+                component: &stwo_constraint_framework::FrameworkComponent<E>,
+                claimed_sum: QM31,
+            );
+        }
+
         #[derive(Clone, Debug, Serialize, Deserialize)]
         pub struct ClaimedSum {
             #(#claimed_sum_fields)*
@@ -744,6 +763,17 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
 
             pub fn verifiers(&self) -> Vec<&dyn stwo::core::air::Component> {
                 vec![ #(#verifiers_body)* #(#lookup_verifiers)* ]
+            }
+
+            /// Visit every component in composition (verifiers) order with
+            /// its claimed sum.
+            pub fn visit_components<V: ComponentVisitor>(
+                &self,
+                claimed_sum: &ClaimedSum,
+                visitor: &mut V,
+            ) {
+                #(#visit_body)*
+                #(#lookup_visit_body)*
             }
 
             pub fn relation_entries(
