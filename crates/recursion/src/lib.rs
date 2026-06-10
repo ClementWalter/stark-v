@@ -6,6 +6,7 @@
 //! single source of definition for the whole recursion stack.
 #![allow(clippy::too_many_arguments)] // generated table push takes one arg per column
 
+pub mod circle_double;
 pub mod fri_fold;
 pub mod qm31_inv;
 pub mod qm31_mul;
@@ -85,6 +86,45 @@ define_component_tables! {
                 f_x_3 + f_neg_x_3
                 + alpha_0 * t_3 + alpha_1 * t_2 + alpha_2 * t_1 + alpha_3 * t_0
                 - folded_3,
+        },
+    },
+
+    // Circle point doubling over QM31: r = 2p on the unit circle
+    // x^2 + y^2 = 1, i.e. r_x = 2 p_x^2 - 1 and r_y = 2 p_x p_y. The squares
+    // and products expand over the extension tower exactly as in qm31_mul;
+    // the `- 1` lands on limb 0 as `- enabler` so padding rows hold.
+    circle_double: {
+        p_x_0, p_x_1, p_x_2, p_x_3,
+        p_y_0, p_y_1, p_y_2, p_y_3,
+        r_x_0, r_x_1, r_x_2, r_x_3,
+        r_y_0, r_y_1, r_y_2, r_y_3,
+        constraints: {
+            // r_x = 2 * p_x^2 - 1
+            |enabler, p_x_0, p_x_1, p_x_2, p_x_3, r_x_0|
+                2 * (p_x_0 * p_x_0 - p_x_1 * p_x_1
+                    + 2 * (p_x_2 * p_x_2 - p_x_3 * p_x_3) - 2 * (p_x_2 * p_x_3))
+                - enabler - r_x_0,
+            |p_x_0, p_x_1, p_x_2, p_x_3, r_x_1|
+                2 * (2 * (p_x_0 * p_x_1)
+                    + (p_x_2 * p_x_2 - p_x_3 * p_x_3) + 4 * (p_x_2 * p_x_3))
+                - r_x_1,
+            |p_x_0, p_x_1, p_x_2, p_x_3, r_x_2|
+                2 * (2 * (p_x_0 * p_x_2) - 2 * (p_x_1 * p_x_3)) - r_x_2,
+            |p_x_0, p_x_1, p_x_2, p_x_3, r_x_3|
+                2 * (2 * (p_x_0 * p_x_3) + 2 * (p_x_1 * p_x_2)) - r_x_3,
+            // r_y = 2 * p_x * p_y
+            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_0|
+                2 * (p_x_0 * p_y_0 - p_x_1 * p_y_1
+                    + 2 * (p_x_2 * p_y_2 - p_x_3 * p_y_3) - (p_x_2 * p_y_3 + p_x_3 * p_y_2))
+                - r_y_0,
+            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_1|
+                2 * (p_x_0 * p_y_1 + p_x_1 * p_y_0
+                    + (p_x_2 * p_y_2 - p_x_3 * p_y_3) + 2 * (p_x_2 * p_y_3 + p_x_3 * p_y_2))
+                - r_y_1,
+            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_2|
+                2 * (p_x_0 * p_y_2 - p_x_1 * p_y_3 + p_x_2 * p_y_0 - p_x_3 * p_y_1) - r_y_2,
+            |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_3|
+                2 * (p_x_0 * p_y_3 + p_x_1 * p_y_2 + p_x_2 * p_y_1 + p_x_3 * p_y_0) - r_y_3,
         },
     },
 
