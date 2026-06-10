@@ -9,7 +9,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, bracketed, parse_macro_input};
+use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, parse_macro_input};
 
 // =============================================================================
 // define_trace_tables! proc-macro
@@ -1503,6 +1503,7 @@ pub(crate) fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
             }
 
             #[inline]
+            #[allow(clippy::too_many_arguments)]
             pub fn push(&mut self, #(#push_params),*) {
                 #enabler_push_stmt
                 #(#push_stmts)*

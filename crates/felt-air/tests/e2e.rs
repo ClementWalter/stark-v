@@ -89,9 +89,9 @@ fn test_degree_budget_materializes_quint_chain() {
     // cube: enabler + x + one materialized square (x2 * x at budget 2
     // forces x2 into a column).
     assert_eq!(CubeColumns::<()>::SIZE, 3);
-    // quint: enabler + x + three materialized cells (x2, x2 again, x4) —
-    // the x2 * x2 * x chain unrolled to keep every product within budget.
-    assert_eq!(QuintColumns::<()>::SIZE, 5);
+    // quint: enabler + x + two materialized cells (the squared square is
+    // CSE-shared) — the x2 * x2 * x chain unrolled within budget.
+    assert_eq!(QuintColumns::<()>::SIZE, 4);
 }
 
 #[test]

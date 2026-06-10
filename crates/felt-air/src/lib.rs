@@ -8,6 +8,8 @@
 //! intermediate columns, while `affine`'s additive chain stays one inline
 //! expression.
 
+pub mod poseidon2;
+
 stwo_macros::define_air_fns! {
     max_degree: 3,
 

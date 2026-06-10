@@ -11,3 +11,7 @@ simd.workspace = true
 num-traits.workspace = true
 itertools.workspace = true
 debug-utils.workspace = true
+
+[dev-dependencies]
+runner.workspace = true
+rand.workspace = true

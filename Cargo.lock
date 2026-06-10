@@ -857,6 +857,8 @@ dependencies = [
  "debug-utils",
  "itertools 0.13.0",
  "num-traits",
+ "rand",
+ "runner",
  "simd",
  "stwo",
  "stwo-constraint-framework",

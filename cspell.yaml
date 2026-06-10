@@ -28,6 +28,8 @@ words:
   - decommit
   - decommitment
   - decommitted
+  - impls
+  - elems
   - unkeyed
   - arities
   - lowerer

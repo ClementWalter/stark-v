@@ -1,34 +1,41 @@
 //! `define_air_fns!`: the felt-to-AIR compiler front end
 //! (docs/felt-air-compiler.md).
 //!
-//! Functions written as straight-line felt code compile to AIR components:
-//! each function is a table, each activation a row. The calling convention
-//! is a LogUp relation per function over the tuple `(inputs..., outputs...)`
-//! — a row consumes its own activation tuple and emits one for every call
-//! it makes; the public side emits the entry activations. The maximum
-//! constraint degree is a compile parameter: multiplicative chains that
-//! would breach it are unrolled into materialized intermediate columns
-//! (with an equality constraint each), while additive chains stay inline.
+//! Functions written as felt code compile to AIR components: each function
+//! is a table, each activation a row. The calling convention is a LogUp
+//! relation per function over the tuple `(inputs..., outputs...)` — a row
+//! consumes its own activation tuple and emits one for every call it makes;
+//! the public side emits the entry activations. `inline fn`s are
+//! frame-spliced sub-circuits instead (no table, no activation).
+//!
+//! The maximum constraint degree is a compile parameter: multiplicative
+//! chains that would breach it are unrolled into materialized intermediate
+//! columns (one equality constraint each, deduplicated by common
+//! subexpression), while additive chains stay inline. `for` loops with
+//! constant bounds unroll; fixed-size arrays (`state[16]` parameters,
+//! constant indexing, `map`/`sum`/`update` builders) flatten to scalars at
+//! compile time, so the whole body lowers to single-assignment felt cells —
+//! a write-once frame.
 //!
 //! The lowering targets the `define_trace_tables!` backend — tables,
 //! generic column structs, and the exported lookup macros — so AIR
-//! evaluation, interaction-trace generation, and multiplicity bookkeeping
-//! are shared with the rest of the system. The witness side is the same
-//! program run concretely: the generated `call_<fn>` executes the body over
-//! `BaseField` values, recursively activates callees, and pushes the rows.
+//! evaluation and interaction-trace generation are shared with the rest of
+//! the system. The witness side is the same program run concretely: the
+//! generated `call_<fn>` executes the lowered cells over `BaseField`
+//! values, recursively activates callees, and pushes the rows.
 
 use std::collections::HashMap;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Expr, Ident, Token, braced, parenthesized, parse_macro_input};
+use syn::{Expr, Ident, Token, braced, bracketed, parenthesized, parse_macro_input};
 
 use crate::trace_tables::{
-    DerivedDef, LookupEntry, LookupsDef, OpcodeDef, column_struct_name, const_eval,
-    generate_lookup_macros, generate_prover_columns, generate_table, table_name,
+    LookupsDef, OpcodeDef, column_struct_name, const_eval, generate_prover_columns, generate_table,
+    table_name,
 };
 
 fn to_pascal_case(s: &str) -> String {
@@ -47,23 +54,32 @@ fn to_pascal_case(s: &str) -> String {
 // Parsing
 // =============================================================================
 
+/// A function parameter: a scalar felt or a fixed-size array of felts.
+struct Param {
+    name: Ident,
+    size: Option<usize>,
+}
+
 /// One statement of a function body.
 enum FnStmt {
-    /// `let x = expr;` — a felt expression over the frame.
-    Let { name: Ident, expr: Expr },
-    /// `let (a, b) = callee(args...);` — an activation of another function.
-    Call {
-        rets: Vec<Ident>,
-        callee: Ident,
-        args: Vec<Expr>,
-    },
+    /// `let x = expr;` — any felt/array expression (including `map`, `sum`,
+    /// `update`, array literals, and calls).
+    Let { names: Vec<Ident>, value: Expr },
     /// `assert lhs == rhs;`
     Assert { lhs: Expr, rhs: Expr },
+    /// `for i in a..b { ... }` — unrolled at compile time.
+    For {
+        var: Ident,
+        start: usize,
+        end: usize,
+        body: Vec<FnStmt>,
+    },
 }
 
 struct AirFn {
+    inline: bool,
     name: Ident,
-    args: Vec<Ident>,
+    params: Vec<Param>,
     body: Vec<FnStmt>,
     rets: Vec<Expr>,
 }
@@ -101,67 +117,97 @@ impl Parse for AirFnsInput {
 }
 
 fn parse_fn(input: ParseStream) -> syn::Result<AirFn> {
+    let inline = input
+        .cursor()
+        .ident()
+        .is_some_and(|(ident, _)| ident == "inline");
+    if inline {
+        input.parse::<Ident>()?;
+    }
     input.parse::<Token![fn]>()?;
     let name: Ident = input.parse()?;
-    let args_content;
-    parenthesized!(args_content in input);
-    let args: Punctuated<Ident, Token![,]> =
-        args_content.parse_terminated(Ident::parse, Token![,])?;
+    let params_content;
+    parenthesized!(params_content in input);
+    let mut params = Vec::new();
+    while !params_content.is_empty() {
+        let param_name: Ident = params_content.parse()?;
+        let size = if params_content.peek(syn::token::Bracket) {
+            let size_content;
+            bracketed!(size_content in params_content);
+            let lit: syn::LitInt = size_content.parse()?;
+            Some(lit.base10_parse()?)
+        } else {
+            None
+        };
+        params.push(Param {
+            name: param_name,
+            size,
+        });
+        if params_content.peek(Token![,]) {
+            params_content.parse::<Token![,]>()?;
+        }
+    }
 
     let body_content;
     braced!(body_content in input);
+    let (body, rets) = parse_block(&body_content, true)?;
+    let rets =
+        rets.ok_or_else(|| syn::Error::new(name.span(), "function body must end with `return`"))?;
+    Ok(AirFn {
+        inline,
+        name,
+        params,
+        body,
+        rets,
+    })
+}
+
+/// Parse a statement block; `allow_return` only for the function's top
+/// level (loops cannot return).
+fn parse_block(
+    input: ParseStream,
+    allow_return: bool,
+) -> syn::Result<(Vec<FnStmt>, Option<Vec<Expr>>)> {
     let mut body = Vec::new();
     let mut rets = None;
-    while !body_content.is_empty() {
-        if body_content.peek(Token![let]) {
-            body_content.parse::<Token![let]>()?;
-            // `let (a, b) = ...` or `let a = ...`
-            let names: Vec<Ident> = if body_content.peek(syn::token::Paren) {
+    while !input.is_empty() {
+        if input.peek(Token![let]) {
+            input.parse::<Token![let]>()?;
+            let names: Vec<Ident> = if input.peek(syn::token::Paren) {
                 let tuple;
-                parenthesized!(tuple in body_content);
+                parenthesized!(tuple in input);
                 let names: Punctuated<Ident, Token![,]> =
                     tuple.parse_terminated(Ident::parse, Token![,])?;
                 names.into_iter().collect()
             } else {
-                vec![body_content.parse()?]
+                vec![input.parse()?]
             };
-            body_content.parse::<Token![=]>()?;
-            let value: Expr = body_content.parse()?;
-            body_content.parse::<Token![;]>()?;
-            // A direct call of a sibling function is an activation; anything
-            // else is a felt expression (single binding only).
-            if let Expr::Call(call) = &value
-                && let Expr::Path(path) = call.func.as_ref()
-                && let Some(callee) = path.path.get_ident()
-                && !matches!(callee.to_string().as_str(), "pow2" | "inv" | "constant")
-            {
-                body.push(FnStmt::Call {
-                    rets: names,
-                    callee: callee.clone(),
-                    args: call.args.iter().cloned().collect(),
-                });
-                continue;
-            }
-            if names.len() != 1 {
-                return Err(syn::Error::new_spanned(
-                    value,
-                    "tuple bindings are only for function calls",
-                ));
-            }
-            body.push(FnStmt::Let {
-                name: names.into_iter().next().expect("one name"),
-                expr: value,
+            input.parse::<Token![=]>()?;
+            let value: Expr = input.parse()?;
+            input.parse::<Token![;]>()?;
+            body.push(FnStmt::Let { names, value });
+        } else if input.peek(Token![for]) {
+            input.parse::<Token![for]>()?;
+            let var: Ident = input.parse()?;
+            input.parse::<Token![in]>()?;
+            let start: syn::LitInt = input.parse()?;
+            input.parse::<Token![..]>()?;
+            let end: syn::LitInt = input.parse()?;
+            let loop_content;
+            braced!(loop_content in input);
+            let (loop_body, loop_rets) = parse_block(&loop_content, false)?;
+            debug_assert!(loop_rets.is_none());
+            body.push(FnStmt::For {
+                var,
+                start: start.base10_parse()?,
+                end: end.base10_parse()?,
+                body: loop_body,
             });
-        } else if body_content.peek(Ident)
-            && body_content
-                .cursor()
-                .ident()
-                .is_some_and(|(i, _)| i == "assert")
-        {
-            body_content.parse::<Ident>()?;
+        } else if input.peek(Ident) && input.cursor().ident().is_some_and(|(i, _)| i == "assert") {
+            input.parse::<Ident>()?;
             // `lhs == rhs` parses as one equality expression.
-            let comparison: Expr = body_content.parse()?;
-            body_content.parse::<Token![;]>()?;
+            let comparison: Expr = input.parse()?;
+            input.parse::<Token![;]>()?;
             let Expr::Binary(binary) = comparison else {
                 return Err(syn::Error::new_spanned(
                     comparison,
@@ -175,123 +221,243 @@ fn parse_fn(input: ParseStream) -> syn::Result<AirFn> {
                 lhs: *binary.left,
                 rhs: *binary.right,
             });
-        } else if body_content.peek(Token![return]) {
-            body_content.parse::<Token![return]>()?;
-            let exprs: Vec<Expr> = if body_content.peek(syn::token::Paren) {
+        } else if allow_return && input.peek(Token![return]) {
+            input.parse::<Token![return]>()?;
+            let exprs: Vec<Expr> = if input.peek(syn::token::Paren) {
                 let tuple;
-                parenthesized!(tuple in body_content);
+                parenthesized!(tuple in input);
                 let exprs: Punctuated<Expr, Token![,]> =
                     tuple.parse_terminated(Expr::parse, Token![,])?;
                 exprs.into_iter().collect()
             } else {
-                vec![body_content.parse()?]
+                vec![input.parse()?]
             };
-            body_content.parse::<Token![;]>()?;
-            if !body_content.is_empty() {
+            input.parse::<Token![;]>()?;
+            if !input.is_empty() {
                 return Err(syn::Error::new(
-                    body_content.span(),
+                    input.span(),
                     "return must be the last statement",
                 ));
             }
             rets = Some(exprs);
         } else {
             return Err(syn::Error::new(
-                body_content.span(),
-                "expected `let`, `assert`, or `return`",
+                input.span(),
+                "expected `let`, `assert`, `for`, or `return`",
             ));
         }
     }
-    let rets =
-        rets.ok_or_else(|| syn::Error::new(name.span(), "function body must end with `return`"))?;
-    Ok(AirFn {
-        name,
-        args: args.into_iter().collect(),
-        body,
-        rets,
-    })
+    Ok((body, rets))
+}
+
+// =============================================================================
+// Compile-time expression utilities
+// =============================================================================
+
+/// Substitute a loop variable with an integer literal, everywhere — index
+/// positions and `constant(...)` arguments included.
+fn substitute(expr: &Expr, var: &Ident, value: usize) -> Expr {
+    struct Substituter<'a> {
+        var: &'a Ident,
+        value: usize,
+    }
+    impl syn::visit_mut::VisitMut for Substituter<'_> {
+        fn visit_expr_mut(&mut self, expr: &mut Expr) {
+            if let Expr::Path(path) = expr
+                && path.path.is_ident(self.var)
+            {
+                let lit = syn::LitInt::new(&self.value.to_string(), self.var.span());
+                *expr = syn::parse_quote!(#lit);
+                return;
+            }
+            syn::visit_mut::visit_expr_mut(self, expr);
+        }
+    }
+    let mut expr = expr.clone();
+    syn::visit_mut::VisitMut::visit_expr_mut(&mut Substituter { var, value }, &mut expr);
+    expr
+}
+
+fn substitute_stmt(stmt: &FnStmt, var: &Ident, value: usize) -> FnStmt {
+    match stmt {
+        FnStmt::Let { names, value: v } => FnStmt::Let {
+            names: names.clone(),
+            value: substitute(v, var, value),
+        },
+        FnStmt::Assert { lhs, rhs } => FnStmt::Assert {
+            lhs: substitute(lhs, var, value),
+            rhs: substitute(rhs, var, value),
+        },
+        FnStmt::For {
+            var: inner,
+            start,
+            end,
+            body,
+        } => FnStmt::For {
+            var: inner.clone(),
+            start: *start,
+            end: *end,
+            body: body
+                .iter()
+                .map(|s| substitute_stmt(s, var, value))
+                .collect(),
+        },
+    }
+}
+
+/// Evaluate a compile-time index expression: integer arithmetic including
+/// division and remainder (separate from the field-constant folder, where
+/// `/` would be wrong).
+fn index_eval(expr: &Expr) -> syn::Result<usize> {
+    let err = || syn::Error::new_spanned(expr, "expected a constant index expression");
+    match expr {
+        Expr::Lit(lit) => match &lit.lit {
+            syn::Lit::Int(int) => Ok(int.base10_parse()?),
+            _ => Err(err()),
+        },
+        Expr::Binary(binary) => {
+            let left = index_eval(&binary.left)?;
+            let right = index_eval(&binary.right)?;
+            match binary.op {
+                syn::BinOp::Add(_) => Ok(left + right),
+                syn::BinOp::Sub(_) => left.checked_sub(right).ok_or_else(err),
+                syn::BinOp::Mul(_) => Ok(left * right),
+                syn::BinOp::Div(_) => Ok(left / right),
+                syn::BinOp::Rem(_) => Ok(left % right),
+                _ => Err(err()),
+            }
+        }
+        Expr::Paren(paren) => index_eval(&paren.expr),
+        Expr::Group(group) => index_eval(&group.expr),
+        _ => Err(err()),
+    }
 }
 
 // =============================================================================
 // Degree-budget lowering
 // =============================================================================
 
-/// What a name in scope is, with its inlined degree.
-#[derive(Clone, Copy)]
-enum Binding {
-    /// A committed trace column (degree 1).
-    Column,
-    /// An inline (derived) expression of the given degree.
-    Derived(usize),
+/// A value in the frame: a committed column or an inline (derived)
+/// expression of a known degree, referred to by its internal
+/// (version-suffixed) cell name — or an array of values.
+#[derive(Clone)]
+enum Value {
+    Scalar { cell: Ident, degree: usize },
+    Array(Vec<Value>),
 }
 
-impl Binding {
-    fn degree(self) -> usize {
+impl Value {
+    fn scalar(&self) -> syn::Result<(&Ident, usize)> {
         match self {
-            Binding::Column => 1,
-            Binding::Derived(degree) => degree,
+            Value::Scalar { cell, degree } => Ok((cell, *degree)),
+            Value::Array(_) => Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "expected a scalar, found an array",
+            )),
+        }
+    }
+
+    fn flatten(&self) -> Vec<(Ident, usize)> {
+        match self {
+            Value::Scalar { cell, degree } => vec![(cell.clone(), *degree)],
+            Value::Array(elements) => elements.iter().flat_map(Value::flatten).collect(),
         }
     }
 }
 
-struct Lowerer {
-    scope: HashMap<String, Binding>,
-    /// Frame cells in creation order, for the witness fill.
-    fill: Vec<FillStep>,
-    /// Committed columns beyond the arguments, in creation order.
-    extra_columns: Vec<Ident>,
-    /// Inline (derived) expressions.
-    derived: Vec<(Ident, Expr)>,
-    /// Constraints: materialization equalities and asserts.
-    constraints: Vec<Expr>,
-    temp_counter: usize,
-}
-
 enum FillStep {
-    /// `let name = expr;` over BaseField values (derived or materialized).
-    Expr { name: Ident, expr: Expr },
+    /// `let cell = expr;` over BaseField values.
+    Expr { cell: Ident, expr: Expr },
     /// `let [rets...] = call_callee(tables, [args...]);`
     Call {
         rets: Vec<Ident>,
         callee: Ident,
-        args: Vec<Expr>,
+        args: Vec<Ident>,
     },
 }
 
-impl Lowerer {
-    fn new(args: &[Ident]) -> Self {
-        let mut scope = HashMap::new();
-        for arg in args {
-            scope.insert(arg.to_string(), Binding::Column);
-        }
-        Self {
-            scope,
-            fill: Vec::new(),
-            extra_columns: Vec::new(),
-            derived: Vec::new(),
-            constraints: Vec::new(),
-            temp_counter: 0,
+struct Lowerer<'a> {
+    max_degree: usize,
+    /// Internal cell names with their degrees; lowered expressions
+    /// reference cells only.
+    cells: HashMap<String, usize>,
+    /// Used internal names, for fresh-name generation (shadowing).
+    used: HashMap<String, usize>,
+    /// Committed columns beyond the arguments, in creation order.
+    extra_columns: Vec<Ident>,
+    /// Inline (derived) cells: (name, lowered expr), in creation order.
+    derived: Vec<(Ident, Expr)>,
+    constraints: Vec<Expr>,
+    fill: Vec<FillStep>,
+    /// Activations made: (callee, flattened arg cells, flattened ret cells).
+    calls: Vec<(Ident, Vec<Ident>, Vec<Ident>)>,
+    /// Common-subexpression cache for materialized cells.
+    cse: HashMap<String, Ident>,
+    /// Flattened signatures of table-backed functions lowered so far.
+    arities: &'a HashMap<String, (usize, usize)>,
+    inline_fns: &'a HashMap<String, AirFn>,
+    fn_name: Ident,
+}
+
+impl Lowerer<'_> {
+    fn fresh(&mut self, base: &Ident) -> Ident {
+        let key = base.to_string();
+        let count = self.used.entry(key).or_insert(0);
+        *count += 1;
+        if *count == 1 {
+            base.clone()
+        } else {
+            format_ident!("{}_v{}", base, *count)
         }
     }
 
-    /// Materialize an expression as a committed column: the cell gets an
-    /// equality constraint and a fill step; its degree drops to 1.
-    fn materialize(&mut self, expr: Expr, fn_name: &Ident) -> Expr {
-        let name = format_ident!("{}_t{}", fn_name, self.temp_counter);
-        self.temp_counter += 1;
-        self.extra_columns.push(name.clone());
-        self.scope.insert(name.to_string(), Binding::Column);
-        self.constraints.push(syn::parse_quote!(#name - (#expr)));
+    fn register_column(&mut self, base: &Ident) -> Ident {
+        let cell = self.fresh(base);
+        self.cells.insert(cell.to_string(), 1);
+        cell
+    }
+
+    /// Register an inline derived cell holding a lowered expression.
+    fn register_derived(&mut self, base: &Ident, expr: Expr, degree: usize) -> Ident {
+        let cell = self.fresh(base);
+        self.cells.insert(cell.to_string(), degree);
+        self.derived.push((cell.clone(), expr.clone()));
         self.fill.push(FillStep::Expr {
-            name: name.clone(),
+            cell: cell.clone(),
+            expr,
+        });
+        cell
+    }
+
+    /// Materialize a lowered expression as a committed column (CSE-cached):
+    /// an equality constraint pins it, and its degree drops to 1.
+    fn materialize(&mut self, expr: Expr) -> Expr {
+        let key = expr.to_token_stream().to_string();
+        if let Some(cell) = self.cse.get(&key) {
+            let cell = cell.clone();
+            return syn::parse_quote!(#cell);
+        }
+        let base = format_ident!("{}_t{}", self.fn_name, self.cse.len());
+        let cell = self.register_column(&base);
+        self.extra_columns.push(cell.clone());
+        self.constraints.push(syn::parse_quote!(#cell - (#expr)));
+        self.fill.push(FillStep::Expr {
+            cell: cell.clone(),
             expr: expr.clone(),
         });
-        syn::parse_quote!(#name)
+        self.cse.insert(key, cell.clone());
+        syn::parse_quote!(#cell)
     }
 
-    /// Lower an expression so its degree fits `budget`, materializing
-    /// multiplicative subtrees as needed. Returns the (possibly rewritten)
-    /// expression and its degree.
-    fn lower(&mut self, expr: &Expr, budget: usize, fn_name: &Ident) -> syn::Result<(Expr, usize)> {
+    /// Lower a scalar expression over a user-name scope so its degree fits
+    /// `budget`, materializing multiplicative subtrees as needed. Returns
+    /// the cell-level expression and its degree.
+    fn lower(
+        &mut self,
+        expr: &Expr,
+        scope: &HashMap<String, Value>,
+        budget: usize,
+    ) -> syn::Result<(Expr, usize)> {
         // Constant subtrees have degree 0 and stay verbatim (the backend
         // folds them at expansion time).
         if const_eval(expr).is_ok() {
@@ -302,23 +468,62 @@ impl Lowerer {
                 let ident = path.path.get_ident().ok_or_else(|| {
                     syn::Error::new_spanned(path, "only plain names are usable in expressions")
                 })?;
-                let binding = self.scope.get(&ident.to_string()).ok_or_else(|| {
+                let value = scope.get(&ident.to_string()).ok_or_else(|| {
                     syn::Error::new_spanned(
                         ident,
                         format!("`{ident}` is not defined in this frame"),
                     )
                 })?;
-                Ok((expr.clone(), binding.degree()))
+                let (cell, degree) = value.scalar()?;
+                Ok((syn::parse_quote!(#cell), degree))
+            }
+            Expr::Index(index) => {
+                let Expr::Path(path) = index.expr.as_ref() else {
+                    return Err(syn::Error::new_spanned(index, "only named arrays index"));
+                };
+                let ident = path.path.require_ident()?;
+                let Some(Value::Array(elements)) = scope.get(&ident.to_string()) else {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        format!("`{ident}` is not an array in this frame"),
+                    ));
+                };
+                let position = index_eval(&index.index)?;
+                let element = elements.get(position).ok_or_else(|| {
+                    syn::Error::new_spanned(
+                        index,
+                        format!("index {position} out of bounds for `{ident}`"),
+                    )
+                })?;
+                let (cell, degree) = element.scalar()?;
+                Ok((syn::parse_quote!(#cell), degree))
             }
             Expr::Call(call) => {
-                // Intrinsics only; sibling-function calls are statements.
                 if let Expr::Path(func) = call.func.as_ref()
-                    && func
-                        .path
-                        .get_ident()
-                        .is_some_and(|i| matches!(i.to_string().as_str(), "constant"))
+                    && func.path.is_ident("constant")
                 {
                     return Ok((expr.clone(), 0));
+                }
+                if let Expr::Path(func) = call.func.as_ref()
+                    && func.path.is_ident("sum")
+                    && call.args.len() == 3
+                {
+                    // sum(j, a..b, body): an additive fold, lowered inline.
+                    let var = expect_ident(&call.args[0])?;
+                    let (start, end) = expect_range(&call.args[1])?;
+                    let mut total: Option<(Expr, usize)> = None;
+                    for value in start..end {
+                        let body = substitute(&call.args[2], &var, value);
+                        let (lowered, degree) = self.lower(&body, scope, budget)?;
+                        total = Some(match total {
+                            None => (lowered, degree),
+                            Some((acc, acc_degree)) => {
+                                (syn::parse_quote!((#acc + #lowered)), acc_degree.max(degree))
+                            }
+                        });
+                    }
+                    return total
+                        .ok_or_else(|| syn::Error::new_spanned(call, "sum over an empty range"));
                 }
                 Err(syn::Error::new_spanned(
                     call,
@@ -327,22 +532,22 @@ impl Lowerer {
             }
             Expr::Binary(binary) => match binary.op {
                 syn::BinOp::Add(_) | syn::BinOp::Sub(_) => {
-                    let (left, dl) = self.lower(&binary.left, budget, fn_name)?;
-                    let (right, dr) = self.lower(&binary.right, budget, fn_name)?;
+                    let (left, dl) = self.lower(&binary.left, scope, budget)?;
+                    let (right, dr) = self.lower(&binary.right, scope, budget)?;
                     let op = &binary.op;
                     Ok((syn::parse_quote!((#left #op #right)), dl.max(dr)))
                 }
                 syn::BinOp::Mul(_) => {
-                    let (mut left, mut dl) = self.lower(&binary.left, budget, fn_name)?;
-                    let (mut right, mut dr) = self.lower(&binary.right, budget, fn_name)?;
+                    let (mut left, mut dl) = self.lower(&binary.left, scope, budget)?;
+                    let (mut right, mut dr) = self.lower(&binary.right, scope, budget)?;
                     // Unroll the product until it fits: materialize the
                     // higher-degree side (additions never trigger this).
                     while dl + dr > budget {
                         if dl >= dr && dl > 1 {
-                            left = self.materialize(left, fn_name);
+                            left = self.materialize(left);
                             dl = 1;
                         } else if dr > 1 {
-                            right = self.materialize(right, fn_name);
+                            right = self.materialize(right);
                             dr = 1;
                         } else {
                             return Err(syn::Error::new_spanned(
@@ -359,194 +564,491 @@ impl Lowerer {
                 )),
             },
             Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
-                let (inner, degree) = self.lower(&unary.expr, budget, fn_name)?;
+                let (inner, degree) = self.lower(&unary.expr, scope, budget)?;
                 Ok((syn::parse_quote!((-#inner)), degree))
             }
-            Expr::Paren(paren) => self.lower(&paren.expr, budget, fn_name),
-            Expr::Group(group) => self.lower(&group.expr, budget, fn_name),
+            Expr::Paren(paren) => self.lower(&paren.expr, scope, budget),
+            Expr::Group(group) => self.lower(&group.expr, scope, budget),
             other => Err(syn::Error::new_spanned(
                 other,
                 "unsupported expression in a felt function",
             )),
         }
     }
+
+    /// Lower a `let` right-hand side into frame values (scalar, array, or
+    /// call results).
+    fn lower_value(
+        &mut self,
+        names: &[Ident],
+        value: &Expr,
+        scope: &HashMap<String, Value>,
+        budget: usize,
+    ) -> syn::Result<Vec<Value>> {
+        // Array literal: one derived per element.
+        if let Expr::Array(array) = value {
+            let elements = array
+                .elems
+                .iter()
+                .enumerate()
+                .map(|(position, element)| {
+                    let (lowered, degree) = self.lower(element, scope, budget)?;
+                    let base = format_ident!("{}_{}", &names[0], position);
+                    let cell = self.register_derived(&base, lowered, degree);
+                    Ok(Value::Scalar { cell, degree })
+                })
+                .collect::<syn::Result<Vec<_>>>()?;
+            return Ok(vec![Value::Array(elements)]);
+        }
+        if let Expr::Call(call) = value
+            && let Expr::Path(func) = call.func.as_ref()
+            && let Some(callee) = func.path.get_ident()
+        {
+            match callee.to_string().as_str() {
+                // map(j, a..b, body): an array built per element.
+                "map" if call.args.len() == 3 => {
+                    let var = expect_ident(&call.args[0])?;
+                    let (start, end) = expect_range(&call.args[1])?;
+                    let elements = (start..end)
+                        .map(|position| {
+                            let body = substitute(&call.args[2], &var, position);
+                            let (lowered, degree) = self.lower(&body, scope, budget)?;
+                            let base = format_ident!("{}_{}", &names[0], position);
+                            let cell = self.register_derived(&base, lowered, degree);
+                            Ok(Value::Scalar { cell, degree })
+                        })
+                        .collect::<syn::Result<Vec<_>>>()?;
+                    return Ok(vec![Value::Array(elements)]);
+                }
+                // update(arr, index, expr): a copy with one element replaced.
+                "update" if call.args.len() == 3 => {
+                    let array = expect_ident(&call.args[0])?;
+                    let Some(Value::Array(elements)) = scope.get(&array.to_string()) else {
+                        return Err(syn::Error::new_spanned(
+                            &call.args[0],
+                            "update takes an array name",
+                        ));
+                    };
+                    let mut elements = elements.clone();
+                    let position = index_eval(&call.args[1])?;
+                    if position >= elements.len() {
+                        return Err(syn::Error::new_spanned(
+                            &call.args[1],
+                            "update index out of bounds",
+                        ));
+                    }
+                    let (lowered, degree) = self.lower(&call.args[2], scope, budget)?;
+                    let base = format_ident!("{}_{}", &names[0], position);
+                    let cell = self.register_derived(&base, lowered, degree);
+                    elements[position] = Value::Scalar { cell, degree };
+                    return Ok(vec![Value::Array(elements)]);
+                }
+                "constant" | "sum" | "pow2" | "inv" => {}
+                _ => {
+                    // A sibling-function call: inline splice or activation.
+                    let args = call.args.iter().cloned().collect::<Vec<_>>();
+                    return self.lower_call(names, callee, &args, scope, budget);
+                }
+            }
+        }
+        // Scalar expression.
+        if names.len() != 1 {
+            return Err(syn::Error::new_spanned(
+                value,
+                "tuple bindings are only for function calls",
+            ));
+        }
+        let (lowered, degree) = self.lower(value, scope, budget)?;
+        let cell = self.register_derived(&names[0], lowered, degree);
+        Ok(vec![Value::Scalar { cell, degree }])
+    }
+
+    /// Lower a call: splice an `inline fn` into this frame, or record an
+    /// activation of a table-backed function.
+    fn lower_call(
+        &mut self,
+        names: &[Ident],
+        callee: &Ident,
+        args: &[Expr],
+        scope: &HashMap<String, Value>,
+        budget: usize,
+    ) -> syn::Result<Vec<Value>> {
+        if let Some(inline_fn) = self.inline_fns.get(&callee.to_string()) {
+            // Bind arguments into a fresh local scope, then process the body
+            // statements in this same frame (shared columns, CSE, fill).
+            if args.len() != inline_fn.params.len() {
+                return Err(syn::Error::new_spanned(
+                    callee,
+                    format!("`{callee}` takes {} arguments", inline_fn.params.len()),
+                ));
+            }
+            let mut local: HashMap<String, Value> = HashMap::new();
+            for (param, arg) in inline_fn.params.iter().zip(args) {
+                let value = match param.size {
+                    None => {
+                        let (lowered, degree) = self.lower(arg, scope, budget)?;
+                        let base = format_ident!("{}_{}", callee, param.name);
+                        let cell = self.register_derived(&base, lowered, degree);
+                        Value::Scalar { cell, degree }
+                    }
+                    Some(size) => {
+                        // Array arguments pass by name.
+                        let ident = expect_ident(arg)?;
+                        let Some(value @ Value::Array(elements)) = scope.get(&ident.to_string())
+                        else {
+                            return Err(syn::Error::new_spanned(
+                                arg,
+                                "array arguments pass an array name",
+                            ));
+                        };
+                        if elements.len() != size {
+                            return Err(syn::Error::new_spanned(
+                                arg,
+                                format!(
+                                    "`{ident}` has {} elements, expected {size}",
+                                    elements.len()
+                                ),
+                            ));
+                        }
+                        value.clone()
+                    }
+                };
+                local.insert(param.name.to_string(), value);
+            }
+            let body = clone_body(&inline_fn.body);
+            let rets = inline_fn.rets.clone();
+            self.lower_block(&body, &mut local, budget)?;
+            let rets = rets
+                .iter()
+                .map(|ret| self.lower_ret(ret, &local, budget))
+                .collect::<syn::Result<Vec<_>>>()?;
+            return bind_rets(names, rets, value_error(callee));
+        }
+
+        // An activation: flattened arguments and returned cells through the
+        // callee's io relation.
+        let Some(&(n_args, n_rets)) = self.arities.get(&callee.to_string()) else {
+            return Err(syn::Error::new_spanned(
+                callee,
+                format!("unknown function `{callee}` (calls reference earlier definitions)"),
+            ));
+        };
+        let mut arg_cells = Vec::new();
+        for arg in args {
+            // Arrays flatten; scalars lower into derived cells so the io
+            // tuple references cells only.
+            if let Ok(ident) = expect_ident(arg)
+                && let Some(value @ Value::Array(_)) = scope.get(&ident.to_string())
+            {
+                for (cell, _) in value.flatten() {
+                    arg_cells.push(cell);
+                }
+                continue;
+            }
+            let (lowered, degree) = self.lower(arg, scope, budget)?;
+            let base = format_ident!("{}_a{}", callee, arg_cells.len());
+            arg_cells.push(self.register_derived(&base, lowered, degree));
+        }
+        if arg_cells.len() != n_args {
+            return Err(syn::Error::new_spanned(
+                callee,
+                format!("`{callee}` takes {n_args} felts, got {}", arg_cells.len()),
+            ));
+        }
+        // Returned values are witness columns received through the relation.
+        let mut ret_cells = Vec::new();
+        let mut rets = Vec::new();
+        if names.len() == 1 && n_rets > 1 {
+            // Single binder for a multi-return callee: an array.
+            let elements = (0..n_rets)
+                .map(|position| {
+                    let base = format_ident!("{}_{}", &names[0], position);
+                    let cell = self.register_column(&base);
+                    self.extra_columns.push(cell.clone());
+                    ret_cells.push(cell.clone());
+                    Value::Scalar { cell, degree: 1 }
+                })
+                .collect();
+            rets.push(Value::Array(elements));
+        } else {
+            if names.len() != n_rets {
+                return Err(syn::Error::new_spanned(
+                    callee,
+                    format!("`{callee}` returns {n_rets} values"),
+                ));
+            }
+            for name in names {
+                let cell = self.register_column(name);
+                self.extra_columns.push(cell.clone());
+                ret_cells.push(cell.clone());
+                rets.push(Value::Scalar { cell, degree: 1 });
+            }
+        }
+        self.fill.push(FillStep::Call {
+            rets: ret_cells.clone(),
+            callee: callee.clone(),
+            args: arg_cells.clone(),
+        });
+        self.calls.push((callee.clone(), arg_cells, ret_cells));
+        Ok(rets)
+    }
+
+    fn lower_block(
+        &mut self,
+        body: &[FnStmt],
+        scope: &mut HashMap<String, Value>,
+        budget: usize,
+    ) -> syn::Result<()> {
+        for stmt in body {
+            match stmt {
+                FnStmt::Let { names, value } => {
+                    let values = self.lower_value(names, value, scope, budget)?;
+                    if values.len() == 1 {
+                        scope.insert(
+                            names[0].to_string(),
+                            values.into_iter().next().expect("one value"),
+                        );
+                    } else {
+                        for (name, value) in names.iter().zip(values) {
+                            scope.insert(name.to_string(), value);
+                        }
+                    }
+                }
+                FnStmt::Assert { lhs, rhs } => {
+                    // The enabler gate on emitted constraints costs one
+                    // degree: asserts share the cell budget.
+                    let difference: Expr = syn::parse_quote!((#lhs) - (#rhs));
+                    let (lowered, _) = self.lower(&difference, scope, self.max_degree - 1)?;
+                    self.constraints.push(lowered);
+                }
+                FnStmt::For {
+                    var,
+                    start,
+                    end,
+                    body,
+                } => {
+                    for value in *start..*end {
+                        let unrolled: Vec<FnStmt> = body
+                            .iter()
+                            .map(|s| substitute_stmt(s, var, value))
+                            .collect();
+                        self.lower_block(&unrolled, scope, budget)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Lower a return expression: a scalar, or an array name (flattened by
+    /// the caller).
+    fn lower_ret(
+        &mut self,
+        ret: &Expr,
+        scope: &HashMap<String, Value>,
+        budget: usize,
+    ) -> syn::Result<Value> {
+        if let Ok(ident) = expect_ident(ret)
+            && let Some(value @ Value::Array(_)) = scope.get(&ident.to_string())
+        {
+            return Ok(value.clone());
+        }
+        let (lowered, degree) = self.lower(ret, scope, budget)?;
+        let base = format_ident!("{}_ret", self.fn_name);
+        let cell = self.register_derived(&base, lowered, degree);
+        Ok(Value::Scalar { cell, degree })
+    }
 }
 
-/// A lowered function, ready for backend generation.
+fn expect_ident(expr: &Expr) -> syn::Result<Ident> {
+    if let Expr::Path(path) = expr
+        && let Some(ident) = path.path.get_ident()
+    {
+        return Ok(ident.clone());
+    }
+    Err(syn::Error::new_spanned(expr, "expected a plain name"))
+}
+
+fn expect_range(expr: &Expr) -> syn::Result<(usize, usize)> {
+    if let Expr::Range(range) = expr
+        && let (Some(start), Some(end)) = (&range.start, &range.end)
+        && matches!(range.limits, syn::RangeLimits::HalfOpen(_))
+    {
+        return Ok((index_eval(start)?, index_eval(end)?));
+    }
+    Err(syn::Error::new_spanned(
+        expr,
+        "expected a constant `a..b` range",
+    ))
+}
+
+fn value_error(callee: &Ident) -> syn::Error {
+    syn::Error::new_spanned(callee, "binder count does not match returned values")
+}
+
+fn bind_rets(names: &[Ident], rets: Vec<Value>, error: syn::Error) -> syn::Result<Vec<Value>> {
+    // One binder taking everything (a single value or a flattened array of
+    // scalars), or one binder per returned value.
+    if names.len() == 1 {
+        if rets.len() == 1 {
+            return Ok(rets);
+        }
+        let flattened: Vec<Value> = rets
+            .iter()
+            .flat_map(Value::flatten)
+            .map(|(cell, degree)| Value::Scalar { cell, degree })
+            .collect();
+        return Ok(vec![Value::Array(flattened)]);
+    }
+    if names.len() == rets.len() {
+        return Ok(rets);
+    }
+    Err(error)
+}
+
+fn clone_body(body: &[FnStmt]) -> Vec<FnStmt> {
+    body.iter()
+        .map(|stmt| match stmt {
+            FnStmt::Let { names, value } => FnStmt::Let {
+                names: names.clone(),
+                value: value.clone(),
+            },
+            FnStmt::Assert { lhs, rhs } => FnStmt::Assert {
+                lhs: lhs.clone(),
+                rhs: rhs.clone(),
+            },
+            FnStmt::For {
+                var,
+                start,
+                end,
+                body,
+            } => FnStmt::For {
+                var: var.clone(),
+                start: *start,
+                end: *end,
+                body: clone_body(body),
+            },
+        })
+        .collect()
+}
+
+/// A lowered table-backed function, ready for backend generation.
 struct LoweredFn {
     name: Ident,
-    args: Vec<Ident>,
-    rets: Vec<Expr>,
+    n_args: usize,
+    n_rets: usize,
+    /// Bare column layout (no derived/constraints/lookups — the felt
+    /// front end generates a straight-line `evaluation()` instead, so deep
+    /// cell DAGs evaluate once into locals rather than through recursive
+    /// method calls).
     table: OpcodeDef,
+    /// Derived cells in creation order: (cell, lowered expr).
+    derived: Vec<(Ident, Expr)>,
+    /// Materialization equalities and asserts, over cells.
+    constraints: Vec<Expr>,
+    /// Activations made: (callee, arg cells, ret cells).
+    calls: Vec<(Ident, Vec<Ident>, Vec<Ident>)>,
     fill: Vec<FillStep>,
+    ret_cells: Vec<Ident>,
 }
 
 fn lower_fn(
     function: &AirFn,
     max_degree: usize,
     arities: &HashMap<String, (usize, usize)>,
+    inline_fns: &HashMap<String, AirFn>,
 ) -> syn::Result<LoweredFn> {
     // Lookup-tuple elements appear in LogUp denominators whose singleton
     // constraint multiplies by one cumsum mask: budget max_degree - 1.
     let io_budget = max_degree - 1;
-    let mut lowerer = Lowerer::new(&function.args);
-    let mut calls: Vec<(Ident, Vec<Expr>, Vec<Ident>)> = Vec::new();
-    let mut call_ret_columns: Vec<Ident> = Vec::new();
+    let mut lowerer = Lowerer {
+        max_degree,
+        cells: HashMap::new(),
+        used: HashMap::new(),
+        extra_columns: Vec::new(),
+        derived: Vec::new(),
+        constraints: Vec::new(),
+        fill: Vec::new(),
+        calls: Vec::new(),
+        cse: HashMap::new(),
+        arities,
+        inline_fns,
+        fn_name: function.name.clone(),
+    };
 
-    for stmt in &function.body {
-        match stmt {
-            FnStmt::Let { name, expr } => {
-                let (lowered, degree) = lowerer.lower(expr, io_budget, &function.name)?;
-                lowerer
-                    .scope
-                    .insert(name.to_string(), Binding::Derived(degree));
-                lowerer.derived.push((name.clone(), lowered));
-                lowerer.fill.push(FillStep::Expr {
-                    name: name.clone(),
-                    expr: expr.clone(),
-                });
+    // Parameters are committed columns: scalars directly, arrays flattened
+    // as `name_k`.
+    let mut scope: HashMap<String, Value> = HashMap::new();
+    let mut arg_columns: Vec<Ident> = Vec::new();
+    for param in &function.params {
+        let value = match param.size {
+            None => {
+                let cell = lowerer.register_column(&param.name);
+                arg_columns.push(cell.clone());
+                Value::Scalar { cell, degree: 1 }
             }
-            FnStmt::Call { rets, callee, args } => {
-                let (n_args, n_rets) = *arities.get(&callee.to_string()).ok_or_else(|| {
-                    syn::Error::new_spanned(callee, format!("unknown function `{callee}`"))
-                })?;
-                if args.len() != n_args || rets.len() != n_rets {
-                    return Err(syn::Error::new_spanned(
-                        callee,
-                        format!("`{callee}` takes {n_args} arguments and returns {n_rets} values"),
-                    ));
-                }
-                let lowered_args = args
-                    .iter()
-                    .map(|arg| Ok(lowerer.lower(arg, io_budget, &function.name)?.0))
-                    .collect::<syn::Result<Vec<_>>>()?;
-                for ret in rets {
-                    lowerer.scope.insert(ret.to_string(), Binding::Column);
-                    call_ret_columns.push(ret.clone());
-                }
-                lowerer.fill.push(FillStep::Call {
-                    rets: rets.clone(),
-                    callee: callee.clone(),
-                    args: args.clone(),
-                });
-                calls.push((callee.clone(), lowered_args, rets.clone()));
+            Some(size) => {
+                let elements = (0..size)
+                    .map(|position| {
+                        let base = format_ident!("{}_{}", param.name, position);
+                        let cell = lowerer.register_column(&base);
+                        arg_columns.push(cell.clone());
+                        Value::Scalar { cell, degree: 1 }
+                    })
+                    .collect();
+                Value::Array(elements)
             }
-            FnStmt::Assert { lhs, rhs } => {
-                let (lowered, _) = lowerer.lower(
-                    &syn::parse_quote!((#lhs) - (#rhs)),
-                    max_degree,
-                    &function.name,
-                )?;
-                lowerer.constraints.push(lowered);
-            }
+        };
+        scope.insert(param.name.to_string(), value);
+    }
+
+    lowerer.lower_block(&function.body, &mut scope, io_budget)?;
+
+    let mut ret_cells: Vec<Ident> = Vec::new();
+    for ret in &function.rets {
+        let value = lowerer.lower_ret(ret, &scope, io_budget)?;
+        for (cell, _) in value.flatten() {
+            ret_cells.push(cell);
         }
     }
 
-    let rets = function
-        .rets
-        .iter()
-        .map(|ret| Ok(lowerer.lower(ret, io_budget, &function.name)?.0))
-        .collect::<syn::Result<Vec<_>>>()?;
-
-    // Assemble the backend table: arguments, then call returns, then
-    // materialized intermediates (enabler is prepended by the backend).
-    let mut fields = function.args.clone();
-    fields.extend(call_ret_columns);
+    // Assemble the backend table: arguments, then call returns and
+    // materialized intermediates in creation order (enabler is prepended by
+    // the backend).
+    let mut fields = arg_columns.clone();
     fields.extend(lowerer.extra_columns.clone());
-
-    let derived = lowerer
-        .derived
-        .iter()
-        .map(|(name, expr)| {
-            let params = referenced_idents(expr, &lowerer.scope);
-            DerivedDef {
-                name: name.clone(),
-                closure: syn::parse_quote!(|#(#params),*| #expr),
-            }
-        })
-        .collect();
-
-    // The calling convention: consume the own activation tuple, emit one
-    // per call made.
-    let mut entries = Vec::new();
-    let own_values: Vec<Expr> = function
-        .args
-        .iter()
-        .map(|arg| syn::parse_quote!(#arg))
-        .chain(rets.iter().cloned())
-        .collect();
-    entries.push(LookupEntry {
-        preprocessed: false,
-        relation: function.name.clone(),
-        multiplicity: syn::parse_quote!(-enabler),
-        values: own_values,
-    });
-    for (callee, args, ret_columns) in &calls {
-        let values: Vec<Expr> = args
-            .iter()
-            .cloned()
-            .chain(ret_columns.iter().map(|ret| syn::parse_quote!(#ret)))
-            .collect();
-        entries.push(LookupEntry {
-            preprocessed: false,
-            relation: callee.clone(),
-            multiplicity: syn::parse_quote!(enabler),
-            values,
-        });
-    }
 
     let table = OpcodeDef {
         name: function.name.clone(),
         fields,
-        derived,
-        constraints: lowerer.constraints,
-        lookups: LookupsDef { batch: 1, entries },
+        derived: Vec::new(),
+        constraints: Vec::new(),
+        lookups: LookupsDef {
+            batch: 1,
+            entries: Vec::new(),
+        },
         air_only: false,
     };
 
     Ok(LoweredFn {
         name: function.name.clone(),
-        args: function.args.clone(),
-        rets,
+        n_args: arg_columns.len(),
+        n_rets: ret_cells.len(),
         table,
+        derived: lowerer.derived,
+        constraints: lowerer.constraints,
+        calls: lowerer.calls,
         fill: lowerer.fill,
+        ret_cells,
     })
-}
-
-/// The in-scope names an expression references, in deterministic order —
-/// the synthesized closure parameters of a derived column.
-fn referenced_idents(expr: &Expr, scope: &HashMap<String, Binding>) -> Vec<Ident> {
-    fn walk(expr: &Expr, scope: &HashMap<String, Binding>, out: &mut Vec<Ident>) {
-        match expr {
-            Expr::Path(path) => {
-                if let Some(ident) = path.path.get_ident()
-                    && scope.contains_key(&ident.to_string())
-                    && !out.iter().any(|seen| seen == ident)
-                {
-                    out.push(ident.clone());
-                }
-            }
-            Expr::Binary(binary) => {
-                walk(&binary.left, scope, out);
-                walk(&binary.right, scope, out);
-            }
-            Expr::Unary(unary) => walk(&unary.expr, scope, out),
-            Expr::Paren(paren) => walk(&paren.expr, scope, out),
-            Expr::Group(group) => walk(&group.expr, scope, out),
-            _ => {}
-        }
-    }
-    let mut out = Vec::new();
-    walk(expr, scope, &mut out);
-    out
 }
 
 // =============================================================================
 // Code generation
 // =============================================================================
 
-/// Rewrite a body expression into concrete `BaseField` arithmetic for the
-/// witness fill (names are local variables; constants fold).
+/// Rewrite a lowered cell expression into concrete `BaseField` arithmetic
+/// for the witness fill (cells are local variables; constants fold).
 fn concrete_expr(expr: &Expr) -> syn::Result<TokenStream2> {
     if let Ok(value) = const_eval(expr) {
         let value = value as u32;
@@ -595,22 +1097,183 @@ fn concrete_expr(expr: &Expr) -> syn::Result<TokenStream2> {
     }
 }
 
+/// Rewrite a lowered cell expression for the generic `evaluation()` body:
+/// columns become `self.field.clone()`, derived cells become local
+/// `cell.clone()`, constant subtrees fold into a single field constant.
+fn air_expr(expr: &Expr, columns: &std::collections::HashSet<String>) -> syn::Result<TokenStream2> {
+    if let Ok(value) = const_eval(expr) {
+        let value = value as u32;
+        return Ok(quote! {
+            T::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(#value))
+        });
+    }
+    match expr {
+        Expr::Path(path) => {
+            let ident = path.path.require_ident()?;
+            if columns.contains(&ident.to_string()) {
+                Ok(quote!(self.#ident.clone()))
+            } else {
+                Ok(quote!(#ident.clone()))
+            }
+        }
+        Expr::Call(call) => {
+            if let Expr::Path(func) = call.func.as_ref()
+                && func.path.is_ident("constant")
+                && call.args.len() == 1
+            {
+                let arg = &call.args[0];
+                return Ok(quote! {
+                    T::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(#arg))
+                });
+            }
+            Err(syn::Error::new_spanned(call, "unsupported call"))
+        }
+        Expr::Binary(binary) => {
+            let left = air_expr(&binary.left, columns)?;
+            let right = air_expr(&binary.right, columns)?;
+            let op = &binary.op;
+            Ok(quote!((#left #op #right)))
+        }
+        Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
+            let inner = air_expr(&unary.expr, columns)?;
+            Ok(quote!((-#inner)))
+        }
+        Expr::Paren(paren) => air_expr(&paren.expr, columns),
+        Expr::Group(group) => air_expr(&group.expr, columns),
+        other => Err(syn::Error::new_spanned(other, "unsupported expression")),
+    }
+}
+
+/// Generate the straight-line `evaluation()` on the columns struct: every
+/// derived cell computed once into a local in dependency order (so deep
+/// frames like Poseidon2's partial rounds evaluate as a DAG, not an
+/// exponential tree), then the constraints and lookup entries over them.
+fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
+    let columns_type = column_struct_name(&function.name);
+    let columns: std::collections::HashSet<String> = std::iter::once("enabler".to_string())
+        .chain(function.table.fields.iter().map(|f| f.to_string()))
+        .collect();
+
+    let cell_lets = function
+        .derived
+        .iter()
+        .map(|(cell, expr)| {
+            let value = air_expr(expr, &columns)?;
+            Ok(quote! { let #cell = #value; })
+        })
+        .collect::<syn::Result<Vec<_>>>()?;
+
+    let one = quote! {
+        T::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(1u32))
+    };
+    let mut constraint_exprs = vec![quote! {
+        self.enabler.clone() * (#one - self.enabler.clone())
+    }];
+    for constraint in &function.constraints {
+        // Enabler-gated: padding rows are all-zero, which constant terms in
+        // the cell chains would otherwise violate. Cell budgets are
+        // max_degree - 1, so the gate stays within the bound.
+        let expr = air_expr(constraint, &columns)?;
+        constraint_exprs.push(quote! {
+            self.enabler.clone() * (#expr)
+        });
+    }
+
+    // The calling convention: the own activation tuple with multiplicity
+    // -enabler, one tuple per activation made with +enabler.
+    let own_values = function.table.fields[..function.n_args]
+        .iter()
+        .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns))
+        .chain(
+            function
+                .ret_cells
+                .iter()
+                .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns)),
+        )
+        .collect::<syn::Result<Vec<_>>>()?;
+    let mut entry_exprs = vec![quote! {
+        (
+            (-self.enabler.clone()),
+            vec![#(#own_values),*],
+        )
+    }];
+    for (_, args, rets) in &function.calls {
+        let values = args
+            .iter()
+            .chain(rets.iter())
+            .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns))
+            .collect::<syn::Result<Vec<_>>>()?;
+        entry_exprs.push(quote! {
+            (
+                self.enabler.clone(),
+                vec![#(#values),*],
+            )
+        });
+    }
+
+    Ok(quote! {
+        impl<T> prover_columns::#columns_type<T>
+        where
+            T: Clone
+                + From<stwo::core::fields::m31::BaseField>
+                + core::ops::Add<Output = T>
+                + core::ops::Sub<Output = T>
+                + core::ops::Mul<Output = T>
+                + core::ops::Neg<Output = T>,
+        {
+            /// Straight-line frame evaluation: (constraints, lookup
+            /// entries), the single source for the AIR and the witness.
+            #[allow(clippy::let_and_return)]
+            pub fn evaluation(&self) -> (Vec<T>, Vec<(T, Vec<T>)>) {
+                #(#cell_lets)*
+                let constraints = vec![#(#constraint_exprs),*];
+                let entries = vec![#(#entry_exprs),*];
+                (constraints, entries)
+            }
+        }
+    })
+}
+
 pub fn define_air_fns(input: TokenStream) -> TokenStream {
     let AirFnsInput { max_degree, fns } = parse_macro_input!(input as AirFnsInput);
 
-    let arities: HashMap<String, (usize, usize)> = fns
+    let inline_fns: HashMap<String, AirFn> = fns
         .iter()
-        .map(|f| (f.name.to_string(), (f.args.len(), f.rets.len())))
+        .filter(|f| f.inline)
+        .map(|f| {
+            (
+                f.name.to_string(),
+                AirFn {
+                    inline: true,
+                    name: f.name.clone(),
+                    params: f
+                        .params
+                        .iter()
+                        .map(|p| Param {
+                            name: p.name.clone(),
+                            size: p.size,
+                        })
+                        .collect(),
+                    body: clone_body(&f.body),
+                    rets: f.rets.clone(),
+                },
+            )
+        })
         .collect();
 
-    let lowered: Vec<LoweredFn> = match fns
-        .iter()
-        .map(|f| lower_fn(f, max_degree, &arities))
-        .collect::<syn::Result<Vec<_>>>()
-    {
-        Ok(lowered) => lowered,
-        Err(error) => return error.to_compile_error().into(),
-    };
+    // Lower in declaration order: calls reference earlier functions, so
+    // flattened arities accumulate as we go.
+    let mut arities: HashMap<String, (usize, usize)> = HashMap::new();
+    let mut lowered: Vec<LoweredFn> = Vec::new();
+    for function in fns.iter().filter(|f| !f.inline) {
+        match lower_fn(function, max_degree, &arities, &inline_fns) {
+            Ok(result) => {
+                arities.insert(function.name.to_string(), (result.n_args, result.n_rets));
+                lowered.push(result);
+            }
+            Err(error) => return error.to_compile_error().into(),
+        }
+    }
 
     // Backend: tables, generic columns, exported lookup macros.
     let tables: Vec<_> = lowered.iter().map(|f| generate_table(&f.table)).collect();
@@ -618,9 +1281,9 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
         .iter()
         .map(|f| generate_prover_columns(&f.table).unwrap_or_else(|e| e.to_compile_error()))
         .collect();
-    let lookup_macros: Vec<_> = lowered
+    let evaluation_impls: Vec<_> = lowered
         .iter()
-        .map(|f| generate_lookup_macros(&f.table, true))
+        .map(|f| generate_evaluation_impl(f).unwrap_or_else(|e| e.to_compile_error()))
         .collect();
 
     // Relations: one io relation per function over (inputs..., outputs...).
@@ -628,7 +1291,7 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
         .iter()
         .map(|f| {
             let relation_type = format_ident!("{}IoRelation", to_pascal_case(&f.name.to_string()));
-            let arity = f.args.len() + f.rets.len();
+            let arity = f.n_args + f.n_rets;
             quote! { stwo_constraint_framework::relation!(#relation_type, #arity); }
         })
         .collect();
@@ -687,7 +1350,7 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
             #(#prover_columns)*
         }
 
-        #(#lookup_macros)*
+        #(#evaluation_impls)*
 
         #(#relation_defs)*
 
@@ -722,46 +1385,37 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
     .into()
 }
 
-/// The witness fill: run the body over `BaseField`, recursively activate
-/// callees, push the row, return the outputs.
+/// The witness fill: run the lowered cells over `BaseField`, recursively
+/// activate callees, push the row, return the outputs.
 fn generate_call_fn(function: &LoweredFn) -> syn::Result<TokenStream2> {
     let name = &function.name;
     let fn_name = format_ident!("call_{}", name);
-    let args = &function.args;
-    let n_args = args.len();
-    let n_rets = function.rets.len();
+    let n_args = function.n_args;
+    let n_rets = function.n_rets;
+    let arg_cells: Vec<&Ident> = function.table.fields[..n_args].iter().collect();
 
     let mut steps: Vec<TokenStream2> = Vec::new();
     for step in &function.fill {
         match step {
-            FillStep::Expr { name, expr } => {
+            FillStep::Expr { cell, expr } => {
                 let value = concrete_expr(expr)?;
-                steps.push(quote! { let #name = #value; });
+                steps.push(quote! { let #cell = #value; });
             }
             FillStep::Call { rets, callee, args } => {
                 let callee_fn = format_ident!("call_{}", callee);
-                let arg_values = args
-                    .iter()
-                    .map(concrete_expr)
-                    .collect::<syn::Result<Vec<_>>>()?;
                 steps.push(quote! {
-                    let [#(#rets),*] = #callee_fn(tables, [#(#arg_values),*]);
+                    let [#(#rets),*] = #callee_fn(tables, [#(#args),*]);
                 });
             }
         }
     }
 
-    // Row layout: enabler, args, call returns, materialized intermediates —
-    // exactly the table's column order. Derived cells are not committed.
+    // Row layout: enabler then the table fields, in order.
     let mut row_values: Vec<TokenStream2> = vec![quote!(1u32)];
     for field in &function.table.fields {
         row_values.push(quote!(#field.0));
     }
-    let ret_values = function
-        .rets
-        .iter()
-        .map(concrete_expr)
-        .collect::<syn::Result<Vec<_>>>()?;
+    let ret_cells = &function.ret_cells;
 
     let doc =
         format!("Activate `{name}`: run the body, recursively activate callees, push the row.");
@@ -771,21 +1425,25 @@ fn generate_call_fn(function: &LoweredFn) -> syn::Result<TokenStream2> {
             tables: &mut Tables,
             args: [stwo::core::fields::m31::BaseField; #n_args],
         ) -> [stwo::core::fields::m31::BaseField; #n_rets] {
-            let [#(#args),*] = args;
+            let [#(#arg_cells),*] = args;
             #(#steps)*
             tables.#name.push_row(&[#(#row_values),*]);
-            [#(#ret_values),*]
+            [#(#ret_cells),*]
         }
     })
 }
 
-/// The component module: the same `Eval` shell every DSL component uses,
-/// against the generated relations and lookup macros.
+/// The component module: the AIR and the witness both consume the
+/// straight-line `evaluation()` — constraints, then the activation entries
+/// bound to the generated relations.
 fn generate_component_module(function: &LoweredFn) -> TokenStream2 {
     let name = &function.name;
     let columns_type = column_struct_name(name);
-    let lookups_macro = format_ident!("{}_lookups", name);
-    let interaction_macro = format_ident!("{}_interaction", name);
+    let n_entries = 1 + function.calls.len();
+    let entry_indices: Vec<usize> = (0..n_entries).collect();
+    let entry_relations: Vec<&Ident> = std::iter::once(&function.name)
+        .chain(function.calls.iter().map(|(callee, _, _)| callee))
+        .collect();
     let doc = format!("{name} component, generated from its felt function.");
     quote! {
         #[doc = #doc]
@@ -815,10 +1473,25 @@ fn generate_component_module(function: &LoweredFn) -> TokenStream2 {
 
                     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
                         let cols = #columns_type::from_eval(&mut eval);
-                        for constraint in cols.constraints() {
+                        let (constraints, entries) = cols.evaluation();
+                        for constraint in constraints {
                             eval.add_constraint(constraint);
                         }
-                        #lookups_macro!(eval, cols, self.relations);
+                        let mut entries = entries.into_iter();
+                        #(
+                            {
+                                let (multiplicity, values) =
+                                    entries.next().expect("one tuple per entry");
+                                eval.add_to_relation(
+                                    stwo_constraint_framework::RelationEntry::new(
+                                        &self.relations.#entry_relations,
+                                        multiplicity.into(),
+                                        &values,
+                                    ),
+                                );
+                            }
+                        )*
+                        eval.finalize_logup();
                         eval
                     }
                 }
@@ -830,13 +1503,16 @@ fn generate_component_module(function: &LoweredFn) -> TokenStream2 {
                 use stwo::core::fields::m31::BaseField;
                 use stwo::core::fields::qm31::QM31;
                 use stwo::prover::backend::simd::SimdBackend;
+                use stwo::prover::backend::simd::qm31::PackedQM31;
                 use stwo::prover::poly::BitReversedOrder;
                 use stwo::prover::poly::circle::CircleEvaluation;
+                use stwo_constraint_framework::LogupTraceGenerator;
 
                 use super::super::AirFnRelations;
-                #[allow(unused_imports)]
                 use super::super::prover_columns::#columns_type;
 
+                /// One singleton fraction column per activation entry, in
+                /// the same order the AIR adds them.
                 pub fn gen_interaction_trace(
                     trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
                     relations: &AirFnRelations,
@@ -847,7 +1523,44 @@ fn generate_component_module(function: &LoweredFn) -> TokenStream2 {
                     if trace.is_empty() {
                         return (vec![], QM31::zero());
                     }
-                    #interaction_macro!(trace, relations)
+                    let cols = #columns_type::from_iter(trace.iter().map(|eval| &eval.values.data));
+                    let simd_size = cols.enabler.len();
+                    let log_size = trace[0].domain.log_size();
+                    let mut logup_gen = LogupTraceGenerator::new(log_size);
+
+                    let mut numerators: Vec<Vec<PackedQM31>> =
+                        vec![Vec::with_capacity(simd_size); #n_entries];
+                    let mut denominators: Vec<Vec<PackedQM31>> =
+                        vec![Vec::with_capacity(simd_size); #n_entries];
+                    for i in 0..simd_size {
+                        let (_, entries) = cols.at(i).evaluation();
+                        #(
+                            {
+                                let (multiplicity, values) = &entries[#entry_indices];
+                                numerators[#entry_indices].push(PackedQM31::from(*multiplicity));
+                                denominators[#entry_indices].push(
+                                    stwo_constraint_framework::Relation::combine(
+                                        &relations.#entry_relations,
+                                        values,
+                                    ),
+                                );
+                            }
+                        )*
+                    }
+                    #(
+                        {
+                            let mut col = logup_gen.new_col();
+                            for (vec_row, (n, d)) in numerators[#entry_indices]
+                                .iter()
+                                .zip(denominators[#entry_indices].iter())
+                                .enumerate()
+                            {
+                                col.write_frac(vec_row, *n, *d);
+                            }
+                            col.finalize_col();
+                        }
+                    )*
+                    logup_gen.finalize_last()
                 }
             }
         }
@@ -866,8 +1579,8 @@ fn generate_harness(lowered: &[LoweredFn]) -> TokenStream2 {
         .iter()
         .map(|f| {
             let variant = format_ident!("{}", to_pascal_case(&f.name.to_string()));
-            let n_args = f.args.len();
-            let n_rets = f.rets.len();
+            let n_args = f.n_args;
+            let n_rets = f.n_rets;
             quote! {
                 #variant {
                     inputs: [stwo::core::fields::m31::BaseField; #n_args],
@@ -915,10 +1628,9 @@ fn generate_harness(lowered: &[LoweredFn]) -> TokenStream2 {
             quote! { prover_columns::#columns_type::<()>::SIZE }
         })
         .collect();
-    let entry_counts: Vec<usize> = lowered
-        .iter()
-        .map(|f| f.table.lookups.entries.len())
-        .collect();
+    // One singleton fraction column per entry: the own activation plus one
+    // per call made.
+    let entry_counts: Vec<usize> = lowered.iter().map(|f| 1 + f.calls.len()).collect();
 
     quote! {
         /// A public activation: the io tuple of an entry call the host
