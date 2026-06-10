@@ -34,3 +34,62 @@ fn test_recorded_composition_matches_real_proof() {
     // The arena is a real circuit, ready for lowering.
     assert!(recorder.arena.borrow().nodes.len() > 1000);
 }
+
+/// The full M5 loop on real data: record the composition check of an actual
+/// stark-v proof, lower the circuit into recursion rows, prove the recursion
+/// AIR, and verify it against the re-recorded canonical circuit.
+#[test]
+fn test_real_proof_composition_proven_in_recursion_air() {
+    use num_traits::Zero;
+    use recursion::circuit::lower_arena;
+    use recursion::prover::{RecursionTraces, prove_recursion, verify_recursion};
+    use recursion::recorder::Rec;
+    use stwo::core::fields::qm31::SecureField;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("mulhu_alias");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read mulhu_alias ELF");
+    let run_result = run(&elf_bytes, 10_000_000).expect("Failed to run mulhu_alias");
+
+    let preprocessing = prover::preprocess(PcsConfig::default());
+    let proof = prove_rv32im(run_result, PcsConfig::default(), &preprocessing);
+    let data = composition_binding_data(&proof, PcsConfig::default(), &preprocessing)
+        .expect("transcript replay failed");
+
+    let recorder = CompositionRecorder::new(&data).record(&data.components);
+    let output = match &recorder.accumulation {
+        Rec::Node { id, .. } => *id,
+        Rec::Const(_) => panic!("constant accumulation"),
+    };
+    assert_eq!(recorder.accumulation.value(), data.claimed_composition);
+
+    // Lower the real circuit and prove it in the recursion AIR. The
+    // re-record context is the multi-component binding, so the
+    // single-component re-record fields of the claim are unused here.
+    let mut traces = RecursionTraces::default();
+    let claim = lower_arena(
+        &mut traces,
+        0,
+        &recorder.arena.borrow(),
+        output,
+        0,
+        SecureField::zero(),
+    );
+    let recursion_proof =
+        prove_recursion(traces, vec![], vec![], vec![claim], PcsConfig::default());
+
+    // Verifier side: re-record the canonical circuit from the proof data.
+    let verifier_recorder = CompositionRecorder::new(&data).record(&data.components);
+    let verifier_output = match &verifier_recorder.accumulation {
+        Rec::Node { id, .. } => *id,
+        Rec::Const(_) => panic!("constant accumulation"),
+    };
+    assert!(!data.claimed_composition.is_zero());
+    verify_recursion(
+        recursion_proof,
+        &[(verifier_recorder.arena, verifier_output)],
+        PcsConfig::default(),
+    )
+    .expect("real-proof composition recursion verification failed");
+}
