@@ -6,6 +6,7 @@
 //! single source of definition for the whole recursion stack.
 #![allow(clippy::too_many_arguments)] // generated table push takes one arg per column
 
+pub mod channel_replay;
 pub mod circle_double;
 pub mod fri_fold;
 pub mod logup_sum;
@@ -166,6 +167,21 @@ define_component_tables! {
             |direction, left_6, right_6, child_6| left_6 + direction * (right_6 - left_6) - child_6,
             |direction, left_7, right_7, child_7| left_7 + direction * (right_7 - left_7) - child_7,
         },
+    },
+
+    // One sponge absorption step of a Fiat-Shamir channel replay: the
+    // permutation input is prev_state with the absorbed chunk added into the
+    // rate, and the (input, output) pair is bound atomically through the
+    // poseidon2_io relation; states chain through sponge_step and the
+    // absorbed data is anchored through sponge_data public claims. No hash
+    // constraint lives here.
+    channel_replay: {
+        channel_id, step,
+        prev_0, prev_1, prev_2, prev_3, prev_4, prev_5, prev_6, prev_7,
+        prev_8, prev_9, prev_10, prev_11, prev_12, prev_13, prev_14, prev_15,
+        chunk_0, chunk_1, chunk_2, chunk_3, chunk_4, chunk_5, chunk_6, chunk_7,
+        out_0, out_1, out_2, out_3, out_4, out_5, out_6, out_7,
+        out_8, out_9, out_10, out_11, out_12, out_13, out_14, out_15,
     },
 
     // LogUp sum of inverses: each row contributes enabler / term to the

@@ -24,10 +24,10 @@ pub fn gen_interaction_trace(
     let one = stwo::prover::backend::simd::m31::PackedM31::broadcast(BaseField::from(1));
 
     let neg_enabler: Vec<PackedQM31> = (0..simd_size)
-        .map(|i| -PackedQM31::from(enabler[i]))
+        .map(|i| -PackedQM31::from(enabler[i] * (one - io[i])))
         .collect();
     let narrow_enabler: Vec<PackedQM31> = (0..simd_size)
-        .map(|i| PackedQM31::from(enabler[i] * (one - wide[i])))
+        .map(|i| PackedQM31::from(enabler[i] * (one - wide[i] - io[i])))
         .collect();
     let wide_enabler: Vec<PackedQM31> = (0..simd_size)
         .map(|i| PackedQM31::from(enabler[i] * wide[i]))

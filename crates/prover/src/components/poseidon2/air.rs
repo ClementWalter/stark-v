@@ -106,10 +106,20 @@ impl FrameworkEval for Eval {
             });
         }
 
+        // Emission shape flags: `wide` selects the 8-word digest (proof
+        // trees) over the 1-word one (memory trees); `io` selects the atomic
+        // (input, output) pair for sponge chaining. Mutually exclusive.
+        let wide = eval.next_trace_mask();
+        let io = eval.next_trace_mask();
+        eval.add_constraint(wide.clone() * (E::F::one() - wide.clone()));
+        eval.add_constraint(io.clone() * (E::F::one() - io.clone()));
+        eval.add_constraint(wide.clone() * io.clone());
+
+        // io rows bind their input through the atomic pair below instead.
         add_to_relation!(
             eval,
             self.relations.poseidon2,
-            -enabler.clone(),
+            -(enabler.clone() * (E::F::one() - io.clone())),
             initial_state[0].clone(),
             initial_state[1].clone(),
             initial_state[2].clone(),
@@ -127,21 +137,16 @@ impl FrameworkEval for Eval {
             initial_state[14].clone(),
             initial_state[15].clone()
         );
-        // Digest emission: the 1-word output anchors memory-tree nodes, the
-        // 8-word output anchors proof-tree nodes; `wide` selects which one
-        // this row provides.
-        let wide = eval.next_trace_mask();
-        eval.add_constraint(wide.clone() * (E::F::one() - wide.clone()));
         add_to_relation!(
             eval,
             self.relations.poseidon2,
-            enabler.clone() * (E::F::one() - wide.clone()),
+            enabler.clone() * (E::F::one() - wide.clone() - io.clone()),
             state[0].clone()
         );
         add_to_relation!(
             eval,
             self.relations.poseidon2,
-            enabler.clone() * wide,
+            enabler.clone() * wide.clone(),
             state[0].clone(),
             state[1].clone(),
             state[2].clone(),
@@ -151,11 +156,6 @@ impl FrameworkEval for Eval {
             state[6].clone(),
             state[7].clone()
         );
-        // Atomic (input, output) pair for sponge chaining: binds this
-        // permutation's two ends in one tuple, so consumers cannot mix the
-        // outputs of different permutations.
-        let io = eval.next_trace_mask();
-        eval.add_constraint(io.clone() * (E::F::one() - io.clone()));
         add_to_relation!(
             eval,
             self.relations.poseidon2_io,
