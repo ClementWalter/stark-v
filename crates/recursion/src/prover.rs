@@ -924,6 +924,48 @@ mod tests {
     }
 
     #[test]
+    fn test_channel_session_replay_matches_real_channel_and_proves() {
+        use prover::poseidon2_channel::{Poseidon2M31Channel, encode_u32s};
+        use stwo::core::channel::Channel;
+
+        // The real channel: mix, draw, mix, draw.
+        let mut channel = Poseidon2M31Channel::default();
+        channel.mix_u32s(&[7, 9]);
+        let first = channel.draw_secure_felt();
+        channel.mix_u64(42);
+        let second = channel.draw_secure_felt();
+
+        // The replayed session over the same operations.
+        let mut traces = RecursionTraces::default();
+        let ops = [
+            crate::channel_replay::ChannelOp::Mix(encode_u32s(&[7, 9]).collect()),
+            crate::channel_replay::ChannelOp::Draw,
+            crate::channel_replay::ChannelOp::Mix(encode_u32s(&[42u32, 0]).collect()),
+            crate::channel_replay::ChannelOp::Draw,
+        ];
+        let session = crate::channel_replay::replay_session(
+            &mut traces.channel_replay,
+            &mut traces.poseidon2,
+            0,
+            &ops,
+        );
+        session.check_links().expect("session chains");
+
+        let drawn = |block: &[u32; 8]| {
+            SecureField::from_m31_array(std::array::from_fn(|i| {
+                BaseField::from_u32_unchecked(block[i])
+            }))
+        };
+        assert_eq!(drawn(&session.draws[0]), first);
+        assert_eq!(drawn(&session.draws[1]), second);
+
+        // And the session is provable in the recursion AIR.
+        let claims = session.claims.clone();
+        let proof = prove_recursion(traces, vec![], claims, vec![], PcsConfig::default());
+        verify_recursion(proof, &[], PcsConfig::default()).expect("session recursion proof failed");
+    }
+
+    #[test]
     fn test_recursion_air_rejects_tampered_claimed_sum() {
         let (traces, _, roots, channels) = random_traces(3, 50);
         let mut proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());

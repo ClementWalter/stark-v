@@ -200,6 +200,122 @@ pub fn replay_digest(chunks: &[[u32; RATE]]) -> [u32; T] {
     state
 }
 
+/// One Fiat-Shamir operation of a replayed channel session.
+#[derive(Clone, Debug)]
+pub enum ChannelOp {
+    /// Absorb words (already encoded as canonical M31 words).
+    Mix(Vec<u32>),
+    /// Squeeze one block of randomness.
+    Draw,
+}
+
+/// Tag word appended when drawing (mirrors the channel implementation).
+const DRAW_TAG: u32 = 0x44524157;
+
+/// Split a word stream into rate-sized chunks with the sponge end-marker,
+/// exactly as the channel's `hash_words`.
+fn chunk_stream(words: &[u32]) -> Vec<[u32; RATE]> {
+    let mut chunks = Vec::new();
+    let mut current = [0u32; RATE];
+    let mut filled = 0usize;
+    for &word in words.iter().chain(core::iter::once(&1u32)) {
+        current[filled] = word;
+        filled += 1;
+        if filled == RATE {
+            chunks.push(current);
+            current = [0u32; RATE];
+            filled = 0;
+        }
+    }
+    if filled != 0 {
+        chunks.push(current);
+    }
+    chunks
+}
+
+/// The replayed session: claims (one sponge run per channel operation),
+/// digest links between consecutive runs, and the drawn outputs.
+pub struct ChannelSession {
+    pub claims: Vec<crate::prover::ChannelClaim>,
+    /// Drawn rate blocks, in draw order.
+    pub draws: Vec<[u32; RATE]>,
+}
+
+impl ChannelSession {
+    /// Public binding checks: every run's first chunk must carry the
+    /// previous run's digest, so the session forms one transcript chain.
+    /// Returns the final digest.
+    pub fn check_links(&self) -> Result<[u32; RATE], &'static str> {
+        let mut digest = [0u32; RATE];
+        let mut draw_index = 0usize;
+        for claim in &self.claims {
+            let first = claim.chunks.first().ok_or("empty run")?;
+            if *first != digest {
+                return Err("run does not chain from the previous digest");
+            }
+            let out = replay_digest(&claim.chunks);
+            let out_rate: [u32; RATE] = out[..RATE].try_into().expect("rate");
+            // Draw runs (2 chunks, second = [n, DRAW_TAG, 1, 0..]) yield
+            // randomness and leave the digest unchanged; mix runs update it.
+            let is_draw = claim.chunks.len() == 2 && claim.chunks[1][1] == DRAW_TAG;
+            if is_draw {
+                if self.draws.get(draw_index) != Some(&out_rate) {
+                    return Err("draw output mismatch");
+                }
+                draw_index += 1;
+            } else {
+                digest = out_rate;
+            }
+        }
+        if draw_index != self.draws.len() {
+            return Err("unclaimed draws");
+        }
+        Ok(digest)
+    }
+}
+
+/// Replay a channel session into witness rows and public claims: one sponge
+/// run per operation, every run chained from the previous digest.
+pub fn replay_session(
+    table: &mut ChannelReplayTable,
+    poseidon2: &mut Poseidon2Table,
+    first_channel_id: u32,
+    ops: &[ChannelOp],
+) -> ChannelSession {
+    let mut digest = [0u32; RATE];
+    let mut n_draws = 0u32;
+    let mut claims = Vec::new();
+    let mut draws = Vec::new();
+
+    for (run, op) in ops.iter().enumerate() {
+        let channel_id = first_channel_id + run as u32;
+        let words: Vec<u32> = match op {
+            ChannelOp::Mix(data) => digest.iter().copied().chain(data.iter().copied()).collect(),
+            ChannelOp::Draw => digest.iter().copied().chain([n_draws, DRAW_TAG]).collect(),
+        };
+        let chunks = chunk_stream(&words);
+        let mut state = [0u32; T];
+        for (step, chunk) in chunks.iter().enumerate() {
+            state = push_sponge_step(table, poseidon2, channel_id, step as u32, state, *chunk);
+        }
+        let out_rate: [u32; RATE] = state[..RATE].try_into().expect("rate");
+        match op {
+            ChannelOp::Mix(_) => {
+                digest = out_rate;
+                // Mixing resets the draw counter (mirrors the channel).
+                n_draws = 0;
+            }
+            ChannelOp::Draw => {
+                draws.push(out_rate);
+                n_draws += 1;
+            }
+        }
+        claims.push(crate::prover::ChannelClaim { channel_id, chunks });
+    }
+
+    ChannelSession { claims, draws }
+}
+
 /// Generate the interaction trace and the claimed sum of the four relation
 /// entries.
 pub fn gen_interaction_trace(

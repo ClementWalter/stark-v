@@ -79,7 +79,7 @@ fn hash_words(words: &[u32], capacity_tag: u32) -> Poseidon2M31Hash {
 }
 
 /// Split u32s into 16-bit halves so every absorbed word is a canonical M31.
-fn encode_u32s(data: &[u32]) -> impl Iterator<Item = u32> + '_ {
+pub fn encode_u32s(data: &[u32]) -> impl Iterator<Item = u32> + '_ {
     data.iter()
         .flat_map(|&word| [word & 0xFFFF, word >> 16].into_iter())
 }
