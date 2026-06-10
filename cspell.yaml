@@ -28,6 +28,11 @@ words:
   - decommit
   - decommitment
   - decommitted
+  - unkeyed
+  - arities
+  - lowerer
+  - Lowerer
+  - callees
   - subexpression
   - sbox
   - decommitments

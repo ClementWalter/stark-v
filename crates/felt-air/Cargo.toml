@@ -1,0 +1,13 @@
+[package]
+name = "felt-air"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+stwo.workspace = true
+stwo-constraint-framework.workspace = true
+stwo-macros.workspace = true
+simd.workspace = true
+num-traits.workspace = true
+itertools.workspace = true
+debug-utils.workspace = true

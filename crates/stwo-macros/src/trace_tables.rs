@@ -22,9 +22,9 @@ use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, bracketed, parse_macro_i
 /// parameters, integer literals, and `pow2(n)` constants. It is compiled once
 /// into a generic method usable both in AIR constraints (`T = E::F`) and in
 /// witness generation (`T = PackedM31` via `at(i)`).
-struct DerivedDef {
-    name: Ident,
-    closure: ExprClosure,
+pub(crate) struct DerivedDef {
+    pub(crate) name: Ident,
+    pub(crate) closure: ExprClosure,
 }
 
 impl Parse for DerivedDef {
@@ -45,11 +45,11 @@ impl Parse for DerivedDef {
 /// Multiplicity and element expressions use the derived-expression language
 /// with every trace column and derived column in scope (the tuple itself
 /// lists what the entry reads, so closure parameters would be redundant).
-struct LookupEntry {
-    preprocessed: bool,
-    relation: Ident,
-    multiplicity: Expr,
-    values: Vec<Expr>,
+pub(crate) struct LookupEntry {
+    pub(crate) preprocessed: bool,
+    pub(crate) relation: Ident,
+    pub(crate) multiplicity: Expr,
+    pub(crate) values: Vec<Expr>,
 }
 
 /// Split a lookup entry expression into (multiplicity, relation, tuple):
@@ -100,9 +100,9 @@ fn decompose_lookup_entry(expr: Expr) -> syn::Result<(Expr, Ident, Vec<Expr>)> {
 /// The `lookups:` block of a table: LogUp entries in AIR/witness order plus
 /// the finalization batch size (2 = pairs, the framework default; 1 for
 /// tables whose quadratic denominators must stay in singleton batches).
-struct LookupsDef {
-    batch: usize,
-    entries: Vec<LookupEntry>,
+pub(crate) struct LookupsDef {
+    pub(crate) batch: usize,
+    pub(crate) entries: Vec<LookupEntry>,
 }
 
 impl Default for LookupsDef {
@@ -162,16 +162,16 @@ fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
 /// Constraints are bare expressions with every trace column and derived
 /// column in scope — like lookup entries, the formula itself names what it
 /// reads, so closure parameters would be redundant.
-struct OpcodeDef {
-    name: Ident,
-    fields: Vec<Ident>,
-    derived: Vec<DerivedDef>,
-    constraints: Vec<Expr>,
-    lookups: LookupsDef,
+pub(crate) struct OpcodeDef {
+    pub(crate) name: Ident,
+    pub(crate) fields: Vec<Ident>,
+    pub(crate) derived: Vec<DerivedDef>,
+    pub(crate) constraints: Vec<Expr>,
+    pub(crate) lookups: LookupsDef,
     /// `air`-marked tables only define columns, constraints, and lookups —
     /// no `Tracer` field, table struct, or `trace_op!` arm (their traces are
     /// produced by custom runner code, e.g. the clock-update `AccessTable`).
-    air_only: bool,
+    pub(crate) air_only: bool,
 }
 
 impl Parse for OpcodeDef {
@@ -291,7 +291,7 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 /// Generate the table struct name from opcode name (e.g., "base_alu_imm" -> "BaseAluImmTable")
-fn table_name(opcode: &Ident) -> Ident {
+pub(crate) fn table_name(opcode: &Ident) -> Ident {
     let pascal = to_pascal_case(&opcode.to_string());
     format_ident!("{}Table", pascal)
 }
@@ -566,7 +566,7 @@ fn m31_pow(mut base: u64, mut exp: u64) -> u64 {
 
 /// Evaluate a constant integer sub-expression at expansion time: integer
 /// literals, `pow2(n)`, parentheses, and `+`, `-`, `*`, `<<` thereof.
-fn const_eval(expr: &Expr) -> syn::Result<u64> {
+pub(crate) fn const_eval(expr: &Expr) -> syn::Result<u64> {
     let err = || {
         syn::Error::new_spanned(
             expr,
@@ -820,7 +820,7 @@ fn generate_into_columns_body(fields: &[Ident], include_enabler: bool) -> proc_m
 }
 
 /// Generate column struct name (e.g., "base_alu_imm" -> "BaseAluImmColumns")
-fn column_struct_name(opcode: &Ident) -> Ident {
+pub(crate) fn column_struct_name(opcode: &Ident) -> Ident {
     let pascal = to_pascal_case(&opcode.to_string());
     format_ident!("{}Columns", pascal)
 }
@@ -1033,7 +1033,10 @@ fn generate_expr_impl(
 /// arguments are the structs holding those fields, so the relation
 /// definitions stay in the `relations!` invocation. The column struct ident
 /// resolves at the call site (callers import it alongside the macro).
-fn generate_lookup_macros(opcode: &OpcodeDef, include_enabler: bool) -> proc_macro2::TokenStream {
+pub(crate) fn generate_lookup_macros(
+    opcode: &OpcodeDef,
+    include_enabler: bool,
+) -> proc_macro2::TokenStream {
     if opcode.lookups.entries.is_empty() {
         return quote! {};
     }
@@ -1279,7 +1282,7 @@ fn generate_at_impl(struct_name: &Ident, flat_fields: &[Ident]) -> proc_macro2::
 }
 
 /// Generate prover column struct for AIR evaluation
-fn generate_prover_columns(opcode: &OpcodeDef) -> syn::Result<proc_macro2::TokenStream> {
+pub(crate) fn generate_prover_columns(opcode: &OpcodeDef) -> syn::Result<proc_macro2::TokenStream> {
     let struct_name = column_struct_name(&opcode.name);
     // Include enabler only if no opcode flags are present
     let include_enabler = count_opcode_flags(&opcode.fields) == 0;
@@ -1351,7 +1354,7 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> syn::Result<proc_macro2::Token
 }
 
 /// Generate a single table struct and impl
-fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
+pub(crate) fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let struct_name = table_name(&opcode.name);
 
     // Determine if we should include enabler based on opcode flags

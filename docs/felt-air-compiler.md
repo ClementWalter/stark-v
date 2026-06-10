@@ -73,6 +73,42 @@ today's hand-chosen three (`sq1`, `sq2`, `mix`), derives the column count, the
 constraints, and the witness fill — and changing the degree budget re-derives
 all three. The flattened table becomes generated output, not source.
 
+## Control flow: the calling convention is a LogUp relation
+
+The Cairo frame layout completes the model. A call frame receives its inputs at
+`[fp - n, fp - 3)` and leaves its outputs at the final `[ap - m, ap - 1)`; the
+two remaining slots — `fp - 2` (saved fp) and `fp - 1` (return pc) — are pure
+control-flow plumbing. In the AIR view those two slots disappear entirely: LogUp
+replaces sequencing. What remains per activation is exactly one natural tuple,
+`(inputs..., outputs...)`, and that tuple **is** the function's relation.
+
+- Each function is an AIR table; each activation (call) is one row.
+- A row starts by **consuming** its own activation tuple
+  (`-enabler * fn_io(args..., rets...)`) and its constraints enforce
+  `rets = body(args)`.
+- A caller **emits** the tuple for every call it makes
+  (`+enabler * callee_io(call_args..., call_rets...)`) — the returned values are
+  witness columns in the caller's frame, received through the relation, and the
+  callee's constraints are what make them right.
+- A recursive call is the same emission against the function's own relation:
+  rows of one AIR consuming and emitting each other, telescoping exactly like
+  the recursion crate's `merkle_node` paths and `sponge_step` chains.
+- The program's public interface is the entry activations: the verifier emits
+  `+fn_io(inputs, outputs)` as public claim terms (the `RootClaim` pattern), and
+  the whole multiset must cancel.
+
+Purity makes the unkeyed tuple sound: a function is a relation in the
+mathematical sense, so two activations with the same inputs have the same
+outputs and collapse into multiplicity — no call-site nonce needed.
+
+The codebase already runs on this pattern without naming it: the opcode tables
+are "functions" consuming `program_access` and `memory_access` tuples;
+`poseidon2_io(in16, out16)` is precisely an activation tuple; the recursion
+circuit's `op_def`/`wire` relations are call frames for QM31 arithmetic. The
+language makes the pattern first-class: `let c = cube(a)` in source compiles to
+a column `c`, an emission into `cube`'s relation, and a row in `cube`'s table —
+wiring, table layout, and witness fill all from one line.
+
 ## Relation to the current DSL (incremental path)
 
 The expression DSL already has: single-assignment named intermediates

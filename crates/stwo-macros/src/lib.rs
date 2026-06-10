@@ -24,6 +24,7 @@
 
 use proc_macro::TokenStream;
 
+mod air_fns;
 mod components;
 mod helpers;
 mod logup;
@@ -241,6 +242,33 @@ pub fn add_to_relation(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn relations(input: TokenStream) -> TokenStream {
     relations::relations(input)
+}
+
+/// Compile felt functions to AIR components (docs/felt-air-compiler.md).
+///
+/// Each function is a table, each activation a row; the calling convention
+/// is a LogUp relation per function over `(inputs..., outputs...)`. The
+/// `max_degree` parameter drives materialization: multiplicative chains
+/// that would breach it are unrolled into committed intermediate columns,
+/// additive chains stay inline.
+///
+/// # Example
+/// ```ignore
+/// define_air_fns! {
+///     max_degree: 3,
+///     fn cube(x) {
+///         let x2 = x * x;
+///         return x2 * x;
+///     }
+///     fn f(a, b) {
+///         let c = cube(a);
+///         return c + b;
+///     }
+/// }
+/// ```
+#[proc_macro]
+pub fn define_air_fns(input: TokenStream) -> TokenStream {
+    air_fns::define_air_fns(input)
 }
 
 /// Compose trace-backed and lookup multiplicity component infrastructure.
