@@ -133,6 +133,49 @@ fn apply_internal_round_matrix(state: &mut [u32; 16]) {
     }
 }
 
+/// The plain Poseidon2 permutation over `[M31; 16]`, without trace recording.
+///
+/// Same rounds, constants, and matrices as [`poseidon2_traced`]; used by the
+/// proof-system channel and Merkle hasher where no AIR trace is needed.
+pub fn poseidon2_permutation(state: &mut [u32; T]) {
+    apply_external_round_matrix(state);
+
+    for round_consts in EXTERNAL_ROUND_CONSTS.iter().take(FULL_ROUNDS / 2) {
+        for (state_i, round_const) in state.iter_mut().zip(round_consts.iter()) {
+            *state_i = add_m31(*state_i, *round_const);
+        }
+        let initial_state = *state;
+        for state_i in state.iter_mut() {
+            *state_i = square_m31(square_m31(*state_i));
+        }
+        for (state_i, init_i) in state.iter_mut().zip(initial_state.iter()) {
+            *state_i = mul_m31(*state_i, *init_i);
+        }
+        apply_external_round_matrix(state);
+    }
+
+    for round_const in INTERNAL_ROUND_CONSTS.iter() {
+        state[0] = add_m31(state[0], *round_const);
+        let initial_state = state[0];
+        state[0] = mul_m31(square_m31(square_m31(state[0])), initial_state);
+        apply_internal_round_matrix(state);
+    }
+
+    for round_consts in EXTERNAL_ROUND_CONSTS.iter().skip(FULL_ROUNDS / 2) {
+        for (state_i, round_const) in state.iter_mut().zip(round_consts.iter()) {
+            *state_i = add_m31(*state_i, *round_const);
+        }
+        let initial_state = *state;
+        for state_i in state.iter_mut() {
+            *state_i = square_m31(square_m31(*state_i));
+        }
+        for (state_i, init_i) in state.iter_mut().zip(initial_state.iter()) {
+            *state_i = mul_m31(*state_i, *init_i);
+        }
+        apply_external_round_matrix(state);
+    }
+}
+
 pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS] {
     let mut row = [0u32; POSEIDON2_TRACE_COLUMNS];
     let mut idx = 0usize;
@@ -218,4 +261,21 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
 
     debug_assert_eq!(idx, POSEIDON2_TRACE_COLUMNS);
     row
+}
+
+#[cfg(test)]
+mod permutation_tests {
+    use super::*;
+
+    #[test]
+    fn test_permutation_matches_traced_oracle() {
+        // poseidon2_traced records the permutation of (left, right, 0, ..);
+        // its final 16 cells are the output state.
+        let row = poseidon2_traced(123456789, 987654321);
+        let mut state = [0u32; T];
+        state[0] = 123456789;
+        state[1] = 987654321;
+        poseidon2_permutation(&mut state);
+        assert_eq!(state, row[POSEIDON2_TRACE_COLUMNS - T..]);
+    }
 }

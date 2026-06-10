@@ -6,7 +6,7 @@ mod elf;
 mod execute;
 mod io;
 mod memory;
-mod poseidon2;
+pub mod poseidon2;
 mod program;
 // trace module must come before ops so trace_op! macro is available
 #[macro_use]
