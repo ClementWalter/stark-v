@@ -1411,7 +1411,22 @@ stwo_macros::define_trace_tables! {
     // 17. Program commitment table
     // ==========================================================================
     program: {
-        addr, value_0, value_1, value_2, value_3, multiplicity, root
+        addr, value_0, value_1, value_2, value_3, multiplicity, root,
+        lookups: {
+            // Emit each fetched instruction `multiplicity` times (consumed by
+            // the opcode components' program accesses).
+            program_access: multiplicity => [addr, value_0, value_1, value_2, value_3],
+            // The four instruction limbs are leaves of the program
+            // commitment tree at consecutive indices.
+            merkle: -enabler =>
+                [addr, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_0, root],
+            merkle: -enabler =>
+                [addr + 1, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_1, root],
+            merkle: -enabler =>
+                [addr + 2, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_2, root],
+            merkle: -enabler =>
+                [addr + 3, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_3, root],
+        },
     },
 
     // ==========================================================================
@@ -1420,7 +1435,29 @@ stwo_macros::define_trace_tables! {
     memory: {
         addr, clock,
         value_0, value_1, value_2, value_3,
-        multiplicity, root
+        multiplicity, root,
+        constraints: {
+            // multiplicity is -1 (final state emission), 0 (padding), or 1
+            // (initial state consumption).
+            multiplicity * (multiplicity * multiplicity - 1),
+        },
+        lookups: {
+            // Committed memory words are bytes.
+            preprocessed range_check_8_8: -enabler => [value_0, value_1],
+            preprocessed range_check_8_8: -enabler => [value_2, value_3],
+            // Anchor the boundary memory state (RW_AS = 1): +1 emits the
+            // initial value, -1 consumes the final one.
+            memory_access: multiplicity => [1, addr, clock, value_0, value_1, value_2, value_3],
+            // The four word limbs are leaves of the memory commitment tree.
+            merkle: -enabler =>
+                [addr, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_0, root],
+            merkle: -enabler =>
+                [addr + 1, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_1, root],
+            merkle: -enabler =>
+                [addr + 2, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_2, root],
+            merkle: -enabler =>
+                [addr + 3, constant(crate::commitment::MAX_TREE_HEIGHT - 1), value_3, root],
+        },
     },
 
     // ==========================================================================
@@ -1430,7 +1467,24 @@ stwo_macros::define_trace_tables! {
         index, depth,
         lhs, rhs, cur,
         lhs_mult, rhs_mult, cur_mult,
-        root
+        root,
+        constraints: {
+            // Node multiplicities are 0, 1, or 2 (a node can be shared by
+            // two children paths).
+            lhs_mult * (lhs_mult - 1) * (lhs_mult - 2),
+            rhs_mult * (rhs_mult - 1) * (rhs_mult - 2),
+            cur_mult * (cur_mult - 1) * (cur_mult - 2),
+        },
+        lookups: {
+            // Emit the two children claims, consume the parent claim
+            // (index halves, depth decreases toward the root).
+            merkle: lhs_mult => [index, depth, lhs, root],
+            merkle: rhs_mult => [index + 1, depth, rhs, root],
+            merkle: -cur_mult => [index * inv(2), depth - 1, cur, root],
+            // The parent is the Poseidon2 hash of the two children.
+            poseidon2: enabler => [lhs, rhs],
+            poseidon2: -enabler => [cur],
+        },
     },
 
     // ==========================================================================
@@ -1506,6 +1560,38 @@ stwo_macros::define_trace_tables! {
         full7_mix_0, full7_mix_1, full7_mix_2, full7_mix_3, full7_mix_4, full7_mix_5, full7_mix_6,
         full7_mix_7, full7_mix_8, full7_mix_9, full7_mix_10, full7_mix_11, full7_mix_12,
         full7_mix_13, full7_mix_14, full7_mix_15, wide, io,
+    },
+
+    // ==========================================================================
+    // 21. Clock updates (gap-filling intermediate accesses)
+    // ==========================================================================
+    // `air`-marked: the traces come from `AccessTable` (clock catch-up rows
+    // where the value is unchanged and the clock advances by the maximum
+    // allowed difference); only the columns and lookups are defined here.
+    air mem_clock_update: {
+        addr, clock_prev,
+        value_0, value_1, value_2, value_3,
+        lookups: {
+            // Refresh the access clock without changing the value (RW_AS = 1).
+            memory_access: -enabler =>
+                [1, addr, clock_prev, value_0, value_1, value_2, value_3],
+            memory_access: enabler =>
+                [1, addr, clock_prev + constant(crate::trace::DEFAULT_MAX_CLOCK_DIFF),
+                 value_0, value_1, value_2, value_3],
+        },
+    },
+
+    air reg_clock_update: {
+        addr, clock_prev,
+        value_0, value_1, value_2, value_3,
+        lookups: {
+            // Refresh the access clock without changing the value (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, addr, clock_prev, value_0, value_1, value_2, value_3],
+            memory_access: enabler =>
+                [0, addr, clock_prev + constant(crate::trace::DEFAULT_MAX_CLOCK_DIFF),
+                 value_0, value_1, value_2, value_3],
+        },
     },
 }
 

@@ -118,11 +118,19 @@ struct OpcodeDef {
     derived: Vec<DerivedDef>,
     constraints: Vec<Expr>,
     lookups: LookupsDef,
+    /// `air`-marked tables only define columns, constraints, and lookups —
+    /// no `Tracer` field, table struct, or `trace_op!` arm (their traces are
+    /// produced by custom runner code, e.g. the clock-update `AccessTable`).
+    air_only: bool,
 }
 
 impl Parse for OpcodeDef {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Ident = input.parse()?;
+        let mut name: Ident = input.parse()?;
+        let air_only = name == "air" && !input.peek(Token![:]);
+        if air_only {
+            name = input.parse()?;
+        }
         input.parse::<Token![:]>()?;
         let content;
         braced!(content in input);
@@ -179,6 +187,7 @@ impl Parse for OpcodeDef {
             derived,
             constraints,
             lookups,
+            air_only,
         })
     }
 }
@@ -1291,72 +1300,6 @@ fn generate_prover_columns(opcode: &OpcodeDef) -> syn::Result<proc_macro2::Token
     })
 }
 
-fn generate_clock_update_columns(name: &str) -> proc_macro2::TokenStream {
-    let struct_name = format_ident!("{}ClockUpdateColumns", name);
-
-    quote! {
-        /// Column struct for clock update AIR evaluation.
-        #[derive(Debug, Clone)]
-        pub struct #struct_name<T> {
-            pub enabler: T,
-            pub addr: T,
-            pub clock_prev: T,
-            pub value_0: T,
-            pub value_1: T,
-            pub value_2: T,
-            pub value_3: T,
-        }
-
-        impl<T> #struct_name<T> {
-            /// Number of columns in this struct.
-            pub const SIZE: usize = 7;
-
-            /// Column names as strings.
-            pub const NAMES: &'static [&'static str] = &[
-                "enabler",
-                "addr",
-                "clock_prev",
-                "value_0",
-                "value_1",
-                "value_2",
-                "value_3",
-            ];
-
-            /// Construct from an AIR evaluator by reading trace masks.
-            #[inline(always)]
-            pub fn from_eval<E>(eval: &mut E) -> Self
-            where E: EvalAtRow<F = T>
-            {
-                Self {
-                    enabler: eval.next_trace_mask(),
-                    addr: eval.next_trace_mask(),
-                    clock_prev: eval.next_trace_mask(),
-                    value_0: eval.next_trace_mask(),
-                    value_1: eval.next_trace_mask(),
-                    value_2: eval.next_trace_mask(),
-                    value_3: eval.next_trace_mask(),
-                }
-            }
-
-            /// Construct from an iterator of column values.
-            /// Panics if iterator has fewer elements than the number of columns.
-            #[inline(always)]
-            pub fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-                let mut iter = iter.into_iter();
-                Self {
-                    enabler: iter.next().expect("not enough columns for field: enabler"),
-                    addr: iter.next().expect("not enough columns for field: addr"),
-                    clock_prev: iter.next().expect("not enough columns for field: clock_prev"),
-                    value_0: iter.next().expect("not enough columns for field: value_0"),
-                    value_1: iter.next().expect("not enough columns for field: value_1"),
-                    value_2: iter.next().expect("not enough columns for field: value_2"),
-                    value_3: iter.next().expect("not enough columns for field: value_3"),
-                }
-            }
-        }
-    }
-}
-
 /// Generate a single table struct and impl
 fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
     let struct_name = table_name(&opcode.name);
@@ -1571,7 +1514,7 @@ fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
 }
 
 /// Generate the Tracer struct
-fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
+fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
     let table_fields: Vec<_> = opcodes
         .iter()
         .map(|op| {
@@ -1752,7 +1695,7 @@ fn generate_tracer(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
 }
 
 /// Generate the trace_op! macro
-fn generate_trace_op_macro(opcodes: &[OpcodeDef]) -> proc_macro2::TokenStream {
+fn generate_trace_op_macro(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
     let arms: Vec<_> = opcodes
         .iter()
         .map(|op| {
@@ -1854,9 +1797,10 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
 pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let def = parse_macro_input!(input as TraceTablesDef);
 
-    let tables: Vec<_> = def.opcodes.iter().map(generate_table).collect();
-    let tracer = generate_tracer(&def.opcodes);
-    let trace_op_macro = generate_trace_op_macro(&def.opcodes);
+    let traced: Vec<&OpcodeDef> = def.opcodes.iter().filter(|op| !op.air_only).collect();
+    let tables: Vec<_> = traced.iter().map(|op| generate_table(op)).collect();
+    let tracer = generate_tracer(&traced);
+    let trace_op_macro = generate_trace_op_macro(&traced);
 
     // Generate prover columns; expression errors surface as compile errors
     // pointing at the offending closure.
@@ -1870,8 +1814,6 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
         .iter()
         .map(|op| generate_lookup_macros(op, count_opcode_flags(&op.fields) == 0))
         .collect();
-    let mem_clock_update_columns = generate_clock_update_columns("Mem");
-    let reg_clock_update_columns = generate_clock_update_columns("Reg");
 
     let output = quote! {
         // Runner code (existing)
@@ -1886,8 +1828,6 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
             use stwo_constraint_framework::EvalAtRow;
 
             #(#prover_columns)*
-            #mem_clock_update_columns
-            #reg_clock_update_columns
         }
 
         #(#lookup_macros)*

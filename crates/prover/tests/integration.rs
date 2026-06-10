@@ -304,10 +304,8 @@ fn test_mul_interaction_trace_prev_cur_deltas() {
     let single_run = run(&elf_single, 10_000_000).expect("Failed to run mul_output");
     let single_traces = components::gen_trace(single_run.tracer);
     let single_rel = Relations::dummy();
-    let (single_interaction, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &single_traces.mul,
-        &single_rel,
-    );
+    let (single_interaction, _) =
+        prover::components::mul::witness::gen_interaction_trace(&single_traces.mul, &single_rel);
 
     let elf_many_path = guest_bin_dir().join("mul_output_many");
     let elf_many = std::fs::read(&elf_many_path).expect("Failed to read mul_output_many ELF");
@@ -316,10 +314,8 @@ fn test_mul_interaction_trace_prev_cur_deltas() {
         run_with_input(&elf_many, &input, 10_000_000).expect("Failed to run mul_output_many");
     let many_traces = components::gen_trace(many_run.tracer);
     let many_rel = Relations::dummy();
-    let (many_interaction, _) = prover::components::opcodes::mul::witness::gen_interaction_trace(
-        &many_traces.mul,
-        &many_rel,
-    );
+    let (many_interaction, _) =
+        prover::components::mul::witness::gen_interaction_trace(&many_traces.mul, &many_rel);
 
     for (name, cols) in [("single", &single_interaction), ("many", &many_interaction)] {
         eprintln!(
@@ -404,9 +400,9 @@ fn test_mul_offset_sampling_matches_domain_extension() {
     let traces = components::gen_trace(run_result.tracer);
     let relations = Relations::dummy();
     let (interaction_trace, _) =
-        prover::components::opcodes::mul::witness::gen_interaction_trace(&traces.mul, &relations);
+        prover::components::mul::witness::gen_interaction_trace(&traces.mul, &relations);
 
-    let eval = prover::components::opcodes::mul::air::Eval {
+    let eval = prover::components::mul::air::Eval {
         log_size: traces.mul[0].domain.log_size(),
         relations,
     };

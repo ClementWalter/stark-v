@@ -933,7 +933,7 @@ mod tests {
     fn test_recursion_air_proves_lui_composition_circuit() {
         use stwo_constraint_framework::{FrameworkEval, InfoEvaluator};
 
-        let inner = prover::components::opcodes::lui::air::Eval {
+        let inner = prover::components::lui::air::Eval {
             log_size: 6,
             relations: prover::relations::Relations::dummy(),
         };
@@ -991,7 +991,7 @@ mod tests {
     fn test_recursion_air_rejects_wrong_circuit_output() {
         use stwo_constraint_framework::{FrameworkEval, InfoEvaluator};
 
-        let inner = prover::components::opcodes::lui::air::Eval {
+        let inner = prover::components::lui::air::Eval {
             log_size: 6,
             relations: prover::relations::Relations::dummy(),
         };

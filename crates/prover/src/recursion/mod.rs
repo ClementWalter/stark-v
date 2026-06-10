@@ -44,15 +44,15 @@ mod tests {
     use super::*;
     use crate::relations::Relations;
 
-    fn lui_eval() -> crate::components::opcodes::lui::air::Eval {
-        crate::components::opcodes::lui::air::Eval {
+    fn lui_eval() -> crate::components::lui::air::Eval {
+        crate::components::lui::air::Eval {
             log_size: 4,
             relations: Relations::dummy(),
         }
     }
 
-    fn base_alu_imm_eval() -> crate::components::opcodes::base_alu_imm::air::Eval {
-        crate::components::opcodes::base_alu_imm::air::Eval {
+    fn base_alu_imm_eval() -> crate::components::base_alu_imm::air::Eval {
+        crate::components::base_alu_imm::air::Eval {
             log_size: 4,
             relations: Relations::dummy(),
         }

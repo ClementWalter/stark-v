@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn test_recorder_matches_point_evaluator_on_lui() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let eval = prover::components::opcodes::lui::air::Eval {
+        let eval = prover::components::lui::air::Eval {
             log_size: 6,
             relations: prover::relations::Relations::dummy(),
         };
@@ -489,11 +489,11 @@ mod tests {
     #[test]
     fn test_recorder_chains_components_like_the_host_accumulator() {
         let mut rng = SmallRng::seed_from_u64(2);
-        let lui = prover::components::opcodes::lui::air::Eval {
+        let lui = prover::components::lui::air::Eval {
             log_size: 6,
             relations: prover::relations::Relations::dummy(),
         };
-        let alu = prover::components::opcodes::base_alu_imm::air::Eval {
+        let alu = prover::components::base_alu_imm::air::Eval {
             log_size: 5,
             relations: prover::relations::Relations::dummy(),
         };
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_recorder_arena_contains_operations() {
-        let eval = prover::components::opcodes::lui::air::Eval {
+        let eval = prover::components::lui::air::Eval {
             log_size: 4,
             relations: prover::relations::Relations::dummy(),
         };

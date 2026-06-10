@@ -115,7 +115,10 @@ macro_rules! test_bin_e2e {
 
                 let relations = $crate::relations::Relations::dummy();
                 let (interaction_trace, claimed_sum) =
-                    witness::gen_interaction_trace(trace.as_slice(), &relations);
+                    $crate::components::$component::witness::gen_interaction_trace(
+                        trace.as_slice(),
+                        &relations,
+                    );
 
                 let traces = TreeVec::new(vec![
                     vec![],
@@ -125,7 +128,7 @@ macro_rules! test_bin_e2e {
 
                 let trace_polys = traces.map_cols(|c| c.interpolate());
 
-                let eval = air::Eval {
+                let eval = $crate::components::$component::air::Eval {
                     log_size,
                     relations: relations.clone(),
                 };
@@ -251,7 +254,7 @@ macro_rules! test_lookup_e2e {
                 use stwo::core::poly::circle::CanonicCoset;
                 use stwo_constraint_framework::{FrameworkEval, assert_constraints_on_polys};
 
-                use $crate::components::opcodes::$opcode_component::witness as opcode_witness;
+                use $crate::components::$opcode_component::witness as opcode_witness;
                 use $crate::components::lookups::$lookup::{air, witness};
                 use $crate::preprocessed::PreprocessedTable;
 

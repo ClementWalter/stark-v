@@ -27,19 +27,29 @@ fn to_pascal_case(s: &str) -> String {
 struct ComponentEntry {
     name: Ident,
     module: Path,
+    /// Bare entries get their whole component module (air + witness)
+    /// generated from the table's `define_trace_tables!` declaration;
+    /// `name: module` entries point at a hand-written module (the escape
+    /// hatch for AIRs the table DSL cannot express, e.g. the unrolled
+    /// Poseidon2 permutation rounds).
+    generated: bool,
 }
 
 impl Parse for ComponentEntry {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let first: Path = input.parse()?;
         let name = path_name(&first)?;
-        let module = if input.peek(Token![:]) {
+        let (module, generated) = if input.peek(Token![:]) {
             input.parse::<Token![:]>()?;
-            input.parse()?
+            (input.parse()?, false)
         } else {
-            first
+            (first, true)
         };
-        Ok(Self { name, module })
+        Ok(Self {
+            name,
+            module,
+            generated,
+        })
     }
 }
 
@@ -119,15 +129,142 @@ impl Parse for ComponentsInput {
 pub fn components(input: TokenStream) -> TokenStream {
     let ComponentsInput { trace, lookup } = syn::parse_macro_input!(input as ComponentsInput);
     let lookup_components = render_lookup_components(&lookup);
+    let trace_components = render_trace_components(&trace);
     let components = render_components(trace, lookup);
     quote! {
         pub mod lookups {
             #lookup_components
         }
 
+        #trace_components
+
         #components
     }
     .into()
+}
+
+/// Render the whole component module (air + witness) of every generated
+/// trace component: the `Eval` shell around the table's `constraints()` and
+/// the exported lookup macros — everything else about the component already
+/// lives in its `define_trace_tables!` declaration.
+fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
+    let modules = entries.iter().filter(|entry| entry.generated).map(|entry| {
+        let name = &entry.name;
+        let columns_type = format_ident!("{}Columns", to_pascal_case(&name.to_string()));
+        let lookups_macro = format_ident!("{}_lookups", name);
+        let interaction_macro = format_ident!("{}_interaction", name);
+        let register_macro = format_ident!("{}_register_multiplicities", name);
+        let doc = format!(
+            "{name} component, generated from its `define_trace_tables!` declaration."
+        );
+        quote! {
+            #[doc = #doc]
+            pub mod #name {
+                pub mod air {
+                    use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+
+                    use crate::relations::Relations;
+                    use runner::trace::prover_columns::#columns_type;
+
+                    pub type Component = FrameworkComponent<Eval>;
+
+                    #[derive(Clone)]
+                    pub struct Eval {
+                        pub log_size: u32,
+                        pub relations: Relations,
+                    }
+
+                    impl FrameworkEval for Eval {
+                        fn log_size(&self) -> u32 {
+                            self.log_size
+                        }
+
+                        fn max_constraint_log_degree_bound(&self) -> u32 {
+                            self.log_size + 1
+                        }
+
+                        fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+                            let cols = #columns_type::from_eval(&mut eval);
+                            for constraint in cols.constraints() {
+                                eval.add_constraint(constraint);
+                            }
+                            runner::#lookups_macro!(eval, cols, self.relations);
+                            eval
+                        }
+                    }
+                }
+
+                pub mod witness {
+                    use num_traits::Zero;
+                    use stwo::core::ColumnVec;
+                    use stwo::core::fields::m31::BaseField;
+                    use stwo::core::fields::qm31::QM31;
+                    use stwo::prover::backend::simd::SimdBackend;
+                    use stwo::prover::poly::BitReversedOrder;
+                    use stwo::prover::poly::circle::CircleEvaluation;
+
+                    #[allow(unused_imports)]
+                    use runner::trace::prover_columns::#columns_type;
+
+                    /// LogUp interaction trace from the table's `lookups:`
+                    /// declaration — the same entries the AIR consumes, so
+                    /// order and pairing match by construction.
+                    pub fn gen_interaction_trace(
+                        trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+                        relations: &crate::relations::Relations,
+                    ) -> (
+                        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                        QM31,
+                    ) {
+                        if trace.is_empty() {
+                            return (vec![], QM31::zero());
+                        }
+                        runner::#interaction_macro!(trace, relations)
+                    }
+
+                    /// Preprocessed multiplicity registration for the
+                    /// `preprocessed`-marked lookup entries.
+                    pub fn register_multiplicities(
+                        trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+                        counters: &mut crate::relations::Counters,
+                    ) {
+                        if trace.is_empty() {
+                            return;
+                        }
+                        runner::#register_macro!(trace, counters);
+                    }
+                }
+
+                #[cfg(test)]
+                mod tests {
+                    use num_traits::Zero;
+                    use stwo::core::poly::circle::CanonicCoset;
+                    use stwo::prover::backend::Column;
+                    use stwo::prover::backend::simd::column::BaseColumn;
+                    use stwo::prover::poly::circle::CircleEvaluation;
+
+                    use runner::trace::prover_columns::#columns_type;
+
+                    /// Padding rows (enabler = 0) contribute nothing to the
+                    /// LogUp sum.
+                    #[test]
+                    fn padding_only_trace_interaction_sum_is_zero() {
+                        let log_size = 4u32;
+                        let domain = CanonicCoset::new(log_size).circle_domain();
+                        let trace: Vec<_> = (0..#columns_type::<()>::SIZE)
+                            .map(|_| CircleEvaluation::new(domain, BaseColumn::zeros(1 << log_size)))
+                            .collect();
+                        let relations = crate::relations::Relations::dummy();
+                        let (interaction, claimed_sum) =
+                            super::witness::gen_interaction_trace(&trace, &relations);
+                        assert!(!interaction.is_empty());
+                        assert!(claimed_sum.is_zero());
+                    }
+                }
+            }
+        }
+    });
+    quote! { #(#modules)* }
 }
 
 fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> TokenStream2 {
