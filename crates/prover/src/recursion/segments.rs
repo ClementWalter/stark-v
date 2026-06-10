@@ -32,6 +32,13 @@ pub fn prove_segments(
 /// Prove every segment of a segmented execution with any Merkle channel —
 /// in particular the Poseidon2-M31 channel whose hash the recursion AIR
 /// proves.
+///
+/// Segments are independent statements, so they prove embarrassingly in
+/// parallel: one single-threaded stwo prover per segment, up to the rayon
+/// pool size (the number of cores). Per the fibonacci benchmark
+/// (README "Parallelization Strategy"), this beats intra-proof rayon
+/// parallelism in aggregate throughput — build WITHOUT the `parallel`
+/// feature so each prover stays single-threaded.
 pub fn prove_segments_with_channel<MC: MerkleChannel>(
     run_results: Vec<runner::RunResult>,
     config: PcsConfig,
@@ -43,9 +50,13 @@ where
             <MC::H as MerkleHasherLifted>::Hash,
             Column = Vec<<MC::H as MerkleHasherLifted>::Hash>,
         >,
+    MC::H: Sync,
+    <MC::H as MerkleHasherLifted>::Hash: Send + Sync,
 {
+    use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
     run_results
-        .into_iter()
+        .into_par_iter()
         .map(|run_result| prove_rv32im_with_channel::<MC>(run_result, config, preprocessing))
         .collect()
 }
