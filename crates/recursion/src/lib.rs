@@ -8,6 +8,7 @@
 
 pub mod circle_double;
 pub mod fri_fold;
+pub mod prover;
 pub mod qm31_inv;
 pub mod qm31_mul;
 
