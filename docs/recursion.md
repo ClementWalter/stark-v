@@ -90,8 +90,17 @@ shape), so aggregation composes up the tree.
   without the zkVM `Tracer`), so recursion constraints share the single-source
   pipeline. First component: `qm31_mul` (c = a·b over the extension tower, 4
   degree-2 limb constraints, tested against stwo's field arithmetic).
-- **M4 — Blake2s channel + Merkle components**: hash sub-AIR and decommitment
-  paths; channel state replay as a trace.
+- **M4 — channel + Merkle components**: hash sub-AIR and decommitment paths;
+  channel state replay as a trace. Direction: a Poseidon2-M31 `MerkleChannel` so
+  inner proofs commit with the hash the existing `poseidon2`/`merkle` components
+  already prove — in-AIR Merkle verification becomes component reuse with zero
+  new hash constraints. Crucially this needs **no fork changes**: `Channel`,
+  `MerkleChannel`, `MerkleHasherLifted`, `MerkleOps`, and
+  `BackendForChannel<MC>` are public stwo traits, and the orphan rules permit
+  implementing them all for stark-v-local types
+  (`impl BackendForChannel<LocalChannel> for SimdBackend` is a legal
+  local-type-parameter impl). The permutation already exists in
+  `runner::poseidon2`.
 - **M5 — composition-check component**: wire the inner `evaluate()` into the
   verifier AIR (witness side via `PointEvaluator` values; constraint side via
   the generic seam).
