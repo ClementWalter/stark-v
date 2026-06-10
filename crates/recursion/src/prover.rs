@@ -25,9 +25,13 @@ use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::prove;
 use stwo_constraint_framework::TraceLocationAllocator;
 
+use prover::relations::Relations;
+use runner::trace::Poseidon2Table;
+
 use crate::{
-    CircleDoubleTable, FriFoldLineTable, LogupSumTable, Qm31InvTable, Qm31MulTable, circle_double,
-    fri_fold, logup_sum, prover_columns, qm31_inv, qm31_mul,
+    CircleDoubleTable, FriFoldLineTable, LogupSumTable, MerklePathTable, Qm31InvTable,
+    Qm31MulTable, circle_double, fri_fold, logup_sum, merkle_path, prover_columns, qm31_inv,
+    qm31_mul,
 };
 
 /// Witness tables of the recursion AIR, one per component.
@@ -38,32 +42,40 @@ pub struct RecursionTraces {
     pub fri_fold_line: FriFoldLineTable,
     pub circle_double: CircleDoubleTable,
     pub logup_sum: LogupSumTable,
+    pub merkle_path: MerklePathTable,
+    pub poseidon2: Poseidon2Table,
 }
 
 /// Proof of the recursion AIR plus the public claim (per-component sizes
 /// and the LogUp claimed sum).
 pub struct RecursionProof<H: MerkleHasherLifted> {
     /// Log sizes of (qm31_mul, qm31_inv, fri_fold_line, circle_double,
-    /// logup_sum).
-    pub log_sizes: [u32; 5],
+    /// logup_sum, merkle_path, poseidon2).
+    pub log_sizes: [u32; 7],
     /// Claimed sum of the logup_sum component: Σ enabler / term.
     pub claimed_sum: SecureField,
+    /// Claimed sums of the merkle_path and poseidon2 components; their total
+    /// must vanish (every hash claim is discharged by a permutation row).
+    pub merkle_claimed_sum: SecureField,
+    pub poseidon2_claimed_sum: SecureField,
     pub stark_proof: StarkProof<H>,
 }
 
-fn mix_claim<C: Channel>(channel: &mut C, log_sizes: &[u32; 5], claimed_sum: SecureField) {
+fn mix_claim<C: Channel>(channel: &mut C, log_sizes: &[u32; 7], sums: [SecureField; 3]) {
     channel.mix_u32s(log_sizes);
-    channel.mix_felts(&[claimed_sum]);
+    channel.mix_felts(&sums);
 }
 
 /// Trace-tree column log sizes in commit order.
-fn column_log_sizes(log_sizes: &[u32; 5]) -> Vec<u32> {
+fn column_log_sizes(log_sizes: &[u32; 7]) -> Vec<u32> {
     let widths = [
         prover_columns::Qm31MulColumns::<()>::SIZE,
         prover_columns::Qm31InvColumns::<()>::SIZE,
         prover_columns::FriFoldLineColumns::<()>::SIZE,
         prover_columns::CircleDoubleColumns::<()>::SIZE,
         prover_columns::LogupSumColumns::<()>::SIZE,
+        prover_columns::MerklePathColumns::<()>::SIZE,
+        runner::trace::prover_columns::Poseidon2Columns::<()>::SIZE,
     ];
     log_sizes
         .iter()
@@ -73,16 +85,20 @@ fn column_log_sizes(log_sizes: &[u32; 5]) -> Vec<u32> {
 }
 
 /// Build the four components in commit order against a shared allocator.
+#[allow(clippy::type_complexity)]
 fn components(
     location_allocator: &mut TraceLocationAllocator,
-    log_sizes: &[u32; 5],
-    claimed_sum: SecureField,
+    log_sizes: &[u32; 7],
+    sums: [SecureField; 3],
+    relations: &Relations,
 ) -> (
     qm31_mul::Component,
     qm31_inv::Component,
     fri_fold::Component,
     circle_double::Component,
     logup_sum::Component,
+    merkle_path::Component,
+    prover::components::poseidon2::air::Component,
 ) {
     (
         qm31_mul::Component::new(
@@ -118,7 +134,23 @@ fn components(
             logup_sum::Eval {
                 log_size: log_sizes[4],
             },
-            claimed_sum,
+            sums[0],
+        ),
+        merkle_path::Component::new(
+            location_allocator,
+            merkle_path::Eval {
+                log_size: log_sizes[5],
+                relations: relations.clone(),
+            },
+            sums[1],
+        ),
+        prover::components::poseidon2::air::Component::new(
+            location_allocator,
+            prover::components::poseidon2::air::Eval {
+                log_size: log_sizes[6],
+                relations: relations.clone(),
+            },
+            sums[2],
         ),
     )
 }
@@ -154,6 +186,8 @@ where
     let fri_fold_trace = traces.fri_fold_line.into_witness();
     let circle_double_trace = traces.circle_double.into_witness();
     let logup_sum_trace = traces.logup_sum.into_witness();
+    let merkle_path_trace = traces.merkle_path.into_witness();
+    let poseidon2_trace = traces.poseidon2.into_witness();
 
     let log_size_of = |trace: &[stwo::prover::poly::circle::CircleEvaluation<
         SimdBackend,
@@ -171,6 +205,8 @@ where
         log_size_of(&fri_fold_trace),
         log_size_of(&circle_double_trace),
         log_size_of(&logup_sum_trace),
+        log_size_of(&merkle_path_trace),
+        log_size_of(&poseidon2_trace),
     ];
     let max_log_size = *log_sizes.iter().max().expect("non-empty");
 
@@ -180,10 +216,6 @@ where
             .half_coset,
     );
 
-    // Interaction trace of the logup_sum component, generated before the
-    // channel work so the claimed sum is part of the claim.
-    let (interaction_trace, claimed_sum) = logup_sum::gen_interaction_trace(&logup_sum_trace);
-
     let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeProver::<_, MC>::new(config, &twiddles);
 
@@ -192,7 +224,7 @@ where
     tree_builder.extend_evals(vec![]);
     tree_builder.commit(channel);
 
-    mix_claim(channel, &log_sizes, claimed_sum);
+    channel.mix_u32s(&log_sizes);
 
     // Tree 1: all component tables, in the fixed commit order.
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -202,22 +234,43 @@ where
             .chain(qm31_inv_trace)
             .chain(fri_fold_trace)
             .chain(circle_double_trace)
-            .chain(logup_sum_trace)
+            .chain(logup_sum_trace.iter().cloned())
+            .chain(merkle_path_trace.iter().cloned())
+            .chain(poseidon2_trace.iter().cloned())
             .collect::<Vec<_>>(),
     );
     tree_builder.commit(channel);
 
-    // Tree 2: interaction trace (LogUp cumulative sums).
+    // Lookup elements are drawn after the main commitment (Fiat-Shamir).
+    let relations = Relations::draw(channel);
+
+    // Interaction traces, in component order.
+    let (logup_interaction, claimed_sum) = logup_sum::gen_interaction_trace(&logup_sum_trace);
+    let (merkle_interaction, merkle_claimed_sum) =
+        merkle_path::gen_interaction_trace(&merkle_path_trace, &relations);
+    let (poseidon2_interaction, poseidon2_claimed_sum) =
+        prover::components::poseidon2::witness::gen_interaction_trace(&poseidon2_trace, &relations);
+
+    let sums = [claimed_sum, merkle_claimed_sum, poseidon2_claimed_sum];
+    mix_claim(channel, &log_sizes, sums);
+
+    // Tree 2: interaction traces (LogUp cumulative sums), in component order.
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(interaction_trace);
+    tree_builder.extend_evals(
+        logup_interaction
+            .into_iter()
+            .chain(merkle_interaction)
+            .chain(poseidon2_interaction)
+            .collect::<Vec<_>>(),
+    );
     tree_builder.commit(channel);
 
     let mut location_allocator = TraceLocationAllocator::default();
-    let (mul, inv, fold, double, sum) =
-        components(&mut location_allocator, &log_sizes, claimed_sum);
+    let (mul, inv, fold, double, sum, merkle, poseidon2) =
+        components(&mut location_allocator, &log_sizes, sums, &relations);
 
     let stark_proof = prove(
-        &[&mul, &inv, &fold, &double, &sum],
+        &[&mul, &inv, &fold, &double, &sum, &merkle, &poseidon2],
         channel,
         commitment_scheme,
     )
@@ -226,6 +279,8 @@ where
     RecursionProof {
         log_sizes,
         claimed_sum,
+        merkle_claimed_sum,
+        poseidon2_claimed_sum,
         stark_proof,
     }
 }
@@ -238,20 +293,39 @@ pub fn verify_recursion_with_channel<MC: MerkleChannel>(
     let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
 
+    // Every Merkle hash claim must be discharged by a permutation row.
+    if !(proof.merkle_claimed_sum + proof.poseidon2_claimed_sum).is_zero() {
+        return Err(VerificationError::InvalidStructure(
+            "merkle/poseidon2 logup sums do not cancel".to_string(),
+        ));
+    }
+
     let commitments = &proof.stark_proof.commitments;
     commitment_scheme.commit(commitments[0], &[], channel);
-    mix_claim(channel, &proof.log_sizes, proof.claimed_sum);
+    channel.mix_u32s(&proof.log_sizes);
     commitment_scheme.commit(commitments[1], &column_log_sizes(&proof.log_sizes), channel);
-    // Interaction tree: 4 base columns (one secure column) at the
-    // logup_sum component's size.
-    commitment_scheme.commit(commitments[2], &[proof.log_sizes[4]; 4], channel);
+
+    let relations = Relations::draw(channel);
+    let sums = [
+        proof.claimed_sum,
+        proof.merkle_claimed_sum,
+        proof.poseidon2_claimed_sum,
+    ];
+    mix_claim(channel, &proof.log_sizes, sums);
+    // Interaction tree: one secure column (4 base) for logup_sum, one for
+    // merkle_path, two for poseidon2.
+    let interaction_log_sizes: Vec<u32> = std::iter::repeat_n(proof.log_sizes[4], 4)
+        .chain(std::iter::repeat_n(proof.log_sizes[5], 4))
+        .chain(std::iter::repeat_n(proof.log_sizes[6], 8))
+        .collect();
+    commitment_scheme.commit(commitments[2], &interaction_log_sizes, channel);
 
     let mut location_allocator = TraceLocationAllocator::default();
-    let (mul, inv, fold, double, sum) =
-        components(&mut location_allocator, &proof.log_sizes, proof.claimed_sum);
+    let (mul, inv, fold, double, sum, merkle, poseidon2) =
+        components(&mut location_allocator, &proof.log_sizes, sums, &relations);
 
     verify(
-        &[&mul, &inv, &fold, &double, &sum],
+        &[&mul, &inv, &fold, &double, &sum, &merkle, &poseidon2],
         channel,
         &mut commitment_scheme,
         proof.stark_proof,
@@ -298,6 +372,16 @@ mod tests {
             );
             crate::logup_sum::push_term(&mut traces.logup_sum, b);
             terms.push(b);
+            // One Merkle hash step per row: random child digests, parent
+            // bound through the poseidon2 relation.
+            let left: [u32; 8] = std::array::from_fn(|_| rng.gen_range(0..(1 << 30)));
+            let right: [u32; 8] = std::array::from_fn(|_| rng.gen_range(0..(1 << 30)));
+            crate::merkle_path::push_hash_step(
+                &mut traces.merkle_path,
+                &mut traces.poseidon2,
+                left,
+                right,
+            );
         }
         (traces, terms)
     }
@@ -333,6 +417,26 @@ mod tests {
             prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(traces, PcsConfig::default());
         verify_recursion_with_channel::<Poseidon2M31MerkleChannel>(proof, PcsConfig::default())
             .expect("poseidon2-channel verification failed");
+    }
+
+    #[test]
+    fn test_recursion_air_merkle_and_poseidon2_sums_cancel() {
+        let (traces, _) = random_traces(5, 20);
+        let proof = prove_recursion(traces, PcsConfig::default());
+        assert!(
+            (proof.merkle_claimed_sum + proof.poseidon2_claimed_sum).is_zero(),
+            "hash claims must be discharged by permutation rows"
+        );
+    }
+
+    #[test]
+    fn test_recursion_air_rejects_undischarged_hash_claim() {
+        let (mut traces, _) = random_traces(6, 20);
+        // Corrupt one parent limb: the merkle_path row now consumes a tuple
+        // no permutation row emits.
+        traces.merkle_path.parent_0[0] += 1;
+        let proof = prove_recursion(traces, PcsConfig::default());
+        assert!(verify_recursion(proof, PcsConfig::default()).is_err());
     }
 
     #[test]

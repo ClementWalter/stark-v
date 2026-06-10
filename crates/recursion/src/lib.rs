@@ -9,9 +9,14 @@
 pub mod circle_double;
 pub mod fri_fold;
 pub mod logup_sum;
+pub mod merkle_path;
 pub mod prover;
 pub mod qm31_inv;
 pub mod qm31_mul;
+
+// combine!/write_pair! are used by witness modules.
+#[macro_use]
+extern crate stwo_macros;
 
 use stwo_macros::define_component_tables;
 
@@ -128,6 +133,18 @@ define_component_tables! {
             |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_3|
                 2 * (p_x_0 * p_y_3 + p_x_1 * p_y_2 + p_x_2 * p_y_1 + p_x_3 * p_y_0) - r_y_3,
         },
+    },
+
+    // One Merkle hash step over 8-word digests: parent = permute(left || right)[..8].
+    // The permutation itself is proven by the reused stark-v poseidon2
+    // component; this table only claims the binding through the poseidon2
+    // relation (emit the 16-word input, consume the 8-word wide output), so
+    // no hash constraint exists here. Path chaining and root anchoring come
+    // with the chain relation (docs/recursion.md, M4 remaining).
+    merkle_path: {
+        left_0, left_1, left_2, left_3, left_4, left_5, left_6, left_7,
+        right_0, right_1, right_2, right_3, right_4, right_5, right_6, right_7,
+        parent_0, parent_1, parent_2, parent_3, parent_4, parent_5, parent_6, parent_7,
     },
 
     // LogUp sum of inverses: each row contributes enabler / term to the
