@@ -21,7 +21,53 @@ stwo_macros::define_trace_tables! {
     // ==========================================================================
     base_alu_reg: {
         clock, pc, rd, rs1, rs2,
-        opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag
+        opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
+        derived: {
+            expected_opcode_id: |opcode_add_flag, opcode_sub_flag, opcode_xor_flag,
+                opcode_or_flag, opcode_and_flag|
+                opcode_add_flag * constant(crate::decode::Opcode::Add as u32)
+                + opcode_sub_flag * constant(crate::decode::Opcode::Sub as u32)
+                + opcode_xor_flag * constant(crate::decode::Opcode::Xor as u32)
+                + opcode_or_flag * constant(crate::decode::Opcode::Or as u32)
+                + opcode_and_flag * constant(crate::decode::Opcode::And as u32),
+            is_bitwise: |opcode_xor_flag, opcode_or_flag, opcode_and_flag|
+                opcode_xor_flag + opcode_or_flag + opcode_and_flag,
+            // Preprocessed bitwise table id: and=0, or=1, xor=2
+            bitwise_id: |opcode_xor_flag, opcode_or_flag| 2 * opcode_xor_flag + opcode_or_flag,
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            // Carry chains of rd = rs1 + rs2 and rs1 = rd + rs2 over 8-bit
+            // limbs; each carry is 0 or 1 under the active opcode
+            carry_add_0: |rs1_next_0, rs2_next_0, rd_next_0|
+                (rs1_next_0 + rs2_next_0 - rd_next_0) * inv(pow2(8)),
+            carry_add_1: |rs1_next_1, rs2_next_1, rd_next_1, carry_add_0|
+                (rs1_next_1 + rs2_next_1 + carry_add_0 - rd_next_1) * inv(pow2(8)),
+            carry_add_2: |rs1_next_2, rs2_next_2, rd_next_2, carry_add_1|
+                (rs1_next_2 + rs2_next_2 + carry_add_1 - rd_next_2) * inv(pow2(8)),
+            carry_add_3: |rs1_next_3, rs2_next_3, rd_next_3, carry_add_2|
+                (rs1_next_3 + rs2_next_3 + carry_add_2 - rd_next_3) * inv(pow2(8)),
+            carry_sub_0: |rd_next_0, rs2_next_0, rs1_next_0|
+                (rd_next_0 + rs2_next_0 - rs1_next_0) * inv(pow2(8)),
+            carry_sub_1: |rd_next_1, rs2_next_1, rs1_next_1, carry_sub_0|
+                (rd_next_1 + rs2_next_1 - rs1_next_1 + carry_sub_0) * inv(pow2(8)),
+            carry_sub_2: |rd_next_2, rs2_next_2, rs1_next_2, carry_sub_1|
+                (rd_next_2 + rs2_next_2 - rs1_next_2 + carry_sub_1) * inv(pow2(8)),
+            carry_sub_3: |rd_next_3, rs2_next_3, rs1_next_3, carry_sub_2|
+                (rd_next_3 + rs2_next_3 - rs1_next_3 + carry_sub_2) * inv(pow2(8)),
+        },
+        constraints: {
+            |opcode_add_flag, carry_add_0| opcode_add_flag * carry_add_0 * (1 - carry_add_0),
+            |opcode_add_flag, carry_add_1| opcode_add_flag * carry_add_1 * (1 - carry_add_1),
+            |opcode_add_flag, carry_add_2| opcode_add_flag * carry_add_2 * (1 - carry_add_2),
+            |opcode_add_flag, carry_add_3| opcode_add_flag * carry_add_3 * (1 - carry_add_3),
+            |opcode_sub_flag, carry_sub_0| opcode_sub_flag * carry_sub_0 * (1 - carry_sub_0),
+            |opcode_sub_flag, carry_sub_1| opcode_sub_flag * carry_sub_1 * (1 - carry_sub_1),
+            |opcode_sub_flag, carry_sub_2| opcode_sub_flag * carry_sub_2 * (1 - carry_sub_2),
+            |opcode_sub_flag, carry_sub_3| opcode_sub_flag * carry_sub_3 * (1 - carry_sub_3),
+        },
     },
 
     // ==========================================================================
@@ -237,7 +283,39 @@ stwo_macros::define_trace_tables! {
         clock, pc, rs1, rs2,
         imm_felt, cmp_result,
         diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2, diff_inv_marker_3,
-        opcode_beq_flag, opcode_bne_flag
+        opcode_beq_flag, opcode_bne_flag,
+        derived: {
+            expected_opcode_id: |opcode_beq_flag, opcode_bne_flag|
+                opcode_beq_flag * constant(crate::decode::Opcode::Beq as u32)
+                + opcode_bne_flag * constant(crate::decode::Opcode::Bne as u32),
+            // 1 when the operands must be equal under the active opcode
+            cmp_eq: |cmp_result, opcode_beq_flag, opcode_bne_flag|
+                cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag,
+            // Inverse witness sum: cmp_eq plus marked limb differences must
+            // be 1 on enabled rows (proves inequality when cmp_eq = 0)
+            diff_inv_sum: |cmp_eq, diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2,
+                diff_inv_marker_3, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3,
+                rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3|
+                cmp_eq
+                + (rs1_next_0 - rs2_next_0) * diff_inv_marker_0
+                + (rs1_next_1 - rs2_next_1) * diff_inv_marker_1
+                + (rs1_next_2 - rs2_next_2) * diff_inv_marker_2
+                + (rs1_next_3 - rs2_next_3) * diff_inv_marker_3,
+            // Conditional branch target (airs.md 7.2)
+            to_pc: |pc, imm_felt, cmp_result| pc + imm_felt * cmp_result + 4 * (1 - cmp_result),
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+        },
+        constraints: {
+            |cmp_result| cmp_result * (1 - cmp_result),
+            // Equality forced limb-wise when cmp_eq fires
+            |cmp_eq, rs1_next_0, rs2_next_0| cmp_eq * (rs1_next_0 - rs2_next_0),
+            |cmp_eq, rs1_next_1, rs2_next_1| cmp_eq * (rs1_next_1 - rs2_next_1),
+            |cmp_eq, rs1_next_2, rs2_next_2| cmp_eq * (rs1_next_2 - rs2_next_2),
+            |cmp_eq, rs1_next_3, rs2_next_3| cmp_eq * (rs1_next_3 - rs2_next_3),
+            |enabler, diff_inv_sum| enabler * (1 - diff_inv_sum),
+        },
     },
 
     // ==========================================================================

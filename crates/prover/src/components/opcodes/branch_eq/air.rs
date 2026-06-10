@@ -1,7 +1,6 @@
 //! AIR component for Branch Equal (beq/bne) - airs.md Section 7
 
-use num_traits::{One, Zero};
-use runner::decode::Opcode;
+use num_traits::Zero;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
@@ -29,68 +28,17 @@ impl FrameworkEval for Eval {
         let cols = BranchEqColumns::from_eval(&mut eval);
 
         // Section 7.2: Variables
-        let enabler = cols.opcode_beq_flag.clone() + cols.opcode_bne_flag.clone();
-        let expected_opcode_id = cols.opcode_beq_flag.clone()
-            * E::F::from(BaseField::from_u32_unchecked(Opcode::Beq as u32))
-            + cols.opcode_bne_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Bne as u32));
-
-        let cmp_eq = cols.cmp_result.clone() * cols.opcode_beq_flag.clone()
-            + (E::F::one() - cols.cmp_result.clone()) * cols.opcode_bne_flag.clone();
-
-        let diff_inv_markers = [
-            cols.diff_inv_marker_0.clone(),
-            cols.diff_inv_marker_1.clone(),
-            cols.diff_inv_marker_2.clone(),
-            cols.diff_inv_marker_3.clone(),
-        ];
-
-        let rs1 = [
-            cols.rs1_next_0.clone(),
-            cols.rs1_next_1.clone(),
-            cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone(),
-        ];
-        let rs2 = [
-            cols.rs2_next_0.clone(),
-            cols.rs2_next_1.clone(),
-            cols.rs2_next_2.clone(),
-            cols.rs2_next_3.clone(),
-        ];
-
-        let diff_inv_sum = diff_inv_markers
-            .iter()
-            .zip(rs1.iter().zip(rs2.iter()))
-            .fold(cmp_eq.clone(), |acc, (marker, (a, b))| {
-                acc + (a.clone() - b.clone()) * marker.clone()
-            });
+        // Section 7.2/7.3: derived columns and constraints, declared in
+        // define_trace_tables!
+        let enabler = cols.enabler();
+        let expected_opcode_id = cols.expected_opcode_id();
 
         // REG_AS = 0 for register address space
         let reg_as = E::F::zero();
 
-        // to_pc for conditional branch
-        let four = E::F::from(BaseField::from_u32_unchecked(4));
-        let to_pc = cols.pc.clone()
-            + cols.imm_felt.clone() * cols.cmp_result.clone()
-            + four * (E::F::one() - cols.cmp_result.clone());
-
-        // Section 7.3: Constraints
-
-        // enabler, opcode_*_flags and cmp_result are booleans
-        eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
-        eval.add_constraint(
-            cols.opcode_beq_flag.clone() * (E::F::one() - cols.opcode_beq_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_bne_flag.clone() * (E::F::one() - cols.opcode_bne_flag.clone()),
-        );
-        eval.add_constraint(cols.cmp_result.clone() * (E::F::one() - cols.cmp_result.clone()));
-
-        // check cmp_eq
-        for (a, b) in rs1.iter().zip(rs2.iter()) {
-            eval.add_constraint(cmp_eq.clone() * (a.clone() - b.clone()));
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
         }
-        eval.add_constraint(enabler.clone() * (E::F::one() - diff_inv_sum));
 
         // =====================================================================
         // LogUp Relations (Section 7.3 from airs.md)
@@ -140,7 +88,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs1_clock_prev.clone()
+            cols.rs1_clock_diff()
         );
 
         // Read from rs2
@@ -175,7 +123,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs2_clock_prev.clone()
+            cols.rs2_clock_diff()
         );
 
         // Register state transition (conditional branch)
@@ -192,8 +140,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             enabler.clone(),
-            to_pc,
-            cols.clock.clone() + E::F::one()
+            cols.to_pc(),
+            cols.clock_next()
         );
 
         eval.finalize_logup_in_pairs();

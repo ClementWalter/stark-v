@@ -1,9 +1,7 @@
 //! AIR component for Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
 
 use crate::relations::Relations;
-use num_traits::{One, Zero};
-use runner::decode::Opcode;
-use stwo::core::fields::m31::BaseField;
+use num_traits::Zero;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use runner::trace::prover_columns::BaseAluRegColumns;
@@ -29,97 +27,15 @@ impl FrameworkEval for Eval {
         let cols = BaseAluRegColumns::from_eval(&mut eval);
 
         // Section 1.2: Variables
-        let enabler = cols.opcode_add_flag.clone()
-            + cols.opcode_sub_flag.clone()
-            + cols.opcode_xor_flag.clone()
-            + cols.opcode_or_flag.clone()
-            + cols.opcode_and_flag.clone();
+        // Section 1.2/1.3: derived columns and constraints, declared in
+        // define_trace_tables!
+        let enabler = cols.enabler();
+        let expected_opcode_id = cols.expected_opcode_id();
+        let is_bitwise = cols.is_bitwise();
+        let bitwise_id = cols.bitwise_id();
 
-        let expected_opcode_id = cols.opcode_add_flag.clone()
-            * E::F::from(BaseField::from_u32_unchecked(Opcode::Add as u32))
-            + cols.opcode_sub_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Sub as u32))
-            + cols.opcode_xor_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Xor as u32))
-            + cols.opcode_or_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Or as u32))
-            + cols.opcode_and_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::And as u32));
-
-        let rd = [
-            cols.rd_next_0.clone(),
-            cols.rd_next_1.clone(),
-            cols.rd_next_2.clone(),
-            cols.rd_next_3.clone(),
-        ];
-        let rs1 = [
-            cols.rs1_next_0.clone(),
-            cols.rs1_next_1.clone(),
-            cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone(),
-        ];
-        let rs2 = [
-            cols.rs2_next_0.clone(),
-            cols.rs2_next_1.clone(),
-            cols.rs2_next_2.clone(),
-            cols.rs2_next_3.clone(),
-        ];
-
-        let inv_two_pow_8 = BaseField::from_u32_unchecked(1 << 8).inverse();
-        let mut carry_add: [E::F; 4] = std::array::from_fn(|_| E::F::zero());
-        let mut carry_sub: [E::F; 4] = std::array::from_fn(|_| E::F::zero());
-
-        carry_add[0] = (rs1[0].clone() + rs2[0].clone() - rd[0].clone()) * inv_two_pow_8;
-        carry_sub[0] = (rd[0].clone() + rs2[0].clone() - rs1[0].clone()) * inv_two_pow_8;
-        for i in 1..4 {
-            carry_add[i] = (rs1[i].clone() + rs2[i].clone() + carry_add[i - 1].clone()
-                - rd[i].clone())
-                * inv_two_pow_8;
-            carry_sub[i] = (rd[i].clone() + rs2[i].clone() - rs1[i].clone()
-                + carry_sub[i - 1].clone())
-                * inv_two_pow_8;
-        }
-
-        let is_bitwise = cols.opcode_xor_flag.clone()
-            + cols.opcode_or_flag.clone()
-            + cols.opcode_and_flag.clone();
-        let two = E::F::one() + E::F::one();
-        // Match preprocessed bitwise table: and=0, or=1, xor=2
-        let bitwise_id = two.clone() * cols.opcode_xor_flag.clone() + cols.opcode_or_flag.clone();
-
-        // Section 1.3: Constraints
-
-        // enabler is boolean
-        eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
-
-        // opcode flags are booleans
-        eval.add_constraint(
-            cols.opcode_add_flag.clone() * (E::F::one() - cols.opcode_add_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_sub_flag.clone() * (E::F::one() - cols.opcode_sub_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_xor_flag.clone() * (E::F::one() - cols.opcode_xor_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_or_flag.clone() * (E::F::one() - cols.opcode_or_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_and_flag.clone() * (E::F::one() - cols.opcode_and_flag.clone()),
-        );
-
-        // check carries
-        for carry in carry_add {
-            eval.add_constraint(
-                cols.opcode_add_flag.clone() * carry.clone() * (E::F::one() - carry),
-            );
-        }
-
-        for carry in carry_sub {
-            eval.add_constraint(
-                cols.opcode_sub_flag.clone() * carry.clone() * (E::F::one() - carry),
-            );
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
         }
 
         // =====================================================================
@@ -156,8 +72,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             enabler.clone(),
-            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clock.clone() + E::F::one()
+            cols.pc_next(),
+            cols.clock_next()
         );
 
         // Read from rs1
@@ -192,7 +108,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs1_clock_prev.clone()
+            cols.rs1_clock_diff()
         );
 
         // Read from rs2
@@ -227,7 +143,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs2_clock_prev.clone()
+            cols.rs2_clock_diff()
         );
 
         // Bitwise operations (for xor/or/and)
@@ -236,36 +152,36 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.bitwise,
             -is_bitwise.clone(),
-            rs1[0].clone(),
-            rs2[0].clone(),
-            rd[0].clone(),
+            cols.rs1_next_0,
+            cols.rs2_next_0,
+            cols.rd_next_0,
             bitwise_id.clone()
         );
         add_to_relation!(
             eval,
             self.relations.bitwise,
             -is_bitwise.clone(),
-            rs1[1].clone(),
-            rs2[1].clone(),
-            rd[1].clone(),
+            cols.rs1_next_1,
+            cols.rs2_next_1,
+            cols.rd_next_1,
             bitwise_id.clone()
         );
         add_to_relation!(
             eval,
             self.relations.bitwise,
             -is_bitwise.clone(),
-            rs1[2].clone(),
-            rs2[2].clone(),
-            rd[2].clone(),
+            cols.rs1_next_2,
+            cols.rs2_next_2,
+            cols.rd_next_2,
             bitwise_id.clone()
         );
         add_to_relation!(
             eval,
             self.relations.bitwise,
             -is_bitwise.clone(),
-            rs1[3].clone(),
-            rs2[3].clone(),
-            rd[3].clone(),
+            cols.rs1_next_3,
+            cols.rs2_next_3,
+            cols.rd_next_3,
             bitwise_id.clone()
         );
 
@@ -291,17 +207,17 @@ impl FrameworkEval for Eval {
             reg_as.clone(),
             cols.rd_addr,
             cols.clock,
-            rd[0].clone(),
-            rd[1].clone(),
-            rd[2].clone(),
-            rd[3].clone()
+            cols.rd_next_0,
+            cols.rd_next_1,
+            cols.rd_next_2,
+            cols.rd_next_3
         );
         // - RC_20(clock - rd_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rd_clock_prev.clone()
+            cols.rd_clock_diff()
         );
 
         eval.finalize_logup_in_pairs();
