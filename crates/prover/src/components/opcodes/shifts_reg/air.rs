@@ -1,9 +1,7 @@
 //! AIR component for Shifts Reg (sll/srl/sra) - airs.md Section 3
 
 use crate::relations::Relations;
-use num_traits::{One, Zero};
-use runner::decode::Opcode;
-use stwo::core::fields::m31::BaseField;
+use num_traits::Zero;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use runner::trace::prover_columns::ShiftsRegColumns;
@@ -28,197 +26,13 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = ShiftsRegColumns::from_eval(&mut eval);
 
-        // Section 3.2: Variables
-        let enabler = cols.opcode_sll_flag.clone()
-            + cols.opcode_srl_flag.clone()
-            + cols.opcode_sra_flag.clone();
+        // Section 3.2/3.3: derived columns and constraints, declared in
+        // define_trace_tables!
+        let enabler = cols.enabler();
+        let expected_opcode_id = cols.expected_opcode_id();
 
-        let expected_opcode_id = cols.opcode_sll_flag.clone()
-            * E::F::from(BaseField::from_u32_unchecked(Opcode::Sll as u32))
-            + cols.opcode_srl_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Srl as u32))
-            + cols.opcode_sra_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Sra as u32));
-
-        let left_shift = cols.opcode_sll_flag.clone();
-        let right_shift = cols.opcode_srl_flag.clone() + cols.opcode_sra_flag.clone();
-
-        let bit_shift_markers = [
-            cols.bit_shift_marker_0.clone(),
-            cols.bit_shift_marker_1.clone(),
-            cols.bit_shift_marker_2.clone(),
-            cols.bit_shift_marker_3.clone(),
-            cols.bit_shift_marker_4.clone(),
-            cols.bit_shift_marker_5.clone(),
-            cols.bit_shift_marker_6.clone(),
-            cols.bit_shift_marker_7.clone(),
-        ];
-        let limb_shift_markers = [
-            cols.limb_shift_marker_0.clone(),
-            cols.limb_shift_marker_1.clone(),
-            cols.limb_shift_marker_2.clone(),
-            cols.limb_shift_marker_3.clone(),
-        ];
-        let bit_shift_carry = [
-            cols.bit_shift_carry_0.clone(),
-            cols.bit_shift_carry_1.clone(),
-            cols.bit_shift_carry_2.clone(),
-            cols.bit_shift_carry_3.clone(),
-        ];
-        let rd = [
-            cols.rd_next_0.clone(),
-            cols.rd_next_1.clone(),
-            cols.rd_next_2.clone(),
-            cols.rd_next_3.clone(),
-        ];
-        let rs1 = [
-            cols.rs1_next_0.clone(),
-            cols.rs1_next_1.clone(),
-            cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone(),
-        ];
-        let rs2 = [
-            cols.rs2_next_0.clone(),
-            cols.rs2_next_1.clone(),
-            cols.rs2_next_2.clone(),
-            cols.rs2_next_3.clone(),
-        ];
-
-        let pow2 = |exp: u32| E::F::from(BaseField::from_u32_unchecked(1 << exp));
-
-        let bit_multiplier = bit_shift_markers
-            .iter()
-            .enumerate()
-            .fold(E::F::zero(), |acc, (i, marker)| {
-                acc + pow2(i as u32) * marker.clone()
-            });
-
-        let bit_shift =
-            bit_shift_markers
-                .iter()
-                .enumerate()
-                .fold(E::F::zero(), |acc, (i, marker)| {
-                    acc + E::F::from(BaseField::from_u32_unchecked(i as u32)) * marker.clone()
-                });
-
-        let limb_shift =
-            limb_shift_markers
-                .iter()
-                .enumerate()
-                .fold(E::F::zero(), |acc, (i, marker)| {
-                    acc + E::F::from(BaseField::from_u32_unchecked(i as u32)) * marker.clone()
-                });
-
-        let shift_amount = limb_shift.clone() * pow2(3) + bit_shift.clone();
-        let rs1_msl = rs1[3].clone() + pow2(7) * cols.rs1_sign.clone();
-
-        let two_pow_8 = pow2(8);
-        let two_pow_8_minus_one = two_pow_8.clone() - E::F::one();
-
-        // Avoid unused-variable warnings for values only used by lookup constraints.
-        let _ = rs1_msl;
-
-        // Section 3.3: Constraints
-
-        // enabler, opcode_*_flags and rs1_sign are booleans
-        eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
-
-        eval.add_constraint(
-            cols.opcode_sll_flag.clone() * (E::F::one() - cols.opcode_sll_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_srl_flag.clone() * (E::F::one() - cols.opcode_srl_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_sra_flag.clone() * (E::F::one() - cols.opcode_sra_flag.clone()),
-        );
-
-        eval.add_constraint(cols.rs1_sign.clone() * (E::F::one() - cols.rs1_sign.clone()));
-
-        // hot-one encodings must contain at most one activation
-        for marker in bit_shift_markers.iter() {
-            eval.add_constraint(marker.clone() * (E::F::one() - marker.clone()));
-        }
-        for marker in limb_shift_markers.iter() {
-            eval.add_constraint(marker.clone() * (E::F::one() - marker.clone()));
-        }
-
-        let bit_marker_sum = bit_shift_markers
-            .iter()
-            .fold(E::F::zero(), |acc, marker| acc + marker.clone());
-        eval.add_constraint(bit_marker_sum - enabler.clone());
-
-        let limb_marker_sum = limb_shift_markers
-            .iter()
-            .fold(E::F::zero(), |acc, marker| acc + marker.clone());
-        eval.add_constraint(limb_marker_sum - enabler.clone());
-
-        // bit_multipliers are correctly formed
-        eval.add_constraint(
-            cols.bit_multiplier_left.clone() - left_shift.clone() * bit_multiplier.clone(),
-        );
-        eval.add_constraint(
-            cols.bit_multiplier_right.clone() - right_shift.clone() * bit_multiplier.clone(),
-        );
-
-        // left shift constraints
-        for i in 0..4 {
-            let limb_marker = limb_shift_markers[i].clone();
-            for j in 0..4 {
-                if j < i {
-                    eval.add_constraint(left_shift.clone() * limb_marker.clone() * rd[j].clone());
-                } else if j == i {
-                    let expr = left_shift.clone()
-                        * limb_marker.clone()
-                        * (rd[j].clone() + two_pow_8.clone() * bit_shift_carry[j - i].clone())
-                        - limb_marker.clone()
-                            * rs1[j - i].clone()
-                            * cols.bit_multiplier_left.clone();
-                    eval.add_constraint(expr);
-                } else {
-                    let expr = left_shift.clone()
-                        * limb_marker.clone()
-                        * (rd[j].clone()
-                            - (bit_shift_carry[j - i - 1].clone()
-                                - two_pow_8.clone() * bit_shift_carry[j - i].clone()))
-                        - limb_marker.clone()
-                            * rs1[j - i].clone()
-                            * cols.bit_multiplier_left.clone();
-                    eval.add_constraint(expr);
-                }
-            }
-        }
-
-        // right shift constraints
-        for i in 0..4 {
-            let limb_marker = limb_shift_markers[i].clone();
-            for j in 0..4 {
-                if j > 3 - i {
-                    eval.add_constraint(
-                        right_shift.clone()
-                            * limb_marker.clone()
-                            * (rd[j].clone() - cols.rs1_sign.clone() * two_pow_8_minus_one.clone()),
-                    );
-                } else if j == 3 - i {
-                    let expr = limb_marker.clone()
-                        * (cols.rs1_sign.clone()
-                            * (cols.bit_multiplier_right.clone() - E::F::one())
-                            * two_pow_8.clone()
-                            + right_shift.clone()
-                                * (rs1[j + i].clone() - bit_shift_carry[j + i].clone())
-                            - rd[j].clone() * cols.bit_multiplier_right.clone());
-                    eval.add_constraint(expr);
-                } else {
-                    let expr = limb_marker.clone()
-                        * (bit_shift_carry[j + i + 1].clone()
-                            * right_shift.clone()
-                            * two_pow_8.clone()
-                            + right_shift.clone()
-                                * (rs1[j + i].clone() - bit_shift_carry[j + i].clone())
-                            - rd[j].clone() * cols.bit_multiplier_right.clone());
-                    eval.add_constraint(expr);
-                }
-            }
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
         }
 
         // =====================================================================
@@ -252,8 +66,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             enabler.clone(),
-            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clock.clone() + E::F::one()
+            cols.pc_next(),
+            cols.clock_next()
         );
 
         // Read from rs1
@@ -285,7 +99,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs1_clock_prev.clone()
+            cols.rs1_clock_diff()
         );
 
         // Read from rs2
@@ -317,38 +131,35 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs2_clock_prev.clone()
+            cols.rs2_clock_diff()
         );
 
-        // Check shift amount: - RC_20(2^17 * (rs2[0] - shift_amount) / 2^5)
-        // This simplifies to: - RC_20(2^12 * (rs2[0] - shift_amount))
-        let shift_check = pow2(12) * (rs2[0].clone() - shift_amount.clone());
+        // Check shift amount: - RC_20(2^12 * (rs2[0] - shift_amount))
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            shift_check
+            cols.shift_check()
         );
 
         // TODO: Range check shift carries (scaled by 2^8 / bit_multiplier)
         // This requires witness-computed scaled values, skipped for now.
         // - enabler * RC_8_8(2^8/bit_multiplier * bit_shift_carry[0], ...)
-        let _ = bit_shift_carry;
 
         // Range check rd
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            rd[0].clone(),
-            rd[1].clone()
+            cols.rd_next_0,
+            cols.rd_next_1
         );
         add_to_relation!(
             eval,
             self.relations.range_check_8_8,
             -enabler.clone(),
-            rd[2].clone(),
-            rd[3].clone()
+            cols.rd_next_2,
+            cols.rd_next_3
         );
 
         // Write to rd
@@ -371,16 +182,16 @@ impl FrameworkEval for Eval {
             reg_as.clone(),
             cols.rd_addr,
             cols.clock,
-            rd[0].clone(),
-            rd[1].clone(),
-            rd[2].clone(),
-            rd[3].clone()
+            cols.rd_next_0,
+            cols.rd_next_1,
+            cols.rd_next_2,
+            cols.rd_next_3
         );
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rd_clock_prev.clone()
+            cols.rd_clock_diff()
         );
 
         eval.finalize_logup_in_pairs();

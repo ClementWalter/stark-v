@@ -38,7 +38,6 @@ impl FrameworkEval for Eval {
         let expected_opcode_id = cols.expected_opcode_id();
         let imm = cols.imm();
         let prefix_sum_final = cols.prefix_sum_final();
-        let two = E::F::one() + E::F::one();
 
         // REG_AS = 0 for register address space
         let reg_as = E::F::zero();

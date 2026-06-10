@@ -1,7 +1,6 @@
 //! AIR component for Branch Equal (beq/bne) - airs.md Section 7
 
 use num_traits::Zero;
-use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use crate::relations::Relations;
