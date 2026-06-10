@@ -1,7 +1,6 @@
 //! AIR component for MULH (mulh/mulhsu/mulhu) - airs.md Section 15
 
 use num_traits::Zero;
-use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 

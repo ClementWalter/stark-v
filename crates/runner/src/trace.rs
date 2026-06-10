@@ -782,7 +782,126 @@ stwo_macros::define_trace_tables! {
         src_addr_selector, dst_addr_selector,
         marker_0, marker_1, marker_2, marker_3,
         opcode_lb_flag, opcode_lh_flag, opcode_lbu_flag, opcode_lhu_flag, opcode_lw_flag,
-        opcode_sb_flag, opcode_sh_flag, opcode_sw_flag
+        opcode_sb_flag, opcode_sh_flag, opcode_sw_flag,
+        derived: {
+            expected_opcode_id: |opcode_lb_flag, opcode_lh_flag, opcode_lbu_flag, opcode_lhu_flag,
+                opcode_lw_flag, opcode_sb_flag, opcode_sh_flag, opcode_sw_flag|
+                opcode_lb_flag * constant(crate::decode::Opcode::Lb as u32)
+                + opcode_lh_flag * constant(crate::decode::Opcode::Lh as u32)
+                + opcode_lbu_flag * constant(crate::decode::Opcode::Lbu as u32)
+                + opcode_lhu_flag * constant(crate::decode::Opcode::Lhu as u32)
+                + opcode_lw_flag * constant(crate::decode::Opcode::Lw as u32)
+                + opcode_sb_flag * constant(crate::decode::Opcode::Sb as u32)
+                + opcode_sh_flag * constant(crate::decode::Opcode::Sh as u32)
+                + opcode_sw_flag * constant(crate::decode::Opcode::Sw as u32),
+            opcode_b_flag: |opcode_lbu_flag, opcode_lb_flag, opcode_sb_flag|
+                opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag,
+            opcode_h_flag: |opcode_lhu_flag, opcode_lh_flag, opcode_sh_flag|
+                opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag,
+            opcode_w_flag: |opcode_lw_flag, opcode_sw_flag| opcode_lw_flag + opcode_sw_flag,
+            is_signed: |opcode_lb_flag, opcode_lh_flag| opcode_lb_flag + opcode_lh_flag,
+            load_b_flag: |opcode_lb_flag, opcode_lbu_flag| opcode_lb_flag + opcode_lbu_flag,
+            load_h_flag: |opcode_lh_flag, opcode_lhu_flag| opcode_lh_flag + opcode_lhu_flag,
+            is_store: |opcode_sb_flag, opcode_sh_flag, opcode_sw_flag|
+                opcode_sb_flag + opcode_sh_flag + opcode_sw_flag,
+            is_load: |enabler, is_store| enabler - is_store,
+            // Memory address space selectors: registers are 0, RW memory 1
+            src_as: |is_load| is_load,
+            dst_as: |is_store| is_store,
+            mem_addr: |rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3, imm_felt|
+                rs1_next_0 + pow2(8) * rs1_next_1 + pow2(16) * rs1_next_2
+                + pow2(24) * rs1_next_3 + imm_felt,
+            sum_markers: |marker_0, marker_1, marker_2, marker_3|
+                marker_0 + marker_1 + marker_2 + marker_3,
+            shift_id: |marker_1, marker_2, marker_3| marker_1 + 2 * marker_2 + 3 * marker_3,
+            // Sign-extension fill byte for signed loads
+            signed_mask: |is_signed, src_msb| is_signed * src_msb * (pow2(8) - 1),
+            // Selected aligned memory address over 4, for the range check
+            aligned_addr_quarter: |src_addr_selector, dst_addr_selector, r2_idx|
+                (src_addr_selector + dst_addr_selector - r2_idx) * inv(4),
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            src_clock_diff: |clock, src_clock_prev| clock - src_clock_prev,
+            dst_clock_diff: |clock, dst_clock_prev| clock - dst_clock_prev,
+        },
+        constraints: {
+            |marker_0| marker_0 * (1 - marker_0),
+            |marker_1| marker_1 * (1 - marker_1),
+            |marker_2| marker_2 * (1 - marker_2),
+            |marker_3| marker_3 * (1 - marker_3),
+            // Shift amount: byte ops use shift_id, half-word ops (shift_id 1
+            // or 5) use (shift_id - 1) / 2 (airs.md 13.3)
+            |shift_amount, opcode_b_flag, shift_id, opcode_h_flag|
+                shift_amount - (opcode_b_flag * shift_id
+                + opcode_h_flag * (shift_id - 1) * inv(2)),
+            // Load/store dependent source and destination addresses
+            |src_addr_selector, is_load, mem_addr, shift_amount, is_store, r2_idx|
+                src_addr_selector
+                - (is_load * (mem_addr - shift_amount) + is_store * r2_idx),
+            |dst_addr_selector, is_load, r2_idx, is_store, mem_addr, shift_amount|
+                dst_addr_selector
+                - (is_load * r2_idx + is_store * (mem_addr - shift_amount)),
+            |opcode_b_flag, sum_markers| opcode_b_flag * (1 - sum_markers),
+            |opcode_h_flag, sum_markers| opcode_h_flag * (2 - sum_markers),
+            |opcode_h_flag, shift_id| opcode_h_flag * (1 - shift_id) * (5 - shift_id),
+            // Byte loads sign-extend the upper bytes
+            |load_b_flag, signed_mask, dst_next_1|
+                load_b_flag * (signed_mask - dst_next_1),
+            |load_b_flag, signed_mask, dst_next_2|
+                load_b_flag * (signed_mask - dst_next_2),
+            |load_b_flag, signed_mask, dst_next_3|
+                load_b_flag * (signed_mask - dst_next_3),
+            // Byte selection: loads pull memory byte i into register byte 0,
+            // stores push register byte 0 into memory byte i
+            |load_b_flag, dst_next_0, src_next_0, marker_0|
+                load_b_flag * (dst_next_0 - src_next_0) * marker_0,
+            |opcode_sb_flag, dst_next_0, src_next_0, marker_0|
+                opcode_sb_flag * (dst_next_0 - src_next_0) * marker_0,
+            |load_b_flag, dst_next_0, src_next_1, marker_1|
+                load_b_flag * (dst_next_0 - src_next_1) * marker_1,
+            |opcode_sb_flag, dst_next_1, src_next_0, marker_1|
+                opcode_sb_flag * (dst_next_1 - src_next_0) * marker_1,
+            |load_b_flag, dst_next_0, src_next_2, marker_2|
+                load_b_flag * (dst_next_0 - src_next_2) * marker_2,
+            |opcode_sb_flag, dst_next_2, src_next_0, marker_2|
+                opcode_sb_flag * (dst_next_2 - src_next_0) * marker_2,
+            |load_b_flag, dst_next_0, src_next_3, marker_3|
+                load_b_flag * (dst_next_0 - src_next_3) * marker_3,
+            |opcode_sb_flag, dst_next_3, src_next_0, marker_3|
+                opcode_sb_flag * (dst_next_3 - src_next_0) * marker_3,
+            // Half-word loads sign-extend the upper half
+            |load_h_flag, signed_mask, dst_next_2|
+                load_h_flag * (signed_mask - dst_next_2),
+            |load_h_flag, signed_mask, dst_next_3|
+                load_h_flag * (signed_mask - dst_next_3),
+            // Half-word selection by shift_id (1 = low half, 5 = high half)
+            |load_h_flag, shift_id, dst_next_0, src_next_0|
+                load_h_flag * (5 - shift_id) * inv(4) * (dst_next_0 - src_next_0),
+            |load_h_flag, shift_id, dst_next_1, src_next_1|
+                load_h_flag * (5 - shift_id) * inv(4) * (dst_next_1 - src_next_1),
+            |load_h_flag, shift_id, dst_next_0, src_next_2|
+                load_h_flag * (shift_id - 1) * inv(4) * (dst_next_0 - src_next_2),
+            |load_h_flag, shift_id, dst_next_1, src_next_3|
+                load_h_flag * (shift_id - 1) * inv(4) * (dst_next_1 - src_next_3),
+            |opcode_sh_flag, shift_id, dst_next_0, src_next_0|
+                opcode_sh_flag * (5 - shift_id) * inv(4) * (dst_next_0 - src_next_0),
+            |opcode_sh_flag, shift_id, dst_next_1, src_next_1|
+                opcode_sh_flag * (5 - shift_id) * inv(4) * (dst_next_1 - src_next_1),
+            |opcode_sh_flag, shift_id, dst_next_2, src_next_0|
+                opcode_sh_flag * (shift_id - 1) * inv(4) * (dst_next_2 - src_next_0),
+            |opcode_sh_flag, shift_id, dst_next_3, src_next_1|
+                opcode_sh_flag * (shift_id - 1) * inv(4) * (dst_next_3 - src_next_1),
+            // Word ops copy all bytes
+            |opcode_w_flag, dst_next_0, src_next_0|
+                opcode_w_flag * (dst_next_0 - src_next_0),
+            |opcode_w_flag, dst_next_1, src_next_1|
+                opcode_w_flag * (dst_next_1 - src_next_1),
+            |opcode_w_flag, dst_next_2, src_next_2|
+                opcode_w_flag * (dst_next_2 - src_next_2),
+            |opcode_w_flag, dst_next_3, src_next_3|
+                opcode_w_flag * (dst_next_3 - src_next_3),
+        },
     },
 
     // ==========================================================================
@@ -880,7 +999,128 @@ stwo_macros::define_trace_tables! {
         r_inv_0, r_inv_1, r_inv_2, r_inv_3,
         lt_marker_0, lt_marker_1, lt_marker_2, lt_marker_3,
         lt_diff,
-        opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag
+        opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag,
+        derived: {
+            expected_opcode_id: |opcode_div_flag, opcode_divu_flag, opcode_rem_flag,
+                opcode_remu_flag|
+                opcode_div_flag * constant(crate::decode::Opcode::Div as u32)
+                + opcode_divu_flag * constant(crate::decode::Opcode::Divu as u32)
+                + opcode_rem_flag * constant(crate::decode::Opcode::Rem as u32)
+                + opcode_remu_flag * constant(crate::decode::Opcode::Remu as u32),
+            is_div: |opcode_div_flag, opcode_divu_flag| opcode_div_flag + opcode_divu_flag,
+            is_signed: |opcode_div_flag, opcode_rem_flag| opcode_div_flag + opcode_rem_flag,
+            special_case: |zero_divisor, r_zero| zero_divisor + r_zero,
+            valid_not_zero_divisor: |enabler, zero_divisor| enabler - zero_divisor,
+            valid_not_special: |enabler, special_case| enabler - special_case,
+            q_sum: |q_0, q_1, q_2, q_3| q_0 + q_1 + q_2 + q_3,
+            c_sum: |rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3|
+                rs2_next_0 + rs2_next_1 + rs2_next_2 + rs2_next_3,
+            r_sum: |r_0, r_1, r_2, r_3| r_0 + r_1 + r_2 + r_3,
+            c_sign_factor: |c_sign| 1 - 2 * c_sign,
+            // |r| vs |c| limb differences under the divisor sign (airs.md 16.2)
+            diff_0: |c_sign_factor, rs2_next_0, r_abs_0| c_sign_factor * (rs2_next_0 - r_abs_0),
+            diff_1: |c_sign_factor, rs2_next_1, r_abs_1| c_sign_factor * (rs2_next_1 - r_abs_1),
+            diff_2: |c_sign_factor, rs2_next_2, r_abs_2| c_sign_factor * (rs2_next_2 - r_abs_2),
+            diff_3: |c_sign_factor, rs2_next_3, r_abs_3| c_sign_factor * (rs2_next_3 - r_abs_3),
+            // Result selection: quotient for div/divu, remainder for rem/remu
+            a_0: |is_div, q_0, r_0| is_div * q_0 + (1 - is_div) * r_0,
+            a_1: |is_div, q_1, r_1| is_div * q_1 + (1 - is_div) * r_1,
+            a_2: |is_div, q_2, r_2| is_div * q_2 + (1 - is_div) * r_2,
+            a_3: |is_div, q_3, r_3| is_div * q_3 + (1 - is_div) * r_3,
+            // Carry chain of r + |r| = 2^32 (two's complement negation)
+            carry_lt_0: |r_0, r_abs_0| (r_0 + r_abs_0) * inv(pow2(8)),
+            carry_lt_1: |carry_lt_0, r_1, r_abs_1| (carry_lt_0 + r_1 + r_abs_1) * inv(pow2(8)),
+            carry_lt_2: |carry_lt_1, r_2, r_abs_2| (carry_lt_1 + r_2 + r_abs_2) * inv(pow2(8)),
+            carry_lt_3: |carry_lt_2, r_3, r_abs_3| (carry_lt_2 + r_3 + r_abs_3) * inv(pow2(8)),
+            // Comparison scan prefixes, seeded by the special cases
+            prefix_3: |special_case, lt_marker_3| special_case + lt_marker_3,
+            prefix_2: |prefix_3, lt_marker_2| prefix_3 + lt_marker_2,
+            prefix_1: |prefix_2, lt_marker_1| prefix_2 + lt_marker_1,
+            prefix_0: |prefix_1, lt_marker_0| prefix_1 + lt_marker_0,
+            lt_diff_minus_1: |lt_diff| lt_diff - 1,
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        constraints: {
+            |zero_divisor| zero_divisor * (1 - zero_divisor),
+            |r_zero| r_zero * (1 - r_zero),
+            |b_sign| b_sign * (1 - b_sign),
+            |c_sign| c_sign * (1 - c_sign),
+            |q_sign| q_sign * (1 - q_sign),
+            |sign_xor| sign_xor * (1 - sign_xor),
+            |lt_marker_0| lt_marker_0 * (1 - lt_marker_0),
+            |lt_marker_1| lt_marker_1 * (1 - lt_marker_1),
+            |lt_marker_2| lt_marker_2 * (1 - lt_marker_2),
+            |lt_marker_3| lt_marker_3 * (1 - lt_marker_3),
+            |special_case| special_case * (1 - special_case),
+            |valid_not_zero_divisor| valid_not_zero_divisor * (1 - valid_not_zero_divisor),
+            |valid_not_special| valid_not_special * (1 - valid_not_special),
+            // Zero divisor: all-one quotient, zero divisor limbs (airs.md 16.3)
+            |zero_divisor, rs2_next_0| zero_divisor * rs2_next_0,
+            |zero_divisor, rs2_next_1| zero_divisor * rs2_next_1,
+            |zero_divisor, rs2_next_2| zero_divisor * rs2_next_2,
+            |zero_divisor, rs2_next_3| zero_divisor * rs2_next_3,
+            |zero_divisor, q_0| zero_divisor * (q_0 - (pow2(8) - 1)),
+            |zero_divisor, q_1| zero_divisor * (q_1 - (pow2(8) - 1)),
+            |zero_divisor, q_2| zero_divisor * (q_2 - (pow2(8) - 1)),
+            |zero_divisor, q_3| zero_divisor * (q_3 - (pow2(8) - 1)),
+            |valid_not_zero_divisor, c_sum, c_sum_inv|
+                valid_not_zero_divisor * (c_sum * c_sum_inv - 1),
+            // Zero remainder detection
+            |r_zero, r_0| r_zero * r_0,
+            |r_zero, r_1| r_zero * r_1,
+            |r_zero, r_2| r_zero * r_2,
+            |r_zero, r_3| r_zero * r_3,
+            |valid_not_special, r_sum, r_sum_inv| valid_not_special * (r_sum * r_sum_inv - 1),
+            // Signs only under signed opcodes; sign_xor = b_sign XOR c_sign
+            |is_signed, b_sign| (1 - is_signed) * b_sign,
+            |is_signed, c_sign| (1 - is_signed) * c_sign,
+            |enabler, sign_xor, b_sign, c_sign|
+                enabler * (sign_xor - b_sign - c_sign + 2 * b_sign * c_sign),
+            // Quotient sign selection
+            |zero_divisor, q_sum, q_sign, sign_xor|
+                (1 - zero_divisor) * q_sum * (q_sign - sign_xor),
+            |zero_divisor, q_sign, sign_xor|
+                (1 - zero_divisor) * (q_sign - sign_xor) * q_sign,
+            // Absolute remainder: identity without sign flip, two's
+            // complement otherwise
+            |sign_xor, r_abs_0, r_0| (1 - sign_xor) * (r_abs_0 - r_0),
+            |sign_xor, carry_lt_0| sign_xor * carry_lt_0 * (carry_lt_0 - 1),
+            |sign_xor, carry_lt_0, r_abs_0| sign_xor * (1 - carry_lt_0) * r_abs_0,
+            |sign_xor, r_abs_0, r_inv_0| sign_xor * ((r_abs_0 - pow2(8)) * r_inv_0 - 1),
+            |sign_xor, r_abs_1, r_1| (1 - sign_xor) * (r_abs_1 - r_1),
+            |sign_xor, carry_lt_1, carry_lt_0|
+                sign_xor * (carry_lt_1 - carry_lt_0) * (carry_lt_1 - 1),
+            |sign_xor, carry_lt_1, r_abs_1| sign_xor * (1 - carry_lt_1) * r_abs_1,
+            |sign_xor, r_abs_1, r_inv_1| sign_xor * ((r_abs_1 - pow2(8)) * r_inv_1 - 1),
+            |sign_xor, r_abs_2, r_2| (1 - sign_xor) * (r_abs_2 - r_2),
+            |sign_xor, carry_lt_2, carry_lt_1|
+                sign_xor * (carry_lt_2 - carry_lt_1) * (carry_lt_2 - 1),
+            |sign_xor, carry_lt_2, r_abs_2| sign_xor * (1 - carry_lt_2) * r_abs_2,
+            |sign_xor, r_abs_2, r_inv_2| sign_xor * ((r_abs_2 - pow2(8)) * r_inv_2 - 1),
+            |sign_xor, r_abs_3, r_3| (1 - sign_xor) * (r_abs_3 - r_3),
+            |sign_xor, carry_lt_3, carry_lt_2|
+                sign_xor * (carry_lt_3 - carry_lt_2) * (carry_lt_3 - 1),
+            |sign_xor, carry_lt_3, r_abs_3| sign_xor * (1 - carry_lt_3) * r_abs_3,
+            |sign_xor, r_abs_3, r_inv_3| sign_xor * ((r_abs_3 - pow2(8)) * r_inv_3 - 1),
+            // |r| < |c| scan from the most significant limb
+            |enabler, prefix_3, diff_3| enabler * (1 - prefix_3) * diff_3,
+            |enabler, lt_marker_3, lt_diff, diff_3|
+                enabler * lt_marker_3 * (lt_diff - diff_3),
+            |enabler, prefix_2, diff_2| enabler * (1 - prefix_2) * diff_2,
+            |enabler, lt_marker_2, lt_diff, diff_2|
+                enabler * lt_marker_2 * (lt_diff - diff_2),
+            |enabler, prefix_1, diff_1| enabler * (1 - prefix_1) * diff_1,
+            |enabler, lt_marker_1, lt_diff, diff_1|
+                enabler * lt_marker_1 * (lt_diff - diff_1),
+            |enabler, prefix_0, diff_0| enabler * (1 - prefix_0) * diff_0,
+            |enabler, lt_marker_0, lt_diff, diff_0|
+                enabler * lt_marker_0 * (lt_diff - diff_0),
+            |enabler, prefix_0| enabler * (1 - prefix_0),
+        },
     },
 
     // ==========================================================================

@@ -133,3 +133,49 @@ fn test_aggregate_with_recursion_proof_leaves() {
     assert_eq!(root.exit_pc, reference.final_pc);
     assert_eq!(root.exit_regs, reference.final_regs);
 }
+
+/// The complete recursion pipeline over a >10M-cycle RISC-V run: segment the
+/// execution, prove every segment, prove each segment's composition check in
+/// the recursion AIR, and aggregate the recursion-verified leaves up the
+/// 2-to-1 tree to a root boundary spanning the whole run.
+#[test]
+fn test_recursion_pipeline_proves_10m_cycle_run() {
+    use prover::recursion::segments::prove_segments;
+    use recursion::aggregate::{aggregate_with_recursion, prove_segment_composition};
+    use runner::run_segments_with_input;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("long_run");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read long_run ELF");
+
+    let reference = run(&elf_bytes, 20_000_000).expect("Failed to run long_run");
+    assert!(
+        reference.cycles >= 10_000_000,
+        "long_run must exceed 10M cycles, got {}",
+        reference.cycles
+    );
+
+    // Segments bounded by the range-checkable clock window.
+    let segment_cycles = (1u32 << 20) - 1;
+    let segments = run_segments_with_input(&elf_bytes, &[], Some(segment_cycles), 20_000_000)
+        .expect("segmented run failed");
+    assert!(segments.len() >= 10, "expected >= 10 segments");
+
+    let preprocessing = prover::preprocess(PcsConfig::default());
+    let proofs = prove_segments(segments, PcsConfig::default(), &preprocessing);
+
+    let nodes: Vec<_> = proofs
+        .iter()
+        .map(|proof| {
+            let node = prove_segment_composition(proof, PcsConfig::default(), &preprocessing);
+            (proof.clone(), node)
+        })
+        .collect();
+
+    let root = aggregate_with_recursion(nodes, PcsConfig::default(), &preprocessing)
+        .expect("recursion aggregation failed");
+    assert_eq!(root.entry_pc, reference.initial_pc);
+    assert_eq!(root.exit_pc, reference.final_pc);
+    assert_eq!(root.exit_regs, reference.final_regs);
+}
