@@ -68,6 +68,35 @@ stwo_macros::define_trace_tables! {
             |opcode_sub_flag, carry_sub_2| opcode_sub_flag * carry_sub_2 * (1 - carry_sub_2),
             |opcode_sub_flag, carry_sub_3| opcode_sub_flag * carry_sub_3 * (1 - carry_sub_3),
         },
+        lookups: {
+            // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // Bitwise limbs (xor/or/and): Bitwise(rs1[i], rs2[i], rd[i], op id).
+            preprocessed bitwise: -is_bitwise => [rs1_next_0, rs2_next_0, rd_next_0, bitwise_id],
+            preprocessed bitwise: -is_bitwise => [rs1_next_1, rs2_next_1, rd_next_1, bitwise_id],
+            preprocessed bitwise: -is_bitwise => [rs1_next_2, rs2_next_2, rd_next_2, bitwise_id],
+            preprocessed bitwise: -is_bitwise => [rs1_next_3, rs2_next_3, rd_next_3, bitwise_id],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
+        },
     },
 
     // ==========================================================================
@@ -114,6 +143,34 @@ stwo_macros::define_trace_tables! {
             |opcode_add_flag, carry_1| opcode_add_flag * carry_1 * (1 - carry_1),
             |opcode_add_flag, carry_2| opcode_add_flag * carry_2 * (1 - carry_2),
             |opcode_add_flag, carry_3| opcode_add_flag * carry_3 * (1 - carry_3),
+        },
+        lookups: {
+            // Program access (I-type): Program(pc, opcode, rd_idx, rs1_idx, imm)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, imm],
+            // I-type immediate limb ranges: imm_0 is 8 bits, imm_1 is 3 bits.
+            preprocessed range_check_8_11: -enabler => [imm_0, imm_1_shifted],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Bitwise limbs (xor/or/and): Bitwise(rs1[i], sext_imm[i], rd[i], op id).
+            preprocessed bitwise: -is_bitwise => [rs1_next_0, imm_0, rd_next_0, bitwise_id],
+            preprocessed bitwise: -is_bitwise => [rs1_next_1, sext_imm_1, rd_next_1, bitwise_id],
+            preprocessed bitwise: -is_bitwise => [rs1_next_2, sext_imm_2, rd_next_2, bitwise_id],
+            preprocessed bitwise: -is_bitwise => [rs1_next_3, sext_imm_2, rd_next_3, bitwise_id],
+            // rd byte ranges.
+            preprocessed range_check_8_8: -enabler => [rd_next_0, rd_next_1],
+            preprocessed range_check_8_8: -enabler => [rd_next_2, rd_next_3],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 
@@ -282,6 +339,35 @@ stwo_macros::define_trace_tables! {
             |right_shift, limb_shift_marker_3, rd_next_3, rs1_sign|
                 right_shift * limb_shift_marker_3 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
         },
+        lookups: {
+            // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // The decoded shift amount matches rs2's low 5 bits.
+            preprocessed range_check_20: -enabler => [shift_check],
+            // rd byte ranges.
+            preprocessed range_check_8_8: -enabler => [rd_next_0, rd_next_1],
+            preprocessed range_check_8_8: -enabler => [rd_next_2, rd_next_3],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
+        },
     },
 
     // ==========================================================================
@@ -445,6 +531,27 @@ stwo_macros::define_trace_tables! {
             |right_shift, limb_shift_marker_3, rd_next_3, rs1_sign|
                 right_shift * limb_shift_marker_3 * (rd_next_3 - rs1_sign * (pow2(8) - 1)),
         },
+        lookups: {
+            // Program access (I-type): Program(pc, opcode, rd_idx, rs1_idx, imm)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, imm_truncated],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // rd byte ranges.
+            preprocessed range_check_8_8: -enabler => [rd_next_0, rd_next_1],
+            preprocessed range_check_8_8: -enabler => [rd_next_2, rd_next_3],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
+        },
     },
 
     // ==========================================================================
@@ -509,6 +616,34 @@ stwo_macros::define_trace_tables! {
             |prefix_sum_final| prefix_sum_final * (1 - prefix_sum_final),
             // Equal operands compare as not-less-than
             |prefix_sum_final, cmp_result| (1 - prefix_sum_final) * cmp_result,
+        },
+        lookups: {
+            // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // Most significant limbs shifted into unsigned range under the
+            // signed-comparison convention.
+            preprocessed range_check_8_8: -enabler => [rs1_msl_shifted, rs2_msl_shifted],
+            // When the comparison scan fired, the limb difference is > 0.
+            preprocessed range_check_20: -prefix_sum_final => [diff_val - 1],
+            // Write rd := cmp_result (a single bit in limb 0).
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler => [0, rd_addr, clock, cmp_result, 0, 0, 0],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 
@@ -576,6 +711,27 @@ stwo_macros::define_trace_tables! {
             |prefix_sum_final, cmp_result| (1 - prefix_sum_final) * cmp_result,
             |cmp_result| cmp_result * (1 - cmp_result),
         },
+        lookups: {
+            // Program access (I-type): Program(pc, opcode, rd_idx, rs1_idx, imm)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, imm],
+            // Immediate limb ranges and the sign-shifted most significant limb.
+            preprocessed range_check_8_8_4: -enabler => [rs1_msl_shifted, imm_0, imm_1_doubled],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // When the comparison scan fired, the limb difference is > 0.
+            preprocessed range_check_20: -prefix_sum_final => [diff_val - 1],
+            // Write rd := cmp_result (a single bit in limb 0).
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler => [0, rd_addr, clock, cmp_result, 0, 0, 0],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
+        },
     },
 
     // ==========================================================================
@@ -617,6 +773,25 @@ stwo_macros::define_trace_tables! {
             |cmp_eq, rs1_next_2, rs2_next_2| cmp_eq * (rs1_next_2 - rs2_next_2),
             |cmp_eq, rs1_next_3, rs2_next_3| cmp_eq * (rs1_next_3 - rs2_next_3),
             |enabler, diff_inv_sum| enabler * (1 - diff_inv_sum),
+        },
+        lookups: {
+            // Program access (B-type): Program(pc, opcode, rs1_idx, rs2_idx, imm)
+            program_access: -enabler => [pc, expected_opcode_id, rs1_addr, rs2_addr, imm_felt],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // Conditional branch: pc moves to the selected target.
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [to_pc, clock_next],
         },
     },
 
@@ -686,6 +861,30 @@ stwo_macros::define_trace_tables! {
             // under ge opcodes
             |cmp_lt, cmp_result, lt, ge| cmp_lt - (cmp_result * lt + (1 - cmp_result) * ge),
         },
+        lookups: {
+            // Program access (B-type): Program(pc, opcode, rs1_idx, rs2_idx, imm)
+            program_access: -enabler => [pc, expected_opcode_id, rs1_addr, rs2_addr, imm_felt],
+            // Conditional branch: pc moves to the selected target.
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [branch_target, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // Most significant limbs shifted into unsigned range under the
+            // signed-comparison convention.
+            preprocessed range_check_8_8: -enabler => [rs1_msl_shifted, rs2_msl_shifted],
+            // When the comparison scan fired, the limb difference is > 0.
+            preprocessed range_check_20: -prefix_sum_final => [diff_val - 1],
+        },
     },
 
     // ==========================================================================
@@ -702,6 +901,21 @@ stwo_macros::define_trace_tables! {
             // Limb 1 of the value written to rd: imm << 12 has limbs (0, imm_0 * 2^4, imm_1, imm_2)
             rd_val_1: |imm_0| imm_0 * pow2(4),
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        lookups: {
+            // Program access (U-type): Program(pc, LUI, rd_idx, imm, 0)
+            program_access: -enabler =>
+                [pc, constant(crate::decode::Opcode::Lui as u32), rd_addr, imm, 0],
+            // Register state transition: clock advances, pc steps by 4.
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // U-type immediate limb ranges.
+            preprocessed range_check_8_8_4: -enabler => [imm_1, imm_2, imm_0],
+            // Write to rd (REG_AS = 0): rd := imm << 12.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler => [0, rd_addr, clock, 0, rd_val_1, imm_1, imm_2],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 
@@ -721,6 +935,23 @@ stwo_macros::define_trace_tables! {
         constraints: {
             // rd = pc + imm (airs.md 10.2)
             |rd_felt, pc, imm_felt| rd_felt - (pc + imm_felt),
+        },
+        lookups: {
+            // Program access (U-type): Program(pc, AUIPC, rd_idx, imm, 0)
+            program_access: -enabler =>
+                [pc, constant(crate::decode::Opcode::Auipc as u32), rd_addr, imm_felt, 0],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // rd = pc + imm is an M31: middle limbs are bytes, outer pair is
+            // checked as an M31 split.
+            preprocessed range_check_8_8: -enabler => [rd_next_1, rd_next_2],
+            preprocessed range_check_m31: -enabler => [rd_next_0, rd_next_3],
+            // Write to rd (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 
@@ -750,6 +981,31 @@ stwo_macros::define_trace_tables! {
             // rd = pc + 4, gated by rd_addr (x0 writes discarded)
             |enabler, rd_addr, rd_felt, pc| enabler * rd_addr * (rd_felt - (pc + 4)),
         },
+        lookups: {
+            // Program access (I-type): Program(pc, JALR, rd_idx, rs1_idx, imm)
+            program_access: -enabler =>
+                [pc, constant(crate::decode::Opcode::Jalr as u32), rd_addr, rs1_addr, imm_felt],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // rs1 is an M31 (the jump target must be a valid pc).
+            preprocessed range_check_m31: -enabler => [rs1_next_0, rs1_next_3],
+            // Jump: pc moves to the even-aligned target.
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [jump_target, clock_next],
+            // rd = pc + 4 is an M31.
+            preprocessed range_check_8_8: -enabler => [rd_next_1, rd_next_2],
+            preprocessed range_check_m31: -enabler => [rd_next_0, rd_next_3],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
+        },
     },
 
     // ==========================================================================
@@ -764,6 +1020,23 @@ stwo_macros::define_trace_tables! {
             jump_target: |pc, imm_felt| pc + imm_felt,
             clock_next: |clock| clock + 1,
             rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        lookups: {
+            // Program access (U-type): Program(pc, JAL, rd_idx, imm, 0)
+            program_access: -enabler =>
+                [pc, constant(crate::decode::Opcode::Jal as u32), rd_addr, imm_felt, 0],
+            // Unconditional jump: pc moves to pc + imm.
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [jump_target, clock_next],
+            // rd = pc + 4 is an M31.
+            preprocessed range_check_8_8: -enabler => [rd_next_1, rd_next_2],
+            preprocessed range_check_m31: -enabler => [rd_next_0, rd_next_3],
+            // Write to rd (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
         constraints: {
             // rd = pc + 4, gated by enabler (padding) and rd_addr (x0
@@ -902,6 +1175,39 @@ stwo_macros::define_trace_tables! {
             |opcode_w_flag, dst_next_3, src_next_3|
                 opcode_w_flag * (dst_next_3 - src_next_3),
         },
+        lookups: {
+            // Program access (I-type for loads, S-type for stores):
+            // Program(pc, opcode, rs1_idx, r2_idx, imm)
+            program_access: -enabler => [pc, expected_opcode_id, rs1_addr, r2_idx, imm_felt],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1, the base address (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // The aligned address is a multiple of 4 within the address space.
+            preprocessed range_check_20: -enabler => [aligned_addr_quarter],
+            // The base address is an M31.
+            preprocessed range_check_m31: -enabler => [rs1_next_0, rs1_next_3],
+            // Read the source (memory word for loads, register for stores).
+            memory_access: -enabler =>
+                [src_as, src_addr_selector, src_clock_prev,
+                 src_prev_0, src_prev_1, src_prev_2, src_prev_3],
+            memory_access: enabler =>
+                [src_as, src_addr_selector, clock,
+                 src_next_0, src_next_1, src_next_2, src_next_3],
+            preprocessed range_check_20: -enabler => [src_clock_diff],
+            // Write the destination (register for loads, memory for stores).
+            memory_access: -enabler =>
+                [dst_as, dst_addr_selector, dst_clock_prev,
+                 dst_prev_0, dst_prev_1, dst_prev_2, dst_prev_3],
+            memory_access: enabler =>
+                [dst_as, dst_addr_selector, clock,
+                 dst_next_0, dst_next_1, dst_next_2, dst_next_3],
+            preprocessed range_check_20: -enabler => [dst_clock_diff],
+        },
     },
 
     // ==========================================================================
@@ -931,6 +1237,39 @@ stwo_macros::define_trace_tables! {
                 (carry_2 + rs1_next_3 * rs2_next_0 + rs1_next_2 * rs2_next_1
                     + rs1_next_1 * rs2_next_2 + rs1_next_0 * rs2_next_3 - rd_next_3)
                     * inv(pow2(8)),
+        },
+        lookups: {
+            // Quadratic carry denominators: every fraction must stay in a
+            // singleton batch to hold the constraint degree bound.
+            batch: 1,
+            // Program access (R-type): Program(pc, MUL, rd_idx, rs1_idx, rs2_idx)
+            program_access: -enabler =>
+                [pc, constant(crate::decode::Opcode::Mul as u32), rd_addr, rs1_addr, rs2_addr],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // Multiplication carries are bytes; rd limbs are bytes.
+            preprocessed range_check_8_8: -enabler => [carry_0, carry_1],
+            preprocessed range_check_8_8: -enabler => [carry_2, carry_3],
+            preprocessed range_check_8_8: -enabler => [rd_next_0, rd_next_1],
+            preprocessed range_check_8_8: -enabler => [rd_next_2, rd_next_3],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 
@@ -982,6 +1321,42 @@ stwo_macros::define_trace_tables! {
             |opcode_mulhsu_flag, opcode_mulhu_flag, rs2_sign|
                 (opcode_mulhsu_flag + opcode_mulhu_flag) * rs2_sign,
             |opcode_mulhu_flag, rs1_sign| opcode_mulhu_flag * rs1_sign,
+        },
+        lookups: {
+            // Quadratic carry denominators: every fraction must stay in a
+            // singleton batch to hold the constraint degree bound.
+            batch: 1,
+            // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // 64-bit product carries and both result halves are bytes.
+            preprocessed range_check_8_8: -enabler => [carry_0, carry_1],
+            preprocessed range_check_8_8: -enabler => [carry_2, carry_3],
+            preprocessed range_check_8_8: -enabler => [carry_4, carry_5],
+            preprocessed range_check_8_8: -enabler => [carry_6, carry_7],
+            preprocessed range_check_8_8: -enabler => [rd_high_0, rd_high_1],
+            preprocessed range_check_8_8: -enabler => [rd_high_2, rd_high_3],
+            preprocessed range_check_8_8: -enabler => [rd_next_0, rd_next_1],
+            preprocessed range_check_8_8: -enabler => [rd_next_2, rd_next_3],
+            // Write rd.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler =>
+                [0, rd_addr, clock, rd_next_0, rd_next_1, rd_next_2, rd_next_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 
@@ -1120,6 +1495,37 @@ stwo_macros::define_trace_tables! {
             |enabler, lt_marker_0, lt_diff, diff_0|
                 enabler * lt_marker_0 * (lt_diff - diff_0),
             |enabler, prefix_0| enabler * (1 - prefix_0),
+        },
+        lookups: {
+            // Program access (R-type): Program(pc, opcode, rd_idx, rs1_idx, rs2_idx)
+            program_access: -enabler => [pc, expected_opcode_id, rd_addr, rs1_addr, rs2_addr],
+            registers_state: -enabler => [pc, clock],
+            registers_state: enabler => [pc_next, clock_next],
+            // Read rs1 (REG_AS = 0).
+            memory_access: -enabler =>
+                [0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3],
+            memory_access: enabler =>
+                [0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3],
+            preprocessed range_check_20: -enabler => [rs1_clock_diff],
+            // Read rs2.
+            memory_access: -enabler =>
+                [0, rs2_addr, rs2_clock_prev, rs2_prev_0, rs2_prev_1, rs2_prev_2, rs2_prev_3],
+            memory_access: enabler =>
+                [0, rs2_addr, clock, rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3],
+            preprocessed range_check_20: -enabler => [rs2_clock_diff],
+            // Quotient and remainder limbs are bytes.
+            preprocessed range_check_8_8: -enabler => [q_0, q_1],
+            preprocessed range_check_8_8: -enabler => [q_2, q_3],
+            preprocessed range_check_8_8: -enabler => [r_0, r_1],
+            preprocessed range_check_8_8: -enabler => [r_2, r_3],
+            // |r| < |c| on regular divisions: the comparison scan difference
+            // is > 0.
+            preprocessed range_check_20: -valid_not_special => [lt_diff_minus_1],
+            // Write rd := the division result under the special-case rules.
+            memory_access: -enabler =>
+                [0, rd_addr, rd_clock_prev, rd_prev_0, rd_prev_1, rd_prev_2, rd_prev_3],
+            memory_access: enabler => [0, rd_addr, clock, a_0, a_1, a_2, a_3],
+            preprocessed range_check_20: -enabler => [rd_clock_diff],
         },
     },
 

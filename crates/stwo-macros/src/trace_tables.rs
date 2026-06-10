@@ -9,7 +9,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, parse_macro_input};
+use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, bracketed, parse_macro_input};
 
 // =============================================================================
 // define_trace_tables! proc-macro
@@ -36,13 +36,84 @@ impl Parse for DerivedDef {
     }
 }
 
+/// One LogUp lookup entry:
+/// `relation_name: multiplicity_expr => [elem_expr, ...]`,
+/// optionally prefixed with `preprocessed` when the relation is a
+/// preprocessed table whose consumption multiplicities must be registered.
+///
+/// Multiplicity and element expressions use the derived-expression language
+/// with every trace column and derived column in scope (the tuple itself
+/// lists what the entry reads, so closure parameters would be redundant).
+struct LookupEntry {
+    preprocessed: bool,
+    relation: Ident,
+    multiplicity: Expr,
+    values: Vec<Expr>,
+}
+
+/// The `lookups:` block of a table: LogUp entries in AIR/witness order plus
+/// the finalization batch size (2 = pairs, the framework default; 1 for
+/// tables whose quadratic denominators must stay in singleton batches).
+struct LookupsDef {
+    batch: usize,
+    entries: Vec<LookupEntry>,
+}
+
+impl Default for LookupsDef {
+    fn default() -> Self {
+        LookupsDef {
+            batch: 2,
+            entries: Vec::new(),
+        }
+    }
+}
+
+fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
+    let mut lookups = LookupsDef::default();
+    while !input.is_empty() {
+        let first: Ident = input.parse()?;
+        if first == "batch" {
+            input.parse::<Token![:]>()?;
+            let lit: syn::LitInt = input.parse()?;
+            lookups.batch = lit.base10_parse()?;
+            if lookups.batch == 0 {
+                return Err(syn::Error::new(lit.span(), "batch size must be positive"));
+            }
+        } else {
+            let (preprocessed, relation) = if first == "preprocessed" {
+                (true, input.parse::<Ident>()?)
+            } else {
+                (false, first)
+            };
+            input.parse::<Token![:]>()?;
+            let multiplicity: Expr = input.parse()?;
+            input.parse::<Token![=>]>()?;
+            let content;
+            bracketed!(content in input);
+            let values: Punctuated<Expr, Token![,]> =
+                content.parse_terminated(Expr::parse, Token![,])?;
+            lookups.entries.push(LookupEntry {
+                preprocessed,
+                relation,
+                multiplicity,
+                values: values.into_iter().collect(),
+            });
+        }
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        }
+    }
+    Ok(lookups)
+}
+
 /// A single opcode definition:
-/// `name: { field1, field2, ..., derived: { ... }, constraints: { ... } }`
+/// `name: { field1, field2, ..., derived: { ... }, constraints: { ... }, lookups: { ... } }`
 struct OpcodeDef {
     name: Ident,
     fields: Vec<Ident>,
     derived: Vec<DerivedDef>,
     constraints: Vec<ExprClosure>,
+    lookups: LookupsDef,
 }
 
 impl Parse for OpcodeDef {
@@ -55,11 +126,13 @@ impl Parse for OpcodeDef {
         let mut fields = Vec::new();
         let mut derived = Vec::new();
         let mut constraints = Vec::new();
+        let mut lookups = LookupsDef::default();
 
         while !content.is_empty() {
             let ident: Ident = content.parse()?;
-            // `derived:`/`constraints:` are keywords only when followed by a
-            // colon; plain column names are never followed by one.
+            // `derived:`/`constraints:`/`lookups:` are keywords only when
+            // followed by a colon; plain column names are never followed by
+            // one.
             if content.peek(Token![:]) {
                 content.parse::<Token![:]>()?;
                 let block;
@@ -75,10 +148,16 @@ impl Parse for OpcodeDef {
                             block.parse_terminated(ExprClosure::parse, Token![,])?;
                         constraints.extend(defs);
                     }
+                    "lookups" => {
+                        let parsed = block.call(parse_lookups)?;
+                        lookups = parsed;
+                    }
                     other => {
                         return Err(syn::Error::new(
                             ident.span(),
-                            format!("unknown block `{other}`, expected `derived` or `constraints`"),
+                            format!(
+                                "unknown block `{other}`, expected `derived`, `constraints`, or `lookups`"
+                            ),
                         ));
                     }
                 }
@@ -95,6 +174,7 @@ impl Parse for OpcodeDef {
             fields,
             derived,
             constraints,
+            lookups,
         })
     }
 }
@@ -804,6 +884,44 @@ fn generate_expr_impl(
         constraint_exprs.push(compile_closure(closure, flat_fields, &derived_names)?);
     }
 
+    // Lookup entries: multiplicity and tuple expressions over the full column
+    // scope (every trace column and derived column — the tuple itself lists
+    // what the entry reads, so no closure parameters).
+    let lookup_method = if opcode.lookups.entries.is_empty() {
+        quote! {}
+    } else {
+        let mut scope: HashMap<String, ParamKind> = HashMap::new();
+        for column in flat_fields {
+            scope.insert(column.to_string(), ParamKind::RawColumn);
+        }
+        for derived in &derived_names {
+            scope.insert(derived.to_string(), ParamKind::Derived);
+        }
+        let mut entry_exprs: Vec<proc_macro2::TokenStream> = Vec::new();
+        for entry in &opcode.lookups.entries {
+            let multiplicity = rewrite_expr(&entry.multiplicity, &scope)?;
+            let values = entry
+                .values
+                .iter()
+                .map(|value| rewrite_expr(value, &scope))
+                .collect::<syn::Result<Vec<_>>>()?;
+            entry_exprs.push(quote! {
+                (#multiplicity, vec![#(#values),*])
+            });
+        }
+        quote! {
+            /// LogUp lookup entries declared in `define_trace_tables!`:
+            /// `(multiplicity, tuple values)` in declaration order — the
+            /// single source for the AIR relation entries, the interaction
+            /// trace, and the preprocessed multiplicity registration.
+            pub fn lookup_entries(&self) -> Vec<(T, Vec<T>)> {
+                vec![
+                    #(#entry_exprs),*
+                ]
+            }
+        }
+    };
+
     Ok(quote! {
         impl<T> #struct_name<T>
         where
@@ -825,8 +943,244 @@ fn generate_expr_impl(
                     #(#constraint_exprs),*
                 ]
             }
+
+            #lookup_method
         }
     })
+}
+
+/// Generate the three exported lookup macros of a table with a `lookups:`
+/// block:
+/// - `<table>_lookups!(eval, cols, relations)` — the AIR side: one
+///   `add_to_relation` per entry plus the batched LogUp finalization.
+/// - `<table>_interaction!(trace, relations)` — the witness side: the full
+///   interaction-trace generation, entries paired exactly as the AIR
+///   finalization batches them; evaluates to `(columns, claimed_sum)`.
+/// - `<table>_register_multiplicities!(trace, counters)` — registers the
+///   consumption multiplicities of every `preprocessed`-marked entry.
+///
+/// The macros bake the relation field names; the `relations`/`counters`
+/// arguments are the structs holding those fields, so the relation
+/// definitions stay in the `relations!` invocation. The column struct ident
+/// resolves at the call site (callers import it alongside the macro).
+fn generate_lookup_macros(opcode: &OpcodeDef, include_enabler: bool) -> proc_macro2::TokenStream {
+    if opcode.lookups.entries.is_empty() {
+        return quote! {};
+    }
+    let columns_struct = column_struct_name(&opcode.name);
+    let lookups_macro = format_ident!("{}_lookups", opcode.name);
+    let interaction_macro = format_ident!("{}_interaction", opcode.name);
+    let register_macro = format_ident!("{}_register_multiplicities", opcode.name);
+    let batch = opcode.lookups.batch;
+    let n_entries = opcode.lookups.entries.len();
+
+    // First flattened column, used for the SIMD length.
+    let first_column = if include_enabler {
+        format_ident!("enabler")
+    } else {
+        let first = &opcode.fields[0];
+        if is_access_field(&first.to_string()) {
+            format_ident!("{}_addr", first)
+        } else {
+            first.clone()
+        }
+    };
+
+    // AIR side: relation entries in declaration order, then finalization.
+    let air_entries: Vec<_> = opcode
+        .lookups
+        .entries
+        .iter()
+        .map(|entry| {
+            let relation = &entry.relation;
+            quote! {
+                {
+                    let (multiplicity, values) = entries.next().expect("lookup entry");
+                    $eval.add_to_relation(stwo_constraint_framework::RelationEntry::new(
+                        &$relations.#relation,
+                        multiplicity.into(),
+                        &values,
+                    ));
+                }
+            }
+        })
+        .collect();
+    let finalize = if batch == 2 {
+        quote! { $eval.finalize_logup_in_pairs(); }
+    } else {
+        quote! { $eval.finalize_logup_batched(#batch); }
+    };
+
+    // Witness side: per-row entry evaluation through the same
+    // `lookup_entries()` (via `at(i)`), then fraction columns batched exactly
+    // as the AIR finalization pairs them.
+    let witness_entry_stmts: Vec<_> = opcode
+        .lookups
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let relation = &entry.relation;
+            quote! {
+                {
+                    let (multiplicity, values) = &entries[#index];
+                    numerators[#index].push(
+                        stwo::prover::backend::simd::qm31::PackedQM31::from(*multiplicity),
+                    );
+                    denominators[#index].push(stwo_constraint_framework::Relation::combine(
+                        &$relations.#relation,
+                        values,
+                    ));
+                }
+            }
+        })
+        .collect();
+    let mut write_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut index = 0usize;
+    while index < n_entries {
+        if batch >= 2 && index + 1 < n_entries {
+            let (first, second) = (index, index + 1);
+            write_stmts.push(quote! {
+                {
+                    let mut col = logup_gen.new_col();
+                    for (vec_row, (((n0, d0), n1), d1)) in numerators[#first]
+                        .iter()
+                        .zip(denominators[#first].iter())
+                        .zip(numerators[#second].iter())
+                        .zip(denominators[#second].iter())
+                        .enumerate()
+                    {
+                        col.write_frac(vec_row, *n0 * *d1 + *n1 * *d0, *d0 * *d1);
+                    }
+                    col.finalize_col();
+                }
+            });
+            index += 2;
+        } else {
+            write_stmts.push(quote! {
+                {
+                    let mut col = logup_gen.new_col();
+                    for (vec_row, (n, d)) in numerators[#index]
+                        .iter()
+                        .zip(denominators[#index].iter())
+                        .enumerate()
+                    {
+                        col.write_frac(vec_row, *n, *d);
+                    }
+                    col.finalize_col();
+                }
+            });
+            index += 1;
+        }
+    }
+
+    // Preprocessed multiplicity registration for the marked entries.
+    let marked: Vec<(usize, &LookupEntry)> = opcode
+        .lookups
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.preprocessed)
+        .collect();
+    let register_body = if marked.is_empty() {
+        quote! {
+            let _ = $trace;
+            let _ = $counters;
+        }
+    } else {
+        let collect_stmts: Vec<_> = marked
+            .iter()
+            .enumerate()
+            .map(|(slot, (entry_index, entry))| {
+                let n_values = entry.values.len();
+                quote! {
+                    {
+                        let (multiplicity, values) = &entries[#entry_index];
+                        multiplicities[#slot].push(*multiplicity);
+                        debug_assert_eq!(values.len(), #n_values);
+                        for (element, value) in elements[#slot].iter_mut().zip(values.iter()) {
+                            element.push(*value);
+                        }
+                    }
+                }
+            })
+            .collect();
+        let element_inits: Vec<_> = marked
+            .iter()
+            .map(|(_, entry)| {
+                let n_values = entry.values.len();
+                quote! { vec![Vec::with_capacity(simd_size); #n_values] }
+            })
+            .collect();
+        let register_stmts: Vec<_> = marked
+            .iter()
+            .enumerate()
+            .map(|(slot, (_, entry))| {
+                let relation = &entry.relation;
+                quote! {
+                    $counters.#relation.register_many(
+                        &multiplicities[#slot],
+                        &elements[#slot]
+                            .iter()
+                            .map(|column| column.as_slice())
+                            .collect::<Vec<_>>(),
+                    );
+                }
+            })
+            .collect();
+        let n_marked = marked.len();
+        quote! {
+            let cols = #columns_struct::from_iter($trace.iter().map(|eval| &eval.values.data));
+            let simd_size = cols.#first_column.len();
+            let mut multiplicities: Vec<Vec<stwo::prover::backend::simd::m31::PackedM31>> =
+                vec![Vec::with_capacity(simd_size); #n_marked];
+            let mut elements: Vec<Vec<Vec<stwo::prover::backend::simd::m31::PackedM31>>> =
+                vec![#(#element_inits),*];
+            for i in 0..simd_size {
+                let entries = cols.at(i).lookup_entries();
+                #(#collect_stmts)*
+            }
+            #(#register_stmts)*
+        }
+    };
+
+    quote! {
+        #[macro_export]
+        macro_rules! #lookups_macro {
+            ($eval:expr, $cols:expr, $relations:expr) => {{
+                let mut entries = $cols.lookup_entries().into_iter();
+                #(#air_entries)*
+                #finalize
+            }};
+        }
+
+        #[macro_export]
+        macro_rules! #interaction_macro {
+            ($trace:expr, $relations:expr) => {{
+                let cols = #columns_struct::from_iter($trace.iter().map(|eval| &eval.values.data));
+                let simd_size = cols.#first_column.len();
+                let log_size = $trace[0].domain.log_size();
+                let mut logup_gen = stwo_constraint_framework::LogupTraceGenerator::new(log_size);
+                let mut numerators: Vec<Vec<stwo::prover::backend::simd::qm31::PackedQM31>> =
+                    vec![Vec::with_capacity(simd_size); #n_entries];
+                let mut denominators: Vec<Vec<stwo::prover::backend::simd::qm31::PackedQM31>> =
+                    vec![Vec::with_capacity(simd_size); #n_entries];
+                for i in 0..simd_size {
+                    let entries = cols.at(i).lookup_entries();
+                    #(#witness_entry_stmts)*
+                }
+                #(#write_stmts)*
+                logup_gen.finalize_last()
+            }};
+        }
+
+        #[macro_export]
+        macro_rules! #register_macro {
+            ($trace:expr, $counters:expr) => {{
+                #register_body
+            }};
+        }
+    }
 }
 
 /// Generate the `at(i)` row extractor: turns a columns-of-vectors view (as
@@ -1433,6 +1787,11 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
         .iter()
         .map(|op| generate_prover_columns(op).unwrap_or_else(|e| e.to_compile_error()))
         .collect();
+    let lookup_macros: Vec<_> = def
+        .opcodes
+        .iter()
+        .map(|op| generate_lookup_macros(op, count_opcode_flags(&op.fields) == 0))
+        .collect();
 
     let output = quote! {
         #(#tables)*
@@ -1444,6 +1803,8 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
 
             #(#prover_columns)*
         }
+
+        #(#lookup_macros)*
     };
 
     output.into()
@@ -1489,6 +1850,11 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
         .iter()
         .map(|op| generate_prover_columns(op).unwrap_or_else(|e| e.to_compile_error()))
         .collect();
+    let lookup_macros: Vec<_> = def
+        .opcodes
+        .iter()
+        .map(|op| generate_lookup_macros(op, count_opcode_flags(&op.fields) == 0))
+        .collect();
     let mem_clock_update_columns = generate_clock_update_columns("Mem");
     let reg_clock_update_columns = generate_clock_update_columns("Reg");
 
@@ -1508,6 +1874,8 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
             #mem_clock_update_columns
             #reg_clock_update_columns
         }
+
+        #(#lookup_macros)*
     };
 
     output.into()

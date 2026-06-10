@@ -1,6 +1,5 @@
 //! AIR component for Branch Equal (beq/bne) - airs.md Section 7
 
-use num_traits::Zero;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 use crate::relations::Relations;
@@ -26,124 +25,11 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = BranchEqColumns::from_eval(&mut eval);
 
-        // Section 7.2: Variables
-        // Section 7.2/7.3: derived columns and constraints, declared in
-        // define_trace_tables!
-        let enabler = cols.enabler();
-        let expected_opcode_id = cols.expected_opcode_id();
-
-        // REG_AS = 0 for register address space
-        let reg_as = E::F::zero();
-
+        // Constraints and LogUp entries both come from define_trace_tables!.
         for constraint in cols.constraints() {
             eval.add_constraint(constraint);
         }
-
-        // =====================================================================
-        // LogUp Relations (Section 7.3 from airs.md)
-        // =====================================================================
-
-        // Program access (B-type): - enabler * Program(pc, expected_opcode_id, rs1_idx, rs2_idx, imm_felt)
-        add_to_relation!(
-            eval,
-            self.relations.program_access,
-            -enabler.clone(),
-            cols.pc,
-            expected_opcode_id.clone(),
-            cols.rs1_addr,
-            cols.rs2_addr,
-            cols.imm_felt
-        );
-
-        // Read from rs1
-        // - enabler * Memory(REG_AS, rs1_idx, rs1_prev_clock, rs1[0..3])
-        add_to_relation!(
-            eval,
-            self.relations.memory_access,
-            -enabler.clone(),
-            reg_as.clone(),
-            cols.rs1_addr,
-            cols.rs1_clock_prev,
-            cols.rs1_prev_0,
-            cols.rs1_prev_1,
-            cols.rs1_prev_2,
-            cols.rs1_prev_3
-        );
-        // + enabler * Memory(REG_AS, rs1_idx, clock, rs1[0..3])
-        add_to_relation!(
-            eval,
-            self.relations.memory_access,
-            enabler.clone(),
-            reg_as.clone(),
-            cols.rs1_addr,
-            cols.clock,
-            cols.rs1_next_0,
-            cols.rs1_next_1,
-            cols.rs1_next_2,
-            cols.rs1_next_3
-        );
-        // - RC_20(clock - rs1_prev_clock)
-        add_to_relation!(
-            eval,
-            self.relations.range_check_20,
-            -enabler.clone(),
-            cols.rs1_clock_diff()
-        );
-
-        // Read from rs2
-        // - enabler * Memory(REG_AS, rs2_idx, rs2_prev_clock, rs2[0..3])
-        add_to_relation!(
-            eval,
-            self.relations.memory_access,
-            -enabler.clone(),
-            reg_as.clone(),
-            cols.rs2_addr,
-            cols.rs2_clock_prev,
-            cols.rs2_prev_0,
-            cols.rs2_prev_1,
-            cols.rs2_prev_2,
-            cols.rs2_prev_3
-        );
-        // + enabler * Memory(REG_AS, rs2_idx, clock, rs2[0..3])
-        add_to_relation!(
-            eval,
-            self.relations.memory_access,
-            enabler.clone(),
-            reg_as.clone(),
-            cols.rs2_addr,
-            cols.clock,
-            cols.rs2_next_0,
-            cols.rs2_next_1,
-            cols.rs2_next_2,
-            cols.rs2_next_3
-        );
-        // - RC_20(clock - rs2_prev_clock)
-        add_to_relation!(
-            eval,
-            self.relations.range_check_20,
-            -enabler.clone(),
-            cols.rs2_clock_diff()
-        );
-
-        // Register state transition (conditional branch)
-        // - enabler * Registers(pc, clock)
-        add_to_relation!(
-            eval,
-            self.relations.registers_state,
-            -enabler.clone(),
-            cols.pc,
-            cols.clock
-        );
-        // + enabler * Registers(to_pc, clock + 1)
-        add_to_relation!(
-            eval,
-            self.relations.registers_state,
-            enabler.clone(),
-            cols.to_pc(),
-            cols.clock_next()
-        );
-
-        eval.finalize_logup_in_pairs();
+        runner::branch_eq_lookups!(eval, cols, self.relations);
         eval
     }
 }
