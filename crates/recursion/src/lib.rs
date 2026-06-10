@@ -8,6 +8,7 @@
 
 pub mod circle_double;
 pub mod fri_fold;
+pub mod logup_sum;
 pub mod prover;
 pub mod qm31_inv;
 pub mod qm31_mul;
@@ -127,6 +128,15 @@ define_component_tables! {
             |p_x_0, p_x_1, p_x_2, p_x_3, p_y_0, p_y_1, p_y_2, p_y_3, r_y_3|
                 2 * (p_x_0 * p_y_3 + p_x_1 * p_y_2 + p_x_2 * p_y_1 + p_x_3 * p_y_0) - r_y_3,
         },
+    },
+
+    // LogUp sum of inverses: each row contributes enabler / term to the
+    // component's claimed sum, the in-AIR form of the verifier's LogUp-sum
+    // check. The fraction lives in the interaction trace; this table only
+    // carries the term limbs (fraction emission is not a polynomial
+    // constraint, see logup_sum.rs).
+    logup_sum: {
+        term_0, term_1, term_2, term_3,
     },
 
     // QM31 inverse: inv = a^-1, asserted as a * inv = 1 with the same limb
