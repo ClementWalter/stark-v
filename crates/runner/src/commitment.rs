@@ -167,7 +167,7 @@ fn default_hashes(leaf_depth: u32) -> Vec<u32> {
     for depth in (0..leaf_depth).rev() {
         let child = defaults[(depth + 1) as usize];
         let row = poseidon2_traced(child, child);
-        defaults[depth as usize] = row[POSEIDON2_TRACE_COLUMNS - T];
+        defaults[depth as usize] = row[crate::poseidon2::POSEIDON2_FINAL_STATE_START];
     }
     defaults
 }
@@ -216,7 +216,7 @@ pub fn build_partial_merkle_tree(
             let row = poseidon2_traced(left.value, right.value);
             poseidon2.push_row(&row);
 
-            let cur_hash = row[POSEIDON2_TRACE_COLUMNS - T];
+            let cur_hash = row[crate::poseidon2::POSEIDON2_FINAL_STATE_START];
             let cur = MerkleValue::new(cur_hash, 1);
 
             nodes.push(NodeData {

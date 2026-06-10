@@ -127,7 +127,30 @@ impl FrameworkEval for Eval {
             initial_state[14].clone(),
             initial_state[15].clone()
         );
-        add_to_relation!(eval, self.relations.poseidon2, enabler, state[0].clone());
+        // Digest emission: the 1-word output anchors memory-tree nodes, the
+        // 8-word output anchors proof-tree nodes; `wide` selects which one
+        // this row provides.
+        let wide = eval.next_trace_mask();
+        eval.add_constraint(wide.clone() * (E::F::one() - wide.clone()));
+        add_to_relation!(
+            eval,
+            self.relations.poseidon2,
+            enabler.clone() * (E::F::one() - wide.clone()),
+            state[0].clone()
+        );
+        add_to_relation!(
+            eval,
+            self.relations.poseidon2,
+            enabler * wide,
+            state[0].clone(),
+            state[1].clone(),
+            state[2].clone(),
+            state[3].clone(),
+            state[4].clone(),
+            state[5].clone(),
+            state[6].clone(),
+            state[7].clone()
+        );
         eval.finalize_logup_in_pairs();
         eval
     }

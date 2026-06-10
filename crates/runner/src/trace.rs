@@ -331,7 +331,7 @@ stwo_macros::define_trace_tables! {
         full7_sq2_10, full7_sq2_11, full7_sq2_12, full7_sq2_13, full7_sq2_14, full7_sq2_15,
         full7_mix_0, full7_mix_1, full7_mix_2, full7_mix_3, full7_mix_4, full7_mix_5, full7_mix_6,
         full7_mix_7, full7_mix_8, full7_mix_9, full7_mix_10, full7_mix_11, full7_mix_12,
-        full7_mix_13, full7_mix_14, full7_mix_15,
+        full7_mix_13, full7_mix_14, full7_mix_15, wide,
     },
 }
 

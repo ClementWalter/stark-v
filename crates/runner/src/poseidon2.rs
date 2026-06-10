@@ -11,7 +11,12 @@ pub const T: usize = 16;
 const FULL_ROUNDS: usize = 8;
 const PARTIAL_ROUNDS: usize = 14;
 
-pub const POSEIDON2_TRACE_COLUMNS: usize = 1 + T * (1 + FULL_ROUNDS * 3) + PARTIAL_ROUNDS * 3;
+// enabler + initial state + per-round intermediate states + the `wide` flag
+// selecting the 8-word digest emission (proof trees) over the 1-word one
+// (memory trees).
+pub const POSEIDON2_TRACE_COLUMNS: usize = 1 + T * (1 + FULL_ROUNDS * 3) + PARTIAL_ROUNDS * 3 + 1;
+/// Index of the first final-state word within a trace row.
+pub const POSEIDON2_FINAL_STATE_START: usize = POSEIDON2_TRACE_COLUMNS - T - 1;
 
 const EXTERNAL_ROUND_CONSTS: [[u32; 16]; 8] = [
     [
@@ -177,15 +182,27 @@ pub fn poseidon2_permutation(state: &mut [u32; T]) {
 }
 
 pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS] {
+    let mut state = [0u32; T];
+    state[0] = M31::from(left).0;
+    state[1] = M31::from(right).0;
+    poseidon2_traced_state(state, false)
+}
+
+/// Trace one permutation of an arbitrary initial state.
+///
+/// `wide` selects the 8-word digest emission in the Poseidon2 component
+/// (proof commitment trees) instead of the 1-word one (memory trees).
+pub fn poseidon2_traced_state(
+    initial_state: [u32; T],
+    wide: bool,
+) -> [u32; POSEIDON2_TRACE_COLUMNS] {
     let mut row = [0u32; POSEIDON2_TRACE_COLUMNS];
     let mut idx = 0usize;
 
     row[idx] = 1;
     idx += 1;
 
-    let mut state = [0u32; T];
-    state[0] = M31::from(left).0;
-    state[1] = M31::from(right).0;
+    let mut state = initial_state;
 
     for value in state.iter() {
         row[idx] = *value;
@@ -259,6 +276,9 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
         }
     }
 
+    row[idx] = wide as u32;
+    idx += 1;
+
     debug_assert_eq!(idx, POSEIDON2_TRACE_COLUMNS);
     row
 }
@@ -276,6 +296,9 @@ mod permutation_tests {
         state[0] = 123456789;
         state[1] = 987654321;
         poseidon2_permutation(&mut state);
-        assert_eq!(state, row[POSEIDON2_TRACE_COLUMNS - T..]);
+        assert_eq!(
+            state,
+            row[POSEIDON2_FINAL_STATE_START..POSEIDON2_FINAL_STATE_START + T]
+        );
     }
 }
