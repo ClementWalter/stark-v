@@ -54,6 +54,7 @@ pub struct RecursionTraces {
 
 /// Proof of the recursion AIR plus the public claim (per-component sizes
 /// and the LogUp claimed sum).
+#[derive(Clone)]
 pub struct RecursionProof<H: MerkleHasherLifted> {
     /// Log sizes of (qm31_mul, qm31_inv, fri_fold_line, circle_double,
     /// logup_sum, merkle_path, channel_replay, linear_ops, poseidon2).
@@ -71,6 +72,9 @@ pub struct RecursionProof<H: MerkleHasherLifted> {
     pub circuit_claimed_sums: [SecureField; 3],
     /// Merkle roots the decommitment paths anchor to.
     pub roots: Vec<RootClaim>,
+    /// Leaf digests the decommitment paths terminate at (recomputed by the
+    /// verifier from the public queried values).
+    pub leaves: Vec<LeafClaim>,
     /// Replayed Fiat-Shamir transcripts (public absorbed data).
     pub channels: Vec<ChannelClaim>,
     /// Lowered composition circuits (public inputs and outputs).
@@ -160,7 +164,7 @@ fn public_channel_terms(
 
 /// A public root anchor: `n_paths` decommitment paths of tree `tree_id`
 /// terminate at `root`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RootClaim {
     pub tree_id: u32,
     pub root: [u32; 8],
@@ -173,6 +177,49 @@ fn mix_roots<C: Channel>(channel: &mut C, roots: &[RootClaim]) {
         channel.mix_u32s(&[root.tree_id, root.n_paths]);
         channel.mix_u32s(&root.root);
     }
+}
+
+/// A public leaf anchor: one decommitment path of tree `tree_id` terminates
+/// at node `(depth, index)` with digest `digest`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafClaim {
+    pub tree_id: u32,
+    pub depth: u32,
+    pub index: u32,
+    pub digest: [u32; 8],
+}
+
+fn mix_leaves<C: Channel>(channel: &mut C, leaves: &[LeafClaim]) {
+    channel.mix_u32s(&[leaves.len() as u32]);
+    for leaf in leaves {
+        channel.mix_u32s(&[leaf.tree_id, leaf.depth, leaf.index]);
+        channel.mix_u32s(&leaf.digest);
+    }
+}
+
+/// The LogUp contribution of the public leaf anchors: each path's bottom row
+/// emits its leaf-level node claim, so the public side consumes it.
+fn public_leaf_terms(
+    leaves: &[LeafClaim],
+    recursion_relations: &RecursionRelations,
+) -> SecureField {
+    use stwo::core::fields::FieldExpOps;
+    use stwo::core::fields::m31::M31;
+    use stwo_constraint_framework::Relation;
+
+    let mut total = SecureField::zero();
+    for leaf in leaves {
+        let mut tuple = [M31::from(0u32); 11];
+        tuple[0] = M31::from(leaf.tree_id);
+        tuple[1] = M31::from(leaf.depth);
+        tuple[2] = M31::from(leaf.index);
+        for (slot, &word) in tuple[3..].iter_mut().zip(leaf.digest.iter()) {
+            *slot = M31::from(word);
+        }
+        let denom: SecureField = recursion_relations.merkle_node.combine(&tuple);
+        total -= denom.inverse();
+    }
+    total
 }
 
 /// The LogUp contribution of the public root anchors: each path's top row
@@ -319,11 +366,14 @@ fn components(
 pub fn prove_recursion(
     traces: RecursionTraces,
     roots: Vec<RootClaim>,
+    leaves: Vec<LeafClaim>,
     channels: Vec<ChannelClaim>,
     circuits: Vec<CircuitClaim>,
     config: PcsConfig,
 ) -> RecursionProof<<Blake2sMerkleChannel as MerkleChannel>::H> {
-    prove_recursion_with_channel::<Blake2sMerkleChannel>(traces, roots, channels, circuits, config)
+    prove_recursion_with_channel::<Blake2sMerkleChannel>(
+        traces, roots, leaves, channels, circuits, config,
+    )
 }
 
 /// Verify a recursion AIR proof (Blake2s channel).
@@ -341,6 +391,7 @@ pub fn verify_recursion(
 pub fn prove_recursion_with_channel<MC: MerkleChannel>(
     traces: RecursionTraces,
     roots: Vec<RootClaim>,
+    leaves: Vec<LeafClaim>,
     channels: Vec<ChannelClaim>,
     circuits: Vec<CircuitClaim>,
     config: PcsConfig,
@@ -397,6 +448,7 @@ where
 
     channel.mix_u32s(&log_sizes);
     mix_roots(channel, &roots);
+    mix_leaves(channel, &leaves);
     mix_channels(channel, &channels);
     mix_circuits(channel, &circuits);
 
@@ -492,6 +544,7 @@ where
         poseidon2_claimed_sum,
         circuit_claimed_sums: [mul_claimed_sum, inv_claimed_sum, linear_claimed_sum],
         roots,
+        leaves,
         channels,
         circuits,
         stark_proof,
@@ -530,6 +583,7 @@ pub fn verify_recursion_with_channel<MC: MerkleChannel>(
     commitment_scheme.commit(commitments[0], &[], channel);
     channel.mix_u32s(&proof.log_sizes);
     mix_roots(channel, &proof.roots);
+    mix_leaves(channel, &proof.leaves);
     mix_channels(channel, &proof.channels);
     mix_circuits(channel, &proof.circuits);
     commitment_scheme.commit(commitments[1], &column_log_sizes(&proof.log_sizes), channel);
@@ -546,6 +600,7 @@ pub fn verify_recursion_with_channel<MC: MerkleChannel>(
         + proof.circuit_claimed_sums[1]
         + proof.circuit_claimed_sums[2]
         + public_root_terms(&proof.roots, &recursion_relations)
+        + public_leaf_terms(&proof.leaves, &recursion_relations)
         + public_channel_terms(&proof.channels, &recursion_relations);
     for (claim, (arena, output)) in proof.circuits.iter().zip(circuit_arenas) {
         total += public_circuit_terms(claim, &arena.borrow(), *output, &recursion_relations);
@@ -716,14 +771,28 @@ mod tests {
     #[test]
     fn test_recursion_air_prove_verify_roundtrip() {
         let (traces, _, roots, channels) = random_traces(0, 50);
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         verify_recursion(proof, &[], PcsConfig::default()).expect("verification failed");
     }
 
     #[test]
     fn test_recursion_air_rejects_tampered_claim() {
         let (traces, _, roots, channels) = random_traces(1, 50);
-        let mut proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let mut proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         // Lying about a component size breaks the channel binding.
         proof.log_sizes[0] += 1;
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
@@ -732,7 +801,14 @@ mod tests {
     #[test]
     fn test_recursion_air_claimed_sum_is_sum_of_inverses() {
         let (traces, terms, roots, channels) = random_traces(2, 50);
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         assert_eq!(proof.claimed_sum, crate::logup_sum::expected_sum(&terms));
     }
 
@@ -743,6 +819,7 @@ mod tests {
         let proof = prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(
             traces,
             roots,
+            vec![],
             channels,
             vec![],
             PcsConfig::default(),
@@ -758,7 +835,14 @@ mod tests {
     #[test]
     fn test_recursion_air_merkle_and_poseidon2_sums_cancel() {
         let (traces, _, roots, channels) = random_traces(5, 20);
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         // Hash claims cancel between merkle_path and poseidon2; the node
         // claims cancel against the public root terms checked in verify.
         verify_recursion(proof, &[], PcsConfig::default()).expect("verification failed");
@@ -770,7 +854,14 @@ mod tests {
         // Corrupt one parent limb: the merkle_path row now consumes a tuple
         // no permutation row emits, and its node claim no longer anchors.
         traces.merkle_path.parent_0[0] += 1;
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
     }
 
@@ -778,7 +869,14 @@ mod tests {
     fn test_recursion_air_rejects_wrong_root_claim() {
         let (traces, _, mut roots, channels) = random_traces(7, 20);
         roots[0].root[0] += 1;
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
     }
 
@@ -788,7 +886,14 @@ mod tests {
         // Corrupt an index: the child claim emitted above no longer matches
         // the claim this row consumes.
         traces.merkle_path.index[0] += 1;
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
     }
 
@@ -797,7 +902,14 @@ mod tests {
         let (traces, _, roots, mut channels) = random_traces(9, 20);
         // The public transcript no longer matches the absorbed witness data.
         channels[0].chunks[1][0] += 1;
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
     }
 
@@ -806,7 +918,14 @@ mod tests {
         let (mut traces, _, roots, channels) = random_traces(10, 20);
         // Corrupt a carried capacity word: the chained state claim breaks.
         traces.channel_replay.prev_15[1] += 1;
-        let proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
     }
 
@@ -856,6 +975,7 @@ mod tests {
         let proof = prove_recursion(
             traces,
             roots,
+            vec![],
             channels,
             vec![claim.clone()],
             PcsConfig::default(),
@@ -915,6 +1035,7 @@ mod tests {
         let proof = prove_recursion(
             traces,
             roots,
+            vec![],
             channels,
             vec![claim.clone()],
             PcsConfig::default(),
@@ -961,14 +1082,21 @@ mod tests {
 
         // And the session is provable in the recursion AIR.
         let claims = session.claims.clone();
-        let proof = prove_recursion(traces, vec![], claims, vec![], PcsConfig::default());
+        let proof = prove_recursion(traces, vec![], vec![], claims, vec![], PcsConfig::default());
         verify_recursion(proof, &[], PcsConfig::default()).expect("session recursion proof failed");
     }
 
     #[test]
     fn test_recursion_air_rejects_tampered_claimed_sum() {
         let (traces, _, roots, channels) = random_traces(3, 50);
-        let mut proof = prove_recursion(traces, roots, channels, vec![], PcsConfig::default());
+        let mut proof = prove_recursion(
+            traces,
+            roots,
+            vec![],
+            channels,
+            vec![],
+            PcsConfig::default(),
+        );
         proof.claimed_sum += SecureField::from_u32_unchecked(1, 0, 0, 0);
         assert!(verify_recursion(proof, &[], PcsConfig::default()).is_err());
     }

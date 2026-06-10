@@ -62,7 +62,7 @@ pub fn prove_segment_composition(
         0,
         SecureField::default(),
     );
-    let recursion_proof = prove_recursion(traces, vec![], vec![], vec![claim], config);
+    let recursion_proof = prove_recursion(traces, vec![], vec![], vec![], vec![claim], config);
 
     SegmentNode {
         boundary: Boundary::of_segment(proof),

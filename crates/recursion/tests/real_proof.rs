@@ -76,8 +76,14 @@ fn test_real_proof_composition_proven_in_recursion_air() {
         0,
         SecureField::zero(),
     );
-    let recursion_proof =
-        prove_recursion(traces, vec![], vec![], vec![claim], PcsConfig::default());
+    let recursion_proof = prove_recursion(
+        traces,
+        vec![],
+        vec![],
+        vec![],
+        vec![claim],
+        PcsConfig::default(),
+    );
 
     // Verifier side: re-record the canonical circuit from the proof data.
     let verifier_recorder = CompositionRecorder::new(&data).record(&data.components);

@@ -28,7 +28,9 @@ pub struct Boundary {
 
 impl Boundary {
     /// The boundary a segment proof exposes through its public data.
-    pub fn of_segment(proof: &Proof<Blake2sMerkleHasher>) -> Self {
+    pub fn of_segment<H: stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted>(
+        proof: &Proof<H>,
+    ) -> Self {
         let public_data = &proof.public_data;
         Self {
             entry_pc: public_data.initial_pc,

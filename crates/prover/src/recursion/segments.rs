@@ -11,30 +11,60 @@
 //! 2-to-1 aggregation AIR asserts for its two children; here they run on the
 //! host so segmentation is sound before recursion exists.
 
+use stwo::core::channel::MerkleChannel;
 use stwo::core::pcs::PcsConfig;
-use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use stwo::prover::backend::simd::SimdBackend;
 
 use crate::errors::VerificationError;
-use crate::{Preprocessing, Proof, prove_rv32im, verify_rv32im};
+use crate::{Preprocessing, Proof, prove_rv32im_with_channel, verify_rv32im_with_channel};
 
-/// Prove every segment of a segmented execution.
+/// Prove every segment of a segmented execution (Blake2s channel).
 pub fn prove_segments(
     run_results: Vec<runner::RunResult>,
     config: PcsConfig,
     preprocessing: &Preprocessing,
 ) -> Vec<Proof<Blake2sMerkleHasher>> {
+    prove_segments_with_channel::<Blake2sMerkleChannel>(run_results, config, preprocessing)
+}
+
+/// Prove every segment of a segmented execution with any Merkle channel —
+/// in particular the Poseidon2-M31 channel whose hash the recursion AIR
+/// proves.
+pub fn prove_segments_with_channel<MC: MerkleChannel>(
+    run_results: Vec<runner::RunResult>,
+    config: PcsConfig,
+    preprocessing: &Preprocessing<MC::H>,
+) -> Vec<Proof<MC::H>>
+where
+    SimdBackend: stwo::prover::backend::BackendForChannel<MC>
+        + stwo::prover::backend::ColumnOps<
+            <MC::H as MerkleHasherLifted>::Hash,
+            Column = Vec<<MC::H as MerkleHasherLifted>::Hash>,
+        >,
+{
     run_results
         .into_iter()
-        .map(|run_result| prove_rv32im(run_result, config, preprocessing))
+        .map(|run_result| prove_rv32im_with_channel::<MC>(run_result, config, preprocessing))
         .collect()
 }
 
-/// Verify a chain of segment proofs: each proof individually, plus the
-/// boundary chaining between consecutive segments.
+/// Verify a chain of segment proofs (Blake2s channel).
 pub fn verify_segments(
     proofs: Vec<Proof<Blake2sMerkleHasher>>,
     config: PcsConfig,
     preprocessing: &Preprocessing,
+) -> Result<(), VerificationError> {
+    verify_segments_with_channel::<Blake2sMerkleChannel>(proofs, config, preprocessing)
+}
+
+/// Verify a chain of segment proofs with any Merkle channel: each proof
+/// individually, plus the boundary chaining between consecutive segments.
+pub fn verify_segments_with_channel<MC: MerkleChannel>(
+    proofs: Vec<Proof<MC::H>>,
+    config: PcsConfig,
+    preprocessing: &Preprocessing<MC::H>,
 ) -> Result<(), VerificationError> {
     for (index, pair) in proofs.windows(2).enumerate() {
         let (prev, next) = (&pair[0].public_data, &pair[1].public_data);
@@ -58,7 +88,7 @@ pub fn verify_segments(
     }
 
     for proof in proofs {
-        verify_rv32im(proof, config, preprocessing)?;
+        verify_rv32im_with_channel::<MC>(proof, config, preprocessing)?;
     }
     Ok(())
 }
