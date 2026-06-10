@@ -8,10 +8,10 @@
 //!
 //! Trust split at this stage: the composition check (all inner constraints,
 //! LogUp columns, alpha weighting, vanishing denominators) is attested by
-//! the recursion proof; the inner proof's FRI/Merkle openings and LogUp-sum
-//! and PoW checks still run host-side through the transcript replay that
-//! produces the binding data. Each further in-AIR binding (FRI queries,
-//! draws, sums) moves work from the host remainder into the recursion proof
+//! the recursion proof; the inner proof's FRI/Merkle openings, LogUp-sum,
+//! and PoW checks run host-side via `verify_rv32im` inside
+//! `verify_segment_composition`. Each further in-AIR binding (draws, FRI
+//! queries) moves work from the host remainder into the recursion proof
 //! without changing this structure.
 
 use prover::Proof;
@@ -70,15 +70,20 @@ pub fn prove_segment_composition(
     }
 }
 
-/// Verify a segment leaf: re-record the canonical composition circuit from
-/// the segment proof's public transcript and check the recursion proof
-/// against it, plus the host-remainder checks of the inner proof.
+/// Verify a segment leaf: the full host verification of the inner proof
+/// (commitments, FRI, LogUp sum, proof of work) plus the recursion proof of
+/// its composition check against the canonical circuit re-recorded from the
+/// public transcript.
 pub fn verify_segment_composition(
     node: SegmentNode,
     proof: &Proof<Blake2sMerkleHasher>,
     config: PcsConfig,
     preprocessing: &Preprocessing,
 ) -> Result<(), prover::VerificationError> {
+    // Host remainder: everything the in-AIR bindings have not yet absorbed.
+    // Without this the sampled values are unanchored to the commitments.
+    prover::verify_rv32im(proof.clone(), config, preprocessing)?;
+
     let data = composition_binding_data(proof, config, preprocessing)?;
     let recorder = CompositionRecorder::new(&data).record(&data.components);
     let output = match &recorder.accumulation {
