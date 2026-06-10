@@ -129,6 +129,7 @@ words:
   - serde
   - shamir
   - shamt
+  - signedness
   - slli
   - slti
   - sltiu

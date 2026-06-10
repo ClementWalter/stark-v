@@ -4,7 +4,7 @@
 use crate::relations::PreProcessedTrace;
 #[cfg(feature = "track-relations")]
 use num_traits::Zero;
-use stwo::core::channel::{Blake2sChannel, Channel, MerkleChannel};
+use stwo::core::channel::{Channel, MerkleChannel};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof_of_work::GrindOps;

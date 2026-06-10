@@ -4,9 +4,7 @@ use thiserror::Error;
 
 use crate::Memory;
 use crate::ops::utils::M31_P;
-use crate::poseidon2::{
-    POSEIDON2_DEFAULT_HASHES_DEPTH_21, POSEIDON2_TRACE_COLUMNS, T, poseidon2_traced,
-};
+use crate::poseidon2::{POSEIDON2_DEFAULT_HASHES_DEPTH_21, poseidon2_traced};
 use crate::program::decode_program;
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
 

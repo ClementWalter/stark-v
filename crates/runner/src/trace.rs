@@ -107,7 +107,61 @@ stwo_macros::define_trace_tables! {
         cmp_result, rs1_msl_felt, rs2_msl_felt,
         opcode_slt_flag, opcode_sltu_flag,
         diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
-        diff_val
+        diff_val,
+        derived: {
+            expected_opcode_id: |opcode_slt_flag, opcode_sltu_flag|
+                opcode_slt_flag * constant(crate::decode::Opcode::Slt as u32)
+                + opcode_sltu_flag * constant(crate::decode::Opcode::Sltu as u32),
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            // Most-significant-limb gaps: zero for unsigned interpretation,
+            // 2^8 when the sign adjustment applies (airs.md 5.2)
+            rs1_msl_gap: |rs1_next_3, rs1_msl_felt| rs1_next_3 - rs1_msl_felt,
+            rs2_msl_gap: |rs2_next_3, rs2_msl_felt| rs2_next_3 - rs2_msl_felt,
+            // Signed-shifted most significant limbs for the range check
+            rs1_msl_shifted: |rs1_msl_felt, opcode_slt_flag| rs1_msl_felt + opcode_slt_flag * pow2(7),
+            rs2_msl_shifted: |rs2_msl_felt, opcode_slt_flag| rs2_msl_felt + opcode_slt_flag * pow2(7),
+            // Sum of the difference markers: at most one fires
+            prefix_sum_final: |diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3|
+                diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
+            // Sign of the comparison: +1 if cmp_result else -1
+            cmp_sign: |cmp_result| 2 * cmp_result - 1,
+        },
+        constraints: {
+            |cmp_result| cmp_result * (1 - cmp_result),
+            |diff_marker_0| diff_marker_0 * (1 - diff_marker_0),
+            |diff_marker_1| diff_marker_1 * (1 - diff_marker_1),
+            |diff_marker_2| diff_marker_2 * (1 - diff_marker_2),
+            |diff_marker_3| diff_marker_3 * (1 - diff_marker_3),
+            |rs1_msl_gap| rs1_msl_gap * (pow2(8) - rs1_msl_gap),
+            |rs2_msl_gap| rs2_msl_gap * (pow2(8) - rs2_msl_gap),
+            // Comparison scan from the most significant limb down: limbs
+            // above the first difference are equal, and the marked limb's
+            // difference equals diff_val (airs.md 5.3)
+            |diff_marker_3, cmp_sign, rs2_msl_felt, rs1_msl_felt|
+                (1 - diff_marker_3) * (cmp_sign * (rs2_msl_felt - rs1_msl_felt)),
+            |diff_marker_3, cmp_sign, rs2_msl_felt, rs1_msl_felt, diff_val|
+                diff_marker_3 * (diff_val - cmp_sign * (rs2_msl_felt - rs1_msl_felt)),
+            |diff_marker_3, diff_marker_2, cmp_sign, rs2_next_2, rs1_next_2|
+                (1 - diff_marker_3 - diff_marker_2) * (cmp_sign * (rs2_next_2 - rs1_next_2)),
+            |diff_marker_2, cmp_sign, rs2_next_2, rs1_next_2, diff_val|
+                diff_marker_2 * (diff_val - cmp_sign * (rs2_next_2 - rs1_next_2)),
+            |diff_marker_3, diff_marker_2, diff_marker_1, cmp_sign, rs2_next_1, rs1_next_1|
+                (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
+                    * (cmp_sign * (rs2_next_1 - rs1_next_1)),
+            |diff_marker_1, cmp_sign, rs2_next_1, rs1_next_1, diff_val|
+                diff_marker_1 * (diff_val - cmp_sign * (rs2_next_1 - rs1_next_1)),
+            |prefix_sum_final, cmp_sign, rs2_next_0, rs1_next_0|
+                (1 - prefix_sum_final) * (cmp_sign * (rs2_next_0 - rs1_next_0)),
+            |diff_marker_0, cmp_sign, rs2_next_0, rs1_next_0, diff_val|
+                diff_marker_0 * (diff_val - cmp_sign * (rs2_next_0 - rs1_next_0)),
+            |prefix_sum_final| prefix_sum_final * (1 - prefix_sum_final),
+            // Equal operands compare as not-less-than
+            |prefix_sum_final, cmp_result| (1 - prefix_sum_final) * cmp_result,
+        },
     },
 
     // ==========================================================================
@@ -119,7 +173,61 @@ stwo_macros::define_trace_tables! {
         imm_0, imm_1, imm_msb,
         opcode_slti_flag, opcode_sltiu_flag,
         diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
-        diff_val
+        diff_val,
+        derived: {
+            expected_opcode_id: |opcode_slti_flag, opcode_sltiu_flag|
+                opcode_slti_flag * constant(crate::decode::Opcode::Slti as u32)
+                + opcode_sltiu_flag * constant(crate::decode::Opcode::Sltiu as u32),
+            // I-type immediate (airs.md 6.2)
+            imm: |imm_0, imm_1, imm_msb| imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
+            // Sign-extended immediate limbs; limb 0 is imm_0, limb 3 = limb 2
+            sext_imm_1: |imm_1, imm_msb| imm_1 + (pow2(8) - pow2(3)) * imm_msb,
+            sext_imm_2: |imm_msb| (pow2(8) - 1) * imm_msb,
+            // Most significant limb of the comparison operand under the
+            // active signedness
+            sext_imm_msl_felt: |opcode_sltiu_flag, sext_imm_2, opcode_slti_flag, imm_msb|
+                opcode_sltiu_flag * sext_imm_2 - opcode_slti_flag * imm_msb,
+            rs1_msl_gap: |rs1_next_3, rs1_msl_felt| rs1_next_3 - rs1_msl_felt,
+            rs1_msl_shifted: |rs1_msl_felt, opcode_slti_flag|
+                rs1_msl_felt + opcode_slti_flag * pow2(7),
+            imm_1_doubled: |imm_1| 2 * imm_1,
+            prefix_sum_final: |diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3|
+                diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
+            cmp_sign: |cmp_result| 2 * cmp_result - 1,
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        constraints: {
+            |imm_msb| imm_msb * (1 - imm_msb),
+            |rs1_msl_gap| rs1_msl_gap * (pow2(8) - rs1_msl_gap),
+            |diff_marker_0| diff_marker_0 * (1 - diff_marker_0),
+            |diff_marker_1| diff_marker_1 * (1 - diff_marker_1),
+            |diff_marker_2| diff_marker_2 * (1 - diff_marker_2),
+            |diff_marker_3| diff_marker_3 * (1 - diff_marker_3),
+            // Comparison scan from the most significant limb down (airs.md 6.3)
+            |diff_marker_3, cmp_sign, sext_imm_msl_felt, rs1_msl_felt|
+                (1 - diff_marker_3) * (cmp_sign * (sext_imm_msl_felt - rs1_msl_felt)),
+            |diff_marker_3, cmp_sign, sext_imm_msl_felt, rs1_msl_felt, diff_val|
+                diff_marker_3 * (diff_val - cmp_sign * (sext_imm_msl_felt - rs1_msl_felt)),
+            |diff_marker_3, diff_marker_2, cmp_sign, sext_imm_2, rs1_next_2|
+                (1 - diff_marker_3 - diff_marker_2) * (cmp_sign * (sext_imm_2 - rs1_next_2)),
+            |diff_marker_2, cmp_sign, sext_imm_2, rs1_next_2, diff_val|
+                diff_marker_2 * (diff_val - cmp_sign * (sext_imm_2 - rs1_next_2)),
+            |diff_marker_3, diff_marker_2, diff_marker_1, cmp_sign, sext_imm_1, rs1_next_1|
+                (1 - diff_marker_3 - diff_marker_2 - diff_marker_1)
+                    * (cmp_sign * (sext_imm_1 - rs1_next_1)),
+            |diff_marker_1, cmp_sign, sext_imm_1, rs1_next_1, diff_val|
+                diff_marker_1 * (diff_val - cmp_sign * (sext_imm_1 - rs1_next_1)),
+            |prefix_sum_final, cmp_sign, imm_0, rs1_next_0|
+                (1 - prefix_sum_final) * (cmp_sign * (imm_0 - rs1_next_0)),
+            |diff_marker_0, cmp_sign, imm_0, rs1_next_0, diff_val|
+                diff_marker_0 * (diff_val - cmp_sign * (imm_0 - rs1_next_0)),
+            |prefix_sum_final| prefix_sum_final * (1 - prefix_sum_final),
+            |prefix_sum_final, cmp_result| (1 - prefix_sum_final) * cmp_result,
+            |cmp_result| cmp_result * (1 - cmp_result),
+        },
     },
 
     // ==========================================================================
@@ -166,7 +274,18 @@ stwo_macros::define_trace_tables! {
     // ==========================================================================
     auipc: {
         clock, pc, rd,
-        imm_felt
+        imm_felt,
+        derived: {
+            rd_felt: |rd_next_0, rd_next_1, rd_next_2, rd_next_3|
+                rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
+            pc_next: |pc| pc + 4,
+            clock_next: |clock| clock + 1,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        constraints: {
+            // rd = pc + imm (airs.md 10.2)
+            |rd_felt, pc, imm_felt| rd_felt - (pc + imm_felt),
+        },
     },
 
     // ==========================================================================
@@ -175,7 +294,26 @@ stwo_macros::define_trace_tables! {
     jalr: {
         clock, pc, rd, rs1,
         to_pc_over_two, to_pc_lsb,
-        imm_felt
+        imm_felt,
+        derived: {
+            rs1_felt: |rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3|
+                rs1_next_0 + pow2(8) * rs1_next_1 + pow2(16) * rs1_next_2 + pow2(24) * rs1_next_3,
+            rd_felt: |rd_next_0, rd_next_1, rd_next_2, rd_next_3|
+                rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
+            // Jump target, even-aligned (airs.md 11.2)
+            jump_target: |to_pc_over_two| 2 * to_pc_over_two,
+            clock_next: |clock| clock + 1,
+            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        constraints: {
+            |to_pc_lsb| to_pc_lsb * (1 - to_pc_lsb),
+            // 2 * to_pc_over_two + to_pc_lsb = rs1 + imm
+            |to_pc_over_two, to_pc_lsb, rs1_felt, imm_felt|
+                2 * to_pc_over_two + to_pc_lsb - (rs1_felt + imm_felt),
+            // rd = pc + 4, gated by rd_addr (x0 writes discarded)
+            |enabler, rd_addr, rd_felt, pc| enabler * rd_addr * (rd_felt - (pc + 4)),
+        },
     },
 
     // ==========================================================================
@@ -183,7 +321,19 @@ stwo_macros::define_trace_tables! {
     // ==========================================================================
     jal: {
         clock, pc, rd,
-        imm_felt
+        imm_felt,
+        derived: {
+            rd_felt: |rd_next_0, rd_next_1, rd_next_2, rd_next_3|
+                rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
+            jump_target: |pc, imm_felt| pc + imm_felt,
+            clock_next: |clock| clock + 1,
+            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+        },
+        constraints: {
+            // rd = pc + 4, gated by enabler (padding) and rd_addr (x0
+            // writes are discarded, airs.md 12.2)
+            |enabler, rd_addr, rd_felt, pc| enabler * rd_addr * (rd_felt - (pc + 4)),
+        },
     },
 
     // ==========================================================================

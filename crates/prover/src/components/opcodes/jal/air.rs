@@ -1,6 +1,6 @@
 //! AIR component for JAL - airs.md Section 12
 
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
@@ -9,11 +9,6 @@ use crate::relations::Relations;
 use runner::trace::prover_columns::JalColumns;
 
 pub type Component = FrameworkComponent<Eval>;
-
-/// Helper: 2^n as field element
-fn pow2<E: EvalAtRow>(n: u32) -> E::F {
-    E::F::from(BaseField::from_u32_unchecked(1 << n))
-}
 
 #[derive(Clone)]
 pub struct Eval {
@@ -33,34 +28,15 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = JalColumns::from_eval(&mut eval);
 
-        // Section 12.2: Variables
-        let rd = [
-            cols.rd_next_0.clone(),
-            cols.rd_next_1.clone(),
-            cols.rd_next_2.clone(),
-            cols.rd_next_3.clone(),
-        ];
-        let rd_felt = rd[0].clone()
-            + pow2::<E>(8) * rd[1].clone()
-            + pow2::<E>(16) * rd[2].clone()
-            + pow2::<E>(24) * rd[3].clone();
-
         let opcode_jal_id = E::F::from(BaseField::from_u32_unchecked(Opcode::Jal as u32));
 
         // REG_AS = 0 for register address space
         let reg_as = E::F::zero();
 
-        // enabler is boolean
-        eval.add_constraint(cols.enabler.clone() * (E::F::one() - cols.enabler.clone()));
-
-        // rd is pc + 4 (gated by enabler for padding rows and rd_addr for x0 writes)
-        // When rd_addr = 0 (x0), the write is discarded and rd_next = 0, so skip this constraint
-        eval.add_constraint(
-            cols.enabler.clone()
-                * cols.rd_addr.clone()
-                * (rd_felt.clone()
-                    - (cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)))),
-        );
+        // Booleanity and gated rd = pc + 4, declared in define_trace_tables!
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
+        }
 
         // =====================================================================
         // LogUp Relations (Section 12.3 from airs.md)
@@ -92,8 +68,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             cols.enabler.clone(),
-            cols.pc.clone() + cols.imm_felt.clone(),
-            cols.clock.clone() + E::F::one()
+            cols.jump_target(),
+            cols.clock_next()
         );
 
         // Range check rd (rd is pc+4, so it's a M31)
@@ -102,16 +78,16 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_8_8,
             -cols.enabler.clone(),
-            rd[1].clone(),
-            rd[2].clone()
+            cols.rd_next_1,
+            cols.rd_next_2
         );
         // - RC_M31(rd[0], rd[3])
         add_to_relation!(
             eval,
             self.relations.range_check_m31,
             -cols.enabler.clone(),
-            rd[0].clone(),
-            rd[3].clone()
+            cols.rd_next_0,
+            cols.rd_next_3
         );
 
         // Write to rd
@@ -136,17 +112,17 @@ impl FrameworkEval for Eval {
             reg_as.clone(),
             cols.rd_addr,
             cols.clock,
-            rd[0].clone(),
-            rd[1].clone(),
-            rd[2].clone(),
-            rd[3].clone()
+            cols.rd_next_0,
+            cols.rd_next_1,
+            cols.rd_next_2,
+            cols.rd_next_3
         );
         // - RC_20(clock - rd_prev_clock)
         add_to_relation!(
             eval,
             self.relations.range_check_20,
             -cols.enabler.clone(),
-            cols.clock.clone() - cols.rd_clock_prev.clone()
+            cols.rd_clock_diff()
         );
 
         eval.finalize_logup_in_pairs();

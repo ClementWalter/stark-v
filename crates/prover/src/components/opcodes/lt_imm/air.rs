@@ -1,7 +1,6 @@
 //! AIR component for Less Than Imm (slti/sltiu) - airs.md Section 6
 
 use num_traits::{One, Zero};
-use runner::decode::Opcode;
 use stwo::core::fields::m31::BaseField;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
@@ -33,98 +32,20 @@ impl FrameworkEval for Eval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let cols = LtImmColumns::from_eval(&mut eval);
 
-        // Section 6.2: Variables
-        let enabler = cols.opcode_slti_flag.clone() + cols.opcode_sltiu_flag.clone();
-        let expected_opcode_id = cols.opcode_slti_flag.clone()
-            * E::F::from(BaseField::from_u32_unchecked(Opcode::Slti as u32))
-            + cols.opcode_sltiu_flag.clone()
-                * E::F::from(BaseField::from_u32_unchecked(Opcode::Sltiu as u32));
-
-        let imm = cols.imm_0.clone()
-            + pow2::<E>(8) * cols.imm_1.clone()
-            + pow2::<E>(11) * cols.imm_msb.clone();
-        let sext_imm_0 = cols.imm_0.clone();
-        let sext_imm_1 = cols.imm_1.clone() + pow2::<E>(3) * pow2::<E>(5) * cols.imm_msb.clone()
-            - pow2::<E>(3) * cols.imm_msb.clone();
-        let sext_imm_2 = (pow2::<E>(8) - E::F::one()) * cols.imm_msb.clone();
-        let sext_imm_3 = sext_imm_2.clone();
-        let sext_imm = [
-            sext_imm_0.clone(),
-            sext_imm_1.clone(),
-            sext_imm_2.clone(),
-            sext_imm_3.clone(),
-        ];
-
-        let sext_imm_msl_felt = cols.opcode_sltiu_flag.clone() * sext_imm_3.clone()
-            - cols.opcode_slti_flag.clone() * cols.imm_msb.clone();
-
-        let rs1 = [
-            cols.rs1_next_0.clone(),
-            cols.rs1_next_1.clone(),
-            cols.rs1_next_2.clone(),
-            cols.rs1_next_3.clone(),
-        ];
-        let diff_markers = [
-            cols.diff_marker_0.clone(),
-            cols.diff_marker_1.clone(),
-            cols.diff_marker_2.clone(),
-            cols.diff_marker_3.clone(),
-        ];
-        let prefix_sum_final = diff_markers[0].clone()
-            + diff_markers[1].clone()
-            + diff_markers[2].clone()
-            + diff_markers[3].clone();
-
+        // Section 6.2/6.3: derived columns and constraints, declared in
+        // define_trace_tables!
+        let enabler = cols.enabler();
+        let expected_opcode_id = cols.expected_opcode_id();
+        let imm = cols.imm();
+        let prefix_sum_final = cols.prefix_sum_final();
         let two = E::F::one() + E::F::one();
 
         // REG_AS = 0 for register address space
         let reg_as = E::F::zero();
 
-        // Section 6.3: Constraints
-
-        // enabler and opcode flags are booleans
-        eval.add_constraint(enabler.clone() * (E::F::one() - enabler.clone()));
-        eval.add_constraint(
-            cols.opcode_slti_flag.clone() * (E::F::one() - cols.opcode_slti_flag.clone()),
-        );
-        eval.add_constraint(
-            cols.opcode_sltiu_flag.clone() * (E::F::one() - cols.opcode_sltiu_flag.clone()),
-        );
-
-        // imm_msb is boolean
-        eval.add_constraint(cols.imm_msb.clone() * (E::F::one() - cols.imm_msb.clone()));
-
-        // msl are the most significant limbs as felts
-        let rs1_msl_gap = rs1[3].clone() - cols.rs1_msl_felt.clone();
-        eval.add_constraint(rs1_msl_gap.clone() * (pow2::<E>(8) - rs1_msl_gap));
-
-        // diff markers are boolean and sum correctly
-        for marker in diff_markers.iter() {
-            eval.add_constraint(marker.clone() * (E::F::one() - marker.clone()));
+        for constraint in cols.constraints() {
+            eval.add_constraint(constraint);
         }
-
-        let mut prefix_sum = E::F::zero();
-        for (i, marker) in diff_markers.iter().enumerate().rev() {
-            let limb_diff = if i == 3 {
-                sext_imm_msl_felt.clone() - cols.rs1_msl_felt.clone()
-            } else {
-                sext_imm[i].clone() - rs1[i].clone()
-            };
-            let diff = (two.clone() * cols.cmp_result.clone() - E::F::one()) * limb_diff;
-
-            prefix_sum += marker.clone();
-            eval.add_constraint((E::F::one() - prefix_sum.clone()) * diff.clone());
-            eval.add_constraint(marker.clone() * (cols.diff_val.clone() - diff));
-        }
-
-        // prefix_sum contains at most one activation
-        eval.add_constraint(prefix_sum.clone() * (E::F::one() - prefix_sum.clone()));
-
-        // if equal, result is 0
-        eval.add_constraint((E::F::one() - prefix_sum.clone()) * cols.cmp_result.clone());
-
-        // result is boolean
-        eval.add_constraint(cols.cmp_result.clone() * (E::F::one() - cols.cmp_result.clone()));
 
         // =====================================================================
         // LogUp Relations (Section 6.3 from airs.md)
@@ -148,9 +69,9 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_8_8_4,
             -enabler.clone(),
-            cols.rs1_msl_felt.clone() + cols.opcode_slti_flag.clone() * pow2::<E>(7),
+            cols.rs1_msl_shifted(),
             cols.imm_0,
-            two.clone() * cols.imm_1.clone()
+            cols.imm_1_doubled()
         );
 
         // Register state transition
@@ -167,8 +88,8 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.registers_state,
             enabler.clone(),
-            cols.pc.clone() + E::F::from(BaseField::from_u32_unchecked(4)),
-            cols.clock.clone() + E::F::one()
+            cols.pc_next(),
+            cols.clock_next()
         );
 
         // Read from rs1
@@ -203,7 +124,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rs1_clock_prev.clone()
+            cols.rs1_clock_diff()
         );
 
         // Range check diff_val is non-zero when prefix_sum = 1
@@ -247,7 +168,7 @@ impl FrameworkEval for Eval {
             eval,
             self.relations.range_check_20,
             -enabler.clone(),
-            cols.clock.clone() - cols.rd_clock_prev.clone()
+            cols.rd_clock_diff()
         );
 
         eval.finalize_logup_in_pairs();
