@@ -6,6 +6,7 @@
 //! single source of definition for the whole recursion stack.
 #![allow(clippy::too_many_arguments)] // generated table push takes one arg per column
 
+pub mod aggregate;
 pub mod binding;
 pub mod channel_replay;
 pub mod circle_double;

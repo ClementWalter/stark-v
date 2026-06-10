@@ -93,3 +93,43 @@ fn test_real_proof_composition_proven_in_recursion_air() {
     )
     .expect("real-proof composition recursion verification failed");
 }
+
+/// The 2-to-1 tree with recursion-proof leaves (docs/recursion.md, M6): a
+/// real execution split into segments, each segment's composition check
+/// proven in the recursion AIR, leaves verified through their recursion
+/// proofs, and boundaries folded to a root spanning the whole run.
+#[test]
+fn test_aggregate_with_recursion_proof_leaves() {
+    use prover::recursion::segments::prove_segments;
+    use recursion::aggregate::{aggregate_with_recursion, prove_segment_composition};
+    use runner::run_segments_with_input;
+
+    ensure_guest_built();
+
+    let elf_path = guest_bin_dir().join("mulhu_alias");
+    let elf_bytes = std::fs::read(&elf_path).expect("Failed to read mulhu_alias ELF");
+
+    let reference = run(&elf_bytes, 10_000_000).expect("Failed to run mulhu_alias");
+    let segment_cycles = u32::try_from(reference.cycles / 2 + 1).expect("fits u32");
+    let segments = run_segments_with_input(&elf_bytes, &[], Some(segment_cycles), 10_000_000)
+        .expect("segmented run failed");
+    assert_eq!(segments.len(), 2);
+
+    let preprocessing = prover::preprocess(PcsConfig::default());
+    let proofs = prove_segments(segments, PcsConfig::default(), &preprocessing);
+
+    // Each leaf: a recursion proof of the segment's composition check.
+    let nodes: Vec<_> = proofs
+        .iter()
+        .map(|proof| {
+            let node = prove_segment_composition(proof, PcsConfig::default(), &preprocessing);
+            (proof.clone(), node)
+        })
+        .collect();
+
+    let root = aggregate_with_recursion(nodes, PcsConfig::default(), &preprocessing)
+        .expect("recursion-leaf aggregation failed");
+    assert_eq!(root.entry_pc, reference.initial_pc);
+    assert_eq!(root.exit_pc, reference.final_pc);
+    assert_eq!(root.exit_regs, reference.final_regs);
+}
