@@ -9,14 +9,16 @@
 //! (docs/recursion.md, M4+).
 
 use num_traits::Zero;
-use stwo::core::channel::{Blake2sChannel, Channel};
+use stwo::core::channel::{Channel, MerkleChannel};
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
-use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::verifier::VerificationError;
 use stwo::core::verifier::verify;
+use stwo::prover::backend::BackendForChannel;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::pcs::CommitmentSchemeProver;
 use stwo::prover::poly::circle::PolyOps;
@@ -40,16 +42,16 @@ pub struct RecursionTraces {
 
 /// Proof of the recursion AIR plus the public claim (per-component sizes
 /// and the LogUp claimed sum).
-pub struct RecursionProof {
+pub struct RecursionProof<H: MerkleHasherLifted> {
     /// Log sizes of (qm31_mul, qm31_inv, fri_fold_line, circle_double,
     /// logup_sum).
     pub log_sizes: [u32; 5],
     /// Claimed sum of the logup_sum component: Σ enabler / term.
     pub claimed_sum: SecureField,
-    pub stark_proof: StarkProof<Blake2sMerkleHasher>,
+    pub stark_proof: StarkProof<H>,
 }
 
-fn mix_claim(channel: &mut Blake2sChannel, log_sizes: &[u32; 5], claimed_sum: SecureField) {
+fn mix_claim<C: Channel>(channel: &mut C, log_sizes: &[u32; 5], claimed_sum: SecureField) {
     channel.mix_u32s(log_sizes);
     channel.mix_felts(&[claimed_sum]);
 }
@@ -121,8 +123,32 @@ fn components(
     )
 }
 
-/// Prove the recursion AIR over the given witness tables.
-pub fn prove_recursion(traces: RecursionTraces, config: PcsConfig) -> RecursionProof {
+/// Prove the recursion AIR over the given witness tables (Blake2s channel).
+pub fn prove_recursion(
+    traces: RecursionTraces,
+    config: PcsConfig,
+) -> RecursionProof<<Blake2sMerkleChannel as MerkleChannel>::H> {
+    prove_recursion_with_channel::<Blake2sMerkleChannel>(traces, config)
+}
+
+/// Verify a recursion AIR proof (Blake2s channel).
+pub fn verify_recursion(
+    proof: RecursionProof<<Blake2sMerkleChannel as MerkleChannel>::H>,
+    config: PcsConfig,
+) -> Result<(), VerificationError> {
+    verify_recursion_with_channel::<Blake2sMerkleChannel>(proof, config)
+}
+
+/// Prove the recursion AIR over the given witness tables with any Merkle
+/// channel — in particular the Poseidon2-M31 channel whose hash the
+/// recursion AIR itself proves.
+pub fn prove_recursion_with_channel<MC: MerkleChannel>(
+    traces: RecursionTraces,
+    config: PcsConfig,
+) -> RecursionProof<MC::H>
+where
+    SimdBackend: BackendForChannel<MC>,
+{
     let qm31_mul_trace = traces.qm31_mul.into_witness();
     let qm31_inv_trace = traces.qm31_inv.into_witness();
     let fri_fold_trace = traces.fri_fold_line.into_witness();
@@ -158,9 +184,8 @@ pub fn prove_recursion(traces: RecursionTraces, config: PcsConfig) -> RecursionP
     // channel work so the claimed sum is part of the claim.
     let (interaction_trace, claimed_sum) = logup_sum::gen_interaction_trace(&logup_sum_trace);
 
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let channel = &mut MC::C::default();
+    let mut commitment_scheme = CommitmentSchemeProver::<_, MC>::new(config, &twiddles);
 
     // Tree 0: empty preprocessed trace.
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -205,10 +230,13 @@ pub fn prove_recursion(traces: RecursionTraces, config: PcsConfig) -> RecursionP
     }
 }
 
-/// Verify a recursion AIR proof.
-pub fn verify_recursion(proof: RecursionProof, config: PcsConfig) -> Result<(), VerificationError> {
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+/// Verify a recursion AIR proof with any Merkle channel.
+pub fn verify_recursion_with_channel<MC: MerkleChannel>(
+    proof: RecursionProof<MC::H>,
+    config: PcsConfig,
+) -> Result<(), VerificationError> {
+    let channel = &mut MC::C::default();
+    let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
 
     let commitments = &proof.stark_proof.commitments;
     commitment_scheme.commit(commitments[0], &[], channel);
@@ -295,6 +323,16 @@ mod tests {
         let (traces, terms) = random_traces(2, 50);
         let proof = prove_recursion(traces, PcsConfig::default());
         assert_eq!(proof.claimed_sum, crate::logup_sum::expected_sum(&terms));
+    }
+
+    #[test]
+    fn test_recursion_air_prove_verify_roundtrip_poseidon2_channel() {
+        use prover::poseidon2_channel::Poseidon2M31MerkleChannel;
+        let (traces, _) = random_traces(4, 50);
+        let proof =
+            prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(traces, PcsConfig::default());
+        verify_recursion_with_channel::<Poseidon2M31MerkleChannel>(proof, PcsConfig::default())
+            .expect("poseidon2-channel verification failed");
     }
 
     #[test]

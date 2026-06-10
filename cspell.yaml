@@ -52,6 +52,7 @@ words:
   - idents
   - ilog2
   - immediates
+  - injective
   - inplace
   - insn
   - intermed

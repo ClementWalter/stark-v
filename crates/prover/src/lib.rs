@@ -68,6 +68,7 @@ pub fn print_enabled_features() {
 extern crate stwo_macros;
 pub mod components;
 pub mod errors;
+pub mod poseidon2_channel;
 pub mod preprocessed;
 pub mod prover;
 pub mod public_data;

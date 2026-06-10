@@ -14,4 +14,5 @@ debug-utils.workspace = true
 num-traits.workspace = true
 
 [dev-dependencies]
+prover.workspace = true
 rand.workspace = true
