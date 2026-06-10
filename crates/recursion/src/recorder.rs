@@ -258,7 +258,7 @@ pub struct Recorder {
     pub arena: SharedArena,
     /// Mask values per interaction per column (offsets flattened in order).
     pub mask: Vec<Vec<Vec<SecureField>>>,
-    col_index: Vec<usize>,
+    pub col_index: Vec<usize>,
     /// alpha (the constraint-combination coefficient) as a recorded input.
     alpha: Rec,
     /// 1 / V(oods_point) as a recorded input.
@@ -306,6 +306,21 @@ impl Recorder {
             value,
             arena: self.arena.clone(),
         }
+    }
+
+    /// Start recording the next component of a composition: a new vanishing
+    /// denominator (each component has its own domain) and a fresh LogUp
+    /// context with that component's claimed sum, while the accumulation and
+    /// mask cursor carry over — the semantics of
+    /// `Components::eval_composition_polynomial_at_point`.
+    pub fn next_component(
+        &mut self,
+        denom_inverse: SecureField,
+        log_size: u32,
+        claimed_sum: SecureField,
+    ) {
+        self.denom_inverse = self.input(denom_inverse);
+        self.logup = LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size);
     }
 }
 
@@ -455,6 +470,69 @@ mod tests {
         // Recorded circuit.
         let recorder = Recorder::new(mask_values, alpha, denom_inverse, log_size, claimed_sum);
         let recorder = eval.evaluate(recorder);
+        assert_eq!(recorder.accumulation.value(), expected);
+    }
+
+    #[test]
+    fn test_recorder_chains_components_like_the_host_accumulator() {
+        let mut rng = SmallRng::seed_from_u64(2);
+        let lui = prover::components::opcodes::lui::air::Eval {
+            log_size: 6,
+            relations: prover::relations::Relations::dummy(),
+        };
+        let alu = prover::components::opcodes::base_alu_imm::air::Eval {
+            log_size: 5,
+            relations: prover::relations::Relations::dummy(),
+        };
+
+        let masks_for = |eval: &dyn Fn() -> InfoEvaluator, rng: &mut SmallRng| {
+            eval()
+                .mask_offsets
+                .iter()
+                .map(|interaction| {
+                    interaction
+                        .iter()
+                        .map(|offsets| (0..offsets.len()).map(|_| random_secure(rng)).collect())
+                        .collect()
+                })
+                .collect::<Vec<Vec<Vec<SecureField>>>>()
+        };
+        let lui_masks = masks_for(&|| lui.evaluate(InfoEvaluator::empty()), &mut rng);
+        let alu_masks = masks_for(&|| alu.evaluate(InfoEvaluator::empty()), &mut rng);
+
+        let alpha = random_secure(&mut rng);
+        let denoms = [random_secure(&mut rng), random_secure(&mut rng)];
+        let sums = [random_secure(&mut rng), random_secure(&mut rng)];
+
+        // Host ground truth: two PointEvaluators sharing one accumulator.
+        let mut accumulator = PointEvaluationAccumulator::new(alpha);
+        let lui_refs: TreeVec<Vec<&Vec<SecureField>>> =
+            TreeVec::new(lui_masks.iter().map(|t| t.iter().collect()).collect());
+        lui.evaluate(PointEvaluator::new(
+            lui_refs,
+            &mut accumulator,
+            denoms[0],
+            6,
+            sums[0],
+        ));
+        let alu_refs: TreeVec<Vec<&Vec<SecureField>>> =
+            TreeVec::new(alu_masks.iter().map(|t| t.iter().collect()).collect());
+        alu.evaluate(PointEvaluator::new(
+            alu_refs,
+            &mut accumulator,
+            denoms[1],
+            5,
+            sums[1],
+        ));
+        let expected = accumulator.finalize();
+
+        // Recorded: one shared arena, next_component between evaluations.
+        let mut recorder = Recorder::new(lui_masks, alpha, denoms[0], 6, sums[0]);
+        recorder = lui.evaluate(recorder);
+        recorder.mask = alu_masks;
+        recorder.col_index = vec![0; recorder.mask.len()];
+        recorder.next_component(denoms[1], 5, sums[1]);
+        let recorder = alu.evaluate(recorder);
         assert_eq!(recorder.accumulation.value(), expected);
     }
 
