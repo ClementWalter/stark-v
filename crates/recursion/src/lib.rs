@@ -8,7 +8,9 @@
 
 pub mod channel_replay;
 pub mod circle_double;
+pub mod circuit;
 pub mod fri_fold;
+pub mod linear_ops;
 pub mod logup_sum;
 pub mod merkle_path;
 pub mod prover;
@@ -35,7 +37,15 @@ define_component_tables! {
         a_0, a_1, a_2, a_3,
         b_0, b_1, b_2, b_3,
         c_0, c_1, c_2, c_3,
+        // Circuit wiring (composition-check lowering): when in_circuit is
+        // set, this row implements node `node_id` of circuit `circuit_id`,
+        // consuming its operands and emitting its value `uses` times
+        // through the wire relation.
+        circuit_id, node_id, lhs_id, rhs_id, uses, in_circuit,
         constraints: {
+            |in_circuit| in_circuit * (1 - in_circuit),
+            // Wiring rows are real rows.
+            |in_circuit, enabler| in_circuit * (1 - enabler),
             // Re(first): Re(AC) + Re((2 + i) BD)
             |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_0|
                 a_0 * b_0 - a_1 * b_1
@@ -185,6 +195,35 @@ define_component_tables! {
         out_8, out_9, out_10, out_11, out_12, out_13, out_14, out_15,
     },
 
+    // Linear circuit nodes (composition-check lowering): add, sub, neg over
+    // QM31 values, one node per row, wired through op_def and wire claims.
+    // Mul/inverse nodes live in qm31_mul/qm31_inv; inputs, constants, and
+    // the output are public claim terms.
+    linear_ops: {
+        circuit_id, node_id, is_add, is_sub, is_neg,
+        lhs_id, rhs_id,
+        lhs_0, lhs_1, lhs_2, lhs_3,
+        rhs_0, rhs_1, rhs_2, rhs_3,
+        out_0, out_1, out_2, out_3,
+        uses,
+        constraints: {
+            |is_add| is_add * (1 - is_add),
+            |is_sub| is_sub * (1 - is_sub),
+            |is_neg| is_neg * (1 - is_neg),
+            // Exactly one kind per enabled row.
+            |enabler, is_add, is_sub, is_neg| is_add + is_sub + is_neg - enabler,
+            // out = lhs + rhs / lhs - rhs / -lhs, limb-wise per kind.
+            |is_add, is_sub, is_neg, lhs_0, rhs_0, out_0|
+                is_add * (lhs_0 + rhs_0) + is_sub * (lhs_0 - rhs_0) - is_neg * lhs_0 - out_0,
+            |is_add, is_sub, is_neg, lhs_1, rhs_1, out_1|
+                is_add * (lhs_1 + rhs_1) + is_sub * (lhs_1 - rhs_1) - is_neg * lhs_1 - out_1,
+            |is_add, is_sub, is_neg, lhs_2, rhs_2, out_2|
+                is_add * (lhs_2 + rhs_2) + is_sub * (lhs_2 - rhs_2) - is_neg * lhs_2 - out_2,
+            |is_add, is_sub, is_neg, lhs_3, rhs_3, out_3|
+                is_add * (lhs_3 + rhs_3) + is_sub * (lhs_3 - rhs_3) - is_neg * lhs_3 - out_3,
+        },
+    },
+
     // LogUp sum of inverses: each row contributes enabler / term to the
     // component's claimed sum, the in-AIR form of the verifier's LogUp-sum
     // check. The fraction lives in the interaction trace; this table only
@@ -201,7 +240,11 @@ define_component_tables! {
     qm31_inv: {
         a_0, a_1, a_2, a_3,
         inv_0, inv_1, inv_2, inv_3,
+        // Circuit wiring, as in qm31_mul (rhs unused for the unary inverse).
+        circuit_id, node_id, lhs_id, uses, in_circuit,
         constraints: {
+            |in_circuit| in_circuit * (1 - in_circuit),
+            |in_circuit, enabler| in_circuit * (1 - enabler),
             |enabler, a_0, a_1, a_2, a_3, inv_0, inv_1, inv_2, inv_3|
                 a_0 * inv_0 - a_1 * inv_1
                 + 2 * (a_2 * inv_2 - a_3 * inv_3) - (a_2 * inv_3 + a_3 * inv_2)
