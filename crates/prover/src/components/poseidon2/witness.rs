@@ -18,8 +18,9 @@ pub fn gen_interaction_trace(
     let log_size = trace[0].domain.log_size();
     let mut interaction_trace = LogupTraceGenerator::new(log_size);
 
-    // The `wide` flag is the last trace column (see runner's poseidon2 table).
-    let wide = &trace[trace.len() - 1].data;
+    // `wide` and `io` are the last two trace columns (runner's poseidon2 table).
+    let wide = &trace[trace.len() - 2].data;
+    let io = &trace[trace.len() - 1].data;
     let one = stwo::prover::backend::simd::m31::PackedM31::broadcast(BaseField::from(1));
 
     let neg_enabler: Vec<PackedQM31> = (0..simd_size)
@@ -30,6 +31,9 @@ pub fn gen_interaction_trace(
         .collect();
     let wide_enabler: Vec<PackedQM31> = (0..simd_size)
         .map(|i| PackedQM31::from(enabler[i] * wide[i]))
+        .collect();
+    let io_enabler: Vec<PackedQM31> = (0..simd_size)
+        .map(|i| PackedQM31::from(enabler[i] * io[i]))
         .collect();
 
     let init_state_denom = combine!(
@@ -68,6 +72,44 @@ pub fn gen_interaction_trace(
         ]
     );
 
+    let io_denom = combine!(
+        relations.poseidon2_io,
+        [
+            &trace[1].data,
+            &trace[2].data,
+            &trace[3].data,
+            &trace[4].data,
+            &trace[5].data,
+            &trace[6].data,
+            &trace[7].data,
+            &trace[8].data,
+            &trace[9].data,
+            &trace[10].data,
+            &trace[11].data,
+            &trace[12].data,
+            &trace[13].data,
+            &trace[14].data,
+            &trace[15].data,
+            &trace[16].data,
+            &trace[FINAL_STATE_START].data,
+            &trace[FINAL_STATE_START + 1].data,
+            &trace[FINAL_STATE_START + 2].data,
+            &trace[FINAL_STATE_START + 3].data,
+            &trace[FINAL_STATE_START + 4].data,
+            &trace[FINAL_STATE_START + 5].data,
+            &trace[FINAL_STATE_START + 6].data,
+            &trace[FINAL_STATE_START + 7].data,
+            &trace[FINAL_STATE_START + 8].data,
+            &trace[FINAL_STATE_START + 9].data,
+            &trace[FINAL_STATE_START + 10].data,
+            &trace[FINAL_STATE_START + 11].data,
+            &trace[FINAL_STATE_START + 12].data,
+            &trace[FINAL_STATE_START + 13].data,
+            &trace[FINAL_STATE_START + 14].data,
+            &trace[FINAL_STATE_START + 15].data
+        ]
+    );
+
     write_pair!(
         &neg_enabler,
         &init_state_denom,
@@ -75,7 +117,13 @@ pub fn gen_interaction_trace(
         &output_denom,
         interaction_trace
     );
-    write_col!(&wide_enabler, &wide_output_denom, interaction_trace);
+    write_pair!(
+        &wide_enabler,
+        &wide_output_denom,
+        &io_enabler,
+        &io_denom,
+        interaction_trace
+    );
 
     interaction_trace.finalize_last()
 }

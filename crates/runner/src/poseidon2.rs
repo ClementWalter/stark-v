@@ -14,9 +14,13 @@ const PARTIAL_ROUNDS: usize = 14;
 // enabler + initial state + per-round intermediate states + the `wide` flag
 // selecting the 8-word digest emission (proof trees) over the 1-word one
 // (memory trees).
-pub const POSEIDON2_TRACE_COLUMNS: usize = 1 + T * (1 + FULL_ROUNDS * 3) + PARTIAL_ROUNDS * 3 + 1;
+// enabler + initial state + per-round intermediate states + the `wide` flag
+// (8-word digest emission for proof trees instead of the 1-word memory-tree
+// one) + the `io` flag (atomic (input, output) pair emission for sponge
+// chaining).
+pub const POSEIDON2_TRACE_COLUMNS: usize = 1 + T * (1 + FULL_ROUNDS * 3) + PARTIAL_ROUNDS * 3 + 2;
 /// Index of the first final-state word within a trace row.
-pub const POSEIDON2_FINAL_STATE_START: usize = POSEIDON2_TRACE_COLUMNS - T - 1;
+pub const POSEIDON2_FINAL_STATE_START: usize = POSEIDON2_TRACE_COLUMNS - T - 2;
 
 const EXTERNAL_ROUND_CONSTS: [[u32; 16]; 8] = [
     [
@@ -185,7 +189,7 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
     let mut state = [0u32; T];
     state[0] = M31::from(left).0;
     state[1] = M31::from(right).0;
-    poseidon2_traced_state(state, false)
+    poseidon2_traced_state(state, false, false)
 }
 
 /// Trace one permutation of an arbitrary initial state.
@@ -195,6 +199,7 @@ pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS]
 pub fn poseidon2_traced_state(
     initial_state: [u32; T],
     wide: bool,
+    io: bool,
 ) -> [u32; POSEIDON2_TRACE_COLUMNS] {
     let mut row = [0u32; POSEIDON2_TRACE_COLUMNS];
     let mut idx = 0usize;
@@ -277,6 +282,8 @@ pub fn poseidon2_traced_state(
     }
 
     row[idx] = wide as u32;
+    idx += 1;
+    row[idx] = io as u32;
     idx += 1;
 
     debug_assert_eq!(idx, POSEIDON2_TRACE_COLUMNS);

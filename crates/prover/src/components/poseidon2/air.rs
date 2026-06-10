@@ -141,7 +141,7 @@ impl FrameworkEval for Eval {
         add_to_relation!(
             eval,
             self.relations.poseidon2,
-            enabler * wide,
+            enabler.clone() * wide,
             state[0].clone(),
             state[1].clone(),
             state[2].clone(),
@@ -150,6 +150,48 @@ impl FrameworkEval for Eval {
             state[5].clone(),
             state[6].clone(),
             state[7].clone()
+        );
+        // Atomic (input, output) pair for sponge chaining: binds this
+        // permutation's two ends in one tuple, so consumers cannot mix the
+        // outputs of different permutations.
+        let io = eval.next_trace_mask();
+        eval.add_constraint(io.clone() * (E::F::one() - io.clone()));
+        add_to_relation!(
+            eval,
+            self.relations.poseidon2_io,
+            enabler * io,
+            initial_state[0].clone(),
+            initial_state[1].clone(),
+            initial_state[2].clone(),
+            initial_state[3].clone(),
+            initial_state[4].clone(),
+            initial_state[5].clone(),
+            initial_state[6].clone(),
+            initial_state[7].clone(),
+            initial_state[8].clone(),
+            initial_state[9].clone(),
+            initial_state[10].clone(),
+            initial_state[11].clone(),
+            initial_state[12].clone(),
+            initial_state[13].clone(),
+            initial_state[14].clone(),
+            initial_state[15].clone(),
+            state[0].clone(),
+            state[1].clone(),
+            state[2].clone(),
+            state[3].clone(),
+            state[4].clone(),
+            state[5].clone(),
+            state[6].clone(),
+            state[7].clone(),
+            state[8].clone(),
+            state[9].clone(),
+            state[10].clone(),
+            state[11].clone(),
+            state[12].clone(),
+            state[13].clone(),
+            state[14].clone(),
+            state[15].clone()
         );
         eval.finalize_logup_in_pairs();
         eval

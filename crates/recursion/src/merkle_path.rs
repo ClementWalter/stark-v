@@ -163,7 +163,7 @@ pub fn push_path_step(
     let mut state = [0u32; T];
     state[..8].copy_from_slice(&left);
     state[8..].copy_from_slice(&right);
-    let row = poseidon2_traced_state(state, true);
+    let row = poseidon2_traced_state(state, true, false);
     poseidon2.push_row(&row);
 
     let parent: [u32; 8] = row[runner::poseidon2::POSEIDON2_FINAL_STATE_START
