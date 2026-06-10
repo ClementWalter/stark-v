@@ -6,6 +6,7 @@
 //! single source of definition for the whole recursion stack.
 #![allow(clippy::too_many_arguments)] // generated table push takes one arg per column
 
+pub mod fri_fold;
 pub mod qm31_inv;
 pub mod qm31_mul;
 
@@ -40,6 +41,50 @@ define_component_tables! {
             // Im(second): Im(AD) + Im(BC)
             |a_0, a_1, a_2, a_3, b_0, b_1, b_2, b_3, c_3|
                 a_0 * b_3 + a_1 * b_2 + a_2 * b_1 + a_3 * b_0 - c_3,
+        },
+    },
+
+    // FRI line fold: folded = (f(x) + f(-x)) + alpha * (f(x) - f(-x)) * x^-1,
+    // i.e. stwo's `ibutterfly` followed by the alpha combination. The odd
+    // part t = (f(x) - f(-x)) * x^-1 is a witness column so every constraint
+    // stays degree 2; x^-1 is bound to x by x * x_inv = enabler. f, alpha,
+    // t, and folded are QM31 values as 4 M31 limbs; x is a base-field domain
+    // coordinate.
+    fri_fold_line: {
+        x, x_inv,
+        f_x_0, f_x_1, f_x_2, f_x_3,
+        f_neg_x_0, f_neg_x_1, f_neg_x_2, f_neg_x_3,
+        t_0, t_1, t_2, t_3,
+        alpha_0, alpha_1, alpha_2, alpha_3,
+        folded_0, folded_1, folded_2, folded_3,
+        constraints: {
+            // x_inv is the inverse of x on enabled rows
+            |enabler, x, x_inv| x * x_inv - enabler,
+            // t = (f(x) - f(-x)) * x_inv, limb-wise (x_inv is a base scalar)
+            |x_inv, f_x_0, f_neg_x_0, t_0| (f_x_0 - f_neg_x_0) * x_inv - t_0,
+            |x_inv, f_x_1, f_neg_x_1, t_1| (f_x_1 - f_neg_x_1) * x_inv - t_1,
+            |x_inv, f_x_2, f_neg_x_2, t_2| (f_x_2 - f_neg_x_2) * x_inv - t_2,
+            |x_inv, f_x_3, f_neg_x_3, t_3| (f_x_3 - f_neg_x_3) * x_inv - t_3,
+            // folded = (f(x) + f(-x)) + alpha * t, with alpha * t expanded
+            // over the extension tower exactly as in qm31_mul
+            |f_x_0, f_neg_x_0, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_0|
+                f_x_0 + f_neg_x_0
+                + alpha_0 * t_0 - alpha_1 * t_1
+                + 2 * (alpha_2 * t_2 - alpha_3 * t_3) - (alpha_2 * t_3 + alpha_3 * t_2)
+                - folded_0,
+            |f_x_1, f_neg_x_1, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_1|
+                f_x_1 + f_neg_x_1
+                + alpha_0 * t_1 + alpha_1 * t_0
+                + (alpha_2 * t_2 - alpha_3 * t_3) + 2 * (alpha_2 * t_3 + alpha_3 * t_2)
+                - folded_1,
+            |f_x_2, f_neg_x_2, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_2|
+                f_x_2 + f_neg_x_2
+                + alpha_0 * t_2 - alpha_1 * t_3 + alpha_2 * t_0 - alpha_3 * t_1
+                - folded_2,
+            |f_x_3, f_neg_x_3, alpha_0, alpha_1, alpha_2, alpha_3, t_0, t_1, t_2, t_3, folded_3|
+                f_x_3 + f_neg_x_3
+                + alpha_0 * t_3 + alpha_1 * t_2 + alpha_2 * t_1 + alpha_3 * t_0
+                - folded_3,
         },
     },
 
