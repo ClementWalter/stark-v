@@ -7,11 +7,14 @@
 
 use stwo::core::fields::m31::M31;
 
-// Default Poseidon2 Merkle hashes for leaf depth 21 (index = depth, depth 21 is 0).
-pub const POSEIDON2_DEFAULT_HASHES_DEPTH_21: [u32; 22] = [
-    1217577584, 378597429, 1556938811, 474559429, 423443822, 662201576, 1930942541, 2117464092,
-    770448190, 1902191074, 1556109289, 776362864, 1750512713, 1171333637, 1423473161, 372035035,
-    1457616685, 1303178213, 1563153690, 1383248003, 1183174448, 0,
+/// Default Poseidon2 Merkle hashes for the widest binary tree whose leaf indices fit in M31.
+///
+/// The array index is the Merkle depth; depth 30 is the zero leaf value.
+pub const POSEIDON2_DEFAULT_HASHES_DEPTH_30: [u32; 31] = [
+    1780222652, 1930688578, 303118306, 97239919, 1601728603, 1416594325, 1406687439, 1363155510,
+    1886023926, 1217577584, 378597429, 1556938811, 474559429, 423443822, 662201576, 1930942541,
+    2117464092, 770448190, 1902191074, 1556109289, 776362864, 1750512713, 1171333637, 1423473161,
+    372035035, 1457616685, 1303178213, 1563153690, 1383248003, 1183174448, 0,
 ];
 
 pub const T: usize = 16;
@@ -205,7 +208,7 @@ stwo_macros::define_air_fns! {
 
     // External round matrix: M4 per 4-lane block, then each lane adds its
     // column-wise sum across the blocks. Purely additive: stays inline.
-    inline fn external_matrix(state[16]) {
+    inline fn external_matrix(state: [felt; 16]) {
         let (b0, b1, b2, b3) = m4(state[0], state[1], state[2], state[3]);
         let (b4, b5, b6, b7) = m4(state[4], state[5], state[6], state[7]);
         let (b8, b9, b10, b11) = m4(state[8], state[9], state[10], state[11]);
@@ -218,29 +221,19 @@ stwo_macros::define_air_fns! {
 
     // 4 + 4 full rounds around 14 partial rounds; the x^5 s-box chains
     // materialize automatically under the degree budget.
-    fn poseidon2(state[16]) {
+    fn poseidon2(state: [felt; 16]) {
         let state = external_matrix(state);
         for r in 0..4 {
-            let state = map(j, 0..16, state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j]));
-            let sq = map(j, 0..16, state[j] * state[j]);
-            let q = map(j, 0..16, sq[j] * sq[j]);
-            let state = map(j, 0..16, q[j] * state[j]);
+            let state = map(j, 0..16, (state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j])) ** 5);
             let state = external_matrix(state);
         }
         for r in 0..14 {
-            let s0 = state[0] + constant(INTERNAL_ROUND_CONSTS[r]);
-            let p2 = s0 * s0;
-            let p4 = p2 * p2;
-            let s5 = p4 * s0;
-            let state = update(state, 0, s5);
+            let state = update(state, 0, (state[0] + constant(INTERNAL_ROUND_CONSTS[r])) ** 5);
             let total = sum(j, 0..16, state[j]);
             let state = map(j, 0..16, state[j] * constant(INTERNAL_MATRIX[j]) + total);
         }
         for r in 4..8 {
-            let state = map(j, 0..16, state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j]));
-            let sq = map(j, 0..16, state[j] * state[j]);
-            let q = map(j, 0..16, sq[j] * sq[j]);
-            let state = map(j, 0..16, q[j] * state[j]);
+            let state = map(j, 0..16, (state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j])) ** 5);
             let state = external_matrix(state);
         }
         return state;
@@ -289,5 +282,21 @@ mod permutation_tests {
         let mut expected = state;
         poseidon2_permutation(&mut expected);
         assert_eq!(traced, expected);
+    }
+
+    #[test]
+    fn test_default_hashes_match_permutation_chain() {
+        // Each depth's default hash is the permutation of two copies of the
+        // depth below, anchored at the zero leaf.
+        let mut expected = [0u32; POSEIDON2_DEFAULT_HASHES_DEPTH_30.len()];
+        for depth in (0..expected.len() - 1).rev() {
+            let child = expected[depth + 1];
+            let mut state = [0u32; T];
+            state[0] = child;
+            state[1] = child;
+            poseidon2_permutation(&mut state);
+            expected[depth] = state[0];
+        }
+        assert_eq!(POSEIDON2_DEFAULT_HASHES_DEPTH_30, expected);
     }
 }

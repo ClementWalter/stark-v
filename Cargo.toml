@@ -3,7 +3,6 @@ resolver = "2"
 members = [
   "crates/bench-cli",
   "crates/debug-utils",
-  "crates/felt-air",
   "crates/prover",
   "crates/recursion",
   "crates/runner",

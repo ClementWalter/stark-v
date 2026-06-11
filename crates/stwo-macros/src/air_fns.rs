@@ -12,10 +12,10 @@
 //! chains that would breach it are unrolled into materialized intermediate
 //! columns (one equality constraint each, deduplicated by common
 //! subexpression), while additive chains stay inline. `for` loops with
-//! constant bounds unroll; fixed-size arrays (`state[16]` parameters,
-//! constant indexing, `map`/`sum`/`update` builders) flatten to scalars at
-//! compile time, so the whole body lowers to single-assignment felt cells —
-//! a write-once frame.
+//! constant bounds unroll; fixed-size arrays (`state: [felt; 16]`
+//! parameters, constant indexing, `map`/`sum`/`update` builders) flatten to
+//! scalars at compile time, so the whole body lowers to single-assignment
+//! felt cells — a write-once frame.
 //!
 //! The lowering targets the `define_trace_tables!` backend — tables,
 //! generic column structs, and the exported lookup macros — so AIR
@@ -158,19 +158,7 @@ fn parse_fn(input: ParseStream) -> syn::Result<AirFn> {
     parenthesized!(params_content in input);
     let mut params = Vec::new();
     while !params_content.is_empty() {
-        let param_name: Ident = params_content.parse()?;
-        let size = if params_content.peek(syn::token::Bracket) {
-            let size_content;
-            bracketed!(size_content in params_content);
-            let lit: syn::LitInt = size_content.parse()?;
-            Some(lit.base10_parse()?)
-        } else {
-            None
-        };
-        params.push(Param {
-            name: param_name,
-            size,
-        });
+        params.push(parse_param(&params_content)?);
         if params_content.peek(Token![,]) {
             params_content.parse::<Token![,]>()?;
         }
@@ -188,6 +176,48 @@ fn parse_fn(input: ParseStream) -> syn::Result<AirFn> {
         body,
         rets,
     })
+}
+
+fn parse_param(input: ParseStream) -> syn::Result<Param> {
+    let name: Ident = input.parse()?;
+    let size = if input.peek(Token![:]) {
+        input.parse::<Token![:]>()?;
+        parse_param_type(input)?
+    } else if input.peek(syn::token::Bracket) {
+        let size_content;
+        bracketed!(size_content in input);
+        let lit: syn::LitInt = size_content.parse()?;
+        Some(lit.base10_parse()?)
+    } else {
+        None
+    };
+    Ok(Param { name, size })
+}
+
+fn parse_param_type(input: ParseStream) -> syn::Result<Option<usize>> {
+    if input.peek(syn::token::Bracket) {
+        let array_content;
+        bracketed!(array_content in input);
+        parse_felt_keyword(&array_content)?;
+        array_content.parse::<Token![;]>()?;
+        let lit: syn::LitInt = array_content.parse()?;
+        return Ok(Some(lit.base10_parse()?));
+    }
+
+    parse_felt_keyword(input)?;
+    Ok(None)
+}
+
+fn parse_felt_keyword(input: ParseStream) -> syn::Result<()> {
+    let keyword: Ident = input.parse()?;
+    if keyword == "felt" {
+        Ok(())
+    } else {
+        Err(syn::Error::new(
+            keyword.span(),
+            "expected `felt` or `[felt; N]`",
+        ))
+    }
 }
 
 /// Parse a statement block; `allow_return` only for the function's top
@@ -477,6 +507,92 @@ impl Lowerer<'_> {
         syn::parse_quote!(#cell)
     }
 
+    fn lower_product<S: ToTokens + ?Sized>(
+        &mut self,
+        mut left: Expr,
+        mut dl: usize,
+        mut right: Expr,
+        mut dr: usize,
+        budget: usize,
+        span: &S,
+    ) -> syn::Result<(Expr, usize)> {
+        if matches!(const_eval(&left), Ok(1)) {
+            return Ok((right, dr));
+        }
+        if matches!(const_eval(&right), Ok(1)) {
+            return Ok((left, dl));
+        }
+
+        // Unroll the product until it fits: materialize the higher-degree
+        // side (additions never trigger this).
+        while dl + dr > budget {
+            if dl >= dr && dl > 1 {
+                left = self.materialize(left);
+                dl = 1;
+            } else if dr > 1 {
+                right = self.materialize(right);
+                dr = 1;
+            } else {
+                return Err(syn::Error::new_spanned(
+                    span,
+                    format!("cannot reduce product below degree {}", dl + dr),
+                ));
+            }
+        }
+        Ok((syn::parse_quote!((#left * #right)), dl + dr))
+    }
+
+    fn lower_pow<S: ToTokens + ?Sized>(
+        &mut self,
+        base: &Expr,
+        exponent: usize,
+        scope: &HashMap<String, Value>,
+        budget: usize,
+        span: &S,
+    ) -> syn::Result<(Expr, usize)> {
+        if exponent == 0 {
+            return Ok((syn::parse_quote!(1), 0));
+        }
+
+        let (mut power, mut power_degree) = self.lower(base, scope, budget)?;
+        let mut result: Option<(Expr, usize)> = None;
+        let mut remaining = exponent;
+        while remaining > 0 {
+            if remaining & 1 == 1 {
+                result = Some(match result {
+                    None => (power.clone(), power_degree),
+                    Some((acc, acc_degree)) => self.lower_product(
+                        acc,
+                        acc_degree,
+                        power.clone(),
+                        power_degree,
+                        budget,
+                        span,
+                    )?,
+                });
+            }
+
+            remaining >>= 1;
+            if remaining > 0 {
+                let squared = self.lower_product(
+                    power.clone(),
+                    power_degree,
+                    power.clone(),
+                    power_degree,
+                    budget,
+                    span,
+                )?;
+                power = squared.0;
+                power_degree = squared.1;
+            }
+        }
+
+        match result {
+            Some(value) => Ok(value),
+            None => Ok((syn::parse_quote!(1), 0)),
+        }
+    }
+
     /// Lower a scalar expression over a user-name scope so its degree fits
     /// `budget`, materializing multiplicative subtrees as needed. Returns
     /// the cell-level expression and its degree.
@@ -566,29 +682,20 @@ impl Lowerer<'_> {
                     Ok((syn::parse_quote!((#left #op #right)), dl.max(dr)))
                 }
                 syn::BinOp::Mul(_) => {
-                    let (mut left, mut dl) = self.lower(&binary.left, scope, budget)?;
-                    let (mut right, mut dr) = self.lower(&binary.right, scope, budget)?;
-                    // Unroll the product until it fits: materialize the
-                    // higher-degree side (additions never trigger this).
-                    while dl + dr > budget {
-                        if dl >= dr && dl > 1 {
-                            left = self.materialize(left);
-                            dl = 1;
-                        } else if dr > 1 {
-                            right = self.materialize(right);
-                            dr = 1;
-                        } else {
-                            return Err(syn::Error::new_spanned(
-                                binary,
-                                format!("cannot reduce product below degree {}", dl + dr),
-                            ));
-                        }
+                    if let Expr::Unary(unary) = binary.right.as_ref()
+                        && matches!(unary.op, syn::UnOp::Deref(_))
+                    {
+                        let exponent = index_eval(&unary.expr)?;
+                        return self.lower_pow(&binary.left, exponent, scope, budget, binary);
                     }
-                    Ok((syn::parse_quote!((#left * #right)), dl + dr))
+
+                    let (left, dl) = self.lower(&binary.left, scope, budget)?;
+                    let (right, dr) = self.lower(&binary.right, scope, budget)?;
+                    self.lower_product(left, dl, right, dr, budget, binary)
                 }
                 _ => Err(syn::Error::new_spanned(
                     binary,
-                    "only +, -, * are supported",
+                    "only +, -, *, and ** const are supported",
                 )),
             },
             Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {

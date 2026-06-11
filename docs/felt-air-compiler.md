@@ -62,9 +62,7 @@ fn poseidon2(state: [felt; 16]) -> [felt; 16] {
 }
 
 fn sbox(x: felt) -> felt {
-    let x2 = x * x;      // materialized at max_degree = 2 (or 3)
-    let x4 = x2 * x2;    // materialized
-    x4 * x              // inline
+    x ** 5
 }
 ```
 

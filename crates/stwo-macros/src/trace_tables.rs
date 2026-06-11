@@ -9,30 +9,29 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Expr, ExprClosure, Ident, Pat, Token, braced, parse_macro_input};
+use syn::{Expr, Ident, Token, braced, parse_macro_input};
 
 // =============================================================================
 // define_trace_tables! proc-macro
 // =============================================================================
 
-/// A derived (computed) column: `name: |col_a, col_b| col_a + pow2(4) * col_b`.
+/// A derived (computed) column: `name: col_a + pow2(4) * col_b`.
 ///
-/// The closure parameters name the trace columns (or previously defined derived
-/// columns) the expression reads. The body is a field expression over those
-/// parameters, integer literals, and `pow2(n)` constants. It is compiled once
-/// into a generic method usable both in AIR constraints (`T = E::F`) and in
-/// witness generation (`T = PackedM31` via `at(i)`).
+/// The expression names trace columns or previously defined derived columns
+/// directly. It is compiled once into a generic method usable both in AIR
+/// constraints (`T = E::F`) and in witness generation (`T = PackedM31` via
+/// `at(i)`).
 pub(crate) struct DerivedDef {
     pub(crate) name: Ident,
-    pub(crate) closure: ExprClosure,
+    pub(crate) expr: Expr,
 }
 
 impl Parse for DerivedDef {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let name: Ident = input.parse()?;
         input.parse::<Token![:]>()?;
-        let closure: ExprClosure = input.parse()?;
-        Ok(DerivedDef { name, closure })
+        let expr: Expr = input.parse()?;
+        Ok(DerivedDef { name, expr })
     }
 }
 
@@ -44,7 +43,7 @@ impl Parse for DerivedDef {
 ///
 /// Multiplicity and element expressions use the derived-expression language
 /// with every trace column and derived column in scope (the tuple itself
-/// lists what the entry reads, so closure parameters would be redundant).
+/// lists what the entry reads, so a separate dependency list would be redundant).
 pub(crate) struct LookupEntry {
     pub(crate) preprocessed: bool,
     pub(crate) relation: Ident,
@@ -157,11 +156,11 @@ fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
 }
 
 /// A single opcode definition:
-/// `name: { field1, field2, ..., derived: { ... }, constraints: { ... }, lookups: { ... } }`
+/// `name: { committed: { field1, field2, ... }, derived: { ... }, constraints: { ... }, lookups: { ... } }`
 ///
 /// Constraints are bare expressions with every trace column and derived
 /// column in scope — like lookup entries, the formula itself names what it
-/// reads, so closure parameters would be redundant.
+/// reads, so a separate dependency list would be redundant.
 pub(crate) struct OpcodeDef {
     pub(crate) name: Ident,
     pub(crate) fields: Vec<Ident>,
@@ -192,14 +191,22 @@ impl Parse for OpcodeDef {
 
         while !content.is_empty() {
             let ident: Ident = content.parse()?;
-            // `derived:`/`constraints:`/`lookups:` are keywords only when
-            // followed by a colon; plain column names are never followed by
-            // one.
             if content.peek(Token![:]) {
                 content.parse::<Token![:]>()?;
                 let block;
                 braced!(block in content);
                 match ident.to_string().as_str() {
+                    "committed" => {
+                        if !fields.is_empty() {
+                            return Err(syn::Error::new(
+                                ident.span(),
+                                "`committed` block may only be declared once",
+                            ));
+                        }
+                        let defs: Punctuated<Ident, Token![,]> =
+                            block.parse_terminated(Ident::parse, Token![,])?;
+                        fields.extend(defs);
+                    }
                     "derived" => {
                         let defs: Punctuated<DerivedDef, Token![,]> =
                             block.parse_terminated(DerivedDef::parse, Token![,])?;
@@ -218,17 +225,27 @@ impl Parse for OpcodeDef {
                         return Err(syn::Error::new(
                             ident.span(),
                             format!(
-                                "unknown block `{other}`, expected `derived`, `constraints`, or `lookups`"
+                                "unknown block `{other}`, expected `committed`, `derived`, `constraints`, or `lookups`"
                             ),
                         ));
                     }
                 }
             } else {
-                fields.push(ident);
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "trace columns must be declared inside `committed: { ... }`",
+                ));
             }
             if content.peek(Token![,]) {
                 content.parse::<Token![,]>()?;
             }
+        }
+
+        if fields.is_empty() {
+            return Err(syn::Error::new(
+                name.span(),
+                "table must declare committed columns with `committed: { ... }`",
+            ));
         }
 
         Ok(OpcodeDef {
@@ -487,57 +504,16 @@ fn flatten_fields(fields: &[Ident], include_enabler: bool) -> Vec<Ident> {
 }
 
 // =============================================================================
-// Derived columns and constraints: closure-expression compilation
+// Derived columns and constraints: expression compilation
 // =============================================================================
 
-/// How a closure parameter resolves inside a derived/constraint expression.
+/// How an identifier resolves inside a derived/constraint expression.
 #[derive(Clone, Copy)]
 enum ParamKind {
     /// A flattened trace column: rewritten to `self.name.clone()`.
     RawColumn,
     /// A derived column (or the synthesized `enabler`): rewritten to `self.name()`.
     Derived,
-}
-
-/// Extract the parameter identifiers of a derived/constraint closure.
-fn closure_param_idents(closure: &ExprClosure) -> syn::Result<Vec<Ident>> {
-    closure
-        .inputs
-        .iter()
-        .map(|pat| match pat {
-            Pat::Ident(p) => Ok(p.ident.clone()),
-            other => Err(syn::Error::new_spanned(
-                other,
-                "closure parameters must be plain column identifiers",
-            )),
-        })
-        .collect()
-}
-
-/// Resolve closure parameters against the flattened trace columns and the
-/// derived columns defined so far. Errors on unknown names so typos surface at
-/// macro expansion time instead of as missing-field errors in generated code.
-fn resolve_params(
-    params: &[Ident],
-    flat_columns: &[Ident],
-    derived_names: &[Ident],
-) -> syn::Result<HashMap<String, ParamKind>> {
-    let mut map = HashMap::new();
-    for param in params {
-        let name = param.to_string();
-        let kind = if flat_columns.iter().any(|c| *c == name) {
-            ParamKind::RawColumn
-        } else if derived_names.iter().any(|c| *c == name) {
-            ParamKind::Derived
-        } else {
-            return Err(syn::Error::new(
-                param.span(),
-                format!("`{name}` is not a trace column or previously defined derived column"),
-            ));
-        };
-        map.insert(name, kind);
-    }
-    Ok(map)
 }
 
 /// Emit a field constant `T::from(BaseField::from_u32_unchecked(value))`.
@@ -605,8 +581,8 @@ pub(crate) fn const_eval(expr: &Expr) -> syn::Result<u64> {
     }
 }
 
-/// Rewrite a closure-body expression into generic field arithmetic over `T`:
-/// - closure parameters become `self.col.clone()` (raw) or `self.col()` (derived)
+/// Rewrite a derived/constraint expression into generic field arithmetic over `T`:
+/// - column names become `self.col.clone()` (raw) or `self.col()` (derived)
 /// - integer literals become `T::from(BaseField::from_u32_unchecked(lit))`
 /// - `pow2(n)` becomes the constant `T::from(BaseField::from_u32_unchecked(1 << n))`
 /// - `+`, `-`, `*`, unary `-`, and parentheses recurse
@@ -630,7 +606,7 @@ fn rewrite_expr(
                         return Err(syn::Error::new(
                             ident.span(),
                             format!(
-                                "`{ident}` is not a closure parameter; list every column the expression reads"
+                                "`{ident}` is not a trace column or previously defined derived column"
                             ),
                         ));
                     }
@@ -728,15 +704,14 @@ fn full_scope(flat_columns: &[Ident], derived_names: &[Ident]) -> HashMap<String
     scope
 }
 
-/// Compile a closure into a generic expression body over `T`.
-fn compile_closure(
-    closure: &ExprClosure,
+/// Compile an expression into a generic expression body over `T`.
+fn compile_expr(
+    expr: &Expr,
     flat_columns: &[Ident],
     derived_names: &[Ident],
 ) -> syn::Result<proc_macro2::TokenStream> {
-    let params = closure_param_idents(closure)?;
-    let params = resolve_params(&params, flat_columns, derived_names)?;
-    rewrite_expr(&closure.body, &params)
+    let scope = full_scope(flat_columns, derived_names);
+    rewrite_expr(expr, &scope)
 }
 
 /// Count trace columns (enabler + fields, with Access fields expanding to 4 columns).
@@ -919,10 +894,10 @@ fn generate_expr_impl(
                 format!("derived column `{}` collides with a trace column", def.name),
             ));
         }
-        let body = compile_closure(&def.closure, flat_fields, &derived_names)?;
+        let body = compile_expr(&def.expr, flat_fields, &derived_names)?;
         let name = &def.name;
-        let closure = &def.closure;
-        let doc = format!("Derived column: `{}`.", quote!(#closure));
+        let expr = &def.expr;
+        let doc = format!("Derived column: `{}`.", quote!(#expr));
         methods.push(quote! {
             #[doc = #doc]
             #[inline(always)]
@@ -963,7 +938,7 @@ fn generate_expr_impl(
 
     // Lookup entries: multiplicity and tuple expressions over the full column
     // scope (every trace column and derived column — the tuple itself lists
-    // what the entry reads, so no closure parameters).
+    // what the entry reads, so no separate dependency list is needed).
     let lookup_method = if opcode.lookups.entries.is_empty() {
         quote! {}
     } else {
@@ -1832,11 +1807,15 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
 ///
 /// ```ignore
 /// define_trace_tables! {
-///     add: { clock, pc, rd, rs1, rs2 },
+///     add: {
+///         committed: { clock, pc, rd, rs1, rs2 },
+///     },
 ///     lui: {
-///         clock, pc, rd, imm_0, imm_1, imm_2,
+///         committed: {
+///             clock, pc, rd, imm_0, imm_1, imm_2,
+///         },
 ///         derived: {
-///             imm: |imm_0, imm_1, imm_2| imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
+///             imm: imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
 ///         },
 ///         constraints: {
 ///             imm * (1 - imm),
@@ -1861,7 +1840,7 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let trace_op_macro = generate_trace_op_macro(&traced);
 
     // Generate prover columns; expression errors surface as compile errors
-    // pointing at the offending closure.
+    // pointing at the offending formula.
     let prover_columns: Vec<_> = def
         .opcodes
         .iter()

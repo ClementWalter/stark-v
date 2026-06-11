@@ -1,14 +1,19 @@
+//! Program and memory commitment trace construction.
+
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::Memory;
 use crate::ops::utils::M31_P;
-use crate::poseidon2::{POSEIDON2_DEFAULT_HASHES_DEPTH_21, poseidon2_traced};
-use crate::program::decode_program;
+use crate::poseidon2::{POSEIDON2_DEFAULT_HASHES_DEPTH_30, poseidon2_traced};
+use crate::program::{ProgramRow, decode_program};
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
 
 pub const MAX_TREE_HEIGHT: u32 = 31;
+
+// The table has one default hash per Merkle depth, including the root and leaves.
+const _: [(); MAX_TREE_HEIGHT as usize] = [(); POSEIDON2_DEFAULT_HASHES_DEPTH_30.len()];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MemoryLayout {
@@ -30,6 +35,7 @@ pub(crate) struct MemoryLayout {
 
 impl MemoryLayout {
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         program_base: u32,
         program_end: u32,
@@ -153,37 +159,60 @@ pub struct NodeData {
     pub cur: MerkleValue,
 }
 
-fn default_hashes(leaf_depth: u32) -> Vec<u32> {
-    let max_depth = (POSEIDON2_DEFAULT_HASHES_DEPTH_21.len() - 1) as u32;
-    if leaf_depth <= max_depth {
-        let offset = (max_depth - leaf_depth) as usize;
-        return POSEIDON2_DEFAULT_HASHES_DEPTH_21[offset..].to_vec();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MemoryCommitmentEntry {
+    addr: u32,
+    initial_word: u32,
+    final_word: u32,
+    final_clock: u32,
+    include_initial: bool,
+    include_final: bool,
+}
+
+impl MemoryCommitmentEntry {
+    fn initial_bytes(self) -> [u8; 4] {
+        self.initial_word.to_le_bytes()
     }
 
-    let mut defaults = vec![0u32; (leaf_depth as usize) + 1];
-    defaults[leaf_depth as usize] = 0;
-    for depth in (0..leaf_depth).rev() {
-        let child = defaults[(depth + 1) as usize];
-        let mut state = [0u32; crate::poseidon2::T];
-        state[0] = child;
-        state[1] = child;
-        crate::poseidon2::poseidon2_permutation(&mut state);
-        defaults[depth as usize] = state[0];
+    fn final_bytes(self) -> [u8; 4] {
+        self.final_word.to_le_bytes()
     }
-    defaults
+}
+
+fn insert_word_leaves(leaves: &mut FxHashMap<u32, MerkleValue>, addr: u32, word: u32) {
+    let bytes = word.to_le_bytes();
+    for limb in 0..4u32 {
+        leaves.insert(
+            addr + limb,
+            MerkleValue::new(bytes[limb as usize] as u32, 1),
+        );
+    }
+}
+
+fn collect_program_leaves(program_rows: &[ProgramRow]) -> FxHashMap<u32, MerkleValue> {
+    let mut leaves = FxHashMap::default();
+    for row in program_rows {
+        for limb in 0..4u32 {
+            leaves.insert(
+                row.addr + limb,
+                MerkleValue::new(row.values[limb as usize], 1),
+            );
+        }
+    }
+    leaves
 }
 
 pub fn build_partial_merkle_tree(
     leaves: &FxHashMap<u32, MerkleValue>,
     poseidon2: &mut Poseidon2Table,
 ) -> (Vec<NodeData>, u32) {
-    let leaf_depth = MAX_TREE_HEIGHT.saturating_sub(1);
+    let leaf_depth = MAX_TREE_HEIGHT - 1;
     if leaves.is_empty() {
-        let root = default_hashes(leaf_depth)[0];
+        let root = POSEIDON2_DEFAULT_HASHES_DEPTH_30[0];
         return (vec![], root);
     }
 
-    let defaults = default_hashes(leaf_depth);
+    let defaults = &POSEIDON2_DEFAULT_HASHES_DEPTH_30;
     let mut nodes = Vec::new();
     let mut current: FxHashMap<u32, MerkleValue> = leaves.clone();
 
@@ -237,6 +266,140 @@ pub fn build_partial_merkle_tree(
     (nodes, root)
 }
 
+fn collect_memory_commitment(
+    tracer: &Tracer,
+    memory: &Memory,
+    layout: &MemoryLayout,
+    role: SegmentRole,
+) -> (
+    Vec<MemoryCommitmentEntry>,
+    FxHashMap<u32, MerkleValue>,
+    FxHashMap<u32, MerkleValue>,
+) {
+    let output_len = memory.read_u32(layout.output_len_addr);
+    let mut entries = Vec::new();
+    let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
+    let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
+
+    let mut mem_addrs = BTreeSet::new();
+    for addr in memory.keys() {
+        if layout.is_rw_addr(addr) {
+            mem_addrs.insert(addr & !3);
+        }
+    }
+    for addr in tracer.mem_clock.keys().copied() {
+        if layout.is_rw_addr(addr) {
+            mem_addrs.insert(addr & !3);
+        }
+    }
+
+    for addr in mem_addrs {
+        let is_input = role.is_first && layout.is_input_addr(addr);
+        let is_public_output = role.is_last && layout.is_public_output_addr(addr, output_len);
+        let final_clock = tracer.mem_clock.get(&addr).copied().unwrap_or(0);
+        let accessed = final_clock > 0;
+        let include_initial = !is_input;
+        let include_final = if is_input {
+            accessed
+        } else {
+            !is_public_output
+        };
+        let final_word = memory.read_u32(addr);
+        let initial_word = tracer.mem_initial.get(&addr).copied().unwrap_or(final_word);
+
+        if include_initial {
+            insert_word_leaves(&mut rw_initial_leaves, addr, initial_word);
+        }
+        if include_final {
+            insert_word_leaves(&mut rw_final_leaves, addr, final_word);
+        }
+
+        entries.push(MemoryCommitmentEntry {
+            addr,
+            initial_word,
+            final_word,
+            final_clock,
+            include_initial,
+            include_final,
+        });
+    }
+
+    (entries, rw_initial_leaves, rw_final_leaves)
+}
+
+fn push_memory_rows(
+    table: &mut MemoryTable,
+    entries: &[MemoryCommitmentEntry],
+    rw_initial_root: u32,
+    rw_final_root: u32,
+) {
+    for entry in entries {
+        if entry.include_initial {
+            let bytes = entry.initial_bytes();
+            table.push(
+                entry.addr,
+                0,
+                bytes[0] as u32,
+                bytes[1] as u32,
+                bytes[2] as u32,
+                bytes[3] as u32,
+                1,
+                rw_initial_root,
+            );
+        }
+
+        if entry.include_final {
+            let bytes = entry.final_bytes();
+            table.push(
+                entry.addr,
+                entry.final_clock,
+                bytes[0] as u32,
+                bytes[1] as u32,
+                bytes[2] as u32,
+                bytes[3] as u32,
+                M31_P - 1,
+                rw_final_root,
+            );
+        }
+    }
+}
+
+fn push_program_rows(
+    table: &mut ProgramTable,
+    program_rows: &[ProgramRow],
+    program_reads: &FxHashMap<u32, u32>,
+    program_root: u32,
+) {
+    for row in program_rows {
+        let read_count = program_reads.get(&row.addr).copied().unwrap_or(0);
+        table.push(
+            row.addr,
+            row.values[0],
+            row.values[1],
+            row.values[2],
+            row.values[3],
+            read_count,
+            program_root,
+        );
+    }
+}
+
+fn push_merkle_nodes(nodes: Vec<NodeData>, root: u32, table: &mut MerkleTable) {
+    for node in nodes {
+        table.push(
+            node.index,
+            node.depth,
+            node.left.value,
+            node.right.value,
+            node.cur.value,
+            node.left.multiplicity,
+            node.right.multiplicity,
+            node.cur.multiplicity,
+            root,
+        );
+    }
+}
+
 /// Position of a segment within a (possibly segmented) execution.
 ///
 /// Input words are anchored via public-data LogUp emission only in the first
@@ -286,65 +449,11 @@ impl Tracer {
 
         // Create program leaves
         let program_rows = decode_program(memory, layout)?;
-        let mut program_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
-        for row in &program_rows {
-            for limb in 0..4u32 {
-                let idx = row.addr + limb;
-                program_leaves.insert(idx, MerkleValue::new(row.values[limb as usize], 1));
-            }
-        }
+        let program_leaves = collect_program_leaves(&program_rows);
 
         // Create memory leaves
-        let mut mem_entries: Vec<(u32, u32, u32, u32)> = Vec::new();
-        let mut rw_initial_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
-        let mut rw_final_leaves: FxHashMap<u32, MerkleValue> = FxHashMap::default();
-        let output_len = memory.read_u32(layout.output_len_addr);
-
-        let mut mem_addrs = BTreeSet::new();
-        for addr in memory.keys() {
-            if layout.is_rw_addr(addr) {
-                mem_addrs.insert(addr & !3);
-            }
-        }
-        for addr in self.mem_clock.keys().copied() {
-            if layout.is_rw_addr(addr) {
-                mem_addrs.insert(addr & !3);
-            }
-        }
-
-        for addr in mem_addrs {
-            let is_input = role.is_first && layout.is_input_addr(addr);
-            let is_public_output = role.is_last && layout.is_public_output_addr(addr, output_len);
-            let accessed_clock = self.mem_clock.get(&addr).copied().unwrap_or(0);
-            let accessed = accessed_clock > 0;
-            let include_initial = !is_input;
-            let include_final = if is_input {
-                accessed
-            } else {
-                !is_public_output
-            };
-            let final_word = memory.read_u32(addr);
-            let initial_word = self.mem_initial.get(&addr).copied().unwrap_or(final_word);
-            let initial_bytes = initial_word.to_le_bytes();
-            let final_bytes = final_word.to_le_bytes();
-            let final_clock = accessed_clock;
-
-            mem_entries.push((addr, initial_word, final_word, final_clock));
-
-            for limb in 0..4u32 {
-                let idx = addr + limb;
-                if include_initial {
-                    rw_initial_leaves.insert(
-                        idx,
-                        MerkleValue::new(initial_bytes[limb as usize] as u32, 1),
-                    );
-                }
-                if include_final {
-                    rw_final_leaves
-                        .insert(idx, MerkleValue::new(final_bytes[limb as usize] as u32, 1));
-                }
-            }
-        }
+        let (mem_entries, rw_initial_leaves, rw_final_leaves) =
+            collect_memory_commitment(self, memory, layout, role);
 
         // Build Merkle trees and Poseidon2 trace
         let (program_nodes, program_root) =
@@ -355,79 +464,25 @@ impl Tracer {
             build_partial_merkle_tree(&rw_final_leaves, &mut self.poseidon2);
 
         // Create memory trace
-        for (addr, initial_word, final_word, final_clock) in mem_entries {
-            let is_input = role.is_first && layout.is_input_addr(addr);
-            let is_public_output = role.is_last && layout.is_public_output_addr(addr, output_len);
-            let include_initial = !is_input;
-            let include_final = if is_input {
-                final_clock > 0
-            } else {
-                !is_public_output
-            };
-            let initial_bytes = initial_word.to_le_bytes();
-            let final_bytes = final_word.to_le_bytes();
-
-            if include_initial {
-                self.memory.push(
-                    addr,
-                    0,
-                    initial_bytes[0] as u32,
-                    initial_bytes[1] as u32,
-                    initial_bytes[2] as u32,
-                    initial_bytes[3] as u32,
-                    1,
-                    rw_initial_root,
-                );
-            }
-
-            if include_final {
-                self.memory.push(
-                    addr,
-                    final_clock,
-                    final_bytes[0] as u32,
-                    final_bytes[1] as u32,
-                    final_bytes[2] as u32,
-                    final_bytes[3] as u32,
-                    M31_P - 1,
-                    rw_final_root,
-                );
-            }
-        }
+        push_memory_rows(
+            &mut self.memory,
+            &mem_entries,
+            rw_initial_root,
+            rw_final_root,
+        );
 
         // Create program trace
-        for row in &program_rows {
-            let read_count = self.program_reads.get(&row.addr).copied().unwrap_or(0);
-            self.program.push(
-                row.addr,
-                row.values[0],
-                row.values[1],
-                row.values[2],
-                row.values[3],
-                read_count,
-                program_root,
-            );
-        }
+        push_program_rows(
+            &mut self.program,
+            &program_rows,
+            &self.program_reads,
+            program_root,
+        );
 
         // Create Merkle tree trace
-        let push_nodes = |nodes: Vec<NodeData>, root: u32, merkle: &mut MerkleTable| {
-            for node in nodes {
-                merkle.push(
-                    node.index,
-                    node.depth,
-                    node.left.value,
-                    node.right.value,
-                    node.cur.value,
-                    node.left.multiplicity,
-                    node.right.multiplicity,
-                    node.cur.multiplicity,
-                    root,
-                );
-            }
-        };
-
-        push_nodes(rw_initial_nodes, rw_initial_root, &mut self.merkle);
-        push_nodes(rw_final_nodes, rw_final_root, &mut self.merkle);
-        push_nodes(program_nodes, program_root, &mut self.merkle);
+        push_merkle_nodes(rw_initial_nodes, rw_initial_root, &mut self.merkle);
+        push_merkle_nodes(rw_final_nodes, rw_final_root, &mut self.merkle);
+        push_merkle_nodes(program_nodes, program_root, &mut self.merkle);
 
         Ok(())
     }

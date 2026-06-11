@@ -10,3 +10,12 @@ proc-macro = true
 proc-macro2.workspace = true
 quote.workspace = true
 syn.workspace = true
+
+[dev-dependencies]
+debug-utils.workspace = true
+num-traits.workspace = true
+rand.workspace = true
+runner.workspace = true
+simd.workspace = true
+stwo.workspace = true
+stwo-constraint-framework.workspace = true

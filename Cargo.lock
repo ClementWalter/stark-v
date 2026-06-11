@@ -851,21 +851,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
-name = "felt-air"
-version = "0.0.1"
-dependencies = [
- "debug-utils",
- "itertools 0.13.0",
- "num-traits",
- "rand",
- "runner",
- "simd",
- "stwo",
- "stwo-constraint-framework",
- "stwo-macros",
-]
-
-[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1948,8 +1933,15 @@ dependencies = [
 name = "stwo-macros"
 version = "0.1.0"
 dependencies = [
+ "debug-utils",
+ "num-traits",
  "proc-macro2",
  "quote",
+ "rand",
+ "runner",
+ "simd",
+ "stwo",
+ "stwo-constraint-framework",
  "syn 2.0.111",
 ]
 
