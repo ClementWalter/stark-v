@@ -283,4 +283,20 @@ mod permutation_tests {
         poseidon2_permutation(&mut expected);
         assert_eq!(traced, expected);
     }
+
+    #[test]
+    fn test_default_hashes_match_permutation_chain() {
+        // Each depth's default hash is the permutation of two copies of the
+        // depth below, anchored at the zero leaf.
+        let mut expected = [0u32; POSEIDON2_DEFAULT_HASHES_DEPTH_30.len()];
+        for depth in (0..expected.len() - 1).rev() {
+            let child = expected[depth + 1];
+            let mut state = [0u32; T];
+            state[0] = child;
+            state[1] = child;
+            poseidon2_permutation(&mut state);
+            expected[depth] = state[0];
+        }
+        assert_eq!(POSEIDON2_DEFAULT_HASHES_DEPTH_30, expected);
+    }
 }
