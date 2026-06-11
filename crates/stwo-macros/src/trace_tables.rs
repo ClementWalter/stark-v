@@ -1648,6 +1648,8 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
             pub reg_clock_update: AccessTable,
             /// Intermediate memory clock update accesses (gap-filling).
             pub mem_clock_update: AccessTable,
+            /// Poseidon2 permutations (felt-generated table, `crate::poseidon2`).
+            pub poseidon2: crate::poseidon2::Poseidon2Table,
 
             // Per-opcode trace tables
             #(#table_fields,)*
@@ -1698,6 +1700,7 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
                     program_reads: rustc_hash::FxHashMap::default(),
                     reg_clock_update: AccessTable::new(),
                     mem_clock_update: AccessTable::new(),
+                    poseidon2: crate::poseidon2::Poseidon2Table::new(),
                     #(#table_inits,)*
                 }
             }
@@ -1726,13 +1729,14 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
                     program_reads: rustc_hash::FxHashMap::default(),
                     reg_clock_update: AccessTable::new(),
                     mem_clock_update: AccessTable::new(),
+                    poseidon2: crate::poseidon2::Poseidon2Table::new(),
                     #(#table_inits_cap,)*
                 }
             }
 
             /// Total number of traced instructions.
             pub fn total_traces(&self) -> usize {
-                0 #(#total_traces_sum)*
+                self.poseidon2.len() #(#total_traces_sum)*
             }
 
             /// Print all non-empty trace tables as DataFrames.
@@ -1880,6 +1884,10 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
             // Import EvalAtRow for from_eval method
             #[allow(unused_imports)]
             use stwo_constraint_framework::EvalAtRow;
+
+            // The Poseidon2 columns are generated from the felt definition
+            // in `crate::poseidon2`; re-exported beside the table columns.
+            pub use crate::poseidon2::prover_columns::Poseidon2Columns;
 
             #(#prover_columns)*
         }

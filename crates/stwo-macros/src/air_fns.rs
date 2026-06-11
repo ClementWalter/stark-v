@@ -86,6 +86,13 @@ struct AirFn {
 
 struct AirFnsInput {
     max_degree: usize,
+    /// Embedded mode: generate only the table, the columns struct with its
+    /// straight-line `evaluation()`, and the row-fill function — the host
+    /// system provides relations, components, and proving. The idents are
+    /// flag columns appended to the table (booleanity and emission gating
+    /// are the host component's business). Returns are materialized so the
+    /// activation tuple is degree 1 (host relations may pair entries).
+    embedded: Option<Vec<Ident>>,
     fns: Vec<AirFn>,
 }
 
@@ -108,11 +115,32 @@ impl Parse for AirFnsInput {
         }
         input.parse::<Token![,]>()?;
 
+        let embedded = if input
+            .cursor()
+            .ident()
+            .is_some_and(|(ident, _)| ident == "embedded")
+        {
+            input.parse::<Ident>()?;
+            input.parse::<Token![:]>()?;
+            let flags_content;
+            bracketed!(flags_content in input);
+            let flags: Punctuated<Ident, Token![,]> =
+                flags_content.parse_terminated(Ident::parse, Token![,])?;
+            input.parse::<Token![,]>()?;
+            Some(flags.into_iter().collect())
+        } else {
+            None
+        };
+
         let mut fns = Vec::new();
         while !input.is_empty() {
             fns.push(parse_fn(input)?);
         }
-        Ok(AirFnsInput { max_degree, fns })
+        Ok(AirFnsInput {
+            max_degree,
+            embedded,
+            fns,
+        })
     }
 }
 
@@ -957,6 +985,7 @@ fn lower_fn(
     max_degree: usize,
     arities: &HashMap<String, (usize, usize)>,
     inline_fns: &HashMap<String, AirFn>,
+    materialize_rets: bool,
 ) -> syn::Result<LoweredFn> {
     // Lookup-tuple elements appear in LogUp denominators whose singleton
     // constraint multiplies by one cumsum mask: budget max_degree - 1.
@@ -1007,8 +1036,18 @@ fn lower_fn(
     let mut ret_cells: Vec<Ident> = Vec::new();
     for ret in &function.rets {
         let value = lowerer.lower_ret(ret, &scope, io_budget)?;
-        for (cell, _) in value.flatten() {
-            ret_cells.push(cell);
+        for (cell, degree) in value.flatten() {
+            // Embedded hosts pair activation entries, so the tuple must be
+            // degree 1: commit every returned cell.
+            if materialize_rets && degree > 1 {
+                let expr: Expr = syn::parse_quote!(#cell);
+                let Expr::Path(materialized) = lowerer.materialize(expr) else {
+                    unreachable!("materialize returns a cell path");
+                };
+                ret_cells.push(materialized.path.require_ident()?.clone());
+            } else {
+                ret_cells.push(cell);
+            }
         }
     }
 
@@ -1235,7 +1274,11 @@ fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
 }
 
 pub fn define_air_fns(input: TokenStream) -> TokenStream {
-    let AirFnsInput { max_degree, fns } = parse_macro_input!(input as AirFnsInput);
+    let AirFnsInput {
+        max_degree,
+        embedded,
+        fns,
+    } = parse_macro_input!(input as AirFnsInput);
 
     let inline_fns: HashMap<String, AirFn> = fns
         .iter()
@@ -1264,15 +1307,26 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
     // Lower in declaration order: calls reference earlier functions, so
     // flattened arities accumulate as we go.
     let mut arities: HashMap<String, (usize, usize)> = HashMap::new();
+    #[allow(unused_mut)]
     let mut lowered: Vec<LoweredFn> = Vec::new();
     for function in fns.iter().filter(|f| !f.inline) {
-        match lower_fn(function, max_degree, &arities, &inline_fns) {
+        match lower_fn(
+            function,
+            max_degree,
+            &arities,
+            &inline_fns,
+            embedded.is_some(),
+        ) {
             Ok(result) => {
                 arities.insert(function.name.to_string(), (result.n_args, result.n_rets));
                 lowered.push(result);
             }
             Err(error) => return error.to_compile_error().into(),
         }
+    }
+
+    if let Some(flags) = embedded {
+        return generate_embedded(&mut lowered, &flags);
     }
 
     // Backend: tables, generic columns, exported lookup macros.
@@ -1383,6 +1437,102 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
         #harness
     }
     .into()
+}
+
+/// Embedded mode: a single function generating only the table, the columns
+/// struct with `evaluation()`, and the row-fill — for components that live
+/// inside a larger system (the host wires relations and proving). Flag
+/// columns are appended to the table and exposed on the struct.
+fn generate_embedded(lowered: &mut [LoweredFn], flags: &[Ident]) -> TokenStream {
+    let [function] = lowered else {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "embedded mode takes exactly one (non-inline) function",
+        )
+        .to_compile_error()
+        .into();
+    };
+    if !function.calls.is_empty() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "embedded functions cannot activate other functions",
+        )
+        .to_compile_error()
+        .into();
+    }
+    function.table.fields.extend(flags.iter().cloned());
+
+    let table = generate_table(&function.table);
+    let prover_columns =
+        generate_prover_columns(&function.table).unwrap_or_else(|e| e.to_compile_error());
+    let evaluation = generate_evaluation_impl(function).unwrap_or_else(|e| e.to_compile_error());
+    let fill = generate_embedded_fill(function, flags).unwrap_or_else(|e| e.to_compile_error());
+
+    quote! {
+        #table
+
+        pub mod prover_columns {
+            #[allow(unused_imports)]
+            use stwo_constraint_framework::EvalAtRow;
+
+            #prover_columns
+        }
+
+        #evaluation
+
+        #fill
+    }
+    .into()
+}
+
+/// The embedded row-fill: run the cells, push the row (flags appended),
+/// return the outputs.
+fn generate_embedded_fill(function: &LoweredFn, flags: &[Ident]) -> syn::Result<TokenStream2> {
+    let name = &function.name;
+    let fn_name = format_ident!("{}_fill", name);
+    let table_type = table_name(name);
+    let n_args = function.n_args;
+    let n_rets = function.n_rets;
+    let n_flags = flags.len();
+    let arg_cells: Vec<&Ident> = function.table.fields[..n_args].iter().collect();
+
+    let mut steps: Vec<TokenStream2> = Vec::new();
+    for step in &function.fill {
+        match step {
+            FillStep::Expr { cell, expr } => {
+                let value = concrete_expr(expr)?;
+                steps.push(quote! { let #cell = #value; });
+            }
+            FillStep::Call { .. } => unreachable!("embedded functions make no calls"),
+        }
+    }
+
+    // Row layout: enabler, the lowered fields, then the flags.
+    let mut row_values: Vec<TokenStream2> = vec![quote!(1u32)];
+    for field in &function.table.fields[..function.table.fields.len() - n_flags] {
+        row_values.push(quote!(#field.0));
+    }
+    for position in 0..n_flags {
+        row_values.push(quote!(flags[#position]));
+    }
+    let ret_cells = &function.ret_cells;
+
+    let doc = format!(
+        "Run `{name}` over the arguments, push the trace row (with the flag          columns appended), and return the outputs."
+    );
+    Ok(quote! {
+        #[doc = #doc]
+        pub fn #fn_name(
+            table: &mut #table_type,
+            args: [stwo::core::fields::m31::BaseField; #n_args],
+            flags: [u32; #n_flags],
+        ) -> [stwo::core::fields::m31::BaseField; #n_rets] {
+            let [#(#arg_cells),*] = args;
+            #(#steps)*
+            table.push_row(&[#(#row_values),*]);
+            [#(#ret_cells),*]
+        }
+    })
 }
 
 /// The witness fill: run the lowered cells over `BaseField`, recursively

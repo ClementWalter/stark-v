@@ -1492,81 +1492,6 @@ stwo_macros::define_trace_tables! {
     },
 
     // ==========================================================================
-    // 20. Poseidon2 hash trace
-    // ==========================================================================
-    poseidon2: {
-        state0, state1, state2, state3, state4, state5, state6, state7, state8, state9, state10,
-        state11, state12, state13, state14, state15, full0_sq1_0, full0_sq1_1, full0_sq1_2,
-        full0_sq1_3, full0_sq1_4, full0_sq1_5, full0_sq1_6, full0_sq1_7, full0_sq1_8, full0_sq1_9,
-        full0_sq1_10, full0_sq1_11, full0_sq1_12, full0_sq1_13, full0_sq1_14, full0_sq1_15,
-        full0_sq2_0, full0_sq2_1, full0_sq2_2, full0_sq2_3, full0_sq2_4, full0_sq2_5, full0_sq2_6,
-        full0_sq2_7, full0_sq2_8, full0_sq2_9, full0_sq2_10, full0_sq2_11, full0_sq2_12,
-        full0_sq2_13, full0_sq2_14, full0_sq2_15, full0_mix_0, full0_mix_1, full0_mix_2,
-        full0_mix_3, full0_mix_4, full0_mix_5, full0_mix_6, full0_mix_7, full0_mix_8, full0_mix_9,
-        full0_mix_10, full0_mix_11, full0_mix_12, full0_mix_13, full0_mix_14, full0_mix_15,
-        full1_sq1_0, full1_sq1_1, full1_sq1_2, full1_sq1_3, full1_sq1_4, full1_sq1_5, full1_sq1_6,
-        full1_sq1_7, full1_sq1_8, full1_sq1_9, full1_sq1_10, full1_sq1_11, full1_sq1_12,
-        full1_sq1_13, full1_sq1_14, full1_sq1_15, full1_sq2_0, full1_sq2_1, full1_sq2_2,
-        full1_sq2_3, full1_sq2_4, full1_sq2_5, full1_sq2_6, full1_sq2_7, full1_sq2_8, full1_sq2_9,
-        full1_sq2_10, full1_sq2_11, full1_sq2_12, full1_sq2_13, full1_sq2_14, full1_sq2_15,
-        full1_mix_0, full1_mix_1, full1_mix_2, full1_mix_3, full1_mix_4, full1_mix_5, full1_mix_6,
-        full1_mix_7, full1_mix_8, full1_mix_9, full1_mix_10, full1_mix_11, full1_mix_12,
-        full1_mix_13, full1_mix_14, full1_mix_15, full2_sq1_0, full2_sq1_1, full2_sq1_2,
-        full2_sq1_3, full2_sq1_4, full2_sq1_5, full2_sq1_6, full2_sq1_7, full2_sq1_8, full2_sq1_9,
-        full2_sq1_10, full2_sq1_11, full2_sq1_12, full2_sq1_13, full2_sq1_14, full2_sq1_15,
-        full2_sq2_0, full2_sq2_1, full2_sq2_2, full2_sq2_3, full2_sq2_4, full2_sq2_5, full2_sq2_6,
-        full2_sq2_7, full2_sq2_8, full2_sq2_9, full2_sq2_10, full2_sq2_11, full2_sq2_12,
-        full2_sq2_13, full2_sq2_14, full2_sq2_15, full2_mix_0, full2_mix_1, full2_mix_2,
-        full2_mix_3, full2_mix_4, full2_mix_5, full2_mix_6, full2_mix_7, full2_mix_8, full2_mix_9,
-        full2_mix_10, full2_mix_11, full2_mix_12, full2_mix_13, full2_mix_14, full2_mix_15,
-        full3_sq1_0, full3_sq1_1, full3_sq1_2, full3_sq1_3, full3_sq1_4, full3_sq1_5, full3_sq1_6,
-        full3_sq1_7, full3_sq1_8, full3_sq1_9, full3_sq1_10, full3_sq1_11, full3_sq1_12,
-        full3_sq1_13, full3_sq1_14, full3_sq1_15, full3_sq2_0, full3_sq2_1, full3_sq2_2,
-        full3_sq2_3, full3_sq2_4, full3_sq2_5, full3_sq2_6, full3_sq2_7, full3_sq2_8, full3_sq2_9,
-        full3_sq2_10, full3_sq2_11, full3_sq2_12, full3_sq2_13, full3_sq2_14, full3_sq2_15,
-        full3_mix_0, full3_mix_1, full3_mix_2, full3_mix_3, full3_mix_4, full3_mix_5, full3_mix_6,
-        full3_mix_7, full3_mix_8, full3_mix_9, full3_mix_10, full3_mix_11, full3_mix_12,
-        full3_mix_13, full3_mix_14, full3_mix_15, partial0_sq1, partial0_sq2, partial0_mul,
-        partial1_sq1, partial1_sq2, partial1_mul, partial2_sq1, partial2_sq2, partial2_mul,
-        partial3_sq1, partial3_sq2, partial3_mul, partial4_sq1, partial4_sq2, partial4_mul,
-        partial5_sq1, partial5_sq2, partial5_mul, partial6_sq1, partial6_sq2, partial6_mul,
-        partial7_sq1, partial7_sq2, partial7_mul, partial8_sq1, partial8_sq2, partial8_mul,
-        partial9_sq1, partial9_sq2, partial9_mul, partial10_sq1, partial10_sq2, partial10_mul,
-        partial11_sq1, partial11_sq2, partial11_mul, partial12_sq1, partial12_sq2, partial12_mul,
-        partial13_sq1, partial13_sq2, partial13_mul, full4_sq1_0, full4_sq1_1, full4_sq1_2,
-        full4_sq1_3, full4_sq1_4, full4_sq1_5, full4_sq1_6, full4_sq1_7, full4_sq1_8, full4_sq1_9,
-        full4_sq1_10, full4_sq1_11, full4_sq1_12, full4_sq1_13, full4_sq1_14, full4_sq1_15,
-        full4_sq2_0, full4_sq2_1, full4_sq2_2, full4_sq2_3, full4_sq2_4, full4_sq2_5, full4_sq2_6,
-        full4_sq2_7, full4_sq2_8, full4_sq2_9, full4_sq2_10, full4_sq2_11, full4_sq2_12,
-        full4_sq2_13, full4_sq2_14, full4_sq2_15, full4_mix_0, full4_mix_1, full4_mix_2,
-        full4_mix_3, full4_mix_4, full4_mix_5, full4_mix_6, full4_mix_7, full4_mix_8, full4_mix_9,
-        full4_mix_10, full4_mix_11, full4_mix_12, full4_mix_13, full4_mix_14, full4_mix_15,
-        full5_sq1_0, full5_sq1_1, full5_sq1_2, full5_sq1_3, full5_sq1_4, full5_sq1_5, full5_sq1_6,
-        full5_sq1_7, full5_sq1_8, full5_sq1_9, full5_sq1_10, full5_sq1_11, full5_sq1_12,
-        full5_sq1_13, full5_sq1_14, full5_sq1_15, full5_sq2_0, full5_sq2_1, full5_sq2_2,
-        full5_sq2_3, full5_sq2_4, full5_sq2_5, full5_sq2_6, full5_sq2_7, full5_sq2_8, full5_sq2_9,
-        full5_sq2_10, full5_sq2_11, full5_sq2_12, full5_sq2_13, full5_sq2_14, full5_sq2_15,
-        full5_mix_0, full5_mix_1, full5_mix_2, full5_mix_3, full5_mix_4, full5_mix_5, full5_mix_6,
-        full5_mix_7, full5_mix_8, full5_mix_9, full5_mix_10, full5_mix_11, full5_mix_12,
-        full5_mix_13, full5_mix_14, full5_mix_15, full6_sq1_0, full6_sq1_1, full6_sq1_2,
-        full6_sq1_3, full6_sq1_4, full6_sq1_5, full6_sq1_6, full6_sq1_7, full6_sq1_8, full6_sq1_9,
-        full6_sq1_10, full6_sq1_11, full6_sq1_12, full6_sq1_13, full6_sq1_14, full6_sq1_15,
-        full6_sq2_0, full6_sq2_1, full6_sq2_2, full6_sq2_3, full6_sq2_4, full6_sq2_5, full6_sq2_6,
-        full6_sq2_7, full6_sq2_8, full6_sq2_9, full6_sq2_10, full6_sq2_11, full6_sq2_12,
-        full6_sq2_13, full6_sq2_14, full6_sq2_15, full6_mix_0, full6_mix_1, full6_mix_2,
-        full6_mix_3, full6_mix_4, full6_mix_5, full6_mix_6, full6_mix_7, full6_mix_8, full6_mix_9,
-        full6_mix_10, full6_mix_11, full6_mix_12, full6_mix_13, full6_mix_14, full6_mix_15,
-        full7_sq1_0, full7_sq1_1, full7_sq1_2, full7_sq1_3, full7_sq1_4, full7_sq1_5, full7_sq1_6,
-        full7_sq1_7, full7_sq1_8, full7_sq1_9, full7_sq1_10, full7_sq1_11, full7_sq1_12,
-        full7_sq1_13, full7_sq1_14, full7_sq1_15, full7_sq2_0, full7_sq2_1, full7_sq2_2,
-        full7_sq2_3, full7_sq2_4, full7_sq2_5, full7_sq2_6, full7_sq2_7, full7_sq2_8, full7_sq2_9,
-        full7_sq2_10, full7_sq2_11, full7_sq2_12, full7_sq2_13, full7_sq2_14, full7_sq2_15,
-        full7_mix_0, full7_mix_1, full7_mix_2, full7_mix_3, full7_mix_4, full7_mix_5, full7_mix_6,
-        full7_mix_7, full7_mix_8, full7_mix_9, full7_mix_10, full7_mix_11, full7_mix_12,
-        full7_mix_13, full7_mix_14, full7_mix_15, wide, io,
-    },
-
-    // ==========================================================================
     // 21. Clock updates (gap-filling intermediate accesses)
     // ==========================================================================
     // `air`-marked: the traces come from `AccessTable` (clock catch-up rows
@@ -2598,3 +2523,7 @@ mod tests {
         }
     }
 }
+
+// The Poseidon2 table and columns are generated from the felt definition in
+// `crate::poseidon2`; re-exported here where every other table lives.
+pub use crate::poseidon2::Poseidon2Table;

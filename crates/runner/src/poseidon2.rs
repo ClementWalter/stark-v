@@ -1,3 +1,10 @@
+//! Poseidon2 over M31: the plain permutation (channel and Merkle hashing)
+//! and the felt-compiled AIR table (see the `define_air_fns!` invocation
+//! below — table, columns, constraints, and row fill from one definition).
+
+// clippy's array-comma heuristic misfires inside the macro expansion.
+#![allow(clippy::possible_missing_comma)]
+
 use stwo::core::fields::m31::M31;
 
 // Default Poseidon2 Merkle hashes for leaf depth 21 (index = depth, depth 21 is 0).
@@ -8,21 +15,10 @@ pub const POSEIDON2_DEFAULT_HASHES_DEPTH_21: [u32; 22] = [
 ];
 
 pub const T: usize = 16;
-const FULL_ROUNDS: usize = 8;
-const PARTIAL_ROUNDS: usize = 14;
+pub const FULL_ROUNDS: usize = 8;
+pub const PARTIAL_ROUNDS: usize = 14;
 
-// enabler + initial state + per-round intermediate states + the `wide` flag
-// selecting the 8-word digest emission (proof trees) over the 1-word one
-// (memory trees).
-// enabler + initial state + per-round intermediate states + the `wide` flag
-// (8-word digest emission for proof trees instead of the 1-word memory-tree
-// one) + the `io` flag (atomic (input, output) pair emission for sponge
-// chaining).
-pub const POSEIDON2_TRACE_COLUMNS: usize = 1 + T * (1 + FULL_ROUNDS * 3) + PARTIAL_ROUNDS * 3 + 2;
-/// Index of the first final-state word within a trace row.
-pub const POSEIDON2_FINAL_STATE_START: usize = POSEIDON2_TRACE_COLUMNS - T - 2;
-
-const EXTERNAL_ROUND_CONSTS: [[u32; 16]; 8] = [
+pub const EXTERNAL_ROUND_CONSTS: [[u32; 16]; 8] = [
     [
         1988864850, 1893772157, 1025928330, 1839472709, 1611656994, 1104858731, 1694088660,
         1564660990, 1991332205, 1875486487, 1890340790, 1658614, 582370530, 528029397, 1196956642,
@@ -61,12 +57,12 @@ const EXTERNAL_ROUND_CONSTS: [[u32; 16]; 8] = [
     ],
 ];
 
-const INTERNAL_ROUND_CONSTS: [u32; 14] = [
+pub const INTERNAL_ROUND_CONSTS: [u32; 14] = [
     2139014335, 69309039, 1368974953, 886780232, 1130937085, 1718115455, 2027103386, 1612216449,
     1994053242, 110146615, 514413329, 1088763546, 955319292, 488794657,
 ];
 
-const INTERNAL_MATRIX: [u32; 16] = [
+pub const INTERNAL_MATRIX: [u32; 16] = [
     129501892, 1809435443, 1223573407, 1331944729, 415581875, 1526242955, 1341275624, 1333308150,
     1404946132, 1549369918, 709303410, 1284988537, 1490838740, 115945821, 754131590, 800486749,
 ];
@@ -185,109 +181,98 @@ pub fn poseidon2_permutation(state: &mut [u32; T]) {
     }
 }
 
-pub fn poseidon2_traced(left: u32, right: u32) -> [u32; POSEIDON2_TRACE_COLUMNS] {
-    let mut state = [0u32; T];
-    state[0] = M31::from(left).0;
-    state[1] = M31::from(right).0;
-    poseidon2_traced_state(state, false, false)
+// The Poseidon2 permutation as a felt function: the table, the columns
+// struct with its straight-line `evaluation()` (constraints and the
+// `(input, output)` activation tuple), and the row fill all derive from
+// this one definition. The `wide`/`io` flag columns select the digest
+// emission shape in the prover component.
+stwo_macros::define_air_fns! {
+    max_degree: 3,
+    embedded: [wide, io],
+
+    // The 4x4 MDS block of the external round matrix, as its addition chain.
+    inline fn m4(x0, x1, x2, x3) {
+        let t0 = x0 + x1;
+        let t1 = x2 + x3;
+        let t2 = 2 * x1 + t1;
+        let t3 = 2 * x3 + t0;
+        let t4 = 4 * t1 + t3;
+        let t5 = 4 * t0 + t2;
+        let t6 = t3 + t5;
+        let t7 = t2 + t4;
+        return (t6, t5, t7, t4);
+    }
+
+    // External round matrix: M4 per 4-lane block, then each lane adds its
+    // column-wise sum across the blocks. Purely additive: stays inline.
+    inline fn external_matrix(state[16]) {
+        let (b0, b1, b2, b3) = m4(state[0], state[1], state[2], state[3]);
+        let (b4, b5, b6, b7) = m4(state[4], state[5], state[6], state[7]);
+        let (b8, b9, b10, b11) = m4(state[8], state[9], state[10], state[11]);
+        let (b12, b13, b14, b15) = m4(state[12], state[13], state[14], state[15]);
+        let mixed = [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15];
+        let sums = map(j, 0..4, mixed[j] + mixed[j + 4] + mixed[j + 8] + mixed[j + 12]);
+        let out = map(k, 0..16, mixed[k] + sums[k % 4]);
+        return out;
+    }
+
+    // 4 + 4 full rounds around 14 partial rounds; the x^5 s-box chains
+    // materialize automatically under the degree budget.
+    fn poseidon2(state[16]) {
+        let state = external_matrix(state);
+        for r in 0..4 {
+            let state = map(j, 0..16, state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j]));
+            let sq = map(j, 0..16, state[j] * state[j]);
+            let q = map(j, 0..16, sq[j] * sq[j]);
+            let state = map(j, 0..16, q[j] * state[j]);
+            let state = external_matrix(state);
+        }
+        for r in 0..14 {
+            let s0 = state[0] + constant(INTERNAL_ROUND_CONSTS[r]);
+            let p2 = s0 * s0;
+            let p4 = p2 * p2;
+            let s5 = p4 * s0;
+            let state = update(state, 0, s5);
+            let total = sum(j, 0..16, state[j]);
+            let state = map(j, 0..16, state[j] * constant(INTERNAL_MATRIX[j]) + total);
+        }
+        for r in 4..8 {
+            let state = map(j, 0..16, state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j]));
+            let sq = map(j, 0..16, state[j] * state[j]);
+            let q = map(j, 0..16, sq[j] * sq[j]);
+            let state = map(j, 0..16, q[j] * state[j]);
+            let state = external_matrix(state);
+        }
+        return state;
+    }
 }
 
-/// Trace one permutation of an arbitrary initial state.
+/// Trace one permutation of an arbitrary initial state into the table and
+/// return the output state.
 ///
 /// `wide` selects the 8-word digest emission in the Poseidon2 component
-/// (proof commitment trees) instead of the 1-word one (memory trees).
+/// (proof commitment trees) instead of the 1-word one (memory trees); `io`
+/// selects the atomic (input, output) pair emission for sponge chaining.
 pub fn poseidon2_traced_state(
+    table: &mut Poseidon2Table,
     initial_state: [u32; T],
     wide: bool,
     io: bool,
-) -> [u32; POSEIDON2_TRACE_COLUMNS] {
-    let mut row = [0u32; POSEIDON2_TRACE_COLUMNS];
-    let mut idx = 0usize;
+) -> [u32; T] {
+    let outputs = poseidon2_fill(
+        table,
+        initial_state.map(M31::from),
+        [wide as u32, io as u32],
+    );
+    outputs.map(|v| v.0)
+}
 
-    row[idx] = 1;
-    idx += 1;
-
-    let mut state = initial_state;
-
-    for value in state.iter() {
-        row[idx] = *value;
-        idx += 1;
-    }
-
-    apply_external_round_matrix(&mut state);
-
-    for round_consts in EXTERNAL_ROUND_CONSTS.iter().take(FULL_ROUNDS / 2) {
-        for (state_i, round_const) in state.iter_mut().zip(round_consts.iter()) {
-            *state_i = add_m31(*state_i, *round_const);
-        }
-        let initial_state = state;
-        for state_i in state.iter_mut() {
-            *state_i = square_m31(*state_i);
-            row[idx] = *state_i;
-            idx += 1;
-        }
-        for state_i in state.iter_mut() {
-            *state_i = square_m31(*state_i);
-            row[idx] = *state_i;
-            idx += 1;
-        }
-        for (state_i, init_i) in state.iter_mut().zip(initial_state.iter()) {
-            *state_i = mul_m31(*state_i, *init_i);
-        }
-        apply_external_round_matrix(&mut state);
-        for value in state.iter() {
-            row[idx] = *value;
-            idx += 1;
-        }
-    }
-
-    for round_const in INTERNAL_ROUND_CONSTS.iter() {
-        state[0] = add_m31(state[0], *round_const);
-        let initial_state = state[0];
-        state[0] = square_m31(state[0]);
-        row[idx] = state[0];
-        idx += 1;
-        state[0] = square_m31(state[0]);
-        row[idx] = state[0];
-        idx += 1;
-        state[0] = mul_m31(state[0], initial_state);
-        row[idx] = state[0];
-        idx += 1;
-        apply_internal_round_matrix(&mut state);
-    }
-
-    for round_consts in EXTERNAL_ROUND_CONSTS.iter().skip(FULL_ROUNDS / 2) {
-        for (state_i, round_const) in state.iter_mut().zip(round_consts.iter()) {
-            *state_i = add_m31(*state_i, *round_const);
-        }
-        let initial_state = state;
-        for state_i in state.iter_mut() {
-            *state_i = square_m31(*state_i);
-            row[idx] = *state_i;
-            idx += 1;
-        }
-        for state_i in state.iter_mut() {
-            *state_i = square_m31(*state_i);
-            row[idx] = *state_i;
-            idx += 1;
-        }
-        for (state_i, init_i) in state.iter_mut().zip(initial_state.iter()) {
-            *state_i = mul_m31(*state_i, *init_i);
-        }
-        apply_external_round_matrix(&mut state);
-        for value in state.iter() {
-            row[idx] = *value;
-            idx += 1;
-        }
-    }
-
-    row[idx] = wide as u32;
-    idx += 1;
-    row[idx] = io as u32;
-    idx += 1;
-
-    debug_assert_eq!(idx, POSEIDON2_TRACE_COLUMNS);
-    row
+/// Trace the hash of a `(left, right)` pair (memory commitment trees).
+pub fn poseidon2_traced(table: &mut Poseidon2Table, left: u32, right: u32) -> [u32; T] {
+    let mut state = [0u32; T];
+    state[0] = M31::from(left).0;
+    state[1] = M31::from(right).0;
+    poseidon2_traced_state(table, state, false, false)
 }
 
 #[cfg(test)]
@@ -295,17 +280,14 @@ mod permutation_tests {
     use super::*;
 
     #[test]
-    fn test_permutation_matches_traced_oracle() {
-        // poseidon2_traced records the permutation of (left, right, 0, ..);
-        // its final 16 cells are the output state.
-        let row = poseidon2_traced(123456789, 987654321);
-        let mut state = [0u32; T];
-        state[0] = 123456789;
-        state[1] = 987654321;
-        poseidon2_permutation(&mut state);
-        assert_eq!(
-            state,
-            row[POSEIDON2_FINAL_STATE_START..POSEIDON2_FINAL_STATE_START + T]
-        );
+    fn test_fill_matches_permutation() {
+        // The felt-compiled fill and the plain permutation are the same
+        // rounds, constants, and matrices.
+        let mut table = Poseidon2Table::new();
+        let state: [u32; T] = core::array::from_fn(|i| 123456789 + i as u32);
+        let traced = poseidon2_traced_state(&mut table, state, false, false);
+        let mut expected = state;
+        poseidon2_permutation(&mut expected);
+        assert_eq!(traced, expected);
     }
 }

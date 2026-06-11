@@ -163,13 +163,8 @@ pub fn push_path_step(
     let mut state = [0u32; T];
     state[..8].copy_from_slice(&left);
     state[8..].copy_from_slice(&right);
-    let row = poseidon2_traced_state(state, true, false);
-    poseidon2.push_row(&row);
-
-    let parent: [u32; 8] = row[runner::poseidon2::POSEIDON2_FINAL_STATE_START
-        ..runner::poseidon2::POSEIDON2_FINAL_STATE_START + 8]
-        .try_into()
-        .expect("8 words");
+    let out = poseidon2_traced_state(poseidon2, state, true, false);
+    let parent: [u32; 8] = out[..8].try_into().expect("8 words");
     table.push(
         tree_id,
         depth,

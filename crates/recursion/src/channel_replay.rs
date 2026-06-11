@@ -163,10 +163,7 @@ pub fn push_sponge_step(
         debug_assert!(word < P);
         *slot = ((*slot as u64 + word as u64) % P as u64) as u32;
     }
-    let row = poseidon2_traced_state(input, false, true);
-    poseidon2.push_row(&row);
-    let mut out = input;
-    poseidon2_permutation(&mut out);
+    let out = poseidon2_traced_state(poseidon2, input, false, true);
 
     let mut values = vec![channel_id, step];
     values.extend_from_slice(&prev_state);
