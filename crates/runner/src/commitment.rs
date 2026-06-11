@@ -1,14 +1,19 @@
+//! Program and memory commitment trace construction.
+
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::Memory;
 use crate::ops::utils::M31_P;
-use crate::poseidon2::{POSEIDON2_DEFAULT_HASHES_DEPTH_21, poseidon2_traced};
+use crate::poseidon2::{POSEIDON2_DEFAULT_HASHES_DEPTH_30, poseidon2_traced};
 use crate::program::{ProgramRow, decode_program};
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
 
 pub const MAX_TREE_HEIGHT: u32 = 31;
+
+// The table has one default hash per Merkle depth, including the root and leaves.
+const _: [(); MAX_TREE_HEIGHT as usize] = [(); POSEIDON2_DEFAULT_HASHES_DEPTH_30.len()];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MemoryLayout {
@@ -197,37 +202,17 @@ fn collect_program_leaves(program_rows: &[ProgramRow]) -> FxHashMap<u32, MerkleV
     leaves
 }
 
-fn default_hashes(leaf_depth: u32) -> Vec<u32> {
-    let max_depth = (POSEIDON2_DEFAULT_HASHES_DEPTH_21.len() - 1) as u32;
-    if leaf_depth <= max_depth {
-        let offset = (max_depth - leaf_depth) as usize;
-        return POSEIDON2_DEFAULT_HASHES_DEPTH_21[offset..].to_vec();
-    }
-
-    let mut defaults = vec![0u32; (leaf_depth as usize) + 1];
-    defaults[leaf_depth as usize] = 0;
-    for depth in (0..leaf_depth).rev() {
-        let child = defaults[(depth + 1) as usize];
-        let mut state = [0u32; crate::poseidon2::T];
-        state[0] = child;
-        state[1] = child;
-        crate::poseidon2::poseidon2_permutation(&mut state);
-        defaults[depth as usize] = state[0];
-    }
-    defaults
-}
-
 pub fn build_partial_merkle_tree(
     leaves: &FxHashMap<u32, MerkleValue>,
     poseidon2: &mut Poseidon2Table,
 ) -> (Vec<NodeData>, u32) {
-    let leaf_depth = MAX_TREE_HEIGHT.saturating_sub(1);
+    let leaf_depth = MAX_TREE_HEIGHT - 1;
     if leaves.is_empty() {
-        let root = default_hashes(leaf_depth)[0];
+        let root = POSEIDON2_DEFAULT_HASHES_DEPTH_30[0];
         return (vec![], root);
     }
 
-    let defaults = default_hashes(leaf_depth);
+    let defaults = &POSEIDON2_DEFAULT_HASHES_DEPTH_30;
     let mut nodes = Vec::new();
     let mut current: FxHashMap<u32, MerkleValue> = leaves.clone();
 
