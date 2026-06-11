@@ -7,3 +7,18 @@ tmp*
 .claude
 .codex
 __pycache__
+
+# skill_sync symlinks
+.claude/agents/*
+.claude/hooks/*
+.claude/rules/*
+.claude/settings.json
+.claude/skills/*
+.codex/agents/*
+.codex/hooks/*
+.codex/rules/*
+.codex/settings.json
+.codex/settings.local.json
+.codex/skills/*
+CLAUDE.md
+AGENTS.md
