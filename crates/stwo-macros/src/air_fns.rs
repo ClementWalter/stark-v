@@ -1137,9 +1137,14 @@ fn concrete_expr(expr: &Expr) -> syn::Result<TokenStream2> {
 }
 
 /// Rewrite a lowered cell expression for the generic `evaluation()` body:
-/// columns become `self.field.clone()`, derived cells become local
-/// `cell.clone()`, constant subtrees fold into a single field constant.
-fn air_expr(expr: &Expr, columns: &std::collections::HashSet<String>) -> syn::Result<TokenStream2> {
+/// columns become `self.field.clone()`, derived cells become heap-vector
+/// reads `cells[i].clone()` (the frame stays small however deep the
+/// program is), constant subtrees fold into a single field constant.
+fn air_expr(
+    expr: &Expr,
+    columns: &std::collections::HashSet<String>,
+    cells: &HashMap<String, usize>,
+) -> syn::Result<TokenStream2> {
     if let Ok(value) = const_eval(expr) {
         let value = value as u32;
         return Ok(quote! {
@@ -1152,7 +1157,10 @@ fn air_expr(expr: &Expr, columns: &std::collections::HashSet<String>) -> syn::Re
             if columns.contains(&ident.to_string()) {
                 Ok(quote!(self.#ident.clone()))
             } else {
-                Ok(quote!(#ident.clone()))
+                let index = cells.get(&ident.to_string()).ok_or_else(|| {
+                    syn::Error::new_spanned(ident, format!("unknown cell `{ident}`"))
+                })?;
+                Ok(quote!(cells[#index].clone()))
             }
         }
         Expr::Call(call) => {
@@ -1168,39 +1176,67 @@ fn air_expr(expr: &Expr, columns: &std::collections::HashSet<String>) -> syn::Re
             Err(syn::Error::new_spanned(call, "unsupported call"))
         }
         Expr::Binary(binary) => {
-            let left = air_expr(&binary.left, columns)?;
-            let right = air_expr(&binary.right, columns)?;
+            let left = air_expr(&binary.left, columns, cells)?;
+            let right = air_expr(&binary.right, columns, cells)?;
             let op = &binary.op;
             Ok(quote!((#left #op #right)))
         }
         Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
-            let inner = air_expr(&unary.expr, columns)?;
+            let inner = air_expr(&unary.expr, columns, cells)?;
             Ok(quote!((-#inner)))
         }
-        Expr::Paren(paren) => air_expr(&paren.expr, columns),
-        Expr::Group(group) => air_expr(&group.expr, columns),
+        Expr::Paren(paren) => air_expr(&paren.expr, columns, cells),
+        Expr::Group(group) => air_expr(&group.expr, columns, cells),
         other => Err(syn::Error::new_spanned(other, "unsupported expression")),
     }
 }
 
 /// Generate the straight-line `evaluation()` on the columns struct: every
-/// derived cell computed once into a local in dependency order (so deep
-/// frames like Poseidon2's partial rounds evaluate as a DAG, not an
-/// exponential tree), then the constraints and lookup entries over them.
+/// derived cell computed once into a heap vector in dependency order (a
+/// DAG, not an exponential tree — and no stack frame proportional to the
+/// program depth, which would overflow default test-thread stacks in
+/// debug builds), then the constraints and lookup entries over them.
 fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
     let columns_type = column_struct_name(&function.name);
     let columns: std::collections::HashSet<String> = std::iter::once("enabler".to_string())
         .chain(function.table.fields.iter().map(|f| f.to_string()))
         .collect();
 
-    let cell_lets = function
-        .derived
-        .iter()
-        .map(|(cell, expr)| {
-            let value = air_expr(expr, &columns)?;
-            Ok(quote! { let #cell = #value; })
+    let mut cell_indices: HashMap<String, usize> = HashMap::new();
+    let mut cell_pushes: Vec<TokenStream2> = Vec::new();
+    for (cell, expr) in &function.derived {
+        let value = air_expr(expr, &columns, &cell_indices)?;
+        cell_indices.insert(cell.to_string(), cell_pushes.len());
+        cell_pushes.push(quote! { cells.push(#value); });
+    }
+    let n_cells = cell_pushes.len();
+
+    // Unoptimized builds give every temporary in a function body its own
+    // stack slot, so a single straight-line body over hundreds of cells
+    // builds a multi-megabyte frame that overflows default test-thread
+    // stacks. Splitting the pushes into small helper methods keeps each
+    // frame bounded (debug builds never inline, so frames pop between
+    // chunks); optimized builds inline them back into one body.
+    const CHUNK: usize = 32;
+    let cell_chunk_fns: Vec<TokenStream2> = cell_pushes
+        .chunks(CHUNK)
+        .enumerate()
+        .map(|(i, chunk)| {
+            let name = format_ident!("__evaluation_cells_{i}");
+            quote! {
+                #[doc(hidden)]
+                fn #name(&self, cells: &mut Vec<T>) {
+                    #(#chunk)*
+                }
+            }
         })
-        .collect::<syn::Result<Vec<_>>>()?;
+        .collect();
+    let cell_chunk_calls: Vec<TokenStream2> = (0..cell_chunk_fns.len())
+        .map(|i| {
+            let name = format_ident!("__evaluation_cells_{i}");
+            quote! { self.#name(&mut cells); }
+        })
+        .collect();
 
     let one = quote! {
         T::from(stwo::core::fields::m31::BaseField::from_u32_unchecked(1u32))
@@ -1212,22 +1248,46 @@ fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
         // Enabler-gated: padding rows are all-zero, which constant terms in
         // the cell chains would otherwise violate. Cell budgets are
         // max_degree - 1, so the gate stays within the bound.
-        let expr = air_expr(constraint, &columns)?;
+        let expr = air_expr(constraint, &columns, &cell_indices)?;
         constraint_exprs.push(quote! {
             self.enabler.clone() * (#expr)
         });
     }
+    let constraint_pushes: Vec<TokenStream2> = constraint_exprs
+        .iter()
+        .map(|expr| quote! { constraints.push(#expr); })
+        .collect();
+    let constraint_chunk_fns: Vec<TokenStream2> = constraint_pushes
+        .chunks(CHUNK)
+        .enumerate()
+        .map(|(i, chunk)| {
+            let name = format_ident!("__evaluation_constraints_{i}");
+            quote! {
+                #[doc(hidden)]
+                fn #name(&self, cells: &[T], constraints: &mut Vec<T>) {
+                    #(#chunk)*
+                }
+            }
+        })
+        .collect();
+    let constraint_chunk_calls: Vec<TokenStream2> = (0..constraint_chunk_fns.len())
+        .map(|i| {
+            let name = format_ident!("__evaluation_constraints_{i}");
+            quote! { self.#name(&cells, &mut constraints); }
+        })
+        .collect();
+    let n_constraints = constraint_exprs.len();
 
     // The calling convention: the own activation tuple with multiplicity
     // -enabler, one tuple per activation made with +enabler.
     let own_values = function.table.fields[..function.n_args]
         .iter()
-        .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns))
+        .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns, &cell_indices))
         .chain(
             function
                 .ret_cells
                 .iter()
-                .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns)),
+                .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns, &cell_indices)),
         )
         .collect::<syn::Result<Vec<_>>>()?;
     let mut entry_exprs = vec![quote! {
@@ -1240,7 +1300,7 @@ fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
         let values = args
             .iter()
             .chain(rets.iter())
-            .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns))
+            .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns, &cell_indices))
             .collect::<syn::Result<Vec<_>>>()?;
         entry_exprs.push(quote! {
             (
@@ -1260,12 +1320,18 @@ fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
                 + core::ops::Mul<Output = T>
                 + core::ops::Neg<Output = T>,
         {
+            #(#cell_chunk_fns)*
+
+            #(#constraint_chunk_fns)*
+
             /// Straight-line frame evaluation: (constraints, lookup
             /// entries), the single source for the AIR and the witness.
-            #[allow(clippy::let_and_return)]
+            #[allow(unused_mut, unused_variables)]
             pub fn evaluation(&self) -> (Vec<T>, Vec<(T, Vec<T>)>) {
-                #(#cell_lets)*
-                let constraints = vec![#(#constraint_exprs),*];
+                let mut cells: Vec<T> = Vec::with_capacity(#n_cells);
+                #(#cell_chunk_calls)*
+                let mut constraints: Vec<T> = Vec::with_capacity(#n_constraints);
+                #(#constraint_chunk_calls)*
                 let entries = vec![#(#entry_exprs),*];
                 (constraints, entries)
             }

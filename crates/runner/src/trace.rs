@@ -2459,19 +2459,32 @@ mod tests {
 
             table.push(1, 0x1000, rd, 0x12, 0x34, 0x50);
 
-            let output = table.to_table().to_string();
-
-            // Check enabler column exists
-            assert!(output.contains("enabler"));
+            // Inspect header cells, not the rendered string: the dynamic
+            // arrangement truncates wide headers to the terminal width.
+            let headers: Vec<String> = table
+                .to_table()
+                .header()
+                .expect("headers are always set")
+                .cell_iter()
+                .map(|cell| cell.content())
+                .collect();
+            assert!(headers.contains(&"enabler".to_string()));
         }
 
         #[test]
         fn test_empty_table_to_table() {
             let table = BaseAluRegTable::new();
-            let output = table.to_table().to_string();
 
-            // Empty table should still have headers
-            assert!(output.contains("clock"));
+            // An empty table still carries its headers; inspect the cells,
+            // not the rendered string, which truncates to the terminal width.
+            let headers: Vec<String> = table
+                .to_table()
+                .header()
+                .expect("headers are always set")
+                .cell_iter()
+                .map(|cell| cell.content())
+                .collect();
+            assert!(headers.contains(&"clock".to_string()));
         }
 
         #[test]

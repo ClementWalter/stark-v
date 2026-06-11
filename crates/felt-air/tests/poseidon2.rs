@@ -5,18 +5,6 @@ use felt_air::poseidon2::{Activation, Tables, call_permute, prove_air_fns, verif
 use stwo::core::fields::m31::BaseField;
 use stwo::core::pcs::PcsConfig;
 
-/// The generated straight-line `evaluation()` holds the whole frame
-/// (~1500 packed cells) in one stack frame; debug builds need more than
-/// the test harness default.
-fn on_big_stack<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
-    std::thread::Builder::new()
-        .stack_size(512 << 20)
-        .spawn(work)
-        .expect("spawn")
-        .join()
-        .expect("join")
-}
-
 fn run_both(state: [u32; 16]) -> ([u32; 16], [u32; 16]) {
     let mut tables = Tables::default();
     let outputs = call_permute(&mut tables, state.map(BaseField::from_u32_unchecked));
@@ -51,31 +39,27 @@ fn test_permute_matches_runner_on_random_states() {
 
 #[test]
 fn test_permute_activation_proves_and_verifies() {
-    on_big_stack(|| {
-        let mut tables = Tables::default();
-        let inputs: [BaseField; 16] =
-            std::array::from_fn(|i| BaseField::from_u32_unchecked(7 * i as u32 + 3));
-        let outputs = call_permute(&mut tables, inputs);
+    let mut tables = Tables::default();
+    let inputs: [BaseField; 16] =
+        std::array::from_fn(|i| BaseField::from_u32_unchecked(7 * i as u32 + 3));
+    let outputs = call_permute(&mut tables, inputs);
 
-        let activations = vec![Activation::Permute { inputs, outputs }];
-        let proof = prove_air_fns(tables, activations, PcsConfig::default());
-        verify_air_fns(proof, PcsConfig::default()).expect("verification failed");
-    });
+    let activations = vec![Activation::Permute { inputs, outputs }];
+    let proof = prove_air_fns(tables, activations, PcsConfig::default());
+    verify_air_fns(proof, PcsConfig::default()).expect("verification failed");
 }
 
 #[test]
 fn test_permute_rejects_forged_output() {
-    on_big_stack(|| {
-        let mut tables = Tables::default();
-        let inputs: [BaseField; 16] =
-            std::array::from_fn(|i| BaseField::from_u32_unchecked(11 * i as u32));
-        let mut outputs = call_permute(&mut tables, inputs);
-        outputs[0] += BaseField::from_u32_unchecked(1);
+    let mut tables = Tables::default();
+    let inputs: [BaseField; 16] =
+        std::array::from_fn(|i| BaseField::from_u32_unchecked(11 * i as u32));
+    let mut outputs = call_permute(&mut tables, inputs);
+    outputs[0] += BaseField::from_u32_unchecked(1);
 
-        let activations = vec![Activation::Permute { inputs, outputs }];
-        let proof = prove_air_fns(tables, activations, PcsConfig::default());
-        assert!(verify_air_fns(proof, PcsConfig::default()).is_err());
-    });
+    let activations = vec![Activation::Permute { inputs, outputs }];
+    let proof = prove_air_fns(tables, activations, PcsConfig::default());
+    assert!(verify_air_fns(proof, PcsConfig::default()).is_err());
 }
 
 /// The degree budget reproduces the hand layout: the zkVM's hand-flattened
