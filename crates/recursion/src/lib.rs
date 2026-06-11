@@ -38,14 +38,16 @@ define_component_tables! {
     // the four limb constraints below. Every constraint is degree 2 and
     // vanishes on all-zero padding rows.
     qm31_mul: {
-        a_0, a_1, a_2, a_3,
-        b_0, b_1, b_2, b_3,
-        c_0, c_1, c_2, c_3,
-        // Circuit wiring (composition-check lowering): when in_circuit is
-        // set, this row implements node `node_id` of circuit `circuit_id`,
-        // consuming its operands and emitting its value `uses` times
-        // through the wire relation.
-        circuit_id, node_id, lhs_id, rhs_id, uses, in_circuit,
+        committed: {
+            a_0, a_1, a_2, a_3,
+            b_0, b_1, b_2, b_3,
+            c_0, c_1, c_2, c_3,
+            // Circuit wiring (composition-check lowering): when in_circuit is
+            // set, this row implements node `node_id` of circuit `circuit_id`,
+            // consuming its operands and emitting its value `uses` times
+            // through the wire relation.
+            circuit_id, node_id, lhs_id, rhs_id, uses, in_circuit,
+        },
         constraints: {
             in_circuit * (1 - in_circuit),
             // Wiring rows are real rows.
@@ -72,12 +74,14 @@ define_component_tables! {
     // t, and folded are QM31 values as 4 M31 limbs; x is a base-field domain
     // coordinate.
     fri_fold_line: {
-        x, x_inv,
-        f_x_0, f_x_1, f_x_2, f_x_3,
-        f_neg_x_0, f_neg_x_1, f_neg_x_2, f_neg_x_3,
-        t_0, t_1, t_2, t_3,
-        alpha_0, alpha_1, alpha_2, alpha_3,
-        folded_0, folded_1, folded_2, folded_3,
+        committed: {
+            x, x_inv,
+            f_x_0, f_x_1, f_x_2, f_x_3,
+            f_neg_x_0, f_neg_x_1, f_neg_x_2, f_neg_x_3,
+            t_0, t_1, t_2, t_3,
+            alpha_0, alpha_1, alpha_2, alpha_3,
+            folded_0, folded_1, folded_2, folded_3,
+        },
         constraints: {
             // x_inv is the inverse of x on enabled rows
             x * x_inv - enabler,
@@ -110,10 +114,12 @@ define_component_tables! {
     // and products expand over the extension tower exactly as in qm31_mul;
     // the `- 1` lands on limb 0 as `- enabler` so padding rows hold.
     circle_double: {
-        p_x_0, p_x_1, p_x_2, p_x_3,
-        p_y_0, p_y_1, p_y_2, p_y_3,
-        r_x_0, r_x_1, r_x_2, r_x_3,
-        r_y_0, r_y_1, r_y_2, r_y_3,
+        committed: {
+            p_x_0, p_x_1, p_x_2, p_x_3,
+            p_y_0, p_y_1, p_y_2, p_y_3,
+            r_x_0, r_x_1, r_x_2, r_x_3,
+            r_y_0, r_y_1, r_y_2, r_y_3,
+        },
         constraints: {
             // r_x = 2 * p_x^2 - 1
             2 * (p_x_0 * p_x_0 - p_x_1 * p_x_1
@@ -148,11 +154,13 @@ define_component_tables! {
     // merkle_node relation; `is_leaf` suppresses the child emission at the
     // bottom of a path, and roots are anchored by public claim terms.
     merkle_path: {
-        tree_id, depth, index, direction, is_leaf,
-        left_0, left_1, left_2, left_3, left_4, left_5, left_6, left_7,
-        right_0, right_1, right_2, right_3, right_4, right_5, right_6, right_7,
-        parent_0, parent_1, parent_2, parent_3, parent_4, parent_5, parent_6, parent_7,
-        child_0, child_1, child_2, child_3, child_4, child_5, child_6, child_7,
+        committed: {
+            tree_id, depth, index, direction, is_leaf,
+            left_0, left_1, left_2, left_3, left_4, left_5, left_6, left_7,
+            right_0, right_1, right_2, right_3, right_4, right_5, right_6, right_7,
+            parent_0, parent_1, parent_2, parent_3, parent_4, parent_5, parent_6, parent_7,
+            child_0, child_1, child_2, child_3, child_4, child_5, child_6, child_7,
+        },
         constraints: {
             direction * (1 - direction),
             is_leaf * (1 - is_leaf),
@@ -175,12 +183,14 @@ define_component_tables! {
     // absorbed data is anchored through sponge_data public claims. No hash
     // constraint lives here.
     channel_replay: {
-        channel_id, step,
-        prev_0, prev_1, prev_2, prev_3, prev_4, prev_5, prev_6, prev_7,
-        prev_8, prev_9, prev_10, prev_11, prev_12, prev_13, prev_14, prev_15,
-        chunk_0, chunk_1, chunk_2, chunk_3, chunk_4, chunk_5, chunk_6, chunk_7,
-        out_0, out_1, out_2, out_3, out_4, out_5, out_6, out_7,
-        out_8, out_9, out_10, out_11, out_12, out_13, out_14, out_15,
+        committed: {
+            channel_id, step,
+            prev_0, prev_1, prev_2, prev_3, prev_4, prev_5, prev_6, prev_7,
+            prev_8, prev_9, prev_10, prev_11, prev_12, prev_13, prev_14, prev_15,
+            chunk_0, chunk_1, chunk_2, chunk_3, chunk_4, chunk_5, chunk_6, chunk_7,
+            out_0, out_1, out_2, out_3, out_4, out_5, out_6, out_7,
+            out_8, out_9, out_10, out_11, out_12, out_13, out_14, out_15,
+        },
     },
 
     // Linear circuit nodes (composition-check lowering): add, sub, neg over
@@ -188,12 +198,14 @@ define_component_tables! {
     // Mul/inverse nodes live in qm31_mul/qm31_inv; inputs, constants, and
     // the output are public claim terms.
     linear_ops: {
-        circuit_id, node_id, is_add, is_sub, is_neg,
-        lhs_id, rhs_id,
-        lhs_0, lhs_1, lhs_2, lhs_3,
-        rhs_0, rhs_1, rhs_2, rhs_3,
-        out_0, out_1, out_2, out_3,
-        uses,
+        committed: {
+            circuit_id, node_id, is_add, is_sub, is_neg,
+            lhs_id, rhs_id,
+            lhs_0, lhs_1, lhs_2, lhs_3,
+            rhs_0, rhs_1, rhs_2, rhs_3,
+            out_0, out_1, out_2, out_3,
+            uses,
+        },
         constraints: {
             is_add * (1 - is_add),
             is_sub * (1 - is_sub),
@@ -214,7 +226,9 @@ define_component_tables! {
     // carries the term limbs (fraction emission is not a polynomial
     // constraint, see logup_sum.rs).
     logup_sum: {
-        term_0, term_1, term_2, term_3,
+        committed: {
+            term_0, term_1, term_2, term_3,
+        },
     },
 
     // QM31 inverse: inv = a^-1, asserted as a * inv = 1 with the same limb
@@ -222,10 +236,12 @@ define_component_tables! {
     // all-zero padding rows satisfy the constraints, and enabled rows force
     // `a` to be invertible.
     qm31_inv: {
-        a_0, a_1, a_2, a_3,
-        inv_0, inv_1, inv_2, inv_3,
-        // Circuit wiring, as in qm31_mul (rhs unused for the unary inverse).
-        circuit_id, node_id, lhs_id, uses, in_circuit,
+        committed: {
+            a_0, a_1, a_2, a_3,
+            inv_0, inv_1, inv_2, inv_3,
+            // Circuit wiring, as in qm31_mul (rhs unused for the unary inverse).
+            circuit_id, node_id, lhs_id, uses, in_circuit,
+        },
         constraints: {
             in_circuit * (1 - in_circuit),
             in_circuit * (1 - enabler),

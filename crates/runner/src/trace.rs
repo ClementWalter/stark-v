@@ -20,43 +20,34 @@ stwo_macros::define_trace_tables! {
     // 1. Base ALU Reg (add/sub/xor/or/and) - airs.md Section 1
     // ==========================================================================
     base_alu_reg: {
-        clock, pc, rd, rs1, rs2,
-        opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
+        committed: {
+            clock, pc, rd, rs1, rs2,
+            opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
+        },
         derived: {
-            expected_opcode_id: |opcode_add_flag, opcode_sub_flag, opcode_xor_flag,
-                opcode_or_flag, opcode_and_flag|
-                opcode_add_flag * constant(crate::decode::Opcode::Add as u32)
+            expected_opcode_id: opcode_add_flag * constant(crate::decode::Opcode::Add as u32)
                 + opcode_sub_flag * constant(crate::decode::Opcode::Sub as u32)
                 + opcode_xor_flag * constant(crate::decode::Opcode::Xor as u32)
                 + opcode_or_flag * constant(crate::decode::Opcode::Or as u32)
                 + opcode_and_flag * constant(crate::decode::Opcode::And as u32),
-            is_bitwise: |opcode_xor_flag, opcode_or_flag, opcode_and_flag|
-                opcode_xor_flag + opcode_or_flag + opcode_and_flag,
+            is_bitwise: opcode_xor_flag + opcode_or_flag + opcode_and_flag,
             // Preprocessed bitwise table id: and=0, or=1, xor=2
-            bitwise_id: |opcode_xor_flag, opcode_or_flag| 2 * opcode_xor_flag + opcode_or_flag,
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            bitwise_id: 2 * opcode_xor_flag + opcode_or_flag,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
             // Carry chains of rd = rs1 + rs2 and rs1 = rd + rs2 over 8-bit
             // limbs; each carry is 0 or 1 under the active opcode
-            carry_add_0: |rs1_next_0, rs2_next_0, rd_next_0|
-                (rs1_next_0 + rs2_next_0 - rd_next_0) * inv(pow2(8)),
-            carry_add_1: |rs1_next_1, rs2_next_1, rd_next_1, carry_add_0|
-                (rs1_next_1 + rs2_next_1 + carry_add_0 - rd_next_1) * inv(pow2(8)),
-            carry_add_2: |rs1_next_2, rs2_next_2, rd_next_2, carry_add_1|
-                (rs1_next_2 + rs2_next_2 + carry_add_1 - rd_next_2) * inv(pow2(8)),
-            carry_add_3: |rs1_next_3, rs2_next_3, rd_next_3, carry_add_2|
-                (rs1_next_3 + rs2_next_3 + carry_add_2 - rd_next_3) * inv(pow2(8)),
-            carry_sub_0: |rd_next_0, rs2_next_0, rs1_next_0|
-                (rd_next_0 + rs2_next_0 - rs1_next_0) * inv(pow2(8)),
-            carry_sub_1: |rd_next_1, rs2_next_1, rs1_next_1, carry_sub_0|
-                (rd_next_1 + rs2_next_1 - rs1_next_1 + carry_sub_0) * inv(pow2(8)),
-            carry_sub_2: |rd_next_2, rs2_next_2, rs1_next_2, carry_sub_1|
-                (rd_next_2 + rs2_next_2 - rs1_next_2 + carry_sub_1) * inv(pow2(8)),
-            carry_sub_3: |rd_next_3, rs2_next_3, rs1_next_3, carry_sub_2|
-                (rd_next_3 + rs2_next_3 - rs1_next_3 + carry_sub_2) * inv(pow2(8)),
+            carry_add_0: (rs1_next_0 + rs2_next_0 - rd_next_0) * inv(pow2(8)),
+            carry_add_1: (rs1_next_1 + rs2_next_1 + carry_add_0 - rd_next_1) * inv(pow2(8)),
+            carry_add_2: (rs1_next_2 + rs2_next_2 + carry_add_1 - rd_next_2) * inv(pow2(8)),
+            carry_add_3: (rs1_next_3 + rs2_next_3 + carry_add_2 - rd_next_3) * inv(pow2(8)),
+            carry_sub_0: (rd_next_0 + rs2_next_0 - rs1_next_0) * inv(pow2(8)),
+            carry_sub_1: (rd_next_1 + rs2_next_1 - rs1_next_1 + carry_sub_0) * inv(pow2(8)),
+            carry_sub_2: (rd_next_2 + rs2_next_2 - rs1_next_2 + carry_sub_1) * inv(pow2(8)),
+            carry_sub_3: (rd_next_3 + rs2_next_3 - rs1_next_3 + carry_sub_2) * inv(pow2(8)),
         },
         constraints: {
             opcode_add_flag * carry_add_0 * (1 - carry_add_0),
@@ -101,39 +92,35 @@ stwo_macros::define_trace_tables! {
     // 2. Base ALU Imm (addi/xori/ori/andi) - airs.md Section 2
     // ==========================================================================
     base_alu_imm: {
-        clock, pc, rd, rs1,
-        imm_0, imm_1, imm_msb,
-        opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
+        committed: {
+            clock, pc, rd, rs1,
+            imm_0, imm_1, imm_msb,
+            opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
+        },
         derived: {
             // Opcode id encoded in the program segment, selected by the active flag
-            expected_opcode_id: |opcode_add_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag|
-                opcode_add_flag * constant(crate::decode::Opcode::Addi as u32)
+            expected_opcode_id: opcode_add_flag * constant(crate::decode::Opcode::Addi as u32)
                 + opcode_xor_flag * constant(crate::decode::Opcode::Xori as u32)
                 + opcode_or_flag * constant(crate::decode::Opcode::Ori as u32)
                 + opcode_and_flag * constant(crate::decode::Opcode::Andi as u32),
             // I-type immediate: imm_0 (8 bits) + imm_1 (3 bits) + sign bit (airs.md 2.2)
-            imm: |imm_0, imm_1, imm_msb| imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
+            imm: imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
             // Sign-extended immediate limbs; limb 0 is imm_0 and limb 3 equals limb 2
-            sext_imm_1: |imm_1, imm_msb| imm_1 + ((1 << 3) * ((1 << 5) - 1)) * imm_msb,
-            sext_imm_2: |imm_msb| ((1 << 8) - 1) * imm_msb,
-            is_bitwise: |opcode_xor_flag, opcode_or_flag, opcode_and_flag|
-                opcode_xor_flag + opcode_or_flag + opcode_and_flag,
+            sext_imm_1: imm_1 + ((1 << 3) * ((1 << 5) - 1)) * imm_msb,
+            sext_imm_2: ((1 << 8) - 1) * imm_msb,
+            is_bitwise: opcode_xor_flag + opcode_or_flag + opcode_and_flag,
             // Preprocessed bitwise table id: and=0, or=1, xor=2
-            bitwise_id: |opcode_xor_flag, opcode_or_flag| 2 * opcode_xor_flag + opcode_or_flag,
-            imm_1_shifted: |imm_1| pow2(8) * imm_1,
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            bitwise_id: 2 * opcode_xor_flag + opcode_or_flag,
+            imm_1_shifted: pow2(8) * imm_1,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
             // Carry chain of rd = rs1 + sext_imm over 8-bit limbs; each carry is 0 or 1
-            carry_0: |rs1_next_0, imm_0, rd_next_0|
-                (rs1_next_0 + imm_0 - rd_next_0) * inv(pow2(8)),
-            carry_1: |rs1_next_1, sext_imm_1, rd_next_1, carry_0|
-                (rs1_next_1 + sext_imm_1 + carry_0 - rd_next_1) * inv(pow2(8)),
-            carry_2: |rs1_next_2, sext_imm_2, rd_next_2, carry_1|
-                (rs1_next_2 + sext_imm_2 + carry_1 - rd_next_2) * inv(pow2(8)),
-            carry_3: |rs1_next_3, sext_imm_2, rd_next_3, carry_2|
-                (rs1_next_3 + sext_imm_2 + carry_2 - rd_next_3) * inv(pow2(8)),
+            carry_0: (rs1_next_0 + imm_0 - rd_next_0) * inv(pow2(8)),
+            carry_1: (rs1_next_1 + sext_imm_1 + carry_0 - rd_next_1) * inv(pow2(8)),
+            carry_2: (rs1_next_2 + sext_imm_2 + carry_1 - rd_next_2) * inv(pow2(8)),
+            carry_3: (rs1_next_3 + sext_imm_2 + carry_2 - rd_next_3) * inv(pow2(8)),
         },
         constraints: {
             imm_msb * (1 - imm_msb),
@@ -172,56 +159,45 @@ stwo_macros::define_trace_tables! {
     // 3. Shifts Reg (sll/srl/sra) - airs.md Section 3
     // ==========================================================================
     shifts_reg: {
-        clock, pc, rd, rs1, rs2,
-        rs1_sign,
-        opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
-        bit_multiplier_left, bit_multiplier_right,
-        bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
-        bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7,
-        limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3,
-        bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3,
+        committed: {
+            clock, pc, rd, rs1, rs2,
+            rs1_sign,
+            opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
+            bit_multiplier_left, bit_multiplier_right,
+            bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
+            bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7,
+            limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3,
+            bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3,
+        },
         derived: {
-            expected_opcode_id: |opcode_sll_flag, opcode_srl_flag, opcode_sra_flag|
-                opcode_sll_flag * constant(crate::decode::Opcode::Sll as u32)
+            expected_opcode_id: opcode_sll_flag * constant(crate::decode::Opcode::Sll as u32)
                 + opcode_srl_flag * constant(crate::decode::Opcode::Srl as u32)
                 + opcode_sra_flag * constant(crate::decode::Opcode::Sra as u32),
-            right_shift: |opcode_srl_flag, opcode_sra_flag| opcode_srl_flag + opcode_sra_flag,
+            right_shift: opcode_srl_flag + opcode_sra_flag,
             // Hot-one decoded shift quantities (airs.md 3.2)
-            bit_multiplier: |bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2,
-                bit_shift_marker_3, bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6,
-                bit_shift_marker_7|
-                bit_shift_marker_0 + 2 * bit_shift_marker_1 + 4 * bit_shift_marker_2
+            bit_multiplier: bit_shift_marker_0 + 2 * bit_shift_marker_1 + 4 * bit_shift_marker_2
                 + 8 * bit_shift_marker_3 + 16 * bit_shift_marker_4 + 32 * bit_shift_marker_5
                 + 64 * bit_shift_marker_6 + 128 * bit_shift_marker_7,
-            bit_shift: |bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
-                bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7|
-                bit_shift_marker_1 + 2 * bit_shift_marker_2 + 3 * bit_shift_marker_3
+            bit_shift: bit_shift_marker_1 + 2 * bit_shift_marker_2 + 3 * bit_shift_marker_3
                 + 4 * bit_shift_marker_4 + 5 * bit_shift_marker_5 + 6 * bit_shift_marker_6
                 + 7 * bit_shift_marker_7,
-            limb_shift: |limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3|
-                limb_shift_marker_1 + 2 * limb_shift_marker_2 + 3 * limb_shift_marker_3,
-            shift_amount: |limb_shift, bit_shift| pow2(3) * limb_shift + bit_shift,
-            bit_marker_sum: |bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2,
-                bit_shift_marker_3, bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6,
-                bit_shift_marker_7|
-                bit_shift_marker_0 + bit_shift_marker_1 + bit_shift_marker_2 + bit_shift_marker_3
+            limb_shift: limb_shift_marker_1 + 2 * limb_shift_marker_2 + 3 * limb_shift_marker_3,
+            shift_amount: pow2(3) * limb_shift + bit_shift,
+            bit_marker_sum: bit_shift_marker_0 + bit_shift_marker_1 + bit_shift_marker_2 + bit_shift_marker_3
                 + bit_shift_marker_4 + bit_shift_marker_5 + bit_shift_marker_6
                 + bit_shift_marker_7,
-            limb_marker_sum: |limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2,
-                limb_shift_marker_3|
-                limb_shift_marker_0 + limb_shift_marker_1 + limb_shift_marker_2
+            limb_marker_sum: limb_shift_marker_0 + limb_shift_marker_1 + limb_shift_marker_2
                 + limb_shift_marker_3,
             // Shift amount comes from the low 5 bits of rs2 (airs.md 3.3)
             // 7 - (rs2_next_0 - shift_amount) / 2^5: in range iff the shift
             // amount is rs2's low 5 bits (the field division by 32 explodes
             // otherwise) - spec 3.3.
-            shift_check: |rs2_next_0, shift_amount|
-                (pow2(3) - 1) - (rs2_next_0 - shift_amount) * inv(pow2(5)),
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            shift_check: (pow2(3) - 1) - (rs2_next_0 - shift_amount) * inv(pow2(5)),
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         constraints: {
             rs1_sign * (1 - rs1_sign),
@@ -346,49 +322,39 @@ stwo_macros::define_trace_tables! {
     // 4. Shifts Imm (slli/srli/srai) - airs.md Section 4
     // ==========================================================================
     shifts_imm: {
-        clock, pc, rd, rs1,
-        rs1_sign, imm_truncated,
-        opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
-        bit_multiplier_left, bit_multiplier_right,
-        bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
-        bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7,
-        limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3,
-        bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3,
+        committed: {
+            clock, pc, rd, rs1,
+            rs1_sign, imm_truncated,
+            opcode_sll_flag, opcode_srl_flag, opcode_sra_flag,
+            bit_multiplier_left, bit_multiplier_right,
+            bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
+            bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7,
+            limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3,
+            bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3,
+        },
         derived: {
-            expected_opcode_id: |opcode_sll_flag, opcode_srl_flag, opcode_sra_flag|
-                opcode_sll_flag * constant(crate::decode::Opcode::Slli as u32)
+            expected_opcode_id: opcode_sll_flag * constant(crate::decode::Opcode::Slli as u32)
                 + opcode_srl_flag * constant(crate::decode::Opcode::Srli as u32)
                 + opcode_sra_flag * constant(crate::decode::Opcode::Srai as u32),
-            right_shift: |opcode_srl_flag, opcode_sra_flag| opcode_srl_flag + opcode_sra_flag,
+            right_shift: opcode_srl_flag + opcode_sra_flag,
             // Hot-one decoded shift quantities (airs.md 4.2)
-            bit_multiplier: |bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2,
-                bit_shift_marker_3, bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6,
-                bit_shift_marker_7|
-                bit_shift_marker_0 + 2 * bit_shift_marker_1 + 4 * bit_shift_marker_2
+            bit_multiplier: bit_shift_marker_0 + 2 * bit_shift_marker_1 + 4 * bit_shift_marker_2
                 + 8 * bit_shift_marker_3 + 16 * bit_shift_marker_4 + 32 * bit_shift_marker_5
                 + 64 * bit_shift_marker_6 + 128 * bit_shift_marker_7,
-            bit_shift: |bit_shift_marker_1, bit_shift_marker_2, bit_shift_marker_3,
-                bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6, bit_shift_marker_7|
-                bit_shift_marker_1 + 2 * bit_shift_marker_2 + 3 * bit_shift_marker_3
+            bit_shift: bit_shift_marker_1 + 2 * bit_shift_marker_2 + 3 * bit_shift_marker_3
                 + 4 * bit_shift_marker_4 + 5 * bit_shift_marker_5 + 6 * bit_shift_marker_6
                 + 7 * bit_shift_marker_7,
-            limb_shift: |limb_shift_marker_1, limb_shift_marker_2, limb_shift_marker_3|
-                limb_shift_marker_1 + 2 * limb_shift_marker_2 + 3 * limb_shift_marker_3,
-            shift_amount: |limb_shift, bit_shift| pow2(3) * limb_shift + bit_shift,
-            bit_marker_sum: |bit_shift_marker_0, bit_shift_marker_1, bit_shift_marker_2,
-                bit_shift_marker_3, bit_shift_marker_4, bit_shift_marker_5, bit_shift_marker_6,
-                bit_shift_marker_7|
-                bit_shift_marker_0 + bit_shift_marker_1 + bit_shift_marker_2 + bit_shift_marker_3
+            limb_shift: limb_shift_marker_1 + 2 * limb_shift_marker_2 + 3 * limb_shift_marker_3,
+            shift_amount: pow2(3) * limb_shift + bit_shift,
+            bit_marker_sum: bit_shift_marker_0 + bit_shift_marker_1 + bit_shift_marker_2 + bit_shift_marker_3
                 + bit_shift_marker_4 + bit_shift_marker_5 + bit_shift_marker_6
                 + bit_shift_marker_7,
-            limb_marker_sum: |limb_shift_marker_0, limb_shift_marker_1, limb_shift_marker_2,
-                limb_shift_marker_3|
-                limb_shift_marker_0 + limb_shift_marker_1 + limb_shift_marker_2
+            limb_marker_sum: limb_shift_marker_0 + limb_shift_marker_1 + limb_shift_marker_2
                 + limb_shift_marker_3,
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         constraints: {
             rs1_sign * (1 - rs1_sign),
@@ -505,32 +471,32 @@ stwo_macros::define_trace_tables! {
     // 5. Less Than Reg (slt/sltu) - airs.md Section 5
     // ==========================================================================
     lt_reg: {
-        clock, pc, rd, rs1, rs2,
-        cmp_result, rs1_msl_felt, rs2_msl_felt,
-        opcode_slt_flag, opcode_sltu_flag,
-        diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
-        diff_val,
+        committed: {
+            clock, pc, rd, rs1, rs2,
+            cmp_result, rs1_msl_felt, rs2_msl_felt,
+            opcode_slt_flag, opcode_sltu_flag,
+            diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
+            diff_val,
+        },
         derived: {
-            expected_opcode_id: |opcode_slt_flag, opcode_sltu_flag|
-                opcode_slt_flag * constant(crate::decode::Opcode::Slt as u32)
+            expected_opcode_id: opcode_slt_flag * constant(crate::decode::Opcode::Slt as u32)
                 + opcode_sltu_flag * constant(crate::decode::Opcode::Sltu as u32),
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
             // Most-significant-limb gaps: zero for unsigned interpretation,
             // 2^8 when the sign adjustment applies (airs.md 5.2)
-            rs1_msl_gap: |rs1_next_3, rs1_msl_felt| rs1_next_3 - rs1_msl_felt,
-            rs2_msl_gap: |rs2_next_3, rs2_msl_felt| rs2_next_3 - rs2_msl_felt,
+            rs1_msl_gap: rs1_next_3 - rs1_msl_felt,
+            rs2_msl_gap: rs2_next_3 - rs2_msl_felt,
             // Signed-shifted most significant limbs for the range check
-            rs1_msl_shifted: |rs1_msl_felt, opcode_slt_flag| rs1_msl_felt + opcode_slt_flag * pow2(7),
-            rs2_msl_shifted: |rs2_msl_felt, opcode_slt_flag| rs2_msl_felt + opcode_slt_flag * pow2(7),
+            rs1_msl_shifted: rs1_msl_felt + opcode_slt_flag * pow2(7),
+            rs2_msl_shifted: rs2_msl_felt + opcode_slt_flag * pow2(7),
             // Sum of the difference markers: at most one fires
-            prefix_sum_final: |diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3|
-                diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
+            prefix_sum_final: diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
             // Sign of the comparison: +1 if cmp_result else -1
-            cmp_sign: |cmp_result| 2 * cmp_result - 1,
+            cmp_sign: 2 * cmp_result - 1,
         },
         constraints: {
             cmp_result * (1 - cmp_result),
@@ -585,36 +551,34 @@ stwo_macros::define_trace_tables! {
     // 6. Less Than Imm (slti/sltiu) - airs.md Section 6
     // ==========================================================================
     lt_imm: {
-        clock, pc, rd, rs1,
-        cmp_result, rs1_msl_felt,
-        imm_0, imm_1, imm_msb,
-        opcode_slti_flag, opcode_sltiu_flag,
-        diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
-        diff_val,
+        committed: {
+            clock, pc, rd, rs1,
+            cmp_result, rs1_msl_felt,
+            imm_0, imm_1, imm_msb,
+            opcode_slti_flag, opcode_sltiu_flag,
+            diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
+            diff_val,
+        },
         derived: {
-            expected_opcode_id: |opcode_slti_flag, opcode_sltiu_flag|
-                opcode_slti_flag * constant(crate::decode::Opcode::Slti as u32)
+            expected_opcode_id: opcode_slti_flag * constant(crate::decode::Opcode::Slti as u32)
                 + opcode_sltiu_flag * constant(crate::decode::Opcode::Sltiu as u32),
             // I-type immediate (airs.md 6.2)
-            imm: |imm_0, imm_1, imm_msb| imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
+            imm: imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
             // Sign-extended immediate limbs; limb 0 is imm_0, limb 3 = limb 2
-            sext_imm_1: |imm_1, imm_msb| imm_1 + (pow2(8) - pow2(3)) * imm_msb,
-            sext_imm_2: |imm_msb| (pow2(8) - 1) * imm_msb,
+            sext_imm_1: imm_1 + (pow2(8) - pow2(3)) * imm_msb,
+            sext_imm_2: (pow2(8) - 1) * imm_msb,
             // Most significant limb of the comparison operand under the
             // active signedness
-            sext_imm_msl_felt: |opcode_sltiu_flag, sext_imm_2, opcode_slti_flag, imm_msb|
-                opcode_sltiu_flag * sext_imm_2 - opcode_slti_flag * imm_msb,
-            rs1_msl_gap: |rs1_next_3, rs1_msl_felt| rs1_next_3 - rs1_msl_felt,
-            rs1_msl_shifted: |rs1_msl_felt, opcode_slti_flag|
-                rs1_msl_felt + opcode_slti_flag * pow2(7),
-            imm_1_doubled: |imm_1| 2 * imm_1,
-            prefix_sum_final: |diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3|
-                diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
-            cmp_sign: |cmp_result| 2 * cmp_result - 1,
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            sext_imm_msl_felt: opcode_sltiu_flag * sext_imm_2 - opcode_slti_flag * imm_msb,
+            rs1_msl_gap: rs1_next_3 - rs1_msl_felt,
+            rs1_msl_shifted: rs1_msl_felt + opcode_slti_flag * pow2(7),
+            imm_1_doubled: 2 * imm_1,
+            prefix_sum_final: diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
+            cmp_sign: 2 * cmp_result - 1,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         constraints: {
             imm_msb * (1 - imm_msb),
@@ -661,32 +625,29 @@ stwo_macros::define_trace_tables! {
     // 7. Branch Equal (beq/bne) - airs.md Section 7
     // ==========================================================================
     branch_eq: {
-        clock, pc, rs1, rs2,
-        imm_felt, cmp_result,
-        diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2, diff_inv_marker_3,
-        opcode_beq_flag, opcode_bne_flag,
+        committed: {
+            clock, pc, rs1, rs2,
+            imm_felt, cmp_result,
+            diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2, diff_inv_marker_3,
+            opcode_beq_flag, opcode_bne_flag,
+        },
         derived: {
-            expected_opcode_id: |opcode_beq_flag, opcode_bne_flag|
-                opcode_beq_flag * constant(crate::decode::Opcode::Beq as u32)
+            expected_opcode_id: opcode_beq_flag * constant(crate::decode::Opcode::Beq as u32)
                 + opcode_bne_flag * constant(crate::decode::Opcode::Bne as u32),
             // 1 when the operands must be equal under the active opcode
-            cmp_eq: |cmp_result, opcode_beq_flag, opcode_bne_flag|
-                cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag,
+            cmp_eq: cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag,
             // Inverse witness sum: cmp_eq plus marked limb differences must
             // be 1 on enabled rows (proves inequality when cmp_eq = 0)
-            diff_inv_sum: |cmp_eq, diff_inv_marker_0, diff_inv_marker_1, diff_inv_marker_2,
-                diff_inv_marker_3, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3,
-                rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3|
-                cmp_eq
+            diff_inv_sum: cmp_eq
                 + (rs1_next_0 - rs2_next_0) * diff_inv_marker_0
                 + (rs1_next_1 - rs2_next_1) * diff_inv_marker_1
                 + (rs1_next_2 - rs2_next_2) * diff_inv_marker_2
                 + (rs1_next_3 - rs2_next_3) * diff_inv_marker_3,
             // Conditional branch target (airs.md 7.2)
-            to_pc: |pc, imm_felt, cmp_result| pc + imm_felt * cmp_result + 4 * (1 - cmp_result),
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            to_pc: pc + imm_felt * cmp_result + 4 * (1 - cmp_result),
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
         },
         constraints: {
             cmp_result * (1 - cmp_result),
@@ -718,32 +679,31 @@ stwo_macros::define_trace_tables! {
     // 8. Branch Less Than (blt/bltu/bge/bgeu) - airs.md Section 8
     // ==========================================================================
     branch_lt: {
-        clock, pc, rs1, rs2,
-        rs1_msl_felt, rs2_msl_felt,
-        imm_felt, cmp_result, cmp_lt,
-        diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
-        diff_val, branch_target,
-        opcode_blt_flag, opcode_bltu_flag, opcode_bge_flag, opcode_bgeu_flag,
+        committed: {
+            clock, pc, rs1, rs2,
+            rs1_msl_felt, rs2_msl_felt,
+            imm_felt, cmp_result, cmp_lt,
+            diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3,
+            diff_val, branch_target,
+            opcode_blt_flag, opcode_bltu_flag, opcode_bge_flag, opcode_bgeu_flag,
+        },
         derived: {
-            expected_opcode_id: |opcode_blt_flag, opcode_bltu_flag, opcode_bge_flag,
-                opcode_bgeu_flag|
-                opcode_blt_flag * constant(crate::decode::Opcode::Blt as u32)
+            expected_opcode_id: opcode_blt_flag * constant(crate::decode::Opcode::Blt as u32)
                 + opcode_bltu_flag * constant(crate::decode::Opcode::Bltu as u32)
                 + opcode_bge_flag * constant(crate::decode::Opcode::Bge as u32)
                 + opcode_bgeu_flag * constant(crate::decode::Opcode::Bgeu as u32),
-            lt: |opcode_blt_flag, opcode_bltu_flag| opcode_blt_flag + opcode_bltu_flag,
-            ge: |opcode_bge_flag, opcode_bgeu_flag| opcode_bge_flag + opcode_bgeu_flag,
-            signed: |opcode_blt_flag, opcode_bge_flag| opcode_blt_flag + opcode_bge_flag,
-            rs1_msl_gap: |rs1_next_3, rs1_msl_felt| rs1_next_3 - rs1_msl_felt,
-            rs2_msl_gap: |rs2_next_3, rs2_msl_felt| rs2_next_3 - rs2_msl_felt,
-            rs1_msl_shifted: |rs1_msl_felt, signed| rs1_msl_felt + signed * pow2(7),
-            rs2_msl_shifted: |rs2_msl_felt, signed| rs2_msl_felt + signed * pow2(7),
-            prefix_sum_final: |diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3|
-                diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
-            lt_sign: |cmp_lt| 2 * cmp_lt - 1,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
+            lt: opcode_blt_flag + opcode_bltu_flag,
+            ge: opcode_bge_flag + opcode_bgeu_flag,
+            signed: opcode_blt_flag + opcode_bge_flag,
+            rs1_msl_gap: rs1_next_3 - rs1_msl_felt,
+            rs2_msl_gap: rs2_next_3 - rs2_msl_felt,
+            rs1_msl_shifted: rs1_msl_felt + signed * pow2(7),
+            rs2_msl_shifted: rs2_msl_felt + signed * pow2(7),
+            prefix_sum_final: diff_marker_0 + diff_marker_1 + diff_marker_2 + diff_marker_3,
+            lt_sign: 2 * cmp_lt - 1,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
         },
         constraints: {
             cmp_result * (1 - cmp_result),
@@ -797,16 +757,18 @@ stwo_macros::define_trace_tables! {
     // 9. LUI - airs.md Section 9
     // ==========================================================================
     lui: {
-        clock, pc, rd,
-        imm_0, imm_1, imm_2,
+        committed: {
+            clock, pc, rd,
+            imm_0, imm_1, imm_2,
+        },
         derived: {
             // imm = imm_0 + 2^4 * imm_1 + 2^12 * imm_2 (U-type immediate, airs.md 9.2)
-            imm: |imm_0, imm_1, imm_2| imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
+            imm: imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
             // Limb 1 of the value written to rd: imm << 12 has limbs (0, imm_0 * 2^4, imm_1, imm_2)
-            rd_val_1: |imm_0| imm_0 * pow2(4),
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            rd_val_1: imm_0 * pow2(4),
+            rd_clock_diff: clock - rd_clock_prev,
         },
         lookups: {
             // Program access (U-type): Program(pc, LUI, rd_idx, imm, 0)
@@ -827,14 +789,15 @@ stwo_macros::define_trace_tables! {
     // 10. AUIPC - airs.md Section 10
     // ==========================================================================
     auipc: {
-        clock, pc, rd,
-        imm_felt,
+        committed: {
+            clock, pc, rd,
+            imm_felt,
+        },
         derived: {
-            rd_felt: |rd_next_0, rd_next_1, rd_next_2, rd_next_3|
-                rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            rd_felt: rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         constraints: {
             // rd = pc + imm (airs.md 10.2)
@@ -860,19 +823,19 @@ stwo_macros::define_trace_tables! {
     // 11. JALR - airs.md Section 11
     // ==========================================================================
     jalr: {
-        clock, pc, rd, rs1,
-        to_pc_over_two, to_pc_lsb,
-        imm_felt,
+        committed: {
+            clock, pc, rd, rs1,
+            to_pc_over_two, to_pc_lsb,
+            imm_felt,
+        },
         derived: {
-            rs1_felt: |rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3|
-                rs1_next_0 + pow2(8) * rs1_next_1 + pow2(16) * rs1_next_2 + pow2(24) * rs1_next_3,
-            rd_felt: |rd_next_0, rd_next_1, rd_next_2, rd_next_3|
-                rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
+            rs1_felt: rs1_next_0 + pow2(8) * rs1_next_1 + pow2(16) * rs1_next_2 + pow2(24) * rs1_next_3,
+            rd_felt: rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
             // Jump target, even-aligned (airs.md 11.2)
-            jump_target: |to_pc_over_two| 2 * to_pc_over_two,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            jump_target: 2 * to_pc_over_two,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         constraints: {
             to_pc_lsb * (1 - to_pc_lsb),
@@ -907,14 +870,15 @@ stwo_macros::define_trace_tables! {
     // 12. JAL - airs.md Section 12
     // ==========================================================================
     jal: {
-        clock, pc, rd,
-        imm_felt,
+        committed: {
+            clock, pc, rd,
+            imm_felt,
+        },
         derived: {
-            rd_felt: |rd_next_0, rd_next_1, rd_next_2, rd_next_3|
-                rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
-            jump_target: |pc, imm_felt| pc + imm_felt,
-            clock_next: |clock| clock + 1,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            rd_felt: rd_next_0 + pow2(8) * rd_next_1 + pow2(16) * rd_next_2 + pow2(24) * rd_next_3,
+            jump_target: pc + imm_felt,
+            clock_next: clock + 1,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         lookups: {
             // Program access (U-type): Program(pc, JAL, rd_idx, imm, 0)
@@ -941,17 +905,17 @@ stwo_macros::define_trace_tables! {
     // 13. Load/Store (lb/lbu/lh/lhu/lw/sb/sh/sw) - airs.md Section 13
     // ==========================================================================
     load_store: {
-        clock, pc, dst, rs1, src,
-        r2_idx, imm_felt, src_msb,
-        shift_amount,
-        src_addr_selector, dst_addr_selector,
-        marker_0, marker_1, marker_2, marker_3,
-        opcode_lb_flag, opcode_lh_flag, opcode_lbu_flag, opcode_lhu_flag, opcode_lw_flag,
-        opcode_sb_flag, opcode_sh_flag, opcode_sw_flag,
+        committed: {
+            clock, pc, dst, rs1, src,
+            r2_idx, imm_felt, src_msb,
+            shift_amount,
+            src_addr_selector, dst_addr_selector,
+            marker_0, marker_1, marker_2, marker_3,
+            opcode_lb_flag, opcode_lh_flag, opcode_lbu_flag, opcode_lhu_flag, opcode_lw_flag,
+            opcode_sb_flag, opcode_sh_flag, opcode_sw_flag,
+        },
         derived: {
-            expected_opcode_id: |opcode_lb_flag, opcode_lh_flag, opcode_lbu_flag, opcode_lhu_flag,
-                opcode_lw_flag, opcode_sb_flag, opcode_sh_flag, opcode_sw_flag|
-                opcode_lb_flag * constant(crate::decode::Opcode::Lb as u32)
+            expected_opcode_id: opcode_lb_flag * constant(crate::decode::Opcode::Lb as u32)
                 + opcode_lh_flag * constant(crate::decode::Opcode::Lh as u32)
                 + opcode_lbu_flag * constant(crate::decode::Opcode::Lbu as u32)
                 + opcode_lhu_flag * constant(crate::decode::Opcode::Lhu as u32)
@@ -959,36 +923,30 @@ stwo_macros::define_trace_tables! {
                 + opcode_sb_flag * constant(crate::decode::Opcode::Sb as u32)
                 + opcode_sh_flag * constant(crate::decode::Opcode::Sh as u32)
                 + opcode_sw_flag * constant(crate::decode::Opcode::Sw as u32),
-            opcode_b_flag: |opcode_lbu_flag, opcode_lb_flag, opcode_sb_flag|
-                opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag,
-            opcode_h_flag: |opcode_lhu_flag, opcode_lh_flag, opcode_sh_flag|
-                opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag,
-            opcode_w_flag: |opcode_lw_flag, opcode_sw_flag| opcode_lw_flag + opcode_sw_flag,
-            is_signed: |opcode_lb_flag, opcode_lh_flag| opcode_lb_flag + opcode_lh_flag,
-            load_b_flag: |opcode_lb_flag, opcode_lbu_flag| opcode_lb_flag + opcode_lbu_flag,
-            load_h_flag: |opcode_lh_flag, opcode_lhu_flag| opcode_lh_flag + opcode_lhu_flag,
-            is_store: |opcode_sb_flag, opcode_sh_flag, opcode_sw_flag|
-                opcode_sb_flag + opcode_sh_flag + opcode_sw_flag,
-            is_load: |enabler, is_store| enabler - is_store,
+            opcode_b_flag: opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag,
+            opcode_h_flag: opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag,
+            opcode_w_flag: opcode_lw_flag + opcode_sw_flag,
+            is_signed: opcode_lb_flag + opcode_lh_flag,
+            load_b_flag: opcode_lb_flag + opcode_lbu_flag,
+            load_h_flag: opcode_lh_flag + opcode_lhu_flag,
+            is_store: opcode_sb_flag + opcode_sh_flag + opcode_sw_flag,
+            is_load: enabler - is_store,
             // Memory address space selectors: registers are 0, RW memory 1
-            src_as: |is_load| is_load,
-            dst_as: |is_store| is_store,
-            mem_addr: |rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3, imm_felt|
-                rs1_next_0 + pow2(8) * rs1_next_1 + pow2(16) * rs1_next_2
+            src_as: is_load,
+            dst_as: is_store,
+            mem_addr: rs1_next_0 + pow2(8) * rs1_next_1 + pow2(16) * rs1_next_2
                 + pow2(24) * rs1_next_3 + imm_felt,
-            sum_markers: |marker_0, marker_1, marker_2, marker_3|
-                marker_0 + marker_1 + marker_2 + marker_3,
-            shift_id: |marker_1, marker_2, marker_3| marker_1 + 2 * marker_2 + 3 * marker_3,
+            sum_markers: marker_0 + marker_1 + marker_2 + marker_3,
+            shift_id: marker_1 + 2 * marker_2 + 3 * marker_3,
             // Sign-extension fill byte for signed loads
-            signed_mask: |is_signed, src_msb| is_signed * src_msb * (pow2(8) - 1),
+            signed_mask: is_signed * src_msb * (pow2(8) - 1),
             // Selected aligned memory address over 4, for the range check
-            aligned_addr_quarter: |src_addr_selector, dst_addr_selector, r2_idx|
-                (src_addr_selector + dst_addr_selector - r2_idx) * inv(4),
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            src_clock_diff: |clock, src_clock_prev| clock - src_clock_prev,
-            dst_clock_diff: |clock, dst_clock_prev| clock - dst_clock_prev,
+            aligned_addr_quarter: (src_addr_selector + dst_addr_selector - r2_idx) * inv(4),
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            src_clock_diff: clock - src_clock_prev,
+            dst_clock_diff: clock - dst_clock_prev,
         },
         constraints: {
             marker_0 * (1 - marker_0),
@@ -1068,27 +1026,23 @@ stwo_macros::define_trace_tables! {
     // 14. MUL - airs.md Section 14
     // ==========================================================================
     mul: {
-        clock, pc, rd, rs1, rs2,
+        committed: {
+            clock, pc, rd, rs1, rs2,
+        },
         derived: {
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
             // Schoolbook carry chain of rd = (rs1 * rs2) mod 2^32 over 8-bit
             // limbs (airs.md 14.2); each carry is range-checked, not boolean
-            carry_0: |rs1_next_0, rs2_next_0, rd_next_0|
-                (rs1_next_0 * rs2_next_0 - rd_next_0) * inv(pow2(8)),
-            carry_1: |carry_0, rs1_next_1, rs2_next_0, rs1_next_0, rs2_next_1, rd_next_1|
-                (carry_0 + rs1_next_1 * rs2_next_0 + rs1_next_0 * rs2_next_1 - rd_next_1)
+            carry_0: (rs1_next_0 * rs2_next_0 - rd_next_0) * inv(pow2(8)),
+            carry_1: (carry_0 + rs1_next_1 * rs2_next_0 + rs1_next_0 * rs2_next_1 - rd_next_1)
                     * inv(pow2(8)),
-            carry_2: |carry_1, rs1_next_2, rs2_next_0, rs1_next_1, rs2_next_1, rs1_next_0,
-                rs2_next_2, rd_next_2|
-                (carry_1 + rs1_next_2 * rs2_next_0 + rs1_next_1 * rs2_next_1
+            carry_2: (carry_1 + rs1_next_2 * rs2_next_0 + rs1_next_1 * rs2_next_1
                     + rs1_next_0 * rs2_next_2 - rd_next_2) * inv(pow2(8)),
-            carry_3: |carry_2, rs1_next_3, rs2_next_0, rs1_next_2, rs2_next_1, rs1_next_1,
-                rs2_next_2, rs1_next_0, rs2_next_3, rd_next_3|
-                (carry_2 + rs1_next_3 * rs2_next_0 + rs1_next_2 * rs2_next_1
+            carry_3: (carry_2 + rs1_next_3 * rs2_next_0 + rs1_next_2 * rs2_next_1
                     + rs1_next_1 * rs2_next_2 + rs1_next_0 * rs2_next_3 - rd_next_3)
                     * inv(pow2(8)),
         },
@@ -1126,42 +1080,35 @@ stwo_macros::define_trace_tables! {
     // 15. MULH (mulh/mulhsu/mulhu) - airs.md Section 15
     // ==========================================================================
     mulh: {
-        clock, pc, rd, rs1, rs2,
-        rd_high_0, rd_high_1, rd_high_2, rd_high_3,
-        rs1_sign, rs2_sign,
-        opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag,
+        committed: {
+            clock, pc, rd, rs1, rs2,
+            rd_high_0, rd_high_1, rd_high_2, rd_high_3,
+            rs1_sign, rs2_sign,
+            opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag,
+        },
         derived: {
-            expected_opcode_id: |opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag|
-                opcode_mulh_flag * constant(crate::decode::Opcode::Mulh as u32)
+            expected_opcode_id: opcode_mulh_flag * constant(crate::decode::Opcode::Mulh as u32)
                 + opcode_mulhsu_flag * constant(crate::decode::Opcode::Mulhsu as u32)
                 + opcode_mulhu_flag * constant(crate::decode::Opcode::Mulhu as u32),
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
             // Sign-extended 64-bit operands: top limbs gain the sign bit,
             // limbs 4..7 are the sign fill (airs.md 15.2)
-            rs1_top: |rs1_next_3, rs1_sign| rs1_next_3 + rs1_sign * pow2(7),
-            rs2_top: |rs2_next_3, rs2_sign| rs2_next_3 + rs2_sign * pow2(7),
-            rs1_fill: |rs1_sign| rs1_sign * (pow2(8) - 1),
-            rs2_fill: |rs2_sign| rs2_sign * (pow2(8) - 1),
-            carry_0: |rd_high_0, rs1_next_0, rs2_next_0|
-                (rs1_next_0 * rs2_next_0 - rd_high_0) * inv(pow2(8)),
-            carry_1: |carry_0, rd_high_1, rs1_next_0, rs1_next_1, rs2_next_0, rs2_next_1|
-                (carry_0 + rs1_next_0 * rs2_next_1 + rs1_next_1 * rs2_next_0 - rd_high_1) * inv(pow2(8)),
-            carry_2: |carry_1, rd_high_2, rs1_next_0, rs1_next_1, rs1_next_2, rs2_next_0, rs2_next_1, rs2_next_2|
-                (carry_1 + rs1_next_0 * rs2_next_2 + rs1_next_1 * rs2_next_1 + rs1_next_2 * rs2_next_0 - rd_high_2) * inv(pow2(8)),
-            carry_3: |carry_2, rd_high_3, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
-                (carry_2 + rs1_next_0 * rs2_top + rs1_next_1 * rs2_next_2 + rs1_next_2 * rs2_next_1 + rs1_top * rs2_next_0 - rd_high_3) * inv(pow2(8)),
-            carry_4: |carry_3, rd_next_0, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
-                (carry_3 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_top + rs1_next_2 * rs2_next_2 + rs1_top * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_0) * inv(pow2(8)),
-            carry_5: |carry_4, rd_next_1, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
-                (carry_4 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_top + rs1_top * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_1) * inv(pow2(8)),
-            carry_6: |carry_5, rd_next_2, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
-                (carry_5 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_2) * inv(pow2(8)),
-            carry_7: |carry_6, rd_next_3, rs1_fill, rs1_next_0, rs1_next_1, rs1_next_2, rs1_top, rs2_fill, rs2_next_0, rs2_next_1, rs2_next_2, rs2_top|
-                (carry_6 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_fill + rs1_fill * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_3) * inv(pow2(8)),
+            rs1_top: rs1_next_3 + rs1_sign * pow2(7),
+            rs2_top: rs2_next_3 + rs2_sign * pow2(7),
+            rs1_fill: rs1_sign * (pow2(8) - 1),
+            rs2_fill: rs2_sign * (pow2(8) - 1),
+            carry_0: (rs1_next_0 * rs2_next_0 - rd_high_0) * inv(pow2(8)),
+            carry_1: (carry_0 + rs1_next_0 * rs2_next_1 + rs1_next_1 * rs2_next_0 - rd_high_1) * inv(pow2(8)),
+            carry_2: (carry_1 + rs1_next_0 * rs2_next_2 + rs1_next_1 * rs2_next_1 + rs1_next_2 * rs2_next_0 - rd_high_2) * inv(pow2(8)),
+            carry_3: (carry_2 + rs1_next_0 * rs2_top + rs1_next_1 * rs2_next_2 + rs1_next_2 * rs2_next_1 + rs1_top * rs2_next_0 - rd_high_3) * inv(pow2(8)),
+            carry_4: (carry_3 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_top + rs1_next_2 * rs2_next_2 + rs1_top * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_0) * inv(pow2(8)),
+            carry_5: (carry_4 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_top + rs1_top * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_1) * inv(pow2(8)),
+            carry_6: (carry_5 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_2) * inv(pow2(8)),
+            carry_7: (carry_6 + rs1_next_0 * rs2_fill + rs1_next_1 * rs2_fill + rs1_next_2 * rs2_fill + rs1_top * rs2_fill + rs1_fill * rs2_top + rs1_fill * rs2_next_2 + rs1_fill * rs2_next_1 + rs1_fill * rs2_next_0 - rd_next_3) * inv(pow2(8)),
         },
         constraints: {
             rs1_sign * (1 - rs1_sign),
@@ -1209,108 +1156,93 @@ stwo_macros::define_trace_tables! {
     // 16. DIV (div/divu/rem/remu) - airs.md Section 16
     // ==========================================================================
     div: {
-        clock, pc, rd, rs1, rs2,
-        zero_divisor, r_zero,
-        q_0, q_1, q_2, q_3,
-        r_0, r_1, r_2, r_3,
-        b_sign, c_sign, q_sign, sign_xor,
-        c_sum_inv, r_sum_inv,
-        r_abs_0, r_abs_1, r_abs_2, r_abs_3,
-        r_inv_0, r_inv_1, r_inv_2, r_inv_3,
-        lt_marker_0, lt_marker_1, lt_marker_2, lt_marker_3,
-        lt_diff,
-        opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag,
+        committed: {
+            clock, pc, rd, rs1, rs2,
+            zero_divisor, r_zero,
+            q_0, q_1, q_2, q_3,
+            r_0, r_1, r_2, r_3,
+            b_sign, c_sign, q_sign, sign_xor,
+            c_sum_inv, r_sum_inv,
+            r_abs_0, r_abs_1, r_abs_2, r_abs_3,
+            r_inv_0, r_inv_1, r_inv_2, r_inv_3,
+            lt_marker_0, lt_marker_1, lt_marker_2, lt_marker_3,
+            lt_diff,
+            opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag,
+        },
         derived: {
-            expected_opcode_id: |opcode_div_flag, opcode_divu_flag, opcode_rem_flag,
-                opcode_remu_flag|
-                opcode_div_flag * constant(crate::decode::Opcode::Div as u32)
+            expected_opcode_id: opcode_div_flag * constant(crate::decode::Opcode::Div as u32)
                 + opcode_divu_flag * constant(crate::decode::Opcode::Divu as u32)
                 + opcode_rem_flag * constant(crate::decode::Opcode::Rem as u32)
                 + opcode_remu_flag * constant(crate::decode::Opcode::Remu as u32),
-            is_div: |opcode_div_flag, opcode_divu_flag| opcode_div_flag + opcode_divu_flag,
-            is_signed: |opcode_div_flag, opcode_rem_flag| opcode_div_flag + opcode_rem_flag,
-            special_case: |zero_divisor, r_zero| zero_divisor + r_zero,
-            valid_not_zero_divisor: |enabler, zero_divisor| enabler - zero_divisor,
-            valid_not_special: |enabler, special_case| enabler - special_case,
-            q_sum: |q_0, q_1, q_2, q_3| q_0 + q_1 + q_2 + q_3,
-            c_sum: |rs2_next_0, rs2_next_1, rs2_next_2, rs2_next_3|
-                rs2_next_0 + rs2_next_1 + rs2_next_2 + rs2_next_3,
-            r_sum: |r_0, r_1, r_2, r_3| r_0 + r_1 + r_2 + r_3,
-            c_sign_factor: |c_sign| 1 - 2 * c_sign,
+            is_div: opcode_div_flag + opcode_divu_flag,
+            is_signed: opcode_div_flag + opcode_rem_flag,
+            special_case: zero_divisor + r_zero,
+            valid_not_zero_divisor: enabler - zero_divisor,
+            valid_not_special: enabler - special_case,
+            q_sum: q_0 + q_1 + q_2 + q_3,
+            c_sum: rs2_next_0 + rs2_next_1 + rs2_next_2 + rs2_next_3,
+            r_sum: r_0 + r_1 + r_2 + r_3,
+            c_sign_factor: 1 - 2 * c_sign,
             // |r| vs |c| limb differences under the divisor sign (airs.md 16.2)
-            diff_0: |c_sign_factor, rs2_next_0, r_abs_0| c_sign_factor * (rs2_next_0 - r_abs_0),
-            diff_1: |c_sign_factor, rs2_next_1, r_abs_1| c_sign_factor * (rs2_next_1 - r_abs_1),
-            diff_2: |c_sign_factor, rs2_next_2, r_abs_2| c_sign_factor * (rs2_next_2 - r_abs_2),
-            diff_3: |c_sign_factor, rs2_next_3, r_abs_3| c_sign_factor * (rs2_next_3 - r_abs_3),
+            diff_0: c_sign_factor * (rs2_next_0 - r_abs_0),
+            diff_1: c_sign_factor * (rs2_next_1 - r_abs_1),
+            diff_2: c_sign_factor * (rs2_next_2 - r_abs_2),
+            diff_3: c_sign_factor * (rs2_next_3 - r_abs_3),
             // Result selection: quotient for div/divu, remainder for rem/remu
-            a_0: |is_div, q_0, r_0| is_div * q_0 + (1 - is_div) * r_0,
-            a_1: |is_div, q_1, r_1| is_div * q_1 + (1 - is_div) * r_1,
-            a_2: |is_div, q_2, r_2| is_div * q_2 + (1 - is_div) * r_2,
-            a_3: |is_div, q_3, r_3| is_div * q_3 + (1 - is_div) * r_3,
+            a_0: is_div * q_0 + (1 - is_div) * r_0,
+            a_1: is_div * q_1 + (1 - is_div) * r_1,
+            a_2: is_div * q_2 + (1 - is_div) * r_2,
+            a_3: is_div * q_3 + (1 - is_div) * r_3,
             // Carry chain of r + |r| = 2^32 (two's complement negation)
-            carry_lt_0: |r_0, r_abs_0| (r_0 + r_abs_0) * inv(pow2(8)),
-            carry_lt_1: |carry_lt_0, r_1, r_abs_1| (carry_lt_0 + r_1 + r_abs_1) * inv(pow2(8)),
-            carry_lt_2: |carry_lt_1, r_2, r_abs_2| (carry_lt_1 + r_2 + r_abs_2) * inv(pow2(8)),
-            carry_lt_3: |carry_lt_2, r_3, r_abs_3| (carry_lt_2 + r_3 + r_abs_3) * inv(pow2(8)),
+            carry_lt_0: (r_0 + r_abs_0) * inv(pow2(8)),
+            carry_lt_1: (carry_lt_0 + r_1 + r_abs_1) * inv(pow2(8)),
+            carry_lt_2: (carry_lt_1 + r_2 + r_abs_2) * inv(pow2(8)),
+            carry_lt_3: (carry_lt_2 + r_3 + r_abs_3) * inv(pow2(8)),
             // Comparison scan prefixes, seeded by the special cases
-            prefix_3: |special_case, lt_marker_3| special_case + lt_marker_3,
-            prefix_2: |prefix_3, lt_marker_2| prefix_3 + lt_marker_2,
-            prefix_1: |prefix_2, lt_marker_1| prefix_2 + lt_marker_1,
-            prefix_0: |prefix_1, lt_marker_0| prefix_1 + lt_marker_0,
-            lt_diff_minus_1: |lt_diff| lt_diff - 1,
+            prefix_3: special_case + lt_marker_3,
+            prefix_2: prefix_3 + lt_marker_2,
+            prefix_1: prefix_2 + lt_marker_1,
+            prefix_0: prefix_1 + lt_marker_0,
+            lt_diff_minus_1: lt_diff - 1,
             // Sign-extension limbs (64-bit two's complement): every limb
             // above the low four equals sign * 0xFF. The remainder's sign is
             // the dividend's, except r = 0 which extends with zeros; the
             // zero-divisor case (r = b) keeps b's sign through b_sign.
-            c_hi: |c_sign| 255 * c_sign,
-            q_hi: |q_sign| 255 * q_sign,
-            b_hi: |b_sign| 255 * b_sign,
-            r_hi: |b_sign, r_zero| 255 * b_sign * (1 - r_zero),
+            c_hi: 255 * c_sign,
+            q_hi: 255 * q_sign,
+            b_hi: 255 * b_sign,
+            r_hi: 255 * b_sign * (1 - r_zero),
             // Schoolbook carries of rs1 = rs2 * q + r over the sign-extended
             // limbs (airs.md 16.2): carry_k integral and below 2^11 makes the
             // limb equations an exact 64-bit identity, which pins (q, r) to
             // the dividend (the overflow case is exact too: q_sign = 0 reads
             // 0x80000000 as +2^31).
-            carry_0: |rs2_next_0, q_0, r_0, rs1_next_0|
-                (rs2_next_0 * q_0 + r_0 - rs1_next_0) * inv(pow2(8)),
-            carry_1: |carry_0, rs2_next_0, q_1, rs2_next_1, q_0, r_1, rs1_next_1|
-                (carry_0 + rs2_next_0 * q_1 + rs2_next_1 * q_0 + r_1 - rs1_next_1)
+            carry_0: (rs2_next_0 * q_0 + r_0 - rs1_next_0) * inv(pow2(8)),
+            carry_1: (carry_0 + rs2_next_0 * q_1 + rs2_next_1 * q_0 + r_1 - rs1_next_1)
                     * inv(pow2(8)),
-            carry_2: |carry_1, rs2_next_0, q_2, rs2_next_1, q_1, rs2_next_2, q_0, r_2,
-                rs1_next_2|
-                (carry_1 + rs2_next_0 * q_2 + rs2_next_1 * q_1 + rs2_next_2 * q_0 + r_2
+            carry_2: (carry_1 + rs2_next_0 * q_2 + rs2_next_1 * q_1 + rs2_next_2 * q_0 + r_2
                     - rs1_next_2) * inv(pow2(8)),
-            carry_3: |carry_2, rs2_next_0, q_3, rs2_next_1, q_2, rs2_next_2, q_1,
-                rs2_next_3, q_0, r_3, rs1_next_3|
-                (carry_2 + rs2_next_0 * q_3 + rs2_next_1 * q_2 + rs2_next_2 * q_1
+            carry_3: (carry_2 + rs2_next_0 * q_3 + rs2_next_1 * q_2 + rs2_next_2 * q_1
                     + rs2_next_3 * q_0 + r_3 - rs1_next_3) * inv(pow2(8)),
-            carry_4: |carry_3, rs2_next_0, q_hi, rs2_next_1, q_3, rs2_next_2, q_2,
-                rs2_next_3, q_1, c_hi, q_0, r_hi, b_hi|
-                (carry_3 + rs2_next_0 * q_hi + rs2_next_1 * q_3 + rs2_next_2 * q_2
+            carry_4: (carry_3 + rs2_next_0 * q_hi + rs2_next_1 * q_3 + rs2_next_2 * q_2
                     + rs2_next_3 * q_1 + c_hi * q_0 + r_hi - b_hi) * inv(pow2(8)),
-            carry_5: |carry_4, rs2_next_0, rs2_next_1, q_hi, rs2_next_2, q_3,
-                rs2_next_3, q_2, c_hi, q_0, q_1, r_hi, b_hi|
-                (carry_4 + (rs2_next_0 + rs2_next_1) * q_hi + rs2_next_2 * q_3
+            carry_5: (carry_4 + (rs2_next_0 + rs2_next_1) * q_hi + rs2_next_2 * q_3
                     + rs2_next_3 * q_2 + c_hi * (q_0 + q_1) + r_hi - b_hi)
                     * inv(pow2(8)),
-            carry_6: |carry_5, c_sum, rs2_next_3, q_hi, q_3, c_hi, q_sum, r_hi, b_hi|
-                (carry_5 + (c_sum - rs2_next_3) * q_hi + rs2_next_3 * q_3
+            carry_6: (carry_5 + (c_sum - rs2_next_3) * q_hi + rs2_next_3 * q_3
                     + c_hi * (q_sum - q_3) + r_hi - b_hi) * inv(pow2(8)),
-            carry_7: |carry_6, c_sum, q_hi, c_hi, q_sum, r_hi, b_hi|
-                (carry_6 + c_sum * q_hi + c_hi * q_sum + r_hi - b_hi) * inv(pow2(8)),
+            carry_7: (carry_6 + c_sum * q_hi + c_hi * q_sum + r_hi - b_hi) * inv(pow2(8)),
             // Sign bits bound to the operands' top limbs under signed
             // opcodes: 2 * (top_limb - sign * 2^7) is a byte iff the sign
             // bit matches (without this, a sign lie with r = 0 slips past
             // the special-case-gated comparison scan).
-            b_sign_check: |is_signed, rs1_next_3, b_sign|
-                2 * is_signed * (rs1_next_3 - b_sign * pow2(7)),
-            c_sign_check: |is_signed, rs2_next_3, c_sign|
-                2 * is_signed * (rs2_next_3 - c_sign * pow2(7)),
-            pc_next: |pc| pc + 4,
-            clock_next: |clock| clock + 1,
-            rs1_clock_diff: |clock, rs1_clock_prev| clock - rs1_clock_prev,
-            rs2_clock_diff: |clock, rs2_clock_prev| clock - rs2_clock_prev,
-            rd_clock_diff: |clock, rd_clock_prev| clock - rd_clock_prev,
+            b_sign_check: 2 * is_signed * (rs1_next_3 - b_sign * pow2(7)),
+            c_sign_check: 2 * is_signed * (rs2_next_3 - c_sign * pow2(7)),
+            pc_next: pc + 4,
+            clock_next: clock + 1,
+            rs1_clock_diff: clock - rs1_clock_prev,
+            rs2_clock_diff: clock - rs2_clock_prev,
+            rd_clock_diff: clock - rd_clock_prev,
         },
         constraints: {
             zero_divisor * (1 - zero_divisor),
@@ -1423,7 +1355,9 @@ stwo_macros::define_trace_tables! {
     // 17. Program commitment table
     // ==========================================================================
     program: {
-        addr, value_0, value_1, value_2, value_3, multiplicity, root,
+        committed: {
+            addr, value_0, value_1, value_2, value_3, multiplicity, root,
+        },
         lookups: {
             // Emit each fetched instruction `multiplicity` times (consumed by
             // the opcode components' program accesses).
@@ -1441,9 +1375,11 @@ stwo_macros::define_trace_tables! {
     // 18. Memory commitment table (initial/final)
     // ==========================================================================
     memory: {
-        addr, clock,
-        value_0, value_1, value_2, value_3,
-        multiplicity, root,
+        committed: {
+            addr, clock,
+            value_0, value_1, value_2, value_3,
+            multiplicity, root,
+        },
         constraints: {
             // multiplicity is -1 (final state emission), 0 (padding), or 1
             // (initial state consumption).
@@ -1468,10 +1404,12 @@ stwo_macros::define_trace_tables! {
     // 19. Merkle tree nodes
     // ==========================================================================
     merkle: {
-        index, depth,
-        lhs, rhs, cur,
-        lhs_mult, rhs_mult, cur_mult,
-        root,
+        committed: {
+            index, depth,
+            lhs, rhs, cur,
+            lhs_mult, rhs_mult, cur_mult,
+            root,
+        },
         constraints: {
             // Node multiplicities are 0, 1, or 2 (a node can be shared by
             // two children paths).
@@ -1498,8 +1436,10 @@ stwo_macros::define_trace_tables! {
     // where the value is unchanged and the clock advances by the maximum
     // allowed difference); only the columns and lookups are defined here.
     air mem_clock_update: {
-        addr, clock_prev,
-        value_0, value_1, value_2, value_3,
+        committed: {
+            addr, clock_prev,
+            value_0, value_1, value_2, value_3,
+        },
         lookups: {
             // Refresh the access clock without changing the value (RW_AS = 1).
             -enabler * memory_access(1, addr, clock_prev, value_0, value_1, value_2, value_3),
@@ -1508,8 +1448,10 @@ stwo_macros::define_trace_tables! {
     },
 
     air reg_clock_update: {
-        addr, clock_prev,
-        value_0, value_1, value_2, value_3,
+        committed: {
+            addr, clock_prev,
+            value_0, value_1, value_2, value_3,
+        },
         lookups: {
             // Refresh the access clock without changing the value (REG_AS = 0).
             -enabler * memory_access(0, addr, clock_prev, value_0, value_1, value_2, value_3),
