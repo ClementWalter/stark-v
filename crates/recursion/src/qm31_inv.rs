@@ -168,7 +168,6 @@ mod tests {
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
-    use stwo::core::fields::qm31::SecureField;
     use stwo::core::pcs::TreeVec;
     use stwo::core::poly::circle::CanonicCoset;
     use stwo_constraint_framework::assert_constraints_on_polys;

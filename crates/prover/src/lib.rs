@@ -63,9 +63,6 @@ pub fn print_enabled_features() {
     }
 }
 
-// Import all macros from stwo-macros crate
-#[macro_use]
-extern crate stwo_macros;
 pub mod components;
 pub mod errors;
 pub mod poseidon2_channel;
