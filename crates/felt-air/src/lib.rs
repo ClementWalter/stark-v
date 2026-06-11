@@ -4,9 +4,11 @@
 //! consumes its own `(inputs..., outputs...)` tuple through the function's
 //! LogUp relation and emits one for every call it makes; the verifier emits
 //! the public entry activations. `max_degree` drives materialization:
-//! `quint`'s `x2 * x2 * x` chain is automatically unrolled into committed
-//! intermediate columns, while `affine`'s additive chain stays one inline
-//! expression.
+//! `quint`'s `x ** 5` is automatically unrolled into committed intermediate
+//! columns, while `affine`'s additive chain stays one inline expression.
+
+// Clippy parses the felt-language macro body as Rust and misreads `**`.
+#![allow(clippy::possible_missing_comma)]
 
 pub mod poseidon2;
 
@@ -19,8 +21,7 @@ stwo_macros::define_air_fns! {
     }
 
     fn quint(x) {
-        let x2 = x * x;
-        return x2 * x2 * x;
+        return x ** 5;
     }
 
     fn affine(a, b, c) {

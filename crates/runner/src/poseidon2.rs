@@ -205,7 +205,7 @@ stwo_macros::define_air_fns! {
 
     // External round matrix: M4 per 4-lane block, then each lane adds its
     // column-wise sum across the blocks. Purely additive: stays inline.
-    inline fn external_matrix(state[16]) {
+    inline fn external_matrix(state: [felt; 16]) {
         let (b0, b1, b2, b3) = m4(state[0], state[1], state[2], state[3]);
         let (b4, b5, b6, b7) = m4(state[4], state[5], state[6], state[7]);
         let (b8, b9, b10, b11) = m4(state[8], state[9], state[10], state[11]);
@@ -218,29 +218,19 @@ stwo_macros::define_air_fns! {
 
     // 4 + 4 full rounds around 14 partial rounds; the x^5 s-box chains
     // materialize automatically under the degree budget.
-    fn poseidon2(state[16]) {
+    fn poseidon2(state: [felt; 16]) {
         let state = external_matrix(state);
         for r in 0..4 {
-            let state = map(j, 0..16, state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j]));
-            let sq = map(j, 0..16, state[j] * state[j]);
-            let q = map(j, 0..16, sq[j] * sq[j]);
-            let state = map(j, 0..16, q[j] * state[j]);
+            let state = map(j, 0..16, (state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j])) ** 5);
             let state = external_matrix(state);
         }
         for r in 0..14 {
-            let s0 = state[0] + constant(INTERNAL_ROUND_CONSTS[r]);
-            let p2 = s0 * s0;
-            let p4 = p2 * p2;
-            let s5 = p4 * s0;
-            let state = update(state, 0, s5);
+            let state = update(state, 0, (state[0] + constant(INTERNAL_ROUND_CONSTS[r])) ** 5);
             let total = sum(j, 0..16, state[j]);
             let state = map(j, 0..16, state[j] * constant(INTERNAL_MATRIX[j]) + total);
         }
         for r in 4..8 {
-            let state = map(j, 0..16, state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j]));
-            let sq = map(j, 0..16, state[j] * state[j]);
-            let q = map(j, 0..16, sq[j] * sq[j]);
-            let state = map(j, 0..16, q[j] * state[j]);
+            let state = map(j, 0..16, (state[j] + constant(EXTERNAL_ROUND_CONSTS[r][j])) ** 5);
             let state = external_matrix(state);
         }
         return state;
