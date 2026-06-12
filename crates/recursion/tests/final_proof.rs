@@ -2,8 +2,8 @@
 //! composition check and every Merkle opening proven in ONE recursion proof,
 //! verified without ever touching an inner proof or a decommitment.
 
+use prover::e2e::prove_segments_with_channel;
 use prover::poseidon2_channel::Poseidon2M31MerkleChannel;
-use prover::recursion::segments::prove_segments_with_channel;
 use prover::{PcsConfig, preprocess_with_channel};
 use recursion::final_proof::{FinalProof, prove_final, verify_final};
 use runner::{run, run_segments_with_input};

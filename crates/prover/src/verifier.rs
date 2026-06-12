@@ -22,7 +22,7 @@ use crate::relations::{INTERACTION_POW_BITS, Relations};
 /// and OODS draws). Shared by host verification and the recursion transcript
 /// replay (`crate::recursion`), so the protocol prefix has a single
 /// implementation.
-pub(crate) fn replay_claim_phase<MC: MerkleChannel>(
+pub fn replay_claim_phase<MC: MerkleChannel>(
     proof: &Proof<MC::H>,
     config: PcsConfig,
     preprocessing: &Preprocessing<MC::H>,

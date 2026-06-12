@@ -310,9 +310,7 @@ fn run_prove(
     info!("Generating proof...");
     let proof = prove_rv32im(run_result, config, &preprocessed);
 
-    // The proof size estimate is logged by stwo during proving
-    // We'll use 0 as placeholder since we can't easily serialize the proof
-    let proof_size_estimate = 0;
+    let proof_size_estimate = proof.stark_proof.size_estimate();
 
     // Verify if not skipped
     let verified = if !skip_verify {

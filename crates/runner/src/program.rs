@@ -1,5 +1,5 @@
 use crate::commitment::{CommitmentError, MemoryLayout};
-use crate::decode::{DecodedInst, Opcode};
+use crate::instructions::{DecodedInst, Opcode};
 use crate::memory::Memory;
 use crate::ops::utils::imm_to_felt;
 

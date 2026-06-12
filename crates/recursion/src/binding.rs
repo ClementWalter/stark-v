@@ -8,8 +8,8 @@
 //! recording each `evaluate()` into one shared arena. The accumulated value
 //! must equal the composition value the proof claims at the OODS point.
 
+use crate::transcript::CompositionBindingData;
 use prover::components::{ComponentVisitor, Components};
-use prover::recursion::transcript::CompositionBindingData;
 use stwo::core::constraints::coset_vanishing;
 use stwo::core::fields::FieldExpOps;
 use stwo::core::fields::qm31::{QM31, SecureField};

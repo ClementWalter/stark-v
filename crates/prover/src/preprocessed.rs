@@ -1,11 +1,14 @@
-//! Cached preprocessed commitment data for RV32IM proofs.
+//! Preprocessed columns and cached commitment data for RV32IM proofs.
+//!
+//! Table definitions live in the shared [`air`] crate and are re-exported
+//! here because macro-generated code resolves them through
+//! `crate::preprocessed::…`.
 
+pub use air::preprocessed::*;
 use serde::{Deserialize, Serialize};
 use stwo::core::pcs::PcsConfig;
 use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-
-use crate::preprocessed::PreProcessedTrace;
 
 /// Serializable preprocessed data for RV32IM proving.
 ///

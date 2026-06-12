@@ -32,11 +32,11 @@ stwo_macros::define_air! {
                 opcode_add_flag, opcode_sub_flag, opcode_xor_flag, opcode_or_flag, opcode_and_flag,
             },
             derived: {
-                expected_opcode_id: opcode_add_flag * constant(crate::decode::Opcode::Add as u32)
-                    + opcode_sub_flag * constant(crate::decode::Opcode::Sub as u32)
-                    + opcode_xor_flag * constant(crate::decode::Opcode::Xor as u32)
-                    + opcode_or_flag * constant(crate::decode::Opcode::Or as u32)
-                    + opcode_and_flag * constant(crate::decode::Opcode::And as u32),
+                expected_opcode_id: opcode_add_flag * constant(crate::instructions::Opcode::Add as u32)
+                    + opcode_sub_flag * constant(crate::instructions::Opcode::Sub as u32)
+                    + opcode_xor_flag * constant(crate::instructions::Opcode::Xor as u32)
+                    + opcode_or_flag * constant(crate::instructions::Opcode::Or as u32)
+                    + opcode_and_flag * constant(crate::instructions::Opcode::And as u32),
                 is_bitwise: opcode_xor_flag + opcode_or_flag + opcode_and_flag,
                 // Preprocessed bitwise table id: and=0, or=1, xor=2
                 bitwise_id: 2 * opcode_xor_flag + opcode_or_flag,
@@ -106,10 +106,10 @@ stwo_macros::define_air! {
             },
             derived: {
                 // Opcode id encoded in the program segment, selected by the active flag
-                expected_opcode_id: opcode_add_flag * constant(crate::decode::Opcode::Addi as u32)
-                    + opcode_xor_flag * constant(crate::decode::Opcode::Xori as u32)
-                    + opcode_or_flag * constant(crate::decode::Opcode::Ori as u32)
-                    + opcode_and_flag * constant(crate::decode::Opcode::Andi as u32),
+                expected_opcode_id: opcode_add_flag * constant(crate::instructions::Opcode::Addi as u32)
+                    + opcode_xor_flag * constant(crate::instructions::Opcode::Xori as u32)
+                    + opcode_or_flag * constant(crate::instructions::Opcode::Ori as u32)
+                    + opcode_and_flag * constant(crate::instructions::Opcode::Andi as u32),
                 // I-type immediate: imm_0 (8 bits) + imm_1 (3 bits) + sign bit (airs.md 2.2)
                 imm: imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
                 // Sign-extended immediate limbs; limb 0 is imm_0 and limb 3 equals limb 2
@@ -177,9 +177,9 @@ stwo_macros::define_air! {
                 bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3,
             },
             derived: {
-                expected_opcode_id: opcode_sll_flag * constant(crate::decode::Opcode::Sll as u32)
-                    + opcode_srl_flag * constant(crate::decode::Opcode::Srl as u32)
-                    + opcode_sra_flag * constant(crate::decode::Opcode::Sra as u32),
+                expected_opcode_id: opcode_sll_flag * constant(crate::instructions::Opcode::Sll as u32)
+                    + opcode_srl_flag * constant(crate::instructions::Opcode::Srl as u32)
+                    + opcode_sra_flag * constant(crate::instructions::Opcode::Sra as u32),
                 right_shift: opcode_srl_flag + opcode_sra_flag,
                 // Hot-one decoded shift quantities (airs.md 3.2)
                 bit_multiplier: bit_shift_marker_0 + 2 * bit_shift_marker_1 + 4 * bit_shift_marker_2
@@ -340,9 +340,9 @@ stwo_macros::define_air! {
                 bit_shift_carry_0, bit_shift_carry_1, bit_shift_carry_2, bit_shift_carry_3,
             },
             derived: {
-                expected_opcode_id: opcode_sll_flag * constant(crate::decode::Opcode::Slli as u32)
-                    + opcode_srl_flag * constant(crate::decode::Opcode::Srli as u32)
-                    + opcode_sra_flag * constant(crate::decode::Opcode::Srai as u32),
+                expected_opcode_id: opcode_sll_flag * constant(crate::instructions::Opcode::Slli as u32)
+                    + opcode_srl_flag * constant(crate::instructions::Opcode::Srli as u32)
+                    + opcode_sra_flag * constant(crate::instructions::Opcode::Srai as u32),
                 right_shift: opcode_srl_flag + opcode_sra_flag,
                 // Hot-one decoded shift quantities (airs.md 4.2)
                 bit_multiplier: bit_shift_marker_0 + 2 * bit_shift_marker_1 + 4 * bit_shift_marker_2
@@ -486,8 +486,8 @@ stwo_macros::define_air! {
                 diff_val,
             },
             derived: {
-                expected_opcode_id: opcode_slt_flag * constant(crate::decode::Opcode::Slt as u32)
-                    + opcode_sltu_flag * constant(crate::decode::Opcode::Sltu as u32),
+                expected_opcode_id: opcode_slt_flag * constant(crate::instructions::Opcode::Slt as u32)
+                    + opcode_sltu_flag * constant(crate::instructions::Opcode::Sltu as u32),
                 pc_next: pc + 4,
                 clock_next: clock + 1,
                 rs1_clock_diff: clock - rs1_clock_prev,
@@ -567,8 +567,8 @@ stwo_macros::define_air! {
                 diff_val,
             },
             derived: {
-                expected_opcode_id: opcode_slti_flag * constant(crate::decode::Opcode::Slti as u32)
-                    + opcode_sltiu_flag * constant(crate::decode::Opcode::Sltiu as u32),
+                expected_opcode_id: opcode_slti_flag * constant(crate::instructions::Opcode::Slti as u32)
+                    + opcode_sltiu_flag * constant(crate::instructions::Opcode::Sltiu as u32),
                 // I-type immediate (airs.md 6.2)
                 imm: imm_0 + pow2(8) * imm_1 + pow2(11) * imm_msb,
                 // Sign-extended immediate limbs; limb 0 is imm_0, limb 3 = limb 2
@@ -639,8 +639,8 @@ stwo_macros::define_air! {
                 opcode_beq_flag, opcode_bne_flag,
             },
             derived: {
-                expected_opcode_id: opcode_beq_flag * constant(crate::decode::Opcode::Beq as u32)
-                    + opcode_bne_flag * constant(crate::decode::Opcode::Bne as u32),
+                expected_opcode_id: opcode_beq_flag * constant(crate::instructions::Opcode::Beq as u32)
+                    + opcode_bne_flag * constant(crate::instructions::Opcode::Bne as u32),
                 // 1 when the operands must be equal under the active opcode
                 cmp_eq: cmp_result * opcode_beq_flag + (1 - cmp_result) * opcode_bne_flag,
                 // Inverse witness sum: cmp_eq plus marked limb differences must
@@ -695,10 +695,10 @@ stwo_macros::define_air! {
                 opcode_blt_flag, opcode_bltu_flag, opcode_bge_flag, opcode_bgeu_flag,
             },
             derived: {
-                expected_opcode_id: opcode_blt_flag * constant(crate::decode::Opcode::Blt as u32)
-                    + opcode_bltu_flag * constant(crate::decode::Opcode::Bltu as u32)
-                    + opcode_bge_flag * constant(crate::decode::Opcode::Bge as u32)
-                    + opcode_bgeu_flag * constant(crate::decode::Opcode::Bgeu as u32),
+                expected_opcode_id: opcode_blt_flag * constant(crate::instructions::Opcode::Blt as u32)
+                    + opcode_bltu_flag * constant(crate::instructions::Opcode::Bltu as u32)
+                    + opcode_bge_flag * constant(crate::instructions::Opcode::Bge as u32)
+                    + opcode_bgeu_flag * constant(crate::instructions::Opcode::Bgeu as u32),
                 lt: opcode_blt_flag + opcode_bltu_flag,
                 ge: opcode_bge_flag + opcode_bgeu_flag,
                 signed: opcode_blt_flag + opcode_bge_flag,
@@ -779,7 +779,7 @@ stwo_macros::define_air! {
             },
             lookups: {
                 // Program access (U-type): Program(pc, LUI, rd_idx, imm, 0)
-                -enabler * program_access(pc, constant(crate::decode::Opcode::Lui as u32), rd_addr, imm, 0),
+                -enabler * program_access(pc, constant(crate::instructions::Opcode::Lui as u32), rd_addr, imm, 0),
                 // Register state transition: clock advances, pc steps by 4.
                 -enabler * registers_state(pc, clock),
                 enabler * registers_state(pc_next, clock_next),
@@ -812,7 +812,7 @@ stwo_macros::define_air! {
             },
             lookups: {
                 // Program access (U-type): Program(pc, AUIPC, rd_idx, imm, 0)
-                -enabler * program_access(pc, constant(crate::decode::Opcode::Auipc as u32), rd_addr, imm_felt, 0),
+                -enabler * program_access(pc, constant(crate::instructions::Opcode::Auipc as u32), rd_addr, imm_felt, 0),
                 -enabler * registers_state(pc, clock),
                 enabler * registers_state(pc_next, clock_next),
                 // rd = pc + imm is an M31: middle limbs are bytes, outer pair is
@@ -853,7 +853,7 @@ stwo_macros::define_air! {
             },
             lookups: {
                 // Program access (I-type): Program(pc, JALR, rd_idx, rs1_idx, imm)
-                -enabler * program_access(pc, constant(crate::decode::Opcode::Jalr as u32), rd_addr, rs1_addr, imm_felt),
+                -enabler * program_access(pc, constant(crate::instructions::Opcode::Jalr as u32), rd_addr, rs1_addr, imm_felt),
                 // Read rs1 (REG_AS = 0).
                 -enabler * memory_access(0, rs1_addr, rs1_clock_prev, rs1_prev_0, rs1_prev_1, rs1_prev_2, rs1_prev_3),
                 enabler * memory_access(0, rs1_addr, clock, rs1_next_0, rs1_next_1, rs1_next_2, rs1_next_3),
@@ -889,7 +889,7 @@ stwo_macros::define_air! {
             },
             lookups: {
                 // Program access (U-type): Program(pc, JAL, rd_idx, imm, 0)
-                -enabler * program_access(pc, constant(crate::decode::Opcode::Jal as u32), rd_addr, imm_felt, 0),
+                -enabler * program_access(pc, constant(crate::instructions::Opcode::Jal as u32), rd_addr, imm_felt, 0),
                 // Unconditional jump: pc moves to pc + imm.
                 -enabler * registers_state(pc, clock),
                 enabler * registers_state(jump_target, clock_next),
@@ -922,14 +922,14 @@ stwo_macros::define_air! {
                 opcode_sb_flag, opcode_sh_flag, opcode_sw_flag,
             },
             derived: {
-                expected_opcode_id: opcode_lb_flag * constant(crate::decode::Opcode::Lb as u32)
-                    + opcode_lh_flag * constant(crate::decode::Opcode::Lh as u32)
-                    + opcode_lbu_flag * constant(crate::decode::Opcode::Lbu as u32)
-                    + opcode_lhu_flag * constant(crate::decode::Opcode::Lhu as u32)
-                    + opcode_lw_flag * constant(crate::decode::Opcode::Lw as u32)
-                    + opcode_sb_flag * constant(crate::decode::Opcode::Sb as u32)
-                    + opcode_sh_flag * constant(crate::decode::Opcode::Sh as u32)
-                    + opcode_sw_flag * constant(crate::decode::Opcode::Sw as u32),
+                expected_opcode_id: opcode_lb_flag * constant(crate::instructions::Opcode::Lb as u32)
+                    + opcode_lh_flag * constant(crate::instructions::Opcode::Lh as u32)
+                    + opcode_lbu_flag * constant(crate::instructions::Opcode::Lbu as u32)
+                    + opcode_lhu_flag * constant(crate::instructions::Opcode::Lhu as u32)
+                    + opcode_lw_flag * constant(crate::instructions::Opcode::Lw as u32)
+                    + opcode_sb_flag * constant(crate::instructions::Opcode::Sb as u32)
+                    + opcode_sh_flag * constant(crate::instructions::Opcode::Sh as u32)
+                    + opcode_sw_flag * constant(crate::instructions::Opcode::Sw as u32),
                 opcode_b_flag: opcode_lbu_flag + opcode_lb_flag + opcode_sb_flag,
                 opcode_h_flag: opcode_lhu_flag + opcode_lh_flag + opcode_sh_flag,
                 opcode_w_flag: opcode_lw_flag + opcode_sw_flag,
@@ -1058,7 +1058,7 @@ stwo_macros::define_air! {
                 // singleton batch to hold the constraint degree bound.
                 batch: 1,
                 // Program access (R-type): Program(pc, MUL, rd_idx, rs1_idx, rs2_idx)
-                -enabler * program_access(pc, constant(crate::decode::Opcode::Mul as u32), rd_addr, rs1_addr, rs2_addr),
+                -enabler * program_access(pc, constant(crate::instructions::Opcode::Mul as u32), rd_addr, rs1_addr, rs2_addr),
                 -enabler * registers_state(pc, clock),
                 enabler * registers_state(pc_next, clock_next),
                 // Read rs1 (REG_AS = 0).
@@ -1094,9 +1094,9 @@ stwo_macros::define_air! {
                 opcode_mulh_flag, opcode_mulhsu_flag, opcode_mulhu_flag,
             },
             derived: {
-                expected_opcode_id: opcode_mulh_flag * constant(crate::decode::Opcode::Mulh as u32)
-                    + opcode_mulhsu_flag * constant(crate::decode::Opcode::Mulhsu as u32)
-                    + opcode_mulhu_flag * constant(crate::decode::Opcode::Mulhu as u32),
+                expected_opcode_id: opcode_mulh_flag * constant(crate::instructions::Opcode::Mulh as u32)
+                    + opcode_mulhsu_flag * constant(crate::instructions::Opcode::Mulhsu as u32)
+                    + opcode_mulhu_flag * constant(crate::instructions::Opcode::Mulhu as u32),
                 pc_next: pc + 4,
                 clock_next: clock + 1,
                 rs1_clock_diff: clock - rs1_clock_prev,
@@ -1177,10 +1177,10 @@ stwo_macros::define_air! {
                 opcode_div_flag, opcode_divu_flag, opcode_rem_flag, opcode_remu_flag,
             },
             derived: {
-                expected_opcode_id: opcode_div_flag * constant(crate::decode::Opcode::Div as u32)
-                    + opcode_divu_flag * constant(crate::decode::Opcode::Divu as u32)
-                    + opcode_rem_flag * constant(crate::decode::Opcode::Rem as u32)
-                    + opcode_remu_flag * constant(crate::decode::Opcode::Remu as u32),
+                expected_opcode_id: opcode_div_flag * constant(crate::instructions::Opcode::Div as u32)
+                    + opcode_divu_flag * constant(crate::instructions::Opcode::Divu as u32)
+                    + opcode_rem_flag * constant(crate::instructions::Opcode::Rem as u32)
+                    + opcode_remu_flag * constant(crate::instructions::Opcode::Remu as u32),
                 is_div: opcode_div_flag + opcode_divu_flag,
                 is_signed: opcode_div_flag + opcode_rem_flag,
                 special_case: zero_divisor + r_zero,
@@ -1371,10 +1371,10 @@ stwo_macros::define_air! {
                 multiplicity * program_access(addr, value_0, value_1, value_2, value_3),
                 // The four instruction limbs are leaves of the program
                 // commitment tree at consecutive indices.
-                -enabler * merkle(addr, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_0, root),
-                -enabler * merkle(addr + 1, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_1, root),
-                -enabler * merkle(addr + 2, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_2, root),
-                -enabler * merkle(addr + 3, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_3, root),
+                -enabler * merkle(addr, constant(crate::MAX_TREE_HEIGHT - 1), value_0, root),
+                -enabler * merkle(addr + 1, constant(crate::MAX_TREE_HEIGHT - 1), value_1, root),
+                -enabler * merkle(addr + 2, constant(crate::MAX_TREE_HEIGHT - 1), value_2, root),
+                -enabler * merkle(addr + 3, constant(crate::MAX_TREE_HEIGHT - 1), value_3, root),
             },
         },
 
@@ -1400,10 +1400,10 @@ stwo_macros::define_air! {
                 // initial value, -1 consumes the final one.
                 multiplicity * memory_access(1, addr, clock, value_0, value_1, value_2, value_3),
                 // The four word limbs are leaves of the memory commitment tree.
-                -enabler * merkle(addr, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_0, root),
-                -enabler * merkle(addr + 1, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_1, root),
-                -enabler * merkle(addr + 2, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_2, root),
-                -enabler * merkle(addr + 3, constant(crate::merkle::MAX_TREE_HEIGHT - 1), value_3, root),
+                -enabler * merkle(addr, constant(crate::MAX_TREE_HEIGHT - 1), value_0, root),
+                -enabler * merkle(addr + 1, constant(crate::MAX_TREE_HEIGHT - 1), value_1, root),
+                -enabler * merkle(addr + 2, constant(crate::MAX_TREE_HEIGHT - 1), value_2, root),
+                -enabler * merkle(addr + 3, constant(crate::MAX_TREE_HEIGHT - 1), value_3, root),
             },
         },
 
