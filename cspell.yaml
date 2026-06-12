@@ -28,6 +28,7 @@ words:
   - decommit
   - decommitment
   - decommitted
+  - dedup
   - impls
   - elems
   - unkeyed
@@ -169,6 +170,7 @@ words:
   - transpiling
   - ttext
   - underflowed
+  - ungated
   - unimp
   - usize
   - vaddr
