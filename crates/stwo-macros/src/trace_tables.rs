@@ -132,17 +132,10 @@ fn parse_lookups(input: ParseStream) -> syn::Result<LookupsDef> {
                 return Err(syn::Error::new(lit.span(), "batch size must be positive"));
             }
         } else {
-            let preprocessed = input
-                .cursor()
-                .ident()
-                .is_some_and(|(ident, _)| ident == "preprocessed");
-            if preprocessed {
-                input.parse::<Ident>()?;
-            }
             let entry: Expr = input.parse()?;
             let (multiplicity, relation, values) = decompose_lookup_entry(entry)?;
             lookups.entries.push(LookupEntry {
-                preprocessed,
+                preprocessed: false,
                 relation,
                 multiplicity,
                 values,
@@ -261,16 +254,57 @@ impl Parse for OpcodeDef {
 
 /// All opcode definitions
 struct TraceTablesDef {
+    /// Relation names whose lookup entries register preprocessed multiplicities.
+    preprocessed_relations: Vec<Ident>,
     opcodes: Vec<OpcodeDef>,
+}
+
+impl TraceTablesDef {
+    /// Mark lookup entries whose relation name appears in the registry.
+    fn apply_preprocessed_registry(&mut self) {
+        let registered: std::collections::HashSet<String> = self
+            .preprocessed_relations
+            .iter()
+            .map(|ident| ident.to_string())
+            .collect();
+        for opcode in &mut self.opcodes {
+            for entry in &mut opcode.lookups.entries {
+                if registered.contains(&entry.relation.to_string()) {
+                    entry.preprocessed = true;
+                }
+            }
+        }
+    }
 }
 
 impl Parse for TraceTablesDef {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut preprocessed_relations = Vec::new();
+        if input
+            .cursor()
+            .ident()
+            .is_some_and(|(ident, _)| ident == "preprocessed_relations")
+        {
+            input.parse::<Ident>()?;
+            input.parse::<Token![:]>()?;
+            let content;
+            braced!(content in input);
+            let ids: Punctuated<Ident, Token![,]> =
+                content.parse_terminated(Ident::parse, Token![,])?;
+            preprocessed_relations.extend(ids);
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
         let opcodes: Punctuated<OpcodeDef, Token![,]> =
             input.parse_terminated(OpcodeDef::parse, Token![,])?;
-        Ok(TraceTablesDef {
+        let mut def = TraceTablesDef {
+            preprocessed_relations,
             opcodes: opcodes.into_iter().collect(),
-        })
+        };
+        def.apply_preprocessed_registry();
+        Ok(def)
     }
 }
 

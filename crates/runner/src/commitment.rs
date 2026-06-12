@@ -4,13 +4,12 @@ use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
 use thiserror::Error;
 
+use crate::MAX_TREE_HEIGHT;
 use crate::Memory;
 use crate::ops::utils::M31_P;
 use crate::poseidon2::{POSEIDON2_DEFAULT_HASHES_DEPTH_30, poseidon2_traced};
 use crate::program::{ProgramRow, decode_program};
 use crate::trace::{MemoryTable, MerkleTable, Poseidon2Table, ProgramTable, Tracer};
-
-pub const MAX_TREE_HEIGHT: u32 = 31;
 
 // The table has one default hash per Merkle depth, including the root and leaves.
 const _: [(); MAX_TREE_HEIGHT as usize] = [(); POSEIDON2_DEFAULT_HASHES_DEPTH_30.len()];
@@ -423,69 +422,65 @@ impl SegmentRole {
     }
 }
 
-impl Tracer {
-    /// Single-segment convenience used by unit tests; production paths go
-    /// through `finalize_commitments_with_role`.
-    #[cfg(test)]
-    pub(crate) fn finalize_commitments(
-        &mut self,
-        memory: &Memory,
-        layout: &MemoryLayout,
-    ) -> Result<(), CommitmentError> {
-        self.finalize_commitments_with_role(memory, layout, SegmentRole::single())
-    }
+pub(crate) fn finalize_commitments_with_role(
+    tracer: &mut Tracer,
+    memory: &Memory,
+    layout: &MemoryLayout,
+    role: SegmentRole,
+) -> Result<(), CommitmentError> {
+    // Create trace tables
+    tracer.program = ProgramTable::new();
+    tracer.memory = MemoryTable::new();
+    tracer.merkle = MerkleTable::new();
+    tracer.poseidon2 = Poseidon2Table::new();
 
-    pub(crate) fn finalize_commitments_with_role(
-        &mut self,
-        memory: &Memory,
-        layout: &MemoryLayout,
-        role: SegmentRole,
-    ) -> Result<(), CommitmentError> {
-        // Create trace tables
-        self.program = ProgramTable::new();
-        self.memory = MemoryTable::new();
-        self.merkle = MerkleTable::new();
-        self.poseidon2 = Poseidon2Table::new();
+    // Create program leaves
+    let program_rows = decode_program(memory, layout)?;
+    let program_leaves = collect_program_leaves(&program_rows);
 
-        // Create program leaves
-        let program_rows = decode_program(memory, layout)?;
-        let program_leaves = collect_program_leaves(&program_rows);
+    // Create memory leaves
+    let (mem_entries, rw_initial_leaves, rw_final_leaves) =
+        collect_memory_commitment(tracer, memory, layout, role);
 
-        // Create memory leaves
-        let (mem_entries, rw_initial_leaves, rw_final_leaves) =
-            collect_memory_commitment(self, memory, layout, role);
+    // Build Merkle trees and Poseidon2 trace
+    let (program_nodes, program_root) =
+        build_partial_merkle_tree(&program_leaves, &mut tracer.poseidon2);
+    let (rw_initial_nodes, rw_initial_root) =
+        build_partial_merkle_tree(&rw_initial_leaves, &mut tracer.poseidon2);
+    let (rw_final_nodes, rw_final_root) =
+        build_partial_merkle_tree(&rw_final_leaves, &mut tracer.poseidon2);
 
-        // Build Merkle trees and Poseidon2 trace
-        let (program_nodes, program_root) =
-            build_partial_merkle_tree(&program_leaves, &mut self.poseidon2);
-        let (rw_initial_nodes, rw_initial_root) =
-            build_partial_merkle_tree(&rw_initial_leaves, &mut self.poseidon2);
-        let (rw_final_nodes, rw_final_root) =
-            build_partial_merkle_tree(&rw_final_leaves, &mut self.poseidon2);
+    // Create memory trace
+    push_memory_rows(
+        &mut tracer.memory,
+        &mem_entries,
+        rw_initial_root,
+        rw_final_root,
+    );
 
-        // Create memory trace
-        push_memory_rows(
-            &mut self.memory,
-            &mem_entries,
-            rw_initial_root,
-            rw_final_root,
-        );
+    // Create program trace
+    push_program_rows(
+        &mut tracer.program,
+        &program_rows,
+        &tracer.program_reads,
+        program_root,
+    );
 
-        // Create program trace
-        push_program_rows(
-            &mut self.program,
-            &program_rows,
-            &self.program_reads,
-            program_root,
-        );
+    // Create Merkle tree trace
+    push_merkle_nodes(rw_initial_nodes, rw_initial_root, &mut tracer.merkle);
+    push_merkle_nodes(rw_final_nodes, rw_final_root, &mut tracer.merkle);
+    push_merkle_nodes(program_nodes, program_root, &mut tracer.merkle);
 
-        // Create Merkle tree trace
-        push_merkle_nodes(rw_initial_nodes, rw_initial_root, &mut self.merkle);
-        push_merkle_nodes(rw_final_nodes, rw_final_root, &mut self.merkle);
-        push_merkle_nodes(program_nodes, program_root, &mut self.merkle);
+    Ok(())
+}
 
-        Ok(())
-    }
+#[cfg(test)]
+pub(crate) fn finalize_commitments(
+    tracer: &mut Tracer,
+    memory: &Memory,
+    layout: &MemoryLayout,
+) -> Result<(), CommitmentError> {
+    finalize_commitments_with_role(tracer, memory, layout, SegmentRole::single())
 }
 
 #[cfg(test)]
@@ -523,7 +518,7 @@ mod tests {
                     loaded.output_data_addr,
                     output_len,
                 );
-                tracer.finalize_commitments(&mem, &layout)?;
+                super::finalize_commitments(&mut tracer, &mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clock as u64,
                     initial_pc,
@@ -544,7 +539,7 @@ mod tests {
             }
 
             let prev_pc = cpu.pc;
-            let inst = crate::decode::get_or_decode(&mut cache, &mem, cpu.pc)
+            let inst = crate::get_or_decode(&mut cache, &mem, cpu.pc)
                 .ok_or(RunError::InvalidInstruction { pc: cpu.pc })?;
             tracer.trace_instr_access(cpu.pc);
 
@@ -570,7 +565,7 @@ mod tests {
                     loaded.output_data_addr,
                     output_len,
                 );
-                tracer.finalize_commitments(&mem, &layout)?;
+                super::finalize_commitments(&mut tracer, &mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clock as u64,
                     initial_pc,
@@ -607,7 +602,7 @@ mod tests {
                     loaded.output_data_addr,
                     output_len,
                 );
-                tracer.finalize_commitments(&mem, &layout)?;
+                super::finalize_commitments(&mut tracer, &mem, &layout)?;
                 return Ok(RunResult {
                     cycles: tracer.clock as u64,
                     initial_pc,
@@ -645,7 +640,7 @@ mod tests {
         let mut mem = Memory::new();
         mem.write_u32(layout.program_base, 0xFFFF_FFFF);
         let mut tracer = Tracer::default();
-        let err = tracer.finalize_commitments(&mem, &layout).unwrap_err();
+        let err = super::finalize_commitments(&mut tracer, &mem, &layout).unwrap_err();
         assert_eq!(
             err,
             CommitmentError::DecodeFailure {

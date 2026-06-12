@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/air",
   "crates/bench-cli",
   "crates/debug-utils",
   "crates/prover",
@@ -81,6 +82,7 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full", "visit-mut"] }
 
 # Internal crates
+air = { path = "crates/air" }
 debug-utils = { path = "crates/debug-utils" }
 guest-lib = { path = "guest/guest-lib" }
 prover = { path = "crates/prover" }

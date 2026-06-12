@@ -192,6 +192,7 @@ pub fn poseidon2_permutation(state: &mut [u32; T]) {
 stwo_macros::define_air_fns! {
     max_degree: 3,
     embedded: [wide, io],
+    embedded_component: true,
 
     // The 4x4 MDS block of the external round matrix, as its addition chain.
     inline fn m4(x0, x1, x2, x3) {

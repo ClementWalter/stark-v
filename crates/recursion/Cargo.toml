@@ -6,6 +6,7 @@ license.workspace = true
 description = "Recursive verifier AIR components for stark-v proofs"
 
 [dependencies]
+air.workspace = true
 stwo.workspace = true
 stwo-constraint-framework.workspace = true
 stwo-macros.workspace = true

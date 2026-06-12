@@ -25,8 +25,8 @@ use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::prove;
 use stwo_constraint_framework::TraceLocationAllocator;
 
+use air::trace::Poseidon2Table;
 use prover::relations::Relations;
-use runner::trace::Poseidon2Table;
 
 use crate::circuit::{CircuitClaim, public_circuit_terms};
 use crate::recorder::Arena;
@@ -259,7 +259,7 @@ fn column_log_sizes(log_sizes: &[u32; 9]) -> Vec<u32> {
         prover_columns::MerklePathColumns::<()>::SIZE,
         prover_columns::ChannelReplayColumns::<()>::SIZE,
         prover_columns::LinearOpsColumns::<()>::SIZE,
-        runner::trace::prover_columns::Poseidon2Columns::<()>::SIZE,
+        air::trace::prover_columns::Poseidon2Columns::<()>::SIZE,
     ];
     log_sizes
         .iter()
@@ -285,7 +285,7 @@ fn components(
     merkle_path::Component,
     channel_replay::Component,
     linear_ops::Component,
-    prover::components::poseidon2::air::Component,
+    air::poseidon2::component::air::Component,
 ) {
     (
         qm31_mul::Component::new(
@@ -351,9 +351,9 @@ fn components(
             },
             sums[6],
         ),
-        prover::components::poseidon2::air::Component::new(
+        air::poseidon2::component::air::Component::new(
             location_allocator,
-            prover::components::poseidon2::air::Eval {
+            air::poseidon2::component::air::Eval {
                 log_size: log_sizes[8],
                 relations: relations.clone(),
             },
@@ -490,7 +490,7 @@ where
     let (linear_interaction, linear_claimed_sum) =
         linear_ops::gen_interaction_trace(&linear_ops_trace, &recursion_relations);
     let (poseidon2_interaction, poseidon2_claimed_sum) =
-        prover::components::poseidon2::witness::gen_interaction_trace(&poseidon2_trace, &relations);
+        air::poseidon2::component::witness::gen_interaction_trace(&poseidon2_trace, &relations);
 
     let sums = [
         claimed_sum,

@@ -164,7 +164,7 @@ fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
                     use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
                     use crate::relations::Relations;
-                    use runner::trace::prover_columns::#columns_type;
+                    use air::trace::prover_columns::#columns_type;
 
                     pub type Component = FrameworkComponent<Eval>;
 
@@ -188,7 +188,7 @@ fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
                             for constraint in cols.constraints() {
                                 eval.add_constraint(constraint);
                             }
-                            runner::#lookups_macro!(eval, cols, self.relations);
+                            air::#lookups_macro!(eval, cols, self.relations);
                             eval
                         }
                     }
@@ -204,7 +204,7 @@ fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
                     use stwo::prover::poly::circle::CircleEvaluation;
 
                     #[allow(unused_imports)]
-                    use runner::trace::prover_columns::#columns_type;
+                    use air::trace::prover_columns::#columns_type;
 
                     /// LogUp interaction trace from the table's `lookups:`
                     /// declaration — the same entries the AIR consumes, so
@@ -219,7 +219,7 @@ fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
                         if trace.is_empty() {
                             return (vec![], QM31::zero());
                         }
-                        runner::#interaction_macro!(trace, relations)
+                        air::#interaction_macro!(trace, relations)
                     }
 
                     /// Preprocessed multiplicity registration for the
@@ -231,7 +231,7 @@ fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
                         if trace.is_empty() {
                             return;
                         }
-                        runner::#register_macro!(trace, counters);
+                        air::#register_macro!(trace, counters);
                     }
                 }
 
@@ -243,7 +243,7 @@ fn render_trace_components(entries: &[ComponentEntry]) -> TokenStream2 {
                     use stwo::prover::backend::simd::column::BaseColumn;
                     use stwo::prover::poly::circle::CircleEvaluation;
 
-                    use runner::trace::prover_columns::#columns_type;
+                    use air::trace::prover_columns::#columns_type;
 
                     /// Padding rows (enabler = 0) contribute nothing to the
                     /// LogUp sum.
@@ -339,7 +339,7 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
         quote! {
             if !self.#op.is_empty() {
                 let table_name = #op_str;
-                let names = runner::trace::prover_columns::#columns_type::<()>::NAMES;
+                let names = air::trace::prover_columns::#columns_type::<()>::NAMES;
                 let table = self.#op.to_table_named(names);
                 println!("\n=== {} ({} rows) ===", table_name, self.#op.first().unwrap().values.to_cpu().len());
                 println!("{}", table);
@@ -407,7 +407,7 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
         let pascal = to_pascal_case(&op_str);
         let columns_type = format_ident!("{}Columns", pascal);
         quote! {
-            let count = runner::trace::prover_columns::#columns_type::<()>::SIZE;
+            let count = air::trace::prover_columns::#columns_type::<()>::SIZE;
             sizes.extend(std::iter::repeat(self.#op).take(count));
         }
     });
@@ -498,7 +498,7 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
     });
     let gen_trace_function = quote! {
         pub fn gen_trace(
-            tracer: runner::trace::Tracer,
+            tracer: air::trace::Tracer,
         ) -> Traces {
             let mut counters = crate::relations::Counters::new();
             #(#gen_trace_locals)*
@@ -732,9 +732,9 @@ fn render_components(opcodes: Vec<ComponentEntry>, lookups: Vec<Ident>) -> Token
         use stwo::prover::poly::BitReversedOrder;
 
         #[allow(dead_code)]
-        fn assert_trace_table_coverage(tracer: runner::trace::Tracer) {
+        fn assert_trace_table_coverage(tracer: air::trace::Tracer) {
             // The pattern has no `..` so every runner trace table must have a prover component entry.
-            let runner::trace::Tracer {
+            let air::trace::Tracer {
                 clock: _,
                 max_clock_diff: _,
                 reg_clock: _,

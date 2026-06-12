@@ -12,6 +12,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "air"
+version = "0.1.0"
+dependencies = [
+ "debug-utils",
+ "itertools 0.13.0",
+ "num-traits",
+ "rand",
+ "rustc-hash",
+ "simd",
+ "stwo",
+ "stwo-constraint-framework",
+ "stwo-macros",
+]
+
+[[package]]
 name = "aligned"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1388,6 +1403,7 @@ dependencies = [
 name = "prover"
 version = "0.1.0"
 dependencies = [
+ "air",
  "bytemuck",
  "ctor",
  "debug-utils",
@@ -1474,6 +1490,7 @@ dependencies = [
 name = "recursion"
 version = "0.0.1"
 dependencies = [
+ "air",
  "debug-utils",
  "itertools 0.13.0",
  "num-traits",
@@ -1544,6 +1561,7 @@ dependencies = [
 name = "runner"
 version = "0.1.0"
 dependencies = [
+ "air",
  "clap",
  "debug-utils",
  "goblin",

@@ -93,6 +93,9 @@ struct AirFnsInput {
     /// are the host component's business). Returns are materialized so the
     /// activation tuple is degree 1 (host relations may pair entries).
     embedded: Option<Vec<Ident>>,
+    /// When set with `embedded`, also emit the narrow/wide/io LogUp component
+    /// adapter wired to `crate::relations::Relations`.
+    embedded_component: bool,
     fns: Vec<AirFn>,
 }
 
@@ -132,6 +135,20 @@ impl Parse for AirFnsInput {
             None
         };
 
+        let embedded_component = if input
+            .cursor()
+            .ident()
+            .is_some_and(|(ident, _)| ident == "embedded_component")
+        {
+            input.parse::<Ident>()?;
+            input.parse::<Token![:]>()?;
+            let lit: syn::LitBool = input.parse()?;
+            input.parse::<Token![,]>()?;
+            lit.value
+        } else {
+            false
+        };
+
         let mut fns = Vec::new();
         while !input.is_empty() {
             fns.push(parse_fn(input)?);
@@ -139,6 +156,7 @@ impl Parse for AirFnsInput {
         Ok(AirFnsInput {
             max_degree,
             embedded,
+            embedded_component,
             fns,
         })
     }
@@ -1450,6 +1468,7 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
     let AirFnsInput {
         max_degree,
         embedded,
+        embedded_component,
         fns,
     } = parse_macro_input!(input as AirFnsInput);
 
@@ -1499,7 +1518,7 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
     }
 
     if let Some(flags) = embedded {
-        return generate_embedded(&mut lowered, &flags);
+        return generate_embedded(&mut lowered, &flags, embedded_component);
     }
 
     // Backend: tables, generic columns, exported lookup macros.
@@ -1616,7 +1635,11 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
 /// struct with `evaluation()`, and the row-fill — for components that live
 /// inside a larger system (the host wires relations and proving). Flag
 /// columns are appended to the table and exposed on the struct.
-fn generate_embedded(lowered: &mut [LoweredFn], flags: &[Ident]) -> TokenStream {
+fn generate_embedded(
+    lowered: &mut [LoweredFn],
+    flags: &[Ident],
+    embedded_component: bool,
+) -> TokenStream {
     let [function] = lowered else {
         return syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -1640,6 +1663,11 @@ fn generate_embedded(lowered: &mut [LoweredFn], flags: &[Ident]) -> TokenStream 
         generate_prover_columns(&function.table).unwrap_or_else(|e| e.to_compile_error());
     let evaluation = generate_evaluation_impl(function).unwrap_or_else(|e| e.to_compile_error());
     let fill = generate_embedded_fill(function, flags).unwrap_or_else(|e| e.to_compile_error());
+    let component = if embedded_component {
+        generate_embedded_poseidon2_component(function, flags)
+    } else {
+        quote! {}
+    };
 
     quote! {
         #table
@@ -1654,8 +1682,164 @@ fn generate_embedded(lowered: &mut [LoweredFn], flags: &[Ident]) -> TokenStream 
         #evaluation
 
         #fill
+
+        #component
     }
     .into()
+}
+
+/// LogUp adapter for embedded Poseidon2: narrow, wide, and atomic io modes.
+fn generate_embedded_poseidon2_component(function: &LoweredFn, flags: &[Ident]) -> TokenStream2 {
+    let _ = flags;
+    let columns_type = column_struct_name(&function.name);
+    quote! {
+        /// Prover component wiring for the embedded Poseidon2 permutation.
+        pub mod component {
+            pub mod air {
+                use num_traits::One;
+                use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry};
+
+                use crate::relations::Relations;
+                use super::super::prover_columns::#columns_type;
+
+                pub type Component = FrameworkComponent<Eval>;
+
+                #[derive(Clone)]
+                pub struct Eval {
+                    pub log_size: u32,
+                    pub relations: Relations,
+                }
+
+                impl FrameworkEval for Eval {
+                    fn log_size(&self) -> u32 {
+                        self.log_size
+                    }
+
+                    fn max_constraint_log_degree_bound(&self) -> u32 {
+                        self.log_size + 1
+                    }
+
+                    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+                        let cols = #columns_type::from_eval(&mut eval);
+                        let (constraints, entries) = cols.evaluation();
+                        for constraint in constraints {
+                            eval.add_constraint(constraint);
+                        }
+
+                        let one = E::F::one();
+                        let enabler = cols.enabler.clone();
+                        let wide = cols.wide.clone();
+                        let io = cols.io.clone();
+                        eval.add_constraint(wide.clone() * (one.clone() - wide.clone()));
+                        eval.add_constraint(io.clone() * (one.clone() - io.clone()));
+                        eval.add_constraint(wide.clone() * io.clone());
+
+                        let (_, tuple) = entries
+                            .into_iter()
+                            .next()
+                            .expect("the felt function has one activation tuple");
+                        let (input, output) = tuple.split_at(16);
+
+                        eval.add_to_relation(RelationEntry::new(
+                            &self.relations.poseidon2,
+                            (-(enabler.clone() * (one.clone() - io.clone()))).into(),
+                            input,
+                        ));
+                        eval.add_to_relation(RelationEntry::new(
+                            &self.relations.poseidon2,
+                            (enabler.clone() * (one.clone() - wide.clone() - io.clone())).into(),
+                            &output[..1],
+                        ));
+                        eval.add_to_relation(RelationEntry::new(
+                            &self.relations.poseidon2,
+                            (enabler.clone() * wide).into(),
+                            &output[..8],
+                        ));
+                        eval.add_to_relation(RelationEntry::new(
+                            &self.relations.poseidon2_io,
+                            (enabler * io).into(),
+                            &tuple,
+                        ));
+                        eval.finalize_logup_in_pairs();
+                        eval
+                    }
+                }
+            }
+
+            pub mod witness {
+                use num_traits::{One, Zero};
+                use stwo::core::ColumnVec;
+                use stwo::core::fields::m31::BaseField;
+                use stwo::core::fields::qm31::QM31;
+                use stwo::prover::backend::simd::SimdBackend;
+                use stwo::prover::backend::simd::m31::PackedM31;
+                use stwo::prover::backend::simd::qm31::PackedQM31;
+                use stwo::prover::poly::BitReversedOrder;
+                use stwo::prover::poly::circle::CircleEvaluation;
+                use stwo_constraint_framework::{LogupTraceGenerator, Relation};
+
+                use crate::relations::{Counters, Relations};
+                use super::super::prover_columns::#columns_type;
+
+                pub fn gen_interaction_trace(
+                    trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+                    relations: &Relations,
+                ) -> (
+                    ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+                    QM31,
+                ) {
+                    if trace.is_empty() {
+                        return (vec![], QM31::zero());
+                    }
+                    let cols = #columns_type::from_iter(trace.iter().map(|eval| &eval.values.data));
+                    let simd_size = cols.enabler.len();
+                    let log_size = trace[0].domain.log_size();
+                    let mut logup_gen = LogupTraceGenerator::new(log_size);
+
+                    let one = PackedM31::one();
+                    let mut consume_input = Vec::with_capacity(simd_size);
+                    let mut input_denoms: Vec<PackedQM31> = Vec::with_capacity(simd_size);
+                    let mut emit_narrow = Vec::with_capacity(simd_size);
+                    let mut narrow_denoms: Vec<PackedQM31> = Vec::with_capacity(simd_size);
+                    let mut emit_wide = Vec::with_capacity(simd_size);
+                    let mut wide_denoms: Vec<PackedQM31> = Vec::with_capacity(simd_size);
+                    let mut emit_io = Vec::with_capacity(simd_size);
+                    let mut io_denoms: Vec<PackedQM31> = Vec::with_capacity(simd_size);
+                    for i in 0..simd_size {
+                        let (_, entries) = cols.at(i).evaluation();
+                        let (_, tuple) = entries.into_iter().next().expect("one activation tuple");
+                        let enabler = cols.enabler[i];
+                        let wide = cols.wide[i];
+                        let io = cols.io[i];
+                        consume_input.push(-PackedQM31::from(enabler * (one - io)));
+                        input_denoms.push(relations.poseidon2.combine(&tuple[..16]));
+                        emit_narrow.push(PackedQM31::from(enabler * (one - wide - io)));
+                        narrow_denoms.push(relations.poseidon2.combine(&tuple[16..17]));
+                        emit_wide.push(PackedQM31::from(enabler * wide));
+                        wide_denoms.push(relations.poseidon2.combine(&tuple[16..24]));
+                        emit_io.push(PackedQM31::from(enabler * io));
+                        io_denoms.push(relations.poseidon2_io.combine(&tuple));
+                    }
+
+                    stwo_macros::write_pair!(
+                        &consume_input,
+                        &input_denoms,
+                        &emit_narrow,
+                        &narrow_denoms,
+                        logup_gen
+                    );
+                    stwo_macros::write_pair!(&emit_wide, &wide_denoms, &emit_io, &io_denoms, logup_gen);
+                    logup_gen.finalize_last()
+                }
+
+                pub fn register_multiplicities(
+                    _trace: &[CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+                    _counters: &mut Counters,
+                ) {
+                }
+            }
+        }
+    }
 }
 
 /// The embedded row-fill: run the cells, push the row (flags appended),

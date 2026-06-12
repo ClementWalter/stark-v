@@ -1,0 +1,18 @@
+[package]
+name = "air"
+version = "0.1.0"
+edition = "2024"
+description = "Shared AIR schema, trace tables, relations, and Poseidon2 definitions for stark-v"
+
+[dependencies]
+debug-utils.workspace = true
+itertools.workspace = true
+num-traits.workspace = true
+rustc-hash.workspace = true
+simd.workspace = true
+stwo.workspace = true
+stwo-constraint-framework.workspace = true
+stwo-macros.workspace = true
+
+[dev-dependencies]
+rand.workspace = true

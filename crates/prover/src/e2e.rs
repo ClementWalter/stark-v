@@ -43,7 +43,7 @@ pub fn guest_bin_dir() -> PathBuf {
 }
 
 /// Run a guest binary and return the tracer (for opcode tests).
-pub fn run_test_bin(name: &str) -> runner::trace::Tracer {
+pub fn run_test_bin(name: &str) -> air::trace::Tracer {
     ensure_guest_built();
 
     let elf_path = guest_bin_dir().join(name);

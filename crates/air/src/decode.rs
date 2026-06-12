@@ -236,15 +236,3 @@ impl DecodedInst {
         })
     }
 }
-
-/// Get or decode an instruction at the given PC, caching the result.
-pub fn get_or_decode(cache: &mut InstCache, mem: &crate::Memory, pc: u32) -> Option<DecodedInst> {
-    if let Some(&inst) = cache.get(&pc) {
-        return Some(inst);
-    }
-
-    let word = mem.read_u32(pc);
-    let decoded = DecodedInst::decode(word)?;
-    cache.insert(pc, decoded);
-    Some(decoded)
-}

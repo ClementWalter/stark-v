@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+air.workspace = true
 runner.workspace = true
 simd.workspace = true
 stwo.workspace = true

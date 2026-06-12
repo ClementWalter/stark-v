@@ -1,9 +1,9 @@
 //! Integration tests for component aggregation.
 
+use air::trace::Tracer;
 use num_traits::Zero;
 use prover::components::{ClaimedSum, Traces, gen_interaction_trace, gen_trace};
 use prover::relations::Relations;
-use runner::trace::Tracer;
 use stwo::core::pcs::PcsConfig;
 use stwo::prover::backend::Column;
 use tracing::info;

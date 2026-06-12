@@ -1,12 +1,8 @@
 //! Component system for tracer-backed and preprocessed AIR components.
 
-// The one hand-written component: the unrolled Poseidon2 permutation rounds
-// are generated code, beyond what the table DSL expresses.
-pub mod poseidon2;
-
 // Every bare entry's whole component module (air + witness) is generated
 // from its `define_trace_tables!` declaration; `name: module` entries point
-// at a hand-written module instead.
+// at a hand-written or macro-generated module instead.
 stwo_macros::components! {
     trace: {
         auipc,
@@ -28,7 +24,7 @@ stwo_macros::components! {
         program,
         memory,
         merkle,
-        poseidon2: poseidon2,
+        poseidon2: air::poseidon2::component,
         mem_clock_update,
         reg_clock_update,
     },
@@ -41,7 +37,6 @@ stwo_macros::components! {
         range_check_m31,
     },
 }
-
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;

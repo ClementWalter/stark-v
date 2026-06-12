@@ -6,9 +6,9 @@
 //! in the reused `prover::components::poseidon2` component, whose witness
 //! table carries one wide row per hash step — no hash constraint is copied.
 
+use air::poseidon2::{T, poseidon2_traced_state};
+use air::trace::Poseidon2Table;
 use prover::relations::Relations;
-use runner::poseidon2::{T, poseidon2_traced_state};
-use runner::trace::Poseidon2Table;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::QM31;

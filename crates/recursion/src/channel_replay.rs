@@ -9,9 +9,9 @@
 //! terms — so a replayed channel balances to its public transcript: initial
 //! state in, data chunks in, final digest out.
 
+use air::poseidon2::{T, poseidon2_permutation, poseidon2_traced_state};
+use air::trace::Poseidon2Table;
 use prover::relations::Relations;
-use runner::poseidon2::{T, poseidon2_permutation, poseidon2_traced_state};
-use runner::trace::Poseidon2Table;
 use stwo::core::ColumnVec;
 use stwo::core::fields::m31::{BaseField, P};
 use stwo::core::fields::qm31::QM31;

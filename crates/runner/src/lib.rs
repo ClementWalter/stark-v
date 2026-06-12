@@ -1,22 +1,33 @@
 #![feature(allocator_api)]
 mod commitment;
 mod cpu;
-pub mod decode;
 mod elf;
 mod execute;
 mod io;
 mod memory;
-pub mod poseidon2;
 mod program;
-// trace module must come before ops so trace_op! macro is available
 #[macro_use]
-pub mod trace;
+mod trace;
 mod ops;
 
-use decode::get_or_decode;
 use thiserror::Error;
 
-pub use commitment::{CommitmentError, MAX_TREE_HEIGHT, SegmentRole};
+/// Get or decode an instruction at the given PC, caching the result.
+pub(crate) fn get_or_decode(cache: &mut InstCache, mem: &Memory, pc: u32) -> Option<DecodedInst> {
+    if let Some(&inst) = cache.get(&pc) {
+        return Some(inst);
+    }
+
+    let word = mem.read_u32(pc);
+    let decoded = DecodedInst::decode(word)?;
+    cache.insert(pc, decoded);
+    Some(decoded)
+}
+
+pub use air::MAX_TREE_HEIGHT;
+pub use air::decode;
+pub use air::poseidon2;
+pub use commitment::{CommitmentError, SegmentRole};
 pub use cpu::Cpu;
 pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
@@ -191,7 +202,7 @@ pub fn run_segments_with_input(
                 is_first: segments.is_empty(),
                 is_last: false,
             };
-            tracer.finalize_commitments_with_role(&mem, &layout, role)?;
+            commitment::finalize_commitments_with_role(&mut tracer, &mem, &layout, role)?;
             let finished = std::mem::take(&mut tracer);
             completed_cycles += finished.clock as u64;
             let mut result = make_run_result(
@@ -261,7 +272,7 @@ pub fn run_segments_with_input(
         is_first: segments.is_empty(),
         is_last: true,
     };
-    tracer.finalize_commitments_with_role(&mem, &layout, role)?;
+    commitment::finalize_commitments_with_role(&mut tracer, &mem, &layout, role)?;
     let mut result = make_run_result(
         tracer,
         seg_initial_pc,
