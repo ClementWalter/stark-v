@@ -665,6 +665,6 @@ mod tests {
         assert!(!tracer.program.is_empty());
         assert!(!tracer.merkle.is_empty());
         assert!(!tracer.poseidon2.is_empty());
-        assert!(!tracer.mem_clock_update.is_empty());
+        assert!(!tracer.clock_update.is_empty());
     }
 }

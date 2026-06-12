@@ -21,6 +21,10 @@ stwo_macros::define_air! {
         range_check_8_8: limb_0, limb_1;
         range_check_m31: lsl, msl;
     }
+    clock_gap: {
+        bound_by: range_check_20,
+        relation: memory_access,
+    }
     trace: {
         base_alu_reg: {
             committed: {
@@ -1432,34 +1436,5 @@ stwo_macros::define_air! {
             },
         },
 
-        // ==========================================================================
-        // 21. Clock updates (gap-filling intermediate accesses)
-        // ==========================================================================
-        // `air`-marked: the traces come from `AccessTable` (clock catch-up rows
-        // where the value is unchanged and the clock advances by the maximum
-        // allowed difference); only the columns and lookups are defined here.
-        air mem_clock_update: {
-            committed: {
-                addr, clock_prev,
-                value_0, value_1, value_2, value_3,
-            },
-            lookups: {
-                // Refresh the access clock without changing the value (RW_AS = 1).
-                -enabler * memory_access(1, addr, clock_prev, value_0, value_1, value_2, value_3),
-                enabler * memory_access(1, addr, clock_prev + constant(crate::trace::DEFAULT_MAX_CLOCK_DIFF), value_0, value_1, value_2, value_3),
-            },
-        },
-
-        air reg_clock_update: {
-            committed: {
-                addr, clock_prev,
-                value_0, value_1, value_2, value_3,
-            },
-            lookups: {
-                // Refresh the access clock without changing the value (REG_AS = 0).
-                -enabler * memory_access(0, addr, clock_prev, value_0, value_1, value_2, value_3),
-                enabler * memory_access(0, addr, clock_prev + constant(crate::trace::DEFAULT_MAX_CLOCK_DIFF), value_0, value_1, value_2, value_3),
-            },
-        }
     }
 }

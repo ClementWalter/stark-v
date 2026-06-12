@@ -48,7 +48,7 @@ impl Cpu {
     // =========================================================================
 
     /// Read register with trace tracking.
-    /// Intermediate catch-ups are stored in `tracer.reg_clock_update`.
+    /// Intermediate catch-ups are stored in `tracer.clock_update`.
     /// Returns the final access record.
     #[inline]
     pub fn read_reg(&self, idx: u8, tracer: &mut Tracer) -> Access {
@@ -57,7 +57,7 @@ impl Cpu {
     }
 
     /// Write register with trace tracking.
-    /// Intermediate catch-ups are stored in `tracer.reg_clock_update`.
+    /// Intermediate catch-ups are stored in `tracer.clock_update`.
     /// Returns the final access record.
     #[inline]
     pub fn write_reg(&mut self, idx: u8, val: u32, tracer: &mut Tracer) -> Access {
@@ -119,7 +119,7 @@ mod tests {
         assert_eq!(access.next, 0x42);
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; use tracer.clock at call site
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -135,12 +135,12 @@ mod tests {
         let access = cpu.read_reg(5, &mut tracer);
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
-        assert_eq!(tracer.reg_clock_update.len(), 3);
+        assert_eq!(tracer.clock_update.len(), 3);
 
         // Verify intermediates have correct clock_prev progression: 0, 100, 200
-        assert_eq!(tracer.reg_clock_update.clock_prev[0], 0);
-        assert_eq!(tracer.reg_clock_update.clock_prev[1], 100);
-        assert_eq!(tracer.reg_clock_update.clock_prev[2], 200);
+        assert_eq!(tracer.clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.clock_update.clock_prev[1], 100);
+        assert_eq!(tracer.clock_update.clock_prev[2], 200);
 
         // Final access's clock_prev is 300, and tracer.clock=350, so diff is 50 which is <= 100
         assert_eq!(access.clock_prev, 300);
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(access.addr, 0);
         assert_eq!(access.prev, 0);
         assert_eq!(access.next, 0);
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     // =========================================================================
@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(access.next, 0x22);
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; use tracer.clock at call site
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
 
         // Verify register was updated
         assert_eq!(cpu.reg(5), 0x22);
@@ -196,12 +196,12 @@ mod tests {
         let access = cpu.write_reg(5, 0x22, &mut tracer);
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
-        assert_eq!(tracer.reg_clock_update.len(), 3);
+        assert_eq!(tracer.clock_update.len(), 3);
 
         // Verify intermediates have correct clock_prev progression: 0, 100, 200
-        assert_eq!(tracer.reg_clock_update.clock_prev[0], 0);
-        assert_eq!(tracer.reg_clock_update.clock_prev[1], 100);
-        assert_eq!(tracer.reg_clock_update.clock_prev[2], 200);
+        assert_eq!(tracer.clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.clock_update.clock_prev[1], 100);
+        assert_eq!(tracer.clock_update.clock_prev[2], 200);
 
         // Final access's clock_prev is 300, and tracer.clock=350, so diff is 50 which is <= 100
         assert_eq!(access.clock_prev, 300);
@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(access.addr, 0);
         assert_eq!(access.prev, 0);
         assert_eq!(access.next, 0); // x0 stays 0
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
 
         // Verify x0 is still 0
         assert_eq!(cpu.reg(0), 0);
@@ -240,6 +240,6 @@ mod tests {
         // Note: access.clock is no longer stored; current clock is tracer.clock=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 }

@@ -5,10 +5,6 @@
 
 use simd::AlignedVec;
 
-/// Default maximum clock difference allowed between accesses.
-/// Must be consistent with max range-check in the prover.
-pub const DEFAULT_MAX_CLOCK_DIFF: u32 = (1 << 20) - 1;
-
 // =============================================================================
 // Tracer memory access methods and utils
 // =============================================================================
@@ -41,59 +37,64 @@ impl std::fmt::Debug for Access {
 }
 
 // =============================================================================
-// Columnar AccessTable (for clock update)
+// Columnar clock gap table
 // =============================================================================
 
-/// Columnar storage for Access records.
+/// Columnar storage for synthetic clock catch-up rows.
 ///
-/// Simplified storage since for clock catch-up:
-/// - `prev == next` (value unchanged)
-/// - `clock == clock_prev + max_clock_diff` (fixed increment)
+/// The AIR fixes each row to advance the access clock by
+/// [`DEFAULT_MAX_CLOCK_DIFF`] without changing the value.
 #[derive(Clone)]
-pub struct AccessTable {
+pub struct ClockGapTable {
+    pub addr_space: AlignedVec<u32>,
     pub addr: AlignedVec<u32>,
     pub value: AlignedVec<u32>,
     pub clock_prev: AlignedVec<u32>,
     pub max_clock_diff: u32,
 }
 
-impl Default for AccessTable {
+impl Default for ClockGapTable {
     fn default() -> Self {
         Self {
+            addr_space: AlignedVec::new(),
             addr: AlignedVec::new(),
             value: AlignedVec::new(),
             clock_prev: AlignedVec::new(),
-            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
+            max_clock_diff: crate::schema::trace::DEFAULT_MAX_CLOCK_DIFF,
         }
     }
 }
 
-impl std::fmt::Debug for AccessTable {
+impl std::fmt::Debug for ClockGapTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut list = f.debug_list();
         for i in 0..self.len() {
-            list.entry(&Access {
-                addr: self.addr[i],
-                prev: self.value[i],
-                clock_prev: self.clock_prev[i],
-                next: self.value[i],
+            list.entry(&ClockGapAccess {
+                addr_space: self.addr_space[i],
+                access: Access {
+                    addr: self.addr[i],
+                    prev: self.value[i],
+                    clock_prev: self.clock_prev[i],
+                    next: self.value[i],
+                },
             });
         }
         list.finish()
     }
 }
 
-impl AccessTable {
+impl ClockGapTable {
     pub fn new() -> Self {
         Self::default()
     }
 
     pub fn with_capacity(cap: usize) -> Self {
         Self {
+            addr_space: AlignedVec::with_capacity(cap),
             addr: AlignedVec::with_capacity(cap),
             value: AlignedVec::with_capacity(cap),
             clock_prev: AlignedVec::with_capacity(cap),
-            max_clock_diff: DEFAULT_MAX_CLOCK_DIFF,
+            max_clock_diff: crate::schema::trace::DEFAULT_MAX_CLOCK_DIFF,
         }
     }
 
@@ -115,18 +116,19 @@ impl AccessTable {
     }
 
     #[inline]
-    pub fn push(&mut self, access: Access) {
+    pub fn push(&mut self, addr_space: u32, access: Access) {
         debug_assert_eq!(
             access.prev, access.next,
             "clock catch-up must not change value"
         );
+        self.addr_space.push(addr_space);
         self.addr.push(access.addr);
         self.value.push(access.prev);
         self.clock_prev.push(access.clock_prev);
     }
 
     /// Consumes the table and returns columns in canonical order.
-    /// Order matches the ClockUpdateColumns layout in the prover.
+    /// Order matches the generated ClockUpdateColumns layout.
     pub fn into_columns(self) -> Vec<AlignedVec<u32>> {
         let len = self.len();
         let mut enabler = AlignedVec::with_capacity(len);
@@ -148,6 +150,7 @@ impl AccessTable {
 
         vec![
             enabler,
+            self.addr_space,
             self.addr,
             self.clock_prev,
             value_0,
@@ -202,22 +205,29 @@ impl AccessTable {
     }
 
     /// Returns an iterator over Access values stored in columnar form.
-    pub fn iter(&self) -> AccessTableIter<'_> {
-        AccessTableIter {
+    pub fn iter(&self) -> ClockGapTableIter<'_> {
+        ClockGapTableIter {
             table: self,
             idx: 0,
         }
     }
 }
 
-/// Iterator over [`AccessTable`] that yields [`Access`] values.
-pub struct AccessTableIter<'a> {
-    table: &'a AccessTable,
+/// One synthetic clock catch-up row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClockGapAccess {
+    pub addr_space: u32,
+    pub access: Access,
+}
+
+/// Iterator over [`ClockGapTable`] that yields [`ClockGapAccess`] values.
+pub struct ClockGapTableIter<'a> {
+    table: &'a ClockGapTable,
     idx: usize,
 }
 
-impl Iterator for AccessTableIter<'_> {
-    type Item = Access;
+impl Iterator for ClockGapTableIter<'_> {
+    type Item = ClockGapAccess;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.table.len() {
@@ -225,11 +235,14 @@ impl Iterator for AccessTableIter<'_> {
         } else {
             let clock_prev = self.table.clock_prev[self.idx];
             let value = self.table.value[self.idx];
-            let access = Access {
-                addr: self.table.addr[self.idx],
-                prev: value,
-                clock_prev,
-                next: value,
+            let access = ClockGapAccess {
+                addr_space: self.table.addr_space[self.idx],
+                access: Access {
+                    addr: self.table.addr[self.idx],
+                    prev: value,
+                    clock_prev,
+                    next: value,
+                },
             };
             self.idx += 1;
             Some(access)
@@ -242,11 +255,11 @@ impl Iterator for AccessTableIter<'_> {
     }
 }
 
-impl ExactSizeIterator for AccessTableIter<'_> {}
+impl ExactSizeIterator for ClockGapTableIter<'_> {}
 
-impl<'a> IntoIterator for &'a AccessTable {
-    type Item = Access;
-    type IntoIter = AccessTableIter<'a>;
+impl<'a> IntoIterator for &'a ClockGapTable {
+    type Item = ClockGapAccess;
+    type IntoIter = ClockGapTableIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -275,10 +288,7 @@ impl Tracer {
                 clock_prev: current_clock,
                 next: value,
             };
-            match table {
-                GapTable::Reg => self.reg_clock_update.push(access),
-                GapTable::Mem => self.mem_clock_update.push(access),
-            }
+            self.clock_update.push(table.addr_space(), access);
             current_clock = next_clock;
         }
 
@@ -286,7 +296,7 @@ impl Tracer {
     }
 
     /// Trace a register access with gap-filling.
-    /// Intermediate accesses are pushed to `reg_clock_update`.
+    /// Intermediate accesses are pushed to `clock_update`.
     /// Returns only the final access.
     pub fn trace_reg_access(&mut self, idx: u8, prev: u32, next: u32) -> Access {
         let clock_prev = self.reg_clock[idx as usize];
@@ -316,7 +326,7 @@ impl Tracer {
 
     /// Trace a memory access with gap-filling.
     /// All memory accesses are traced at 4-byte aligned addresses.
-    /// Intermediate accesses are pushed to `mem_clock_update`.
+    /// Intermediate accesses are pushed to `clock_update`.
     /// Returns only the final access.
     pub fn trace_mem_access(&mut self, addr: u32, prev: u32, next: u32) -> Access {
         // Always use 4-byte aligned address
@@ -355,9 +365,19 @@ impl Tracer {
 }
 
 /// Helper enum for gap-filling table selection.
+#[derive(Clone, Copy)]
 enum GapTable {
     Reg,
     Mem,
+}
+
+impl GapTable {
+    fn addr_space(self) -> u32 {
+        match self {
+            GapTable::Reg => 0,
+            GapTable::Mem => 1,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -404,7 +424,7 @@ mod tests {
         assert_eq!(access.next, 0x42);
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; use tracer.clock at call site
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -421,7 +441,7 @@ mod tests {
         // Note: access.clock is no longer stored; current clock is tracer.clock=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -436,18 +456,18 @@ mod tests {
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
-            tracer.mem_clock_update.len(),
+            tracer.clock_update.len(),
             3,
             "Expected 3 intermediates, got {}",
-            tracer.mem_clock_update.len()
+            tracer.clock_update.len()
         );
 
         // Verify intermediates have correct clock_prev progression
         // Each intermediate's clock was clock_prev + max_clock_diff (now implicit)
         // Sequence: 0 -> 100 -> 200 -> 300 -> 350 (final)
-        assert_eq!(tracer.mem_clock_update.clock_prev[0], 0);
-        assert_eq!(tracer.mem_clock_update.clock_prev[1], 100);
-        assert_eq!(tracer.mem_clock_update.clock_prev[2], 200);
+        assert_eq!(tracer.clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.clock_update.clock_prev[1], 100);
+        assert_eq!(tracer.clock_update.clock_prev[2], 200);
 
         // Final access's clock_prev should be 300 (after 3 intermediates)
         assert_eq!(access.clock_prev, 300);
@@ -465,7 +485,7 @@ mod tests {
         let access = tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // Exactly at max_clock_diff - no intermediate needed
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; current clock is tracer.clock=100
     }
@@ -481,9 +501,9 @@ mod tests {
         let access = tracer.trace_mem_access(MEM_ADDR, 0xAB, 0xAB);
 
         // All intermediate accesses should preserve the value
-        for intermediate in &tracer.mem_clock_update {
-            assert_eq!(intermediate.prev, 0xAB);
-            assert_eq!(intermediate.next, 0xAB);
+        for intermediate in &tracer.clock_update {
+            assert_eq!(intermediate.access.prev, 0xAB);
+            assert_eq!(intermediate.access.next, 0xAB);
         }
         // Final access should also preserve value
         assert_eq!(access.prev, 0xAB);
@@ -516,7 +536,7 @@ mod tests {
         assert_eq!(access.next, 0x42);
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; use tracer.clock at call site
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -533,7 +553,7 @@ mod tests {
         // Note: access.clock is no longer stored; current clock is tracer.clock=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -548,18 +568,18 @@ mod tests {
 
         // Gap of 350 with max_diff 100 needs 3 intermediates
         assert_eq!(
-            tracer.reg_clock_update.len(),
+            tracer.clock_update.len(),
             3,
             "Expected 3 intermediates, got {}",
-            tracer.reg_clock_update.len()
+            tracer.clock_update.len()
         );
 
         // Verify intermediates have correct clock_prev progression
         // Each intermediate's clock was clock_prev + max_clock_diff (now implicit)
         // Sequence: 0 -> 100 -> 200 -> 300 -> 350 (final)
-        assert_eq!(tracer.reg_clock_update.clock_prev[0], 0);
-        assert_eq!(tracer.reg_clock_update.clock_prev[1], 100);
-        assert_eq!(tracer.reg_clock_update.clock_prev[2], 200);
+        assert_eq!(tracer.clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.clock_update.clock_prev[1], 100);
+        assert_eq!(tracer.clock_update.clock_prev[2], 200);
 
         // Final access's clock_prev should be 300 (after 3 intermediates)
         assert_eq!(access.clock_prev, 300);
@@ -577,7 +597,7 @@ mod tests {
         assert_eq!(access.addr, 0);
         assert_eq!(access.prev, 0);
         assert_eq!(access.next, 0);
-        assert!(tracer.reg_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -605,14 +625,14 @@ mod tests {
         let access = tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // With max_clock_diff=1, gap of 5 needs 4 intermediates + 1 final
-        assert_eq!(tracer.mem_clock_update.len(), 4);
+        assert_eq!(tracer.clock_update.len(), 4);
 
         // Verify intermediates have correct clock_prev progression: 0, 1, 2, 3
         // Each intermediate's clock was clock_prev + 1 (now implicit)
-        assert_eq!(tracer.mem_clock_update.clock_prev[0], 0);
-        assert_eq!(tracer.mem_clock_update.clock_prev[1], 1);
-        assert_eq!(tracer.mem_clock_update.clock_prev[2], 2);
-        assert_eq!(tracer.mem_clock_update.clock_prev[3], 3);
+        assert_eq!(tracer.clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.clock_update.clock_prev[1], 1);
+        assert_eq!(tracer.clock_update.clock_prev[2], 2);
+        assert_eq!(tracer.clock_update.clock_prev[3], 3);
 
         // Final access's clock_prev is 4, and tracer.clock=5, so diff is 1
         assert_eq!(access.clock_prev, 4);
@@ -629,7 +649,7 @@ mod tests {
         tracer.trace_mem_access(MEM_ADDR, 0, 0);
 
         // No intermediate ever needed
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     // =========================================================================
@@ -675,9 +695,9 @@ mod tests {
 
     #[test]
     fn test_access_table_push() {
-        let mut table = AccessTable::with_max_clock_diff(100);
+        let mut table = ClockGapTable::with_max_clock_diff(100);
 
-        // AccessTable is for gap-filling: prev == next
+        // ClockGapTable is for gap-filling: prev == next
         let value = 42u32;
         let access = Access {
             addr: 100,
@@ -685,9 +705,10 @@ mod tests {
             clock_prev: 0,
             next: value,
         };
-        table.push(access);
+        table.push(1, access);
 
         assert_eq!(table.len(), 1);
+        assert_eq!(table.addr_space[0], 1);
         assert_eq!(table.addr[0], 100);
         assert_eq!(table.value[0], value);
     }

@@ -1674,10 +1674,8 @@ fn generate_tracer(
             /// Program fetch counts per PC.
             pub program_reads: rustc_hash::FxHashMap<u32, u32>,
 
-            /// Intermediate register clock update accesses (gap-filling).
-            pub reg_clock_update: #access_table,
-            /// Intermediate memory clock update accesses (gap-filling).
-            pub mem_clock_update: #access_table,
+            /// Synthetic clock catch-up rows for register and memory accesses.
+            pub clock_update: #access_table,
             /// Poseidon2 permutations (felt-generated table, `crate::poseidon2`).
             pub poseidon2: crate::poseidon2::Poseidon2Table,
 
@@ -1712,8 +1710,7 @@ fn generate_tracer(
                     .field("mem_clock", &HexKeyMap(&self.mem_clock))
                     .field("mem_initial", &HexKeyMap(&self.mem_initial))
                     .field("program_reads", &HexKeyMap(&self.program_reads))
-                    .field("reg_clock_update", &self.reg_clock_update)
-                    .field("mem_clock_update", &self.mem_clock_update)
+                    .field("clock_update", &self.clock_update)
                     #(#debug_table_fields)*
                     .finish()
             }
@@ -1728,8 +1725,7 @@ fn generate_tracer(
                     mem_clock: rustc_hash::FxHashMap::default(),
                     mem_initial: rustc_hash::FxHashMap::default(),
                     program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clock_update: #access_table::new(),
-                    mem_clock_update: #access_table::new(),
+                    clock_update: #access_table::new(),
                     poseidon2: crate::poseidon2::Poseidon2Table::new(),
                     #(#table_inits,)*
                 }
@@ -1741,8 +1737,7 @@ fn generate_tracer(
             pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
                 Self {
                     max_clock_diff,
-                    reg_clock_update: #access_table::with_max_clock_diff(max_clock_diff),
-                    mem_clock_update: #access_table::with_max_clock_diff(max_clock_diff),
+                    clock_update: #access_table::with_max_clock_diff(max_clock_diff),
                     ..Default::default()
                 }
             }
@@ -1757,8 +1752,7 @@ fn generate_tracer(
                     mem_clock: rustc_hash::FxHashMap::default(),
                     mem_initial: rustc_hash::FxHashMap::default(),
                     program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clock_update: #access_table::new(),
-                    mem_clock_update: #access_table::new(),
+                    clock_update: #access_table::new(),
                     poseidon2: crate::poseidon2::Poseidon2Table::new(),
                     #(#table_inits_cap,)*
                 }

@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(access.next, 0);
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; use tracer.clock at call site
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
         assert_eq!(access.next, 0xFF);
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; use tracer.clock at call site
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
 
         // Verify memory was updated
         assert_eq!(mem.read_u8(MEM_ADDR), 0xFF);
@@ -289,7 +289,7 @@ mod tests {
         // Note: access.clock is no longer stored; current clock is tracer.clock=2
         assert_eq!(access.prev, 0x11);
         assert_eq!(access.next, 0x22);
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     // =========================================================================
@@ -355,16 +355,16 @@ mod tests {
 
         // Should have 3 intermediate accesses (101, 201, 301) to bridge the gap
         assert_eq!(
-            tracer.mem_clock_update.len(),
+            tracer.clock_update.len(),
             3,
             "Expected 3 intermediates, got {}",
-            tracer.mem_clock_update.len()
+            tracer.clock_update.len()
         );
 
         // Verify intermediates have correct clock_prev progression: 1, 101, 201
-        assert_eq!(tracer.mem_clock_update.clock_prev[0], 1);
-        assert_eq!(tracer.mem_clock_update.clock_prev[1], 101);
-        assert_eq!(tracer.mem_clock_update.clock_prev[2], 201);
+        assert_eq!(tracer.clock_update.clock_prev[0], 1);
+        assert_eq!(tracer.clock_update.clock_prev[1], 101);
+        assert_eq!(tracer.clock_update.clock_prev[2], 201);
 
         // Final access's clock_prev should be 301, and tracer.clock=350, so diff is 49
         assert_eq!(access.clock_prev, 301);
@@ -383,9 +383,9 @@ mod tests {
         let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // All intermediate accesses should preserve the value (read, not write)
-        for intermediate in &tracer.mem_clock_update {
-            assert_eq!(intermediate.prev, 0xAB);
-            assert_eq!(intermediate.next, 0xAB);
+        for intermediate in &tracer.clock_update {
+            assert_eq!(intermediate.access.prev, 0xAB);
+            assert_eq!(intermediate.access.next, 0xAB);
         }
         // Final access should also preserve value
         assert_eq!(access.prev, 0xAB);
@@ -404,7 +404,7 @@ mod tests {
         let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // Should be no intermediates needed
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
         assert_eq!(access.clock_prev, 0);
         // Note: access.clock is no longer stored; current clock is tracer.clock=100
     }
@@ -421,7 +421,7 @@ mod tests {
         mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // Should have 1 intermediate stored
-        assert_eq!(tracer.mem_clock_update.len(), 1);
+        assert_eq!(tracer.clock_update.len(), 1);
     }
 
     // =========================================================================
@@ -463,13 +463,13 @@ mod tests {
         let access = mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // With max_clock_diff=1, gap of 5 needs 4 intermediates
-        assert_eq!(tracer.mem_clock_update.len(), 4);
+        assert_eq!(tracer.clock_update.len(), 4);
 
         // Verify clock_prev values increase by 1 (max_clock_diff) each step: 0, 1, 2, 3
-        assert_eq!(tracer.mem_clock_update.clock_prev[0], 0);
-        assert_eq!(tracer.mem_clock_update.clock_prev[1], 1);
-        assert_eq!(tracer.mem_clock_update.clock_prev[2], 2);
-        assert_eq!(tracer.mem_clock_update.clock_prev[3], 3);
+        assert_eq!(tracer.clock_update.clock_prev[0], 0);
+        assert_eq!(tracer.clock_update.clock_prev[1], 1);
+        assert_eq!(tracer.clock_update.clock_prev[2], 2);
+        assert_eq!(tracer.clock_update.clock_prev[3], 3);
 
         // Final access should have clock_prev = 4 (last intermediate's clock)
         assert_eq!(access.clock_prev, 4);
@@ -488,7 +488,7 @@ mod tests {
         mem.read_u8_traced(MEM_ADDR, &mut tracer);
 
         // No intermediate ever needed with max clock diff
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     #[test]
@@ -501,7 +501,7 @@ mod tests {
             mem.read_u8_traced(MEM_ADDR, &mut tracer);
         }
         // No intermediates needed for sequential clocks
-        assert!(tracer.mem_clock_update.is_empty());
+        assert!(tracer.clock_update.is_empty());
     }
 
     // =========================================================================

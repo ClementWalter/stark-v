@@ -25,8 +25,7 @@ stwo_macros::components! {
         memory,
         merkle,
         poseidon2: air::poseidon2::component,
-        mem_clock_update,
-        reg_clock_update,
+        clock_update,
     },
     lookup: {
         bitwise,
