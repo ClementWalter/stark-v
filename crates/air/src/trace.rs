@@ -719,7 +719,7 @@ mod tests {
         let rs1 = Access::default();
         let rs2 = Access::default();
 
-        crate::trace_op!(base_alu_reg: tracer, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
+        trace_op!(base_alu_reg: tracer, 0x1000, rd, rs1, rs2, 1, 0, 0, 0, 0);
 
         assert_eq!(tracer.base_alu_reg.len(), 1);
         assert_eq!(tracer.base_alu_reg.clock[0], 1);

@@ -6,7 +6,9 @@ use syn::parse::{Parse, ParseStream};
 use syn::{Ident, Token, braced, parse_macro_input};
 
 use crate::relations::{RelationsInput, generate_relations, parse_relation_defs};
-use crate::trace_tables::{TraceTablesDef, generate_trace_tables, parse_opcode_defs};
+use crate::trace_tables::{
+    TraceTablesDef, generate_trace_op_macro, generate_trace_tables, parse_opcode_defs,
+};
 
 /// Single source of truth for zkVM AIR metadata.
 struct AirInput {
@@ -98,9 +100,13 @@ pub fn define_air(input: TokenStream) -> TokenStream {
 
     let relations_tokens = generate_relations(&relations);
     let trace_def = TraceTablesDef::from_trace(opcodes, &relations.preprocessed);
+    let traced: Vec<_> = trace_def.opcodes.iter().filter(|op| !op.air_only).collect();
+    let trace_op_macro = generate_trace_op_macro(&traced);
     let trace_tokens = generate_trace_tables(&trace_def, quote!(crate::trace::AccessTable));
 
     quote! {
+        #trace_op_macro
+
         pub mod relations {
             //! LogUp relation registry for zkVM trace tables and prover components.
 

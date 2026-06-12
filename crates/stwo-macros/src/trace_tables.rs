@@ -1783,7 +1783,7 @@ fn generate_tracer(
 }
 
 /// Generate the trace_op! macro
-fn generate_trace_op_macro(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
+pub(crate) fn generate_trace_op_macro(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
     let arms: Vec<_> = opcodes
         .iter()
         .map(|op| {
@@ -1888,17 +1888,30 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
 ///   (`T = E::F`) and witness generation (`T = PackedM31` via `at(i)`)
 pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let def = parse_macro_input!(input as TraceTablesDef);
-    generate_trace_tables(&def, quote!(AccessTable)).into()
+    let traced: Vec<_> = def.opcodes.iter().filter(|op| !op.air_only).collect();
+    let trace_tokens = generate_trace_tables_content(&def, quote!(AccessTable));
+    let trace_op_macro = generate_trace_op_macro(&traced);
+    quote! {
+        #trace_tokens
+        #trace_op_macro
+    }
+    .into()
 }
 
 pub(crate) fn generate_trace_tables(
     def: &TraceTablesDef,
     access_table: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    generate_trace_tables_content(def, access_table)
+}
+
+fn generate_trace_tables_content(
+    def: &TraceTablesDef,
+    access_table: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let traced: Vec<&OpcodeDef> = def.opcodes.iter().filter(|op| !op.air_only).collect();
     let tables: Vec<_> = traced.iter().map(|op| generate_table(op)).collect();
-    let tracer = generate_tracer(&traced, access_table.clone());
-    let trace_op_macro = generate_trace_op_macro(&traced);
+    let tracer = generate_tracer(&traced, access_table);
 
     // Generate prover columns; expression errors surface as compile errors
     // pointing at the offending formula.
@@ -1917,7 +1930,6 @@ pub(crate) fn generate_trace_tables(
         // Runner code (existing)
         #(#tables)*
         #tracer
-        #trace_op_macro
 
         // Prover columns (NEW)
         pub mod prover_columns {

@@ -6,6 +6,7 @@
 
 #![feature(allocator_api)]
 
+#[macro_use]
 mod schema;
 pub use schema::relations;
 
