@@ -26,6 +26,7 @@ use proc_macro::TokenStream;
 
 mod air_fns;
 mod components;
+mod define_air;
 mod helpers;
 mod logup;
 mod relations;
@@ -88,6 +89,29 @@ mod trace_tables;
 #[proc_macro]
 pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     trace_tables::define_trace_tables(input)
+}
+
+/// Unified zkVM AIR schema: relations, preprocessed lookups, and trace tables.
+///
+/// # Example
+/// ```ignore
+/// define_air! {
+///     relations: {
+///         memory_access: addr_space, addr, clock, limb_0, limb_1, limb_2, limb_3;
+///     }
+///     preprocessed: {
+///         range_check_20: value;
+///     }
+///     trace: {
+///         add: {
+///             committed: { clock, pc, rd, rs1, rs2 },
+///         },
+///     }
+/// }
+/// ```
+#[proc_macro]
+pub fn define_air(input: TokenStream) -> TokenStream {
+    define_air::define_air(input)
 }
 
 /// Generate standalone component tables: same syntax and codegen as

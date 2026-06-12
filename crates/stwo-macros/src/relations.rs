@@ -7,10 +7,10 @@ use syn::punctuated::Punctuated;
 use syn::{Attribute, Ident, Token, braced};
 
 /// A single relation definition: `name: field1, field2, ...;`
-struct RelationDef {
-    attrs: Vec<Attribute>,
-    name: Ident,
-    fields: Vec<Ident>,
+pub(crate) struct RelationDef {
+    pub(crate) attrs: Vec<Attribute>,
+    pub(crate) name: Ident,
+    pub(crate) fields: Vec<Ident>,
 }
 
 impl Parse for RelationDef {
@@ -38,9 +38,18 @@ impl Parse for RelationDef {
 ///     prep1: col1, col2;
 /// }
 /// ```
-struct RelationsInput {
-    relations: Vec<RelationDef>,
-    preprocessed: Vec<RelationDef>,
+pub(crate) struct RelationsInput {
+    pub(crate) relations: Vec<RelationDef>,
+    pub(crate) preprocessed: Vec<RelationDef>,
+}
+
+pub(crate) fn parse_relation_defs(input: ParseStream) -> syn::Result<Vec<RelationDef>> {
+    let mut relations = Vec::new();
+    while !input.is_empty() {
+        relations.push(input.parse::<RelationDef>()?);
+        let _ = input.parse::<Token![;]>();
+    }
+    Ok(relations)
 }
 
 impl Parse for RelationsInput {
@@ -55,12 +64,7 @@ impl Parse for RelationsInput {
         }
         let relations_content;
         braced!(relations_content in input);
-        let mut relations = Vec::new();
-        while !relations_content.is_empty() {
-            relations.push(relations_content.parse::<RelationDef>()?);
-            // Optional semicolon between relations
-            let _ = relations_content.parse::<Token![;]>();
-        }
+        let relations = parse_relation_defs(&relations_content)?;
 
         // Parse "preprocessed { ... }"
         let preprocessed_ident: Ident = input.parse()?;
@@ -72,12 +76,7 @@ impl Parse for RelationsInput {
         }
         let preprocessed_content;
         braced!(preprocessed_content in input);
-        let mut preprocessed = Vec::new();
-        while !preprocessed_content.is_empty() {
-            preprocessed.push(preprocessed_content.parse::<RelationDef>()?);
-            // Optional semicolon between relations
-            let _ = preprocessed_content.parse::<Token![;]>();
-        }
+        let preprocessed = parse_relation_defs(&preprocessed_content)?;
 
         Ok(RelationsInput {
             relations,
@@ -86,12 +85,11 @@ impl Parse for RelationsInput {
     }
 }
 
-pub fn relations(input: TokenStream) -> TokenStream {
+pub(crate) fn generate_relations(input: &RelationsInput) -> proc_macro2::TokenStream {
     let RelationsInput {
         relations,
         preprocessed,
-    } = syn::parse_macro_input!(input as RelationsInput);
-
+    } = input;
     // Generate relation wrapper types
     let relation_wrapper_types = relations.iter().map(|rel| {
         let name = &rel.name;
@@ -563,5 +561,9 @@ pub fn relations(input: TokenStream) -> TokenStream {
             }
         }
     }
-    .into()
+}
+
+pub fn relations(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as RelationsInput);
+    generate_relations(&input).into()
 }

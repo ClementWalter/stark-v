@@ -6,11 +6,13 @@
 
 #![feature(allocator_api)]
 
+mod schema;
+pub use schema::relations;
+
 pub mod decode;
 pub mod merkle;
 pub mod poseidon2;
 pub mod preprocessed;
-pub mod relations;
 
 #[macro_use]
 pub mod trace;

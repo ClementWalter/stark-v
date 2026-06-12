@@ -11,6 +11,8 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{Expr, Ident, Token, braced, parse_macro_input};
 
+use crate::relations::RelationDef;
+
 // =============================================================================
 // define_trace_tables! proc-macro
 // =============================================================================
@@ -253,13 +255,24 @@ impl Parse for OpcodeDef {
 }
 
 /// All opcode definitions
-struct TraceTablesDef {
+pub(crate) struct TraceTablesDef {
     /// Relation names whose lookup entries register preprocessed multiplicities.
     preprocessed_relations: Vec<Ident>,
-    opcodes: Vec<OpcodeDef>,
+    pub(crate) opcodes: Vec<OpcodeDef>,
 }
 
 impl TraceTablesDef {
+    /// Build a trace schema from opcode tables and preprocessed relation names.
+    pub(crate) fn from_trace(opcodes: Vec<OpcodeDef>, preprocessed: &[RelationDef]) -> Self {
+        let preprocessed_relations = preprocessed.iter().map(|rel| rel.name.clone()).collect();
+        let mut def = Self {
+            preprocessed_relations,
+            opcodes,
+        };
+        def.apply_preprocessed_registry();
+        def
+    }
+
     /// Mark lookup entries whose relation name appears in the registry.
     fn apply_preprocessed_registry(&mut self) {
         let registered: std::collections::HashSet<String> = self
@@ -275,6 +288,12 @@ impl TraceTablesDef {
             }
         }
     }
+}
+
+pub(crate) fn parse_opcode_defs(input: ParseStream) -> syn::Result<Vec<OpcodeDef>> {
+    let opcodes: Punctuated<OpcodeDef, Token![,]> =
+        input.parse_terminated(OpcodeDef::parse, Token![,])?;
+    Ok(opcodes.into_iter().collect())
 }
 
 impl Parse for TraceTablesDef {
@@ -297,11 +316,10 @@ impl Parse for TraceTablesDef {
             }
         }
 
-        let opcodes: Punctuated<OpcodeDef, Token![,]> =
-            input.parse_terminated(OpcodeDef::parse, Token![,])?;
+        let opcodes = parse_opcode_defs(input)?;
         let mut def = TraceTablesDef {
             preprocessed_relations,
-            opcodes: opcodes.into_iter().collect(),
+            opcodes,
         };
         def.apply_preprocessed_registry();
         Ok(def)
@@ -1577,7 +1595,10 @@ pub(crate) fn generate_table(opcode: &OpcodeDef) -> proc_macro2::TokenStream {
 }
 
 /// Generate the Tracer struct
-fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
+fn generate_tracer(
+    opcodes: &[&OpcodeDef],
+    access_table: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let table_fields: Vec<_> = opcodes
         .iter()
         .map(|op| {
@@ -1654,9 +1675,9 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
             pub program_reads: rustc_hash::FxHashMap<u32, u32>,
 
             /// Intermediate register clock update accesses (gap-filling).
-            pub reg_clock_update: AccessTable,
+            pub reg_clock_update: #access_table,
             /// Intermediate memory clock update accesses (gap-filling).
-            pub mem_clock_update: AccessTable,
+            pub mem_clock_update: #access_table,
             /// Poseidon2 permutations (felt-generated table, `crate::poseidon2`).
             pub poseidon2: crate::poseidon2::Poseidon2Table,
 
@@ -1707,8 +1728,8 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
                     mem_clock: rustc_hash::FxHashMap::default(),
                     mem_initial: rustc_hash::FxHashMap::default(),
                     program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clock_update: AccessTable::new(),
-                    mem_clock_update: AccessTable::new(),
+                    reg_clock_update: #access_table::new(),
+                    mem_clock_update: #access_table::new(),
                     poseidon2: crate::poseidon2::Poseidon2Table::new(),
                     #(#table_inits,)*
                 }
@@ -1720,8 +1741,8 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
             pub fn with_max_clock_diff(max_clock_diff: u32) -> Self {
                 Self {
                     max_clock_diff,
-                    reg_clock_update: AccessTable::with_max_clock_diff(max_clock_diff),
-                    mem_clock_update: AccessTable::with_max_clock_diff(max_clock_diff),
+                    reg_clock_update: #access_table::with_max_clock_diff(max_clock_diff),
+                    mem_clock_update: #access_table::with_max_clock_diff(max_clock_diff),
                     ..Default::default()
                 }
             }
@@ -1736,8 +1757,8 @@ fn generate_tracer(opcodes: &[&OpcodeDef]) -> proc_macro2::TokenStream {
                     mem_clock: rustc_hash::FxHashMap::default(),
                     mem_initial: rustc_hash::FxHashMap::default(),
                     program_reads: rustc_hash::FxHashMap::default(),
-                    reg_clock_update: AccessTable::new(),
-                    mem_clock_update: AccessTable::new(),
+                    reg_clock_update: #access_table::new(),
+                    mem_clock_update: #access_table::new(),
                     poseidon2: crate::poseidon2::Poseidon2Table::new(),
                     #(#table_inits_cap,)*
                 }
@@ -1867,10 +1888,16 @@ pub fn define_component_tables(input: TokenStream) -> TokenStream {
 ///   (`T = E::F`) and witness generation (`T = PackedM31` via `at(i)`)
 pub fn define_trace_tables(input: TokenStream) -> TokenStream {
     let def = parse_macro_input!(input as TraceTablesDef);
+    generate_trace_tables(&def, quote!(AccessTable)).into()
+}
 
+pub(crate) fn generate_trace_tables(
+    def: &TraceTablesDef,
+    access_table: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let traced: Vec<&OpcodeDef> = def.opcodes.iter().filter(|op| !op.air_only).collect();
     let tables: Vec<_> = traced.iter().map(|op| generate_table(op)).collect();
-    let tracer = generate_tracer(&traced);
+    let tracer = generate_tracer(&traced, access_table.clone());
     let trace_op_macro = generate_trace_op_macro(&traced);
 
     // Generate prover columns; expression errors surface as compile errors
@@ -1886,7 +1913,7 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
         .map(|op| generate_lookup_macros(op, count_opcode_flags(&op.fields) == 0))
         .collect();
 
-    let output = quote! {
+    quote! {
         // Runner code (existing)
         #(#tables)*
         #tracer
@@ -1906,7 +1933,5 @@ pub fn define_trace_tables(input: TokenStream) -> TokenStream {
         }
 
         #(#lookup_macros)*
-    };
-
-    output.into()
+    }
 }
