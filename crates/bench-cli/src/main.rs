@@ -90,7 +90,9 @@ enum Command {
         #[arg(long)]
         elf: PathBuf,
 
-        /// Proof size in bytes (passed as argument since we can't serialize proofs)
+        /// Proof size in bytes, as reported by `prove`'s `proof_size_estimate`
+        /// metric (passed through so external harnesses can combine the two
+        /// measurements without re-proving)
         #[arg(long, default_value_t = 0)]
         proof_size: usize,
 

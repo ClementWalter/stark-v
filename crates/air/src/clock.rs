@@ -100,7 +100,8 @@ impl ClockGapTable {
     }
 
     /// Consumes the table and returns columns in canonical order.
-    /// Order matches the generated ClockUpdateColumns layout.
+    /// Order matches the generated `ClockUpdateColumns` layout, pinned by
+    /// `tests/clock_layout.rs`.
     pub fn into_columns(self) -> Vec<AlignedVec<u32>> {
         let len = self.len();
         let mut enabler = AlignedVec::with_capacity(len);

@@ -211,6 +211,47 @@ so `verify_final` approaches statement-size work:
    then true 2-to-1 node compression (a recursion proof attesting two child
    recursion proofs) for unbounded depth at constant artifact size.
 
+Item 3 is the end state: a binary tree whose leaves are segment proofs, whose
+every internal node is one constant-size recursion proof attesting that its two
+children verify and chain, and whose root is the single artifact for the whole
+execution — not a concatenation of per-segment bodies as `FinalProof` carries
+today. `FinalProof { recursion_proof, segments }` is the bridge: it already
+collapses verification to one stwo check, but its public remainder grows
+linearly with segment count; node compression caps the artifact at one node
+regardless of depth.
+
+## Production topology (streaming)
+
+The host-side helpers (`prover::e2e::prove_segments`, batch `prove_final`) are
+test infrastructure. The production deployment is a pipeline, not a batch:
+
+```text
+runner (own cadence) ──► segment queue ──► leaf prover pool (N workers)
+                                                 │  one leaf proof per segment
+                                                 ▼
+                                          leaf-proof queue ──► 2-to-1 prover pool
+                                                                     │  any same-level
+                                                                     │  adjacent pair
+                                                                     ▼
+                                                               node-proof queue
+                                                                     │ (loops back)
+                                                                     ▼
+                                                                root proof
+```
+
+- The runner executes at its own frequency and dumps each segment the moment it
+  is full; it never waits for provers. Backpressure lands in the segment queue
+  (segments are serializable run results), not in execution.
+- Leaf provers are stateless workers: any idle one picks the next segment and
+  produces a leaf proof. Per the fibonacci benchmark (README "Parallelization
+  Strategy"), workers run single-threaded stwo — process-level parallelism beats
+  intra-proof rayon for aggregate throughput.
+- 2-to-1 provers consume any two level-adjacent proofs as soon as both exist, so
+  the tree builds bottom-up while execution and leaf proving are still running.
+  Total latency ≈ run time + one leaf prove + log2(segments) node proves.
+- Pairing and chaining rules are exactly `recursion::aggregate`'s; the topology
+  needs no protocol work beyond node compression (item 3 above).
+
 ## Notes
 
 - stwo's `examples/` contain Blake and Poseidon AIRs to draw on for M4; a
@@ -222,3 +263,12 @@ so `verify_final` approaches statement-size work:
   (`combine!`/`write_pair!`). Extending `define_trace_tables!` with a
   `relations:` block closes it; the verifier AIR is unaffected either way since
   it consumes `evaluate()`.
+- The recursion crate still declares its components through
+  `define_component_tables!` (constraints single-sourced, lookups hand-paired in
+  witness modules) while the zkVM tables moved to `define_air!` (lookups in the
+  schema). The port target is not `define_air!` though — it is the felt function
+  DSL (docs/felt-air-compiler.md, step 4): the QM31 arithmetic components
+  (`qm31_mul`, `qm31_inv`, `fri_fold`, `circle_double`) are pure felt functions
+  and the circuit `op_def`/`wire` relations are literally its calling
+  convention, so they should migrate first, as the proving ground for the opcode
+  migration.
