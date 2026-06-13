@@ -1,21 +1,20 @@
-//! Recursion-proof composition replay — the foundation of 2-to-1 node
-//! compression (docs/recursion.md, item 3 / M6).
+//! 2-to-1 node compression: a recursion proof attesting two child recursion
+//! proofs (docs/recursion.md, item 3 / M6).
 //!
-//! A true 2-to-1 node proves that its two child recursion proofs verify. The
-//! first piece of that — and the one this module implements — is replaying a
-//! recursion proof's own Fiat-Shamir transcript and recording its
-//! composition check through the same `evaluate()` code the recursion prover
-//! ran, exactly as [`crate::transcript`] does for inner stark-v proofs. The
-//! recorded composition value must equal the value the recursion proof
-//! claims at its OODS point; this is the recursion-level analogue of the M1
-//! seam (`test_recursion_composition_oods_replay`), and the step a parent
-//! node lowers into its own trace to attest a child without re-proving it.
+//! A node replays each child recursion proof's own Fiat-Shamir transcript and
+//! records — through the same `evaluate()` code the recursion prover ran —
+//! both its composition check and its Merkle/FRI openings, lowering them into
+//! the parent's trace and proving one parent recursion proof. No child is
+//! re-proven; the parent attests them.
 //!
-//! What remains for a complete node — recording the recorded circuit into a
-//! parent recursion proof and verifying the child's FRI/Merkle openings
-//! in-AIR — reuses `lower_arena` and the `merkle_path`/`channel_replay`
-//! components exactly as the segment-leaf path (`prove_segment_composition`)
-//! already does for inner proofs.
+//! - [`replay_recursion_composition`] / [`prove_node`] / [`verify_node`]:
+//!   the composition half (Blake2s channel), the recursion-level analogue of
+//!   the M1 seam.
+//! - [`prove_node_compressed`] / [`verify_node_compressed`]: the constant-size
+//!   node — children proven over the Poseidon2-M31 channel so their openings
+//!   become `merkle_path` rows in the parent, their decommitments stripped
+//!   from the artifact. This is the recursion-level analogue of
+//!   [`crate::final_proof::FinalProof`].
 
 use num_traits::Zero;
 use stwo::core::air::Components as CoreComponents;
