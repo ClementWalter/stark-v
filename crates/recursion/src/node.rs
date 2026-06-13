@@ -60,17 +60,13 @@ impl RecursionOodsCheck {
     }
 }
 
-/// Replay a recursion proof's transcript to the OODS point and record its
-/// composition check from the sampled mask values.
-///
-/// Mirrors `prove_recursion_with_channel`'s Fiat-Shamir sequence exactly, so
-/// the drawn OODS point and the sliced mask values match the proof; a wrong
-/// replay yields a different OODS point and the recorded value cannot match
-/// the claim.
-pub fn replay_recursion_composition(
+/// Replay a recursion proof's transcript and record its composition into an
+/// arena, returning the finished recorder (the canonical composition
+/// circuit) and the composition value the proof claims at its OODS point.
+fn record_recursion_composition(
     proof: &RecursionProof<Blake2sMerkleHasher>,
     config: PcsConfig,
-) -> Result<RecursionOodsCheck, VerificationError> {
+) -> Result<(crate::recorder::Recorder, SecureField), VerificationError> {
     type MC = Blake2sMerkleChannel;
 
     let channel = &mut <MC as MerkleChannel>::C::default();
@@ -236,12 +232,111 @@ pub fn replay_recursion_composition(
         denom_inverse,
     ));
     let recorder = recorder.expect("nine components recorded");
-    let recorded = match &recorder.accumulation {
-        Rec::Node { .. } => recorder.accumulation.value(),
-        Rec::Const(value) => *value,
-    };
+    Ok((recorder, claimed))
+}
 
+/// Replay a recursion proof's transcript to the OODS point and record its
+/// composition check from the sampled mask values.
+///
+/// Mirrors `prove_recursion_with_channel`'s Fiat-Shamir sequence exactly, so
+/// the drawn OODS point and the sliced mask values match the proof; a wrong
+/// replay yields a different OODS point and the recorded value cannot match
+/// the claim.
+pub fn replay_recursion_composition(
+    proof: &RecursionProof<Blake2sMerkleHasher>,
+    config: PcsConfig,
+) -> Result<RecursionOodsCheck, VerificationError> {
+    let (recorder, claimed) = record_recursion_composition(proof, config)?;
+    let recorded = recorder.accumulation.value();
     Ok(RecursionOodsCheck { claimed, recorded })
+}
+
+/// The arena output node of a finished recorder (the composition root).
+fn recorder_output(recorder: &crate::recorder::Recorder) -> Result<usize, VerificationError> {
+    match &recorder.accumulation {
+        Rec::Node { id, .. } => Ok(*id),
+        Rec::Const(_) => Err(VerificationError::InvalidStructure(
+            "recursion composition accumulated to a constant".to_string(),
+        )),
+    }
+}
+
+/// A 2-to-1 aggregation node: a recursion proof attesting that its two child
+/// recursion proofs' composition checks pass.
+///
+/// This is the recursive step of node compression (docs/recursion.md). Each
+/// child's composition is recorded from its transcript (no re-proving) and
+/// lowered into the parent's trace as circuits `0` and `1`; the parent
+/// recursion proof then attests both. Applied up a binary tree, the root is
+/// one recursion proof for the whole execution. As with the segment-leaf
+/// path (`prove_segment_composition`), the children's FRI/Merkle openings are
+/// verified host-side until they too move in-AIR — the documented trust
+/// split that keeps each step sound while shrinking the host remainder.
+pub fn prove_node(
+    left: &RecursionProof<Blake2sMerkleHasher>,
+    right: &RecursionProof<Blake2sMerkleHasher>,
+    config: PcsConfig,
+) -> Result<RecursionProof<Blake2sMerkleHasher>, VerificationError> {
+    let mut traces = crate::prover::RecursionTraces::default();
+    let mut circuits = Vec::with_capacity(2);
+    for (circuit_id, child) in [left, right].into_iter().enumerate() {
+        let (recorder, claimed) = record_recursion_composition(child, config)?;
+        if recorder.accumulation.value() != claimed {
+            return Err(VerificationError::InvalidStructure(
+                "child recursion composition does not match its claim".to_string(),
+            ));
+        }
+        let output = recorder_output(&recorder)?;
+        circuits.push(crate::circuit::lower_arena(
+            &mut traces,
+            circuit_id as u32,
+            &recorder.arena.borrow(),
+            output,
+            0,
+            SecureField::zero(),
+        ));
+    }
+    Ok(crate::prover::prove_recursion(
+        traces,
+        vec![],
+        vec![],
+        vec![],
+        circuits,
+        config,
+    ))
+}
+
+/// Verify a 2-to-1 node: re-record the two children's canonical composition
+/// circuits from their transcripts and verify the parent recursion proof
+/// attests exactly them.
+pub fn verify_node(
+    node: RecursionProof<Blake2sMerkleHasher>,
+    left: &RecursionProof<Blake2sMerkleHasher>,
+    right: &RecursionProof<Blake2sMerkleHasher>,
+    config: PcsConfig,
+) -> Result<(), VerificationError> {
+    if node.circuits.len() != 2 {
+        return Err(VerificationError::InvalidStructure(
+            "a 2-to-1 node attests exactly two child circuits".to_string(),
+        ));
+    }
+    let mut arenas = Vec::with_capacity(2);
+    for (circuit_id, child) in [left, right].into_iter().enumerate() {
+        let (recorder, claimed) = record_recursion_composition(child, config)?;
+        if recorder.accumulation.value() != claimed {
+            return Err(VerificationError::InvalidStructure(
+                "child recursion composition does not match its claim".to_string(),
+            ));
+        }
+        if node.circuits[circuit_id].circuit_id != circuit_id as u32 {
+            return Err(VerificationError::InvalidStructure(
+                "node circuit ids must be the child indices".to_string(),
+            ));
+        }
+        let output = recorder_output(&recorder)?;
+        arenas.push((recorder.arena, output));
+    }
+    crate::prover::verify_recursion(node, &arenas, config)
 }
 
 #[cfg(test)]
@@ -255,16 +350,20 @@ mod tests {
     /// recursion components' `evaluate()` must equal the value the proof
     /// claims at its OODS point. This is the recursion-level seam a 2-to-1
     /// node lowers into its parent trace.
-    fn small_proof() -> RecursionProof<Blake2sMerkleHasher> {
+    fn small_proof_seeded(seed: u32) -> RecursionProof<Blake2sMerkleHasher> {
         let mut traces = RecursionTraces::default();
         for i in 1..5u32 {
-            let a = QM31::from_u32_unchecked(i, i + 1, i + 2, i + 3);
-            let b = QM31::from_u32_unchecked(2 * i, i, i + 7, i + 1);
+            let a = QM31::from_u32_unchecked(seed + i, i + 1, i + 2, i + 3);
+            let b = QM31::from_u32_unchecked(2 * i, seed + i, i + 7, i + 1);
             crate::qm31_mul::push_mul(&mut traces.qm31_mul, a, b);
             crate::qm31_inv::push_inv(&mut traces.qm31_inv, a);
             crate::logup_sum::push_term(&mut traces.logup_sum, b);
         }
         prove_recursion(traces, vec![], vec![], vec![], vec![], PcsConfig::default())
+    }
+
+    fn small_proof() -> RecursionProof<Blake2sMerkleHasher> {
+        small_proof_seeded(0)
     }
 
     #[test]
@@ -292,5 +391,28 @@ mod tests {
             recorded: check.recorded,
         };
         assert!(!bumped.holds());
+    }
+
+    /// A 2-to-1 node over two child recursion proofs: the parent recursion
+    /// proof attests both children's composition checks, and verifies against
+    /// the children re-recorded from their transcripts. This is the recursive
+    /// node-compression step.
+    #[test]
+    fn test_node_attests_two_children() {
+        let left = small_proof_seeded(1);
+        let right = small_proof_seeded(2);
+        let node = prove_node(&left, &right, PcsConfig::default()).expect("node proving failed");
+        verify_node(node, &left, &right, PcsConfig::default()).expect("node verification failed");
+    }
+
+    #[test]
+    fn test_node_rejects_wrong_child() {
+        let left = small_proof_seeded(1);
+        let right = small_proof_seeded(2);
+        let node = prove_node(&left, &right, PcsConfig::default()).expect("node proving failed");
+        // Verifying against a different right child: its canonical circuit
+        // differs from what the node attested, so verification fails.
+        let other = small_proof_seeded(3);
+        assert!(verify_node(node, &left, &other, PcsConfig::default()).is_err());
     }
 }

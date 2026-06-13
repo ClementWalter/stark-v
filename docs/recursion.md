@@ -220,16 +220,24 @@ collapses verification to one stwo check, but its public remainder grows
 linearly with segment count; node compression caps the artifact at one node
 regardless of depth.
 
-The first piece of a node is **implemented**:
-`recursion::node::replay_recursion_composition` replays a recursion proof's own
-Fiat-Shamir transcript and records its composition check through the recursion
-components' `evaluate()` — the recursion-level analogue of the M1 seam,
-validated by `test_recursion_composition_replay_matches_claim`. A node lowers
-exactly this recorded circuit into its parent trace (via `lower_arena`, as the
-segment-leaf path `prove_segment_composition` already does for inner proofs);
-what remains is attesting the child's FRI/Merkle openings in-AIR (the
-`merkle_path` / `channel_replay` components applied to the recursion proof's own
-commitments) so the child bodies leave the artifact.
+The composition half of a node is **implemented** in `recursion::node`:
+
+- `replay_recursion_composition` replays a recursion proof's own Fiat-Shamir
+  transcript and records its composition check through the recursion components'
+  `evaluate()` — the recursion-level analogue of the M1 seam
+  (`test_recursion_composition_replay_matches_claim`).
+- `prove_node(left, right)` records both child recursion proofs' compositions
+  and lowers them into a parent recursion proof (circuits `0` and `1`, via
+  `lower_arena`); `verify_node` re-records the children from their transcripts
+  and checks the parent attests exactly them (`test_node_attests_two_children`,
+  `test_node_rejects_wrong_child`). Applied up a binary tree, the root is one
+  recursion proof attesting the whole execution's composition.
+
+As with the segment-leaf path (`prove_segment_composition`), a node's children
+have their FRI/Merkle openings verified host-side; moving those in-AIR (the
+`merkle_path` / `channel_replay` components applied to each child recursion
+proof's own commitments) is the remaining step that drops the child bodies from
+the artifact, making the root constant-size regardless of depth.
 
 ## Production topology (streaming)
 
