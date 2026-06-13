@@ -74,6 +74,17 @@ enum FnStmt {
         end: usize,
         body: Vec<FnStmt>,
     },
+    /// `emit r(args);` / `consume r(args);` — a row's contribution to an
+    /// externally declared relation `r` (declared `relation r(arity);` at
+    /// the top of the macro). `emit` adds `+enabler / combine(args)`,
+    /// `consume` adds `-enabler / ...`. The relation balances across the
+    /// whole proof (and, when shared, across proofs), exactly like the
+    /// per-function io activation tuples.
+    Relation {
+        relation: Ident,
+        args: Vec<Expr>,
+        emit: bool,
+    },
 }
 
 struct AirFn {
@@ -96,6 +107,11 @@ struct AirFnsInput {
     /// When set with `embedded`, also emit the narrow/wide/io LogUp component
     /// adapter wired to `crate::relations::Relations`.
     embedded_component: bool,
+    /// Externally declared relations `relation name(arity);`, referenced by
+    /// `emit`/`consume` in bodies. Each becomes a `relation!` type and an
+    /// `AirFnRelations` field, so two function systems can share one
+    /// relation by drawing it once and passing it in.
+    relations: Vec<(Ident, usize)>,
     fns: Vec<AirFn>,
 }
 
@@ -149,6 +165,22 @@ impl Parse for AirFnsInput {
             false
         };
 
+        // Externally declared relations: `relation name(arity);`.
+        let mut relations = Vec::new();
+        while input
+            .cursor()
+            .ident()
+            .is_some_and(|(ident, _)| ident == "relation")
+        {
+            input.parse::<Ident>()?;
+            let name: Ident = input.parse()?;
+            let arity_content;
+            parenthesized!(arity_content in input);
+            let arity: syn::LitInt = arity_content.parse()?;
+            input.parse::<Token![;]>()?;
+            relations.push((name, arity.base10_parse()?));
+        }
+
         let mut fns = Vec::new();
         while !input.is_empty() {
             fns.push(parse_fn(input)?);
@@ -157,6 +189,7 @@ impl Parse for AirFnsInput {
             max_degree,
             embedded,
             embedded_component,
+            relations,
             fns,
         })
     }
@@ -297,6 +330,25 @@ fn parse_block(
                 lhs: *binary.left,
                 rhs: *binary.right,
             });
+        } else if input.peek(Ident)
+            && input
+                .cursor()
+                .ident()
+                .is_some_and(|(i, _)| i == "emit" || i == "consume")
+        {
+            let keyword: Ident = input.parse()?;
+            let emit = keyword == "emit";
+            let relation: Ident = input.parse()?;
+            let args_content;
+            parenthesized!(args_content in input);
+            let args: Punctuated<Expr, Token![,]> =
+                args_content.parse_terminated(Expr::parse, Token![,])?;
+            input.parse::<Token![;]>()?;
+            body.push(FnStmt::Relation {
+                relation,
+                args: args.into_iter().collect(),
+                emit,
+            });
         } else if allow_return && input.peek(Token![return]) {
             input.parse::<Token![return]>()?;
             let exprs: Vec<Expr> = if input.peek(syn::token::Paren) {
@@ -319,7 +371,7 @@ fn parse_block(
         } else {
             return Err(syn::Error::new(
                 input.span(),
-                "expected `let`, `assert`, `for`, or `return`",
+                "expected `let`, `assert`, `for`, `emit`, `consume`, or `return`",
             ));
         }
     }
@@ -377,6 +429,15 @@ fn substitute_stmt(stmt: &FnStmt, var: &Ident, value: usize) -> FnStmt {
                 .iter()
                 .map(|s| substitute_stmt(s, var, value))
                 .collect(),
+        },
+        FnStmt::Relation {
+            relation,
+            args,
+            emit,
+        } => FnStmt::Relation {
+            relation: relation.clone(),
+            args: args.iter().map(|a| substitute(a, var, value)).collect(),
+            emit: *emit,
         },
     }
 }
@@ -467,10 +528,14 @@ struct Lowerer<'a> {
     fill: Vec<FillStep>,
     /// Activations made: (callee, flattened arg cells, flattened ret cells).
     calls: Vec<(Ident, Vec<Ident>, Vec<Ident>)>,
+    /// External relation contributions: (relation, flattened arg cells, emit).
+    relation_entries: Vec<(Ident, Vec<Ident>, bool)>,
     /// Common-subexpression cache for materialized cells.
     cse: HashMap<String, Ident>,
     /// Flattened signatures of table-backed functions lowered so far.
     arities: &'a HashMap<String, (usize, usize)>,
+    /// Arities of externally declared relations.
+    relation_arities: &'a HashMap<String, usize>,
     inline_fns: &'a HashMap<String, AirFn>,
     fn_name: Ident,
 }
@@ -988,6 +1053,57 @@ impl Lowerer<'_> {
                         self.lower_block(&unrolled, scope, budget)?;
                     }
                 }
+                FnStmt::Relation {
+                    relation,
+                    args,
+                    emit,
+                } => {
+                    let Some(&arity) = self.relation_arities.get(&relation.to_string()) else {
+                        return Err(syn::Error::new_spanned(
+                            relation,
+                            format!(
+                                "unknown relation `{relation}` (declare it with `relation {relation}(arity);`)"
+                            ),
+                        ));
+                    };
+                    // Mirror activation-argument lowering: arrays flatten,
+                    // scalars lower into derived cells so the tuple
+                    // references cells only.
+                    let mut arg_cells = Vec::new();
+                    for arg in args {
+                        if let Ok(ident) = expect_ident(arg)
+                            && let Some(value @ Value::Array(_)) = scope.get(&ident.to_string())
+                        {
+                            for (cell, _) in value.flatten() {
+                                arg_cells.push(cell);
+                            }
+                            continue;
+                        }
+                        let (lowered, degree) = self.lower(arg, scope, budget)?;
+                        // A bare column/cell needs no materialization — the
+                        // tuple references it directly (like the own-io
+                        // tuple). Only compound expressions get a cell.
+                        if let Expr::Path(path) = &lowered
+                            && let Some(ident) = path.path.get_ident()
+                        {
+                            arg_cells.push(ident.clone());
+                            continue;
+                        }
+                        let base = format_ident!("{}_e{}", relation, self.relation_entries.len());
+                        arg_cells.push(self.register_derived(&base, lowered, degree));
+                    }
+                    if arg_cells.len() != arity {
+                        return Err(syn::Error::new_spanned(
+                            relation,
+                            format!(
+                                "`{relation}` has arity {arity}, got {} felts",
+                                arg_cells.len()
+                            ),
+                        ));
+                    }
+                    self.relation_entries
+                        .push((relation.clone(), arg_cells, *emit));
+                }
             }
         }
         Ok(())
@@ -1081,6 +1197,15 @@ fn clone_body(body: &[FnStmt]) -> Vec<FnStmt> {
                 end: *end,
                 body: clone_body(body),
             },
+            FnStmt::Relation {
+                relation,
+                args,
+                emit,
+            } => FnStmt::Relation {
+                relation: relation.clone(),
+                args: args.clone(),
+                emit: *emit,
+            },
         })
         .collect()
 }
@@ -1101,6 +1226,8 @@ struct LoweredFn {
     constraints: Vec<Expr>,
     /// Activations made: (callee, arg cells, ret cells).
     calls: Vec<(Ident, Vec<Ident>, Vec<Ident>)>,
+    /// External relation contributions: (relation, arg cells, emit).
+    relation_entries: Vec<(Ident, Vec<Ident>, bool)>,
     fill: Vec<FillStep>,
     ret_cells: Vec<Ident>,
 }
@@ -1109,6 +1236,7 @@ fn lower_fn(
     function: &AirFn,
     max_degree: usize,
     arities: &HashMap<String, (usize, usize)>,
+    relation_arities: &HashMap<String, usize>,
     inline_fns: &HashMap<String, AirFn>,
     materialize_rets: bool,
 ) -> syn::Result<LoweredFn> {
@@ -1124,8 +1252,10 @@ fn lower_fn(
         constraints: Vec::new(),
         fill: Vec::new(),
         calls: Vec::new(),
+        relation_entries: Vec::new(),
         cse: HashMap::new(),
         arities,
+        relation_arities,
         inline_fns,
         fn_name: function.name.clone(),
     };
@@ -1202,6 +1332,7 @@ fn lower_fn(
         derived: lowerer.derived,
         constraints: lowerer.constraints,
         calls: lowerer.calls,
+        relation_entries: lowerer.relation_entries,
         fill: lowerer.fill,
         ret_cells,
     })
@@ -1434,6 +1565,26 @@ fn generate_evaluation_impl(function: &LoweredFn) -> syn::Result<TokenStream2> {
             )
         });
     }
+    // External relation entries follow the activation entries, in lowering
+    // order — the same order `generate_component_module` lists their
+    // relation names, so the positional entry→relation mapping holds.
+    for (_, cells, emit) in &function.relation_entries {
+        let values = cells
+            .iter()
+            .map(|cell| air_expr(&syn::parse_quote!(#cell), &columns, &cell_indices))
+            .collect::<syn::Result<Vec<_>>>()?;
+        let numerator = if *emit {
+            quote! { self.enabler.clone() }
+        } else {
+            quote! { -self.enabler.clone() }
+        };
+        entry_exprs.push(quote! {
+            (
+                #numerator,
+                vec![#(#values),*],
+            )
+        });
+    }
 
     Ok(quote! {
         impl<T> prover_columns::#columns_type<T>
@@ -1469,8 +1620,14 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
         max_degree,
         embedded,
         embedded_component,
+        relations: external_relations,
         fns,
     } = parse_macro_input!(input as AirFnsInput);
+
+    let relation_arities: HashMap<String, usize> = external_relations
+        .iter()
+        .map(|(name, arity)| (name.to_string(), *arity))
+        .collect();
 
     let inline_fns: HashMap<String, AirFn> = fns
         .iter()
@@ -1506,6 +1663,7 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
             function,
             max_degree,
             &arities,
+            &relation_arities,
             &inline_fns,
             embedded.is_some(),
         ) {
@@ -1518,6 +1676,14 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
     }
 
     if let Some(flags) = embedded {
+        if let Some((name, _)) = external_relations.first() {
+            return syn::Error::new_spanned(
+                name,
+                "external relations are not supported in `embedded` mode (the host wires relations)",
+            )
+            .to_compile_error()
+            .into();
+        }
         return generate_embedded(&mut lowered, &flags, embedded_component);
     }
 
@@ -1557,7 +1723,7 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
             quote! { #name: #relation_type::dummy(), }
         })
         .collect();
-    let relation_draw: Vec<_> = lowered
+    let mut relation_draw: Vec<_> = lowered
         .iter()
         .map(|f| {
             let name = &f.name;
@@ -1565,6 +1731,23 @@ pub fn define_air_fns(input: TokenStream) -> TokenStream {
             quote! { #name: #relation_type::draw(channel), }
         })
         .collect();
+
+    // Externally declared relations: a `relation!` type and an
+    // `AirFnRelations` field each, drawn from the channel alongside the io
+    // relations. Sharing one relation across two systems is done by drawing
+    // it once and passing it in (see the `extern_relation` test).
+    let mut relation_defs = relation_defs;
+    let mut relation_fields = relation_fields;
+    let mut relation_dummy = relation_dummy;
+    for (name, arity) in &external_relations {
+        let relation_type = format_ident!("{}Relation", to_pascal_case(&name.to_string()));
+        relation_defs.push(quote! {
+            stwo_constraint_framework::relation!(#relation_type, #arity);
+        });
+        relation_fields.push(quote! { pub #name: #relation_type, });
+        relation_dummy.push(quote! { #name: #relation_type::dummy(), });
+        relation_draw.push(quote! { #name: #relation_type::draw(channel), });
+    }
 
     // Tables holder + witness fill functions (the program run concretely).
     let table_fields: Vec<_> = lowered
@@ -1946,10 +2129,16 @@ fn generate_call_fn(function: &LoweredFn) -> syn::Result<TokenStream2> {
 fn generate_component_module(function: &LoweredFn) -> TokenStream2 {
     let name = &function.name;
     let columns_type = column_struct_name(name);
-    let n_entries = 1 + function.calls.len();
+    let n_entries = 1 + function.calls.len() + function.relation_entries.len();
     let entry_indices: Vec<usize> = (0..n_entries).collect();
     let entry_relations: Vec<&Ident> = std::iter::once(&function.name)
         .chain(function.calls.iter().map(|(callee, _, _)| callee))
+        .chain(
+            function
+                .relation_entries
+                .iter()
+                .map(|(relation, _, _)| relation),
+        )
         .collect();
     let doc = format!("{name} component, generated from its felt function.");
     quote! {
@@ -2135,9 +2324,12 @@ fn generate_harness(lowered: &[LoweredFn]) -> TokenStream2 {
             quote! { prover_columns::#columns_type::<()>::SIZE }
         })
         .collect();
-    // One singleton fraction column per entry: the own activation plus one
-    // per call made.
-    let entry_counts: Vec<usize> = lowered.iter().map(|f| 1 + f.calls.len()).collect();
+    // One singleton fraction column per entry: the own activation, one per
+    // call made, and one per external relation emit/consume.
+    let entry_counts: Vec<usize> = lowered
+        .iter()
+        .map(|f| 1 + f.calls.len() + f.relation_entries.len())
+        .collect();
 
     quote! {
         /// A public activation: the io tuple of an entry call the host

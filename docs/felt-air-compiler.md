@@ -157,10 +157,18 @@ into these function definitions.
 
 What `define_air_fns!` is missing for opcodes, in dependency order:
 
-1. **External relation statements.** Function bodies can only emit the built-in
-   call relation today. Opcode bodies need the zkVM relations —
-   `program_access`, `memory_access`, `registers_state`, range checks — as
-   first-class `emit`/`consume` statements. The schema entry
+1. **External relation statements.** ✅ _Implemented._ A system declares
+   `relation name(arity);` at the top and function bodies use `emit name(args)`
+   / `consume name(args)`; the entry is threaded through the same single-source
+   `evaluation()` seam and the positional entry→relation mapping, drawn as an
+   `AirFnRelations` field, and balanced across the proof. See the
+   `extern_relation` tests in `crates/stwo-macros/tests/air_fns.rs` (a `source`
+   function emits `pass(x)`, a `sink` consumes it, and the relation cancels).
+   What remains is wiring the _specific_ zkVM relations (`program_access`,
+   `memory_access`, `registers_state`, range checks) — i.e. an opcode body
+   reads:
+
+   The schema entry
 
    ```text
    lui: {

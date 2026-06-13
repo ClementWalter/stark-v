@@ -269,3 +269,78 @@ fn test_compiled_poseidon_layout_matches_hand_flattened_scale() {
     // enabler + 16 inputs + 16*(2 + 3*7) cells (full rounds) + 3*14 (partial).
     assert_eq!(size, 1 + 16 + 16 * (2 + 3 * 7) + 3 * 14);
 }
+
+// External relations: two functions sharing one declared relation. `source`
+// emits `pass(x)`, `sink` consumes it. The relation balances across the two
+// tables within one proof, exactly like a host/precompile split would across
+// two proofs.
+mod shared {
+    stwo_macros::define_air_fns! {
+        max_degree: 3,
+
+        relation pass(1);
+
+        fn source(x) {
+            emit pass(x);
+            return x;
+        }
+
+        fn sink(x) {
+            consume pass(x);
+            return x;
+        }
+    }
+}
+
+#[test]
+fn test_external_relation_balances_across_functions() {
+    let mut tables = shared::Tables::default();
+    let produced = shared::call_source(&mut tables, [felt(9)]);
+    let consumed = shared::call_sink(&mut tables, [felt(9)]);
+    assert_eq!(produced, consumed);
+
+    let activations = vec![
+        shared::Activation::Source {
+            inputs: [felt(9)],
+            outputs: produced,
+        },
+        shared::Activation::Sink {
+            inputs: [felt(9)],
+            outputs: consumed,
+        },
+    ];
+    let proof = shared::prove_air_fns(tables, activations, PcsConfig::default());
+    shared::verify_air_fns(proof, PcsConfig::default()).expect("verification failed");
+}
+
+#[test]
+fn test_external_relation_rejects_unbalanced_emit() {
+    // `source` emits `pass(9)` but `sink` consumes `pass(7)`: the relation
+    // does not close, so the claimed sums do not cancel.
+    let mut tables = shared::Tables::default();
+    let produced = shared::call_source(&mut tables, [felt(9)]);
+    let consumed = shared::call_sink(&mut tables, [felt(7)]);
+
+    let activations = vec![
+        shared::Activation::Source {
+            inputs: [felt(9)],
+            outputs: produced,
+        },
+        shared::Activation::Sink {
+            inputs: [felt(7)],
+            outputs: consumed,
+        },
+    ];
+    let proof = shared::prove_air_fns(tables, activations, PcsConfig::default());
+    assert!(shared::verify_air_fns(proof, PcsConfig::default()).is_err());
+}
+
+#[test]
+fn test_external_relation_adds_one_column_per_side() {
+    use shared::prover_columns::{SinkColumns, SourceColumns};
+
+    // source: enabler + x. The emitted `pass(x)` references the existing
+    // column x, so no extra committed column is needed.
+    assert_eq!(SourceColumns::<()>::SIZE, 2);
+    assert_eq!(SinkColumns::<()>::SIZE, 2);
+}
