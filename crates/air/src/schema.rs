@@ -25,6 +25,12 @@ stwo_macros::define_air! {
         bound_by: range_check_20,
         relation: memory_access,
     }
+    // Fn-DSL tables folded into the `Tracer` (defined via `define_air_fns!`).
+    // The runner fills them like any opcode table; their components plug into
+    // the prover via `components! { ... name: module ... }`.
+    external: {
+        poseidon2: crate::poseidon2,
+    }
     trace: {
         base_alu_reg: {
             committed: {

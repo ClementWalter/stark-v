@@ -240,15 +240,27 @@ The capabilities (1) and (3) are in place, and the `mini_vm` test in
 opcodes as functions (`step`), the `(pc, clock)` state carried by an external
 `reg_state` relation that telescopes across rows, a `boundary` function closing
 the chain, and a `hint`-backed witness column — proven and verified, with a
-broken chain rejected. What remains for the _production_ migration is
-whole-system: the access values come from the runner's `Tracer` (passed in as
-the mini-VM passes `pc`/`clock`, computed by
-`trace_reg_access`/`trace_mem_access`), the range checks resolve against the
-preprocessed tables, and the rv32im `Relations` (`program_access`,
-`memory_access`, `registers_state`) replace the toy `reg_state` — at which point
-each opcode family migrates one PR at a time, its constraints checked by the
-existing e2e tests, until the `components!` entry and `runner/src/ops/` are
-deleted.
+broken chain rejected.
+
+The **integration seam is also in place**. `define_air!` now takes an
+`external:` section listing fn-DSL tables to fold into the `Tracer`:
+
+```text
+external: { poseidon2: crate::poseidon2 }   // air/src/schema.rs
+```
+
+Each entry generates the `Tracer` field, init, `total_traces`, debug, and column
+re-export that were previously **hardcoded** for poseidon2 — so the monolithic
+`Tracer` is now composable. poseidon2 (already a fn-DSL component wired through
+`components! { … poseidon2: air::poseidon2::component … }`) is the first entry,
+and the full e2e suite (a real prove+verify per opcode) passes through the
+generalized path. Migrating an opcode is now additive: define it via
+`define_air_fns!`, add it to `external:`, point its `components!` entry at the
+generated module, and remove it from the `trace:` block — one family per PR,
+each guarded by the existing e2e proofs, until `runner/src/ops/` and the
+schema's opcode list are empty. The remaining per-opcode work is the witness
+fill calling the runner's `Tracer` (`trace_reg_access`/`trace_mem_access`) for
+access values and the range checks resolving against the preprocessed tables.
 
 ### What this retires (the `components!` question)
 
