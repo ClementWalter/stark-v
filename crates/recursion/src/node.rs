@@ -62,14 +62,24 @@ impl RecursionOodsCheck {
 
 /// Replay a recursion proof's transcript and record its composition into an
 /// arena, returning the finished recorder (the canonical composition
-/// circuit) and the composition value the proof claims at its OODS point.
-fn record_recursion_composition(
-    proof: &RecursionProof<Blake2sMerkleHasher>,
+/// circuit), the composition value the proof claims at its OODS point, and
+/// the PCS state at the OODS point (for replaying the proof's openings).
+///
+/// Generic over the Merkle channel: composition-only nodes use Blake2s, the
+/// opening-recording nodes use the Poseidon2-M31 channel the `merkle_path`
+/// component proves.
+fn recursion_binding<MC: MerkleChannel>(
+    proof: &RecursionProof<MC::H>,
     config: PcsConfig,
-) -> Result<(crate::recorder::Recorder, SecureField), VerificationError> {
-    type MC = Blake2sMerkleChannel;
-
-    let channel = &mut <MC as MerkleChannel>::C::default();
+) -> Result<
+    (
+        crate::recorder::Recorder,
+        SecureField,
+        crate::transcript::PcsBindingData<MC>,
+    ),
+    VerificationError,
+> {
+    let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
     let commitments = &proof.stark_proof.commitments;
 
@@ -152,6 +162,31 @@ fn record_recursion_composition(
                 )
             })?;
 
+    // PCS state at the OODS point — mask points (composition points
+    // appended) and the committed tree shapes — for replaying the openings.
+    let mut sample_points = core_components.mask_points(oods_point, max_log_degree_bound, false);
+    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
+    let pcs = crate::transcript::PcsBindingData::<MC> {
+        column_log_sizes: commitment_scheme
+            .trees
+            .as_ref()
+            .map(|tree| tree.column_log_sizes.clone()),
+        tree_heights: commitment_scheme
+            .trees
+            .iter()
+            .map(|tree| tree.height)
+            .collect(),
+        roots: commitment_scheme
+            .trees
+            .iter()
+            .map(|tree| tree.root)
+            .collect(),
+        sample_points,
+        lifting_log_size,
+        channel: channel.clone(),
+    };
+    drop(core_components);
+
     // Record every component's point evaluation, in composition order, into
     // one arena — the same per-component recorder the inner path uses.
     let denom_inverse =
@@ -232,7 +267,7 @@ fn record_recursion_composition(
         denom_inverse,
     ));
     let recorder = recorder.expect("nine components recorded");
-    Ok((recorder, claimed))
+    Ok((recorder, claimed, pcs))
 }
 
 /// Replay a recursion proof's transcript to the OODS point and record its
@@ -246,7 +281,7 @@ pub fn replay_recursion_composition(
     proof: &RecursionProof<Blake2sMerkleHasher>,
     config: PcsConfig,
 ) -> Result<RecursionOodsCheck, VerificationError> {
-    let (recorder, claimed) = record_recursion_composition(proof, config)?;
+    let (recorder, claimed, _) = recursion_binding::<Blake2sMerkleChannel>(proof, config)?;
     let recorded = recorder.accumulation.value();
     Ok(RecursionOodsCheck { claimed, recorded })
 }
@@ -280,7 +315,7 @@ pub fn prove_node(
     let mut traces = crate::prover::RecursionTraces::default();
     let mut circuits = Vec::with_capacity(2);
     for (circuit_id, child) in [left, right].into_iter().enumerate() {
-        let (recorder, claimed) = record_recursion_composition(child, config)?;
+        let (recorder, claimed, _) = recursion_binding::<Blake2sMerkleChannel>(child, config)?;
         if recorder.accumulation.value() != claimed {
             return Err(VerificationError::InvalidStructure(
                 "child recursion composition does not match its claim".to_string(),
@@ -322,7 +357,7 @@ pub fn verify_node(
     }
     let mut arenas = Vec::with_capacity(2);
     for (circuit_id, child) in [left, right].into_iter().enumerate() {
-        let (recorder, claimed) = record_recursion_composition(child, config)?;
+        let (recorder, claimed, _) = recursion_binding::<Blake2sMerkleChannel>(child, config)?;
         if recorder.accumulation.value() != claimed {
             return Err(VerificationError::InvalidStructure(
                 "child recursion composition does not match its claim".to_string(),
@@ -337,6 +372,168 @@ pub fn verify_node(
         arenas.push((recorder.arena, output));
     }
     crate::prover::verify_recursion(node, &arenas, config)
+}
+
+// =============================================================================
+// Constant-size node: child openings attested in-AIR
+// =============================================================================
+
+use crate::openings::{TREE_ID_STRIDE, replay_pcs_openings};
+use prover::poseidon2_channel::{Poseidon2M31MerkleChannel, Poseidon2M31MerkleHasher};
+use stwo::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
+
+/// A constant-size 2-to-1 node: the parent recursion proof attests both
+/// children's **composition checks and Merkle/FRI openings** in-AIR, so the
+/// children's decommitments are dropped from the artifact.
+///
+/// The children must be proven over the Poseidon2-M31 channel — the hash the
+/// `merkle_path` / `channel_replay` components prove — so their commitment
+/// openings become component rows in the parent's trace. This is the
+/// recursion-level analogue of [`crate::final_proof::FinalProof`]: where that
+/// strips an inner proof's decommitments into one recursion proof, this
+/// strips a child *recursion* proof's decommitments into the parent node,
+/// closing the last host-side gap toward an artifact constant in tree depth.
+pub struct CompressedNode {
+    /// The parent recursion proof attesting both children.
+    pub node: RecursionProof<Poseidon2M31MerkleHasher>,
+    /// The two child recursion proofs with decommitments stripped (their
+    /// openings live in `node` as `merkle_path` rows).
+    pub children: [RecursionProof<Poseidon2M31MerkleHasher>; 2],
+}
+
+/// Strip every Merkle decommitment from a recursion proof: its openings are
+/// attested by the parent node, not carried as hash witnesses.
+fn strip_recursion_decommitments(proof: &mut RecursionProof<Poseidon2M31MerkleHasher>) {
+    let scheme_proof = &mut proof.stark_proof.0;
+    for decommitment in scheme_proof.decommitments.0.iter_mut() {
+        *decommitment = MerkleDecommitmentLifted::empty();
+    }
+    scheme_proof.fri_proof.first_layer.decommitment = MerkleDecommitmentLifted::empty();
+    for layer in &mut scheme_proof.fri_proof.inner_layers {
+        layer.decommitment = MerkleDecommitmentLifted::empty();
+    }
+}
+
+/// Prove a constant-size 2-to-1 node over two Poseidon2-channel children.
+///
+/// For each child: record its composition (lowered into the parent trace as
+/// circuit `i`) and replay its openings (recorded as `merkle_path` rows and
+/// anchored by public root/leaf claims), then prove ONE parent recursion
+/// proof attesting both. The children's decommitments are stripped.
+pub fn prove_node_compressed(
+    left: RecursionProof<Poseidon2M31MerkleHasher>,
+    right: RecursionProof<Poseidon2M31MerkleHasher>,
+    config: PcsConfig,
+) -> Result<CompressedNode, VerificationError> {
+    let mut traces = crate::prover::RecursionTraces::default();
+    let mut circuits = Vec::with_capacity(2);
+    let mut roots = Vec::new();
+    let mut leaves = Vec::new();
+
+    for (index, child) in [&left, &right].into_iter().enumerate() {
+        let (recorder, claimed, pcs) =
+            recursion_binding::<Poseidon2M31MerkleChannel>(child, config)?;
+        if recorder.accumulation.value() != claimed {
+            return Err(VerificationError::InvalidStructure(
+                "child recursion composition does not match its claim".to_string(),
+            ));
+        }
+        let output = recorder_output(&recorder)?;
+        circuits.push(crate::circuit::lower_arena(
+            &mut traces,
+            index as u32,
+            &recorder.arena.borrow(),
+            output,
+            0,
+            SecureField::zero(),
+        ));
+
+        let claims = replay_pcs_openings(
+            &child.stark_proof.0,
+            &pcs,
+            config,
+            index as u32 * TREE_ID_STRIDE,
+            Some(&mut traces),
+        )
+        .map_err(VerificationError::InvalidStructure)?;
+        roots.extend(claims.roots);
+        leaves.extend(claims.leaves);
+    }
+
+    let node = crate::prover::prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(
+        traces,
+        roots,
+        leaves,
+        vec![],
+        circuits,
+        config,
+    );
+
+    let mut children = [left, right];
+    for child in &mut children {
+        strip_recursion_decommitments(child);
+    }
+    Ok(CompressedNode { node, children })
+}
+
+/// Verify a constant-size node: re-record both children's compositions and
+/// re-replay their openings from their (decommitment-free) public bodies,
+/// then verify the parent recursion proof attests exactly those circuits and
+/// anchors exactly those openings.
+pub fn verify_node_compressed(
+    compressed: CompressedNode,
+    config: PcsConfig,
+) -> Result<(), VerificationError> {
+    let CompressedNode { node, children } = compressed;
+    if node.circuits.len() != 2 {
+        return Err(VerificationError::InvalidStructure(
+            "a 2-to-1 node attests exactly two child circuits".to_string(),
+        ));
+    }
+
+    let mut arenas = Vec::with_capacity(2);
+    let mut expected_roots = Vec::new();
+    let mut expected_leaves = Vec::new();
+    for (index, child) in children.iter().enumerate() {
+        let (recorder, claimed, pcs) =
+            recursion_binding::<Poseidon2M31MerkleChannel>(child, config)?;
+        if recorder.accumulation.value() != claimed {
+            return Err(VerificationError::InvalidStructure(
+                "child recursion composition does not match its claim".to_string(),
+            ));
+        }
+        if node.circuits[index].circuit_id != index as u32 {
+            return Err(VerificationError::InvalidStructure(
+                "node circuit ids must be the child indices".to_string(),
+            ));
+        }
+        let output = recorder_output(&recorder)?;
+        arenas.push((recorder.arena, output));
+
+        let claims = replay_pcs_openings(
+            &child.stark_proof.0,
+            &pcs,
+            config,
+            index as u32 * TREE_ID_STRIDE,
+            None,
+        )
+        .map_err(VerificationError::InvalidStructure)?;
+        expected_roots.extend(claims.roots);
+        expected_leaves.extend(claims.leaves);
+    }
+
+    if node.roots != expected_roots {
+        return Err(VerificationError::InvalidStructure(
+            "node root claims do not match the children's commitments".to_string(),
+        ));
+    }
+    if node.leaves != expected_leaves {
+        return Err(VerificationError::InvalidStructure(
+            "node leaf claims do not match the children's queried values".to_string(),
+        ));
+    }
+
+    crate::prover::verify_recursion_with_channel::<Poseidon2M31MerkleChannel>(node, &arenas, config)
 }
 
 #[cfg(test)]
@@ -364,6 +561,27 @@ mod tests {
 
     fn small_proof() -> RecursionProof<Blake2sMerkleHasher> {
         small_proof_seeded(0)
+    }
+
+    /// The same small recursion proof, but over the Poseidon2-M31 channel so
+    /// its openings can be attested in-AIR by a parent node.
+    fn small_proof_poseidon(seed: u32) -> RecursionProof<Poseidon2M31MerkleHasher> {
+        let mut traces = RecursionTraces::default();
+        for i in 1..5u32 {
+            let a = QM31::from_u32_unchecked(seed + i, i + 1, i + 2, i + 3);
+            let b = QM31::from_u32_unchecked(2 * i, seed + i, i + 7, i + 1);
+            crate::qm31_mul::push_mul(&mut traces.qm31_mul, a, b);
+            crate::qm31_inv::push_inv(&mut traces.qm31_inv, a);
+            crate::logup_sum::push_term(&mut traces.logup_sum, b);
+        }
+        crate::prover::prove_recursion_with_channel::<Poseidon2M31MerkleChannel>(
+            traces,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            PcsConfig::default(),
+        )
     }
 
     #[test]
@@ -414,5 +632,29 @@ mod tests {
         // differs from what the node attested, so verification fails.
         let other = small_proof_seeded(3);
         assert!(verify_node(node, &left, &other, PcsConfig::default()).is_err());
+    }
+
+    /// Constant-size node: the parent attests both Poseidon2-channel
+    /// children's compositions AND their Merkle/FRI openings in-AIR; the
+    /// children carry no decommitments. Verifying re-records and re-replays
+    /// from the stripped bodies.
+    #[test]
+    fn test_compressed_node_attests_children_openings() {
+        let left = small_proof_poseidon(1);
+        let right = small_proof_poseidon(2);
+        let compressed = prove_node_compressed(left, right, PcsConfig::default())
+            .expect("compressed node proving failed");
+        // The children's decommitments were stripped — the node carries them.
+        assert!(
+            compressed.children[0]
+                .stark_proof
+                .0
+                .decommitments
+                .0
+                .iter()
+                .all(|d| d.hash_witness.is_empty())
+        );
+        verify_node_compressed(compressed, PcsConfig::default())
+            .expect("compressed node verification failed");
     }
 }

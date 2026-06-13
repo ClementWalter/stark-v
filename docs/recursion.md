@@ -233,11 +233,20 @@ The composition half of a node is **implemented** in `recursion::node`:
   `test_node_rejects_wrong_child`). Applied up a binary tree, the root is one
   recursion proof attesting the whole execution's composition.
 
-As with the segment-leaf path (`prove_segment_composition`), a node's children
-have their FRI/Merkle openings verified host-side; moving those in-AIR (the
-`merkle_path` / `channel_replay` components applied to each child recursion
-proof's own commitments) is the remaining step that drops the child bodies from
-the artifact, making the root constant-size regardless of depth.
+The constant-size node is **implemented**: `prove_node_compressed` /
+`verify_node_compressed` take two Poseidon2-M31-channel child recursion proofs,
+record each child's composition (lowered into the parent trace) **and replay its
+Merkle/FRI openings** (recorded as `merkle_path` rows anchored by public
+root/leaf claims), and prove one parent recursion proof attesting both. The
+children's decommitments are stripped from the artifact — the parent carries
+them as component rows, exactly as `FinalProof` does for inner proofs.
+`test_compressed_node_attests_children_openings` proves it end to end: a node
+over two children verifies from their decommitment-free bodies. Applied up the
+tree, the root is constant in depth (each node attests exactly two children; the
+recorded openings and composition are bounded), closing the M6 gap; what remains
+is wiring the recursive driver (`prove_node_compressed` over each level) and the
+boundary chaining (`Boundary::chain`, already implemented) into a single
+top-level entry point.
 
 ## Production topology (streaming)
 
