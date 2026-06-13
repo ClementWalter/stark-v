@@ -130,6 +130,7 @@ words:
   - riscv
   - rngs
   - rodata
+  - roundtrips
   - rstest
   - rustc
   - rustflags

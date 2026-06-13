@@ -344,3 +344,126 @@ fn test_external_relation_adds_one_column_per_side() {
     assert_eq!(SourceColumns::<()>::SIZE, 2);
     assert_eq!(SinkColumns::<()>::SIZE, 2);
 }
+
+// Hints: a prover-chosen committed column, free in the AIR, constrained by
+// the body. Opcodes use these for carries / sign bits / inverse markers.
+mod hints {
+    stwo_macros::define_air_fns! {
+        max_degree: 3,
+
+        fn double_it(x) {
+            hint y = x + x;
+            assert y == x + x;
+            return y;
+        }
+    }
+}
+
+#[test]
+fn test_hint_roundtrips_and_verifies() {
+    let mut tables = hints::Tables::default();
+    let out = hints::call_double_it(&mut tables, [felt(5)]);
+    assert_eq!(out, [felt(10)]);
+
+    let activations = vec![hints::Activation::DoubleIt {
+        inputs: [felt(5)],
+        outputs: out,
+    }];
+    let proof = hints::prove_air_fns(tables, activations, PcsConfig::default());
+    hints::verify_air_fns(proof, PcsConfig::default()).expect("verification failed");
+}
+
+#[test]
+fn test_hint_is_a_committed_column() {
+    use hints::prover_columns::DoubleItColumns;
+    // enabler + x + the committed hint y = 3. (A plain `let y = x + x` would
+    // make y a derived cell, not a column, leaving SIZE = 2.)
+    assert_eq!(DoubleItColumns::<()>::SIZE, 3);
+}
+
+// A faithful miniature of the opcode-migration target (docs/felt-air-compiler.md
+// step 4): opcodes as functions, the register/pc state carried by an external
+// relation that telescopes across rows, a boundary closing the chain, and a
+// prover-chosen hint constrained in-row — the same shape the rv32im opcode
+// tables have, expressed entirely in the fn DSL.
+mod mini_vm {
+    stwo_macros::define_air_fns! {
+        max_degree: 3,
+
+        // (pc, clock) — the machine state between steps.
+        relation reg_state(2);
+
+        // One opcode: advance pc by 4 and the clock by 1.
+        fn step(pc, clock) {
+            consume reg_state(pc, clock);
+            hint next_pc = pc + 4;
+            assert next_pc == pc + 4;
+            emit reg_state(next_pc, clock + 1);
+            return next_pc;
+        }
+
+        // The program boundary: emit the entry state, consume the exit state.
+        // Its activation is public, so closing the reg_state chain reduces to
+        // the requested (entry, exit).
+        fn boundary(entry_pc, entry_clock, exit_pc, exit_clock) {
+            emit reg_state(entry_pc, entry_clock);
+            consume reg_state(exit_pc, exit_clock);
+            return entry_pc;
+        }
+    }
+}
+
+#[test]
+fn test_mini_vm_two_steps_balance_through_boundary() {
+    let mut tables = mini_vm::Tables::default();
+    // Run two steps from (pc=0, clock=0): 0 -> 4 -> 8.
+    let pc1 = mini_vm::call_step(&mut tables, [felt(0), felt(0)]);
+    assert_eq!(pc1, [felt(4)]);
+    let pc2 = mini_vm::call_step(&mut tables, [felt(4), felt(1)]);
+    assert_eq!(pc2, [felt(8)]);
+    let boundary = mini_vm::call_boundary(&mut tables, [felt(0), felt(0), felt(8), felt(2)]);
+
+    let activations = vec![
+        mini_vm::Activation::Step {
+            inputs: [felt(0), felt(0)],
+            outputs: pc1,
+        },
+        mini_vm::Activation::Step {
+            inputs: [felt(4), felt(1)],
+            outputs: pc2,
+        },
+        mini_vm::Activation::Boundary {
+            inputs: [felt(0), felt(0), felt(8), felt(2)],
+            outputs: boundary,
+        },
+    ];
+    let proof = mini_vm::prove_air_fns(tables, activations, PcsConfig::default());
+    mini_vm::verify_air_fns(proof, PcsConfig::default()).expect("verification failed");
+}
+
+#[test]
+fn test_mini_vm_broken_chain_is_rejected() {
+    // A boundary claiming the wrong exit state leaves the reg_state chain
+    // open: the multiset does not cancel.
+    let mut tables = mini_vm::Tables::default();
+    let pc1 = mini_vm::call_step(&mut tables, [felt(0), felt(0)]);
+    let pc2 = mini_vm::call_step(&mut tables, [felt(4), felt(1)]);
+    let boundary = mini_vm::call_boundary(&mut tables, [felt(0), felt(0), felt(12), felt(3)]);
+
+    let activations = vec![
+        mini_vm::Activation::Step {
+            inputs: [felt(0), felt(0)],
+            outputs: pc1,
+        },
+        mini_vm::Activation::Step {
+            inputs: [felt(4), felt(1)],
+            outputs: pc2,
+        },
+        mini_vm::Activation::Boundary {
+            inputs: [felt(0), felt(0), felt(12), felt(3)],
+            outputs: boundary,
+        },
+    ];
+    let proof = mini_vm::prove_air_fns(tables, activations, PcsConfig::default());
+    assert!(mini_vm::verify_air_fns(proof, PcsConfig::default()).is_err());
+}

@@ -85,6 +85,11 @@ enum FnStmt {
         args: Vec<Expr>,
         emit: bool,
     },
+    /// `hint name = expr;` — a prover-chosen committed column, free in the
+    /// AIR (the body constrains it with `assert`s), filled by evaluating
+    /// `expr` concretely. Opcodes use this for witness columns that are not
+    /// in-row derivations (carries, sign decompositions, inverse markers).
+    Hint { name: Ident, expr: Expr },
 }
 
 struct AirFn {
@@ -330,6 +335,13 @@ fn parse_block(
                 lhs: *binary.left,
                 rhs: *binary.right,
             });
+        } else if input.peek(Ident) && input.cursor().ident().is_some_and(|(i, _)| i == "hint") {
+            input.parse::<Ident>()?;
+            let name: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+            let expr: Expr = input.parse()?;
+            input.parse::<Token![;]>()?;
+            body.push(FnStmt::Hint { name, expr });
         } else if input.peek(Ident)
             && input
                 .cursor()
@@ -438,6 +450,10 @@ fn substitute_stmt(stmt: &FnStmt, var: &Ident, value: usize) -> FnStmt {
             relation: relation.clone(),
             args: args.iter().map(|a| substitute(a, var, value)).collect(),
             emit: *emit,
+        },
+        FnStmt::Hint { name, expr } => FnStmt::Hint {
+            name: name.clone(),
+            expr: substitute(expr, var, value),
         },
     }
 }
@@ -1104,6 +1120,18 @@ impl Lowerer<'_> {
                     self.relation_entries
                         .push((relation.clone(), arg_cells, *emit));
                 }
+                FnStmt::Hint { name, expr } => {
+                    // A committed column (free in the AIR), filled by
+                    // evaluating `expr` concretely. The body constrains it.
+                    let (lowered, _) = self.lower(expr, scope, budget)?;
+                    let cell = self.register_column(name);
+                    self.extra_columns.push(cell.clone());
+                    self.fill.push(FillStep::Expr {
+                        cell: cell.clone(),
+                        expr: lowered,
+                    });
+                    scope.insert(name.to_string(), Value::Scalar { cell, degree: 1 });
+                }
             }
         }
         Ok(())
@@ -1205,6 +1233,10 @@ fn clone_body(body: &[FnStmt]) -> Vec<FnStmt> {
                 relation: relation.clone(),
                 args: args.clone(),
                 emit: *emit,
+            },
+            FnStmt::Hint { name, expr } => FnStmt::Hint {
+                name: name.clone(),
+                expr: expr.clone(),
             },
         })
         .collect()
@@ -2111,6 +2143,9 @@ fn generate_call_fn(function: &LoweredFn) -> syn::Result<TokenStream2> {
         format!("Activate `{name}`: run the body, recursively activate callees, push the row.");
     Ok(quote! {
         #[doc = #doc]
+        // Cells used only in relation tuples / constraints are recomputed in
+        // the AIR's `evaluation()`, so their fill bindings can be unused here.
+        #[allow(unused_variables)]
         pub fn #fn_name(
             tables: &mut Tables,
             args: [stwo::core::fields::m31::BaseField; #n_args],

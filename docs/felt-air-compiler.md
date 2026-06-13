@@ -222,17 +222,33 @@ What `define_air_fns!` is missing for opcodes, in dependency order:
    deliberately did NOT extend `define_air!` with a push-by-`Access` table API,
    because this step supersedes it).
 
-3. **Witness hints.** Several opcodes commit prover-chosen columns that are not
-   derivable in-row (carry bits, sign decompositions, `diff_inv` markers). The
-   `embedded:` mechanism already covers the flag case; it generalizes to
-   `hint x = <rust expr>;` — committed column, constrained by the surrounding
-   assertions, filled by the expression on the witness path.
+3. **Witness hints.** ✅ _Implemented._ `hint name = expr;` declares a
+   prover-chosen committed column, free in the AIR (the body constrains it with
+   `assert`s) and filled by evaluating `expr` on the witness path — for the
+   carry bits, sign decompositions, and `diff_inv` markers opcodes commit but do
+   not derive in-row. See `test_hint_*` in
+   `crates/stwo-macros/tests/air_fns.rs`.
 
 4. **Dispatch.** Opcode families with flag columns (`base_alu_reg`'s
    add/sub/xor/or/and) are one function with a one-hot flag parameter and
    `if`-on-flag selects — already expressible with the static control flow. The
    decode step stays in the runner (`air::instructions`); it just calls the
    right generated function.
+
+The capabilities (1) and (3) are in place, and the `mini_vm` test in
+`crates/stwo-macros/tests/air_fns.rs` exercises the whole target shape on a toy:
+opcodes as functions (`step`), the `(pc, clock)` state carried by an external
+`reg_state` relation that telescopes across rows, a `boundary` function closing
+the chain, and a `hint`-backed witness column — proven and verified, with a
+broken chain rejected. What remains for the _production_ migration is
+whole-system: the access values come from the runner's `Tracer` (passed in as
+the mini-VM passes `pc`/`clock`, computed by
+`trace_reg_access`/`trace_mem_access`), the range checks resolve against the
+preprocessed tables, and the rv32im `Relations` (`program_access`,
+`memory_access`, `registers_state`) replace the toy `reg_state` — at which point
+each opcode family migrates one PR at a time, its constraints checked by the
+existing e2e tests, until the `components!` entry and `runner/src/ops/` are
+deleted.
 
 ### What this retires (the `components!` question)
 
