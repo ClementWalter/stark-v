@@ -81,8 +81,8 @@ words:
   - loadhu
   - loadw
   - logup
-  - Lowerer
   - lowerer
+  - Lowerer
   - madv
   - madvise
   - memsz
@@ -175,6 +175,7 @@ words:
   - ungated
   - unimp
   - unkeyed
+  - unvalidated
   - usize
   - vaddr
   - virt

@@ -1,5 +1,16 @@
 # Hash precompiles: proving Poseidon2 outside the rv32im prover (design)
 
+> **Status:** the cross-proof binding mechanism is implemented and tested in
+> `crates/prover/src/precompile.rs` — two independent stwo proofs sharing one
+> LogUp relation drawn via the two-phase handshake below, whose claimed sums
+> must cancel. A toy "square precompile" (`y = x²`) stands in for the hash: the
+> host proof emits `value(x, y)`, the precompile proof consumes it and proves
+> the relationship. Six tests cover the roundtrip and the soundness failures
+> (host emits an unvalidated pair, precompile validates an unused pair, forged
+> claimed sum). What remains for the Poseidon2 split specifically is mechanical:
+> widen the relation to the 32-word `poseidon2_io` tuple and move the existing
+> `poseidon2` component into the precompile instance.
+
 Goal: take the Poseidon2 table out of the rv32im stwo instance and prove it in
 its own instance, binding the two proofs through their shared LogUp relation.
 The rv32im prover keeps emitting `(input, output)` permutation tuples; a
