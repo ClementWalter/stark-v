@@ -220,6 +220,17 @@ collapses verification to one stwo check, but its public remainder grows
 linearly with segment count; node compression caps the artifact at one node
 regardless of depth.
 
+The first piece of a node is **implemented**:
+`recursion::node::replay_recursion_composition` replays a recursion proof's own
+Fiat-Shamir transcript and records its composition check through the recursion
+components' `evaluate()` — the recursion-level analogue of the M1 seam,
+validated by `test_recursion_composition_replay_matches_claim`. A node lowers
+exactly this recorded circuit into its parent trace (via `lower_arena`, as the
+segment-leaf path `prove_segment_composition` already does for inner proofs);
+what remains is attesting the child's FRI/Merkle openings in-AIR (the
+`merkle_path` / `channel_replay` components applied to the recursion proof's own
+commitments) so the child bodies leave the artifact.
+
 ## Production topology (streaming)
 
 The host-side helpers (`prover::e2e::prove_segments`, batch `prove_final`) are

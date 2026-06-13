@@ -82,7 +82,7 @@ pub struct RecursionProof<H: MerkleHasherLifted> {
     pub stark_proof: StarkProof<H>,
 }
 
-fn mix_circuits<C: Channel>(channel: &mut C, circuits: &[CircuitClaim]) {
+pub(crate) fn mix_circuits<C: Channel>(channel: &mut C, circuits: &[CircuitClaim]) {
     channel.mix_u32s(&[circuits.len() as u32]);
     for claim in circuits {
         channel.mix_u32s(&[
@@ -107,7 +107,7 @@ pub struct ChannelClaim {
     pub chunks: Vec<[u32; channel_replay::RATE]>,
 }
 
-fn mix_channels<C: Channel>(channel: &mut C, channels: &[ChannelClaim]) {
+pub(crate) fn mix_channels<C: Channel>(channel: &mut C, channels: &[ChannelClaim]) {
     channel.mix_u32s(&[channels.len() as u32]);
     for claim in channels {
         channel.mix_u32s(&[claim.channel_id, claim.chunks.len() as u32]);
@@ -171,7 +171,7 @@ pub struct RootClaim {
     pub n_paths: u32,
 }
 
-fn mix_roots<C: Channel>(channel: &mut C, roots: &[RootClaim]) {
+pub(crate) fn mix_roots<C: Channel>(channel: &mut C, roots: &[RootClaim]) {
     channel.mix_u32s(&[roots.len() as u32]);
     for root in roots {
         channel.mix_u32s(&[root.tree_id, root.n_paths]);
@@ -189,7 +189,7 @@ pub struct LeafClaim {
     pub digest: [u32; 8],
 }
 
-fn mix_leaves<C: Channel>(channel: &mut C, leaves: &[LeafClaim]) {
+pub(crate) fn mix_leaves<C: Channel>(channel: &mut C, leaves: &[LeafClaim]) {
     channel.mix_u32s(&[leaves.len() as u32]);
     for leaf in leaves {
         channel.mix_u32s(&[leaf.tree_id, leaf.depth, leaf.index]);
@@ -243,13 +243,13 @@ fn public_root_terms(roots: &[RootClaim], recursion_relations: &RecursionRelatio
     total
 }
 
-fn mix_claim<C: Channel>(channel: &mut C, log_sizes: &[u32; 9], sums: [SecureField; 7]) {
+pub(crate) fn mix_claim<C: Channel>(channel: &mut C, log_sizes: &[u32; 9], sums: [SecureField; 7]) {
     channel.mix_u32s(log_sizes);
     channel.mix_felts(&sums);
 }
 
 /// Trace-tree column log sizes in commit order.
-fn column_log_sizes(log_sizes: &[u32; 9]) -> Vec<u32> {
+pub(crate) fn column_log_sizes(log_sizes: &[u32; 9]) -> Vec<u32> {
     let widths = [
         prover_columns::Qm31MulColumns::<()>::SIZE,
         prover_columns::Qm31InvColumns::<()>::SIZE,
@@ -270,7 +270,7 @@ fn column_log_sizes(log_sizes: &[u32; 9]) -> Vec<u32> {
 
 /// Build the four components in commit order against a shared allocator.
 #[allow(clippy::type_complexity)]
-fn components(
+pub(crate) fn components(
     location_allocator: &mut TraceLocationAllocator,
     log_sizes: &[u32; 9],
     sums: [SecureField; 7],

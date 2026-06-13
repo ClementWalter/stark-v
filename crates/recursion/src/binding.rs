@@ -46,38 +46,59 @@ impl<'a> CompositionRecorder<'a> {
     }
 }
 
+/// Record one component's point evaluation into the running recorder.
+///
+/// Mask slicing mirrors `evaluate_constraint_quotients_at_point`: the
+/// component's sampled mask values across all trace trees, plus its
+/// preprocessed columns. Reused by the rv32im composition recorder
+/// ([`CompositionRecorder`]) and the recursion-proof recorder
+/// ([`crate::node`]) so the per-component recording has one source.
+pub(crate) fn record_component<E: FrameworkEval>(
+    recorder: Option<Recorder>,
+    component: &FrameworkComponent<E>,
+    claimed_sum: QM31,
+    sampled_values: &stwo::core::pcs::TreeVec<Vec<Vec<SecureField>>>,
+    random_coeff: SecureField,
+    denom_inverse: SecureField,
+) -> Recorder {
+    let mut mask = sampled_values.sub_tree(component.trace_locations());
+    mask[PREPROCESSED_TRACE_IDX] = component
+        .preprocessed_column_indices()
+        .iter()
+        .map(|idx| &sampled_values[PREPROCESSED_TRACE_IDX][*idx])
+        .collect();
+    let mask_owned: Vec<Vec<Vec<SecureField>>> = mask
+        .iter()
+        .map(|tree| tree.iter().map(|values| (*values).clone()).collect())
+        .collect();
+
+    let recorder = match recorder {
+        None => Recorder::new(
+            mask_owned,
+            random_coeff,
+            denom_inverse,
+            component.log_size(),
+            claimed_sum,
+        ),
+        Some(mut recorder) => {
+            recorder.col_index = vec![0; mask_owned.len()];
+            recorder.mask = mask_owned;
+            recorder.next_component(denom_inverse, component.log_size(), claimed_sum);
+            recorder
+        }
+    };
+    (**component).evaluate(recorder)
+}
+
 impl ComponentVisitor for CompositionRecorder<'_> {
     fn visit<E: FrameworkEval>(&mut self, component: &FrameworkComponent<E>, claimed_sum: QM31) {
-        // Mask slicing mirrors evaluate_constraint_quotients_at_point.
-        let mut mask = self
-            .data
-            .sampled_values
-            .sub_tree(component.trace_locations());
-        mask[PREPROCESSED_TRACE_IDX] = component
-            .preprocessed_column_indices()
-            .iter()
-            .map(|idx| &self.data.sampled_values[PREPROCESSED_TRACE_IDX][*idx])
-            .collect();
-        let mask_owned: Vec<Vec<Vec<SecureField>>> = mask
-            .iter()
-            .map(|tree| tree.iter().map(|values| (*values).clone()).collect())
-            .collect();
-
-        let recorder = match self.recorder.take() {
-            None => Recorder::new(
-                mask_owned,
-                self.data.random_coeff,
-                self.denom_inverse,
-                component.log_size(),
-                claimed_sum,
-            ),
-            Some(mut recorder) => {
-                recorder.col_index = vec![0; mask_owned.len()];
-                recorder.mask = mask_owned;
-                recorder.next_component(self.denom_inverse, component.log_size(), claimed_sum);
-                recorder
-            }
-        };
-        self.recorder = Some((**component).evaluate(recorder));
+        self.recorder = Some(record_component(
+            self.recorder.take(),
+            component,
+            claimed_sum,
+            &self.data.sampled_values,
+            self.data.random_coeff,
+            self.denom_inverse,
+        ));
     }
 }

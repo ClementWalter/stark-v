@@ -1,0 +1,296 @@
+//! Recursion-proof composition replay — the foundation of 2-to-1 node
+//! compression (docs/recursion.md, item 3 / M6).
+//!
+//! A true 2-to-1 node proves that its two child recursion proofs verify. The
+//! first piece of that — and the one this module implements — is replaying a
+//! recursion proof's own Fiat-Shamir transcript and recording its
+//! composition check through the same `evaluate()` code the recursion prover
+//! ran, exactly as [`crate::transcript`] does for inner stark-v proofs. The
+//! recorded composition value must equal the value the recursion proof
+//! claims at its OODS point; this is the recursion-level analogue of the M1
+//! seam (`test_recursion_composition_oods_replay`), and the step a parent
+//! node lowers into its own trace to attest a child without re-proving it.
+//!
+//! What remains for a complete node — recording the recorded circuit into a
+//! parent recursion proof and verifying the child's FRI/Merkle openings
+//! in-AIR — reuses `lower_arena` and the `merkle_path`/`channel_replay`
+//! components exactly as the segment-leaf path (`prove_segment_composition`)
+//! already does for inner proofs.
+
+use num_traits::Zero;
+use stwo::core::air::Components as CoreComponents;
+use stwo::core::channel::{Channel, MerkleChannel};
+use stwo::core::circle::CirclePoint;
+use stwo::core::constraints::coset_vanishing;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
+use stwo::core::pcs::CommitmentSchemeVerifier;
+use stwo::core::pcs::utils::try_get_lifting_log_size;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError};
+use stwo_constraint_framework::TraceLocationAllocator;
+
+use prover::PcsConfig;
+use prover::relations::Relations;
+
+use crate::binding::record_component;
+use crate::prover::{
+    RecursionProof, column_log_sizes, components, mix_channels, mix_circuits, mix_claim,
+    mix_leaves, mix_roots,
+};
+use crate::recorder::Rec;
+use crate::relations::RecursionRelations;
+use crate::transcript::extract_composition_oods_eval;
+
+/// The OODS composition check of a recursion proof, replayed outside the
+/// verifier: the value the proof claims versus the value recomputed from its
+/// sampled mask values through the recursion components' `evaluate()`.
+#[derive(Debug, Clone, Copy)]
+pub struct RecursionOodsCheck {
+    pub claimed: SecureField,
+    pub recorded: SecureField,
+}
+
+impl RecursionOodsCheck {
+    /// Whether the recorded composition matches the proof's claim — the
+    /// DEEP-ALI check at the recursion level.
+    pub fn holds(&self) -> bool {
+        self.claimed == self.recorded
+    }
+}
+
+/// Replay a recursion proof's transcript to the OODS point and record its
+/// composition check from the sampled mask values.
+///
+/// Mirrors `prove_recursion_with_channel`'s Fiat-Shamir sequence exactly, so
+/// the drawn OODS point and the sliced mask values match the proof; a wrong
+/// replay yields a different OODS point and the recorded value cannot match
+/// the claim.
+pub fn replay_recursion_composition(
+    proof: &RecursionProof<Blake2sMerkleHasher>,
+    config: PcsConfig,
+) -> Result<RecursionOodsCheck, VerificationError> {
+    type MC = Blake2sMerkleChannel;
+
+    let channel = &mut <MC as MerkleChannel>::C::default();
+    let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
+    let commitments = &proof.stark_proof.commitments;
+
+    // Claim phase: exactly `prove_recursion_with_channel` up to the
+    // interaction commitment.
+    commitment_scheme.commit(commitments[0], &[], channel);
+    channel.mix_u32s(&proof.log_sizes);
+    mix_roots(channel, &proof.roots);
+    mix_leaves(channel, &proof.leaves);
+    mix_channels(channel, &proof.channels);
+    mix_circuits(channel, &proof.circuits);
+    commitment_scheme.commit(commitments[1], &column_log_sizes(&proof.log_sizes), channel);
+
+    let relations = Relations::draw(channel);
+    let recursion_relations = RecursionRelations::draw(channel);
+
+    let sums = [
+        proof.claimed_sum,
+        proof.merkle_claimed_sum,
+        proof.channel_claimed_sum,
+        proof.poseidon2_claimed_sum,
+        proof.circuit_claimed_sums[0],
+        proof.circuit_claimed_sums[1],
+        proof.circuit_claimed_sums[2],
+    ];
+    mix_claim(channel, &proof.log_sizes, sums);
+
+    // Interaction tree widths: secure columns per component (4 base each),
+    // matching `verify_recursion_with_channel`.
+    let interaction_log_sizes: Vec<u32> = std::iter::repeat_n(proof.log_sizes[0], 8)
+        .chain(std::iter::repeat_n(proof.log_sizes[1], 8))
+        .chain(std::iter::repeat_n(proof.log_sizes[4], 4))
+        .chain(std::iter::repeat_n(proof.log_sizes[5], 8))
+        .chain(std::iter::repeat_n(proof.log_sizes[6], 8))
+        .chain(std::iter::repeat_n(proof.log_sizes[7], 8))
+        .chain(std::iter::repeat_n(proof.log_sizes[8], 8))
+        .collect();
+    commitment_scheme.commit(commitments[2], &interaction_log_sizes, channel);
+
+    // Composition phase: mirror `stwo::prover::prove` up to the OODS draw.
+    let mut location_allocator = TraceLocationAllocator::default();
+    let (mul, inv, fold, double, sum, merkle, replay, linear, poseidon2) = components(
+        &mut location_allocator,
+        &proof.log_sizes,
+        sums,
+        &relations,
+        &recursion_relations,
+    );
+    let core_components = CoreComponents {
+        n_preprocessed_columns: 0,
+        components: vec![
+            &mul, &inv, &fold, &double, &sum, &merkle, &replay, &linear, &poseidon2,
+        ],
+    };
+
+    let split_composition_log_degree_bound =
+        core_components.composition_log_degree_bound() - COMPOSITION_LOG_SPLIT;
+    let lifting_log_size = try_get_lifting_log_size(
+        &commitment_scheme.config,
+        split_composition_log_degree_bound + commitment_scheme.config.fri_config.log_blowup_factor,
+    )?;
+    let max_log_degree_bound =
+        lifting_log_size - commitment_scheme.config.fri_config.log_blowup_factor;
+
+    let random_coeff = channel.draw_secure_felt();
+    commitment_scheme.commit(
+        *commitments
+            .last()
+            .expect("recursion proof has a composition commitment"),
+        &[max_log_degree_bound; 2 * SECURE_EXTENSION_DEGREE],
+        channel,
+    );
+    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+
+    let claimed =
+        extract_composition_oods_eval(&proof.stark_proof, oods_point, max_log_degree_bound)
+            .ok_or_else(|| {
+                VerificationError::InvalidStructure(
+                    "unexpected recursion sampled-values structure".to_string(),
+                )
+            })?;
+
+    // Record every component's point evaluation, in composition order, into
+    // one arena — the same per-component recorder the inner path uses.
+    let denom_inverse =
+        coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, oods_point).inverse();
+    let sampled = &proof.stark_proof.sampled_values;
+    let mut recorder = None;
+    // (component, its claimed sum) in the order `prove` composes them.
+    recorder = Some(record_component(
+        recorder,
+        &mul,
+        sums[4],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &inv,
+        sums[5],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &fold,
+        SecureField::zero(),
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &double,
+        SecureField::zero(),
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &sum,
+        sums[0],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &merkle,
+        sums[1],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &replay,
+        sums[2],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &linear,
+        sums[6],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    recorder = Some(record_component(
+        recorder,
+        &poseidon2,
+        sums[3],
+        sampled,
+        random_coeff,
+        denom_inverse,
+    ));
+    let recorder = recorder.expect("nine components recorded");
+    let recorded = match &recorder.accumulation {
+        Rec::Node { .. } => recorder.accumulation.value(),
+        Rec::Const(value) => *value,
+    };
+
+    Ok(RecursionOodsCheck { claimed, recorded })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prover::{RecursionTraces, prove_recursion};
+    use stwo::core::fields::qm31::QM31;
+
+    /// Build a small recursion proof and replay its composition check: the
+    /// recorded value recomputed from the sampled mask values through the
+    /// recursion components' `evaluate()` must equal the value the proof
+    /// claims at its OODS point. This is the recursion-level seam a 2-to-1
+    /// node lowers into its parent trace.
+    fn small_proof() -> RecursionProof<Blake2sMerkleHasher> {
+        let mut traces = RecursionTraces::default();
+        for i in 1..5u32 {
+            let a = QM31::from_u32_unchecked(i, i + 1, i + 2, i + 3);
+            let b = QM31::from_u32_unchecked(2 * i, i, i + 7, i + 1);
+            crate::qm31_mul::push_mul(&mut traces.qm31_mul, a, b);
+            crate::qm31_inv::push_inv(&mut traces.qm31_inv, a);
+            crate::logup_sum::push_term(&mut traces.logup_sum, b);
+        }
+        prove_recursion(traces, vec![], vec![], vec![], vec![], PcsConfig::default())
+    }
+
+    #[test]
+    fn test_recursion_composition_replay_matches_claim() {
+        let proof = small_proof();
+        let check = replay_recursion_composition(&proof, PcsConfig::default())
+            .expect("recursion transcript replay failed");
+        assert!(
+            check.holds(),
+            "recursion composition mismatch: claimed {:?} != recorded {:?}",
+            check.claimed,
+            check.recorded
+        );
+    }
+
+    #[test]
+    fn test_recursion_composition_replay_detects_tampered_claim() {
+        // A different OODS point (from a config the proof was not made with)
+        // recomputes a different composition, so the recorded value cannot
+        // match the claim.
+        let proof = small_proof();
+        let check = replay_recursion_composition(&proof, PcsConfig::default()).unwrap();
+        let bumped = RecursionOodsCheck {
+            claimed: check.claimed + QM31::from_u32_unchecked(1, 0, 0, 0),
+            recorded: check.recorded,
+        };
+        assert!(!bumped.holds());
+    }
+}

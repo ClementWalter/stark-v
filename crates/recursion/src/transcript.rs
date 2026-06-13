@@ -160,14 +160,13 @@ pub fn full_binding_data_with_channel<MC: MerkleChannel>(
     );
     let oods_point = CirclePoint::<SecureField>::get_random_point(&mut channel);
 
-    let claimed_composition = extract_composition_oods_eval(
-        proof,
-        oods_point,
-        max_log_degree_bound,
-    )
-    .ok_or_else(|| {
-        StwoVerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
-    })?;
+    let claimed_composition =
+        extract_composition_oods_eval(&proof.stark_proof, oods_point, max_log_degree_bound)
+            .ok_or_else(|| {
+                StwoVerificationError::InvalidStructure(
+                    "Unexpected sampled_values structure".to_string(),
+                )
+            })?;
 
     // Mask sample points, with the composition polynomial points appended —
     // exactly the `sample_points` `verify_ex` hands to `verify_values`.
@@ -265,12 +264,13 @@ pub fn replay_composition_oods(
     );
     let oods_point = CirclePoint::<SecureField>::get_random_point(&mut channel);
 
-    let claimed = extract_composition_oods_eval(proof, oods_point, max_log_degree_bound)
-        .ok_or_else(|| {
-            StwoVerificationError::InvalidStructure(
-                "Unexpected sampled_values structure".to_string(),
-            )
-        })?;
+    let claimed =
+        extract_composition_oods_eval(&proof.stark_proof, oods_point, max_log_degree_bound)
+            .ok_or_else(|| {
+                StwoVerificationError::InvalidStructure(
+                    "Unexpected sampled_values structure".to_string(),
+                )
+            })?;
     let replayed = core_components.eval_composition_polynomial_at_point(
         oods_point,
         &proof.stark_proof.sampled_values,
@@ -292,12 +292,12 @@ pub fn replay_composition_oods(
 /// The composition polynomial is committed as two splits of
 /// `SECURE_EXTENSION_DEGREE` base-field coordinate polynomials each; the
 /// full value is `left + oods_point.repeated_double(max_log_degree_bound - 1).x * right`.
-fn extract_composition_oods_eval<H: MerkleHasherLifted>(
-    proof: &Proof<H>,
+pub(crate) fn extract_composition_oods_eval<H: MerkleHasherLifted>(
+    stark_proof: &stwo::core::proof::StarkProof<H>,
     oods_point: CirclePoint<SecureField>,
     max_log_degree_bound: u32,
 ) -> Option<SecureField> {
-    let [.., left_and_right_composition_mask] = &**proof.stark_proof.sampled_values else {
+    let [.., left_and_right_composition_mask] = &**stark_proof.sampled_values else {
         return None;
     };
     let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =

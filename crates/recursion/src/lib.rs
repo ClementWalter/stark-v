@@ -16,6 +16,7 @@ pub mod fri_fold;
 pub mod linear_ops;
 pub mod logup_sum;
 pub mod merkle_path;
+pub mod node;
 pub mod openings;
 pub mod prover;
 pub mod qm31_inv;
