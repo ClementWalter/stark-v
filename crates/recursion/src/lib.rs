@@ -16,12 +16,14 @@ pub mod fri_fold;
 pub mod linear_ops;
 pub mod logup_sum;
 pub mod merkle_path;
+pub mod node;
 pub mod openings;
 pub mod prover;
 pub mod qm31_inv;
 pub mod qm31_mul;
 pub mod recorder;
 pub mod relations;
+pub mod transcript;
 
 // combine!/write_pair! are used by witness modules.
 #[macro_use]

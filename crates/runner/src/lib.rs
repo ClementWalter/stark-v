@@ -25,13 +25,13 @@ pub(crate) fn get_or_decode(cache: &mut InstCache, mem: &Memory, pc: u32) -> Opt
 }
 
 pub use air::MAX_TREE_HEIGHT;
-pub use air::decode;
+pub use air::instructions;
 pub use air::poseidon2;
 pub use commitment::{CommitmentError, SegmentRole};
 pub use cpu::Cpu;
-pub use decode::{DecodedInst, InstCache, Opcode};
 pub use elf::{ElfError, load_elf};
 pub use execute::execute;
+pub use instructions::{DecodedInst, InstCache, Opcode};
 pub use memory::Memory;
 pub use trace::{Access, Tracer};
 
@@ -237,8 +237,8 @@ pub fn run_segments_with_input(
         // Early-exit on explicit self-loop sentinels (e.g., `jal x0, 0` used to halt tests).
         // Avoid tracing this noop instruction so the final trace doesn't contain a bogus row.
         let is_self_loop = match inst.opcode {
-            decode::Opcode::Jal if inst.rd == 0 && inst.imm == 0 => true,
-            decode::Opcode::Jalr if inst.rd == 0 => {
+            instructions::Opcode::Jal if inst.rd == 0 && inst.imm == 0 => true,
+            instructions::Opcode::Jalr if inst.rd == 0 => {
                 let target = cpu.reg(inst.rs1).wrapping_add(inst.imm as u32) & !1;
                 target == cpu.pc
             }

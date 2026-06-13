@@ -6,37 +6,6 @@
     macro_metavar_expr_concat
 )]
 
-// Allocator configuration via features
-#[cfg(feature = "smalloc")]
-use smalloc::Smalloc;
-#[cfg(feature = "smalloc")]
-#[global_allocator]
-static GLOBAL: Smalloc = Smalloc::new();
-
-#[cfg(feature = "smalloc")]
-#[ctor::ctor]
-unsafe fn init_smalloc() {
-    GLOBAL.init();
-}
-
-#[cfg(feature = "peak-alloc")]
-use peak_alloc::PeakAlloc;
-#[cfg(feature = "peak-alloc")]
-#[global_allocator]
-pub static PEAK_ALLOC: PeakAlloc = PeakAlloc;
-
-#[cfg(feature = "jemalloc")]
-use tikv_jemallocator::Jemalloc;
-#[cfg(feature = "jemalloc")]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
-
-#[cfg(feature = "mimalloc")]
-use mimalloc::MiMalloc;
-#[cfg(feature = "mimalloc")]
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
-
 /// Print all enabled features for debugging/benchmarking.
 pub fn print_enabled_features() {
     use tracing::info;
@@ -46,30 +15,18 @@ pub fn print_enabled_features() {
         "parallel",
         #[cfg(not(feature = "parallel"))]
         "non-parallel",
-        #[cfg(feature = "peak-alloc")]
-        "peak-alloc",
-        #[cfg(feature = "jemalloc")]
-        "jemalloc",
-        #[cfg(feature = "mimalloc")]
-        "mimalloc",
-        #[cfg(feature = "smalloc")]
-        "smalloc",
     ];
 
-    if features.is_empty() {
-        info!("Features: (none)");
-    } else {
-        info!("Features: {}", features.join(", "));
-    }
+    info!("Features: {}", features.join(", "));
 }
 
 pub mod components;
 pub mod errors;
 pub mod poseidon2_channel;
+pub mod precompile;
 pub mod preprocessed;
 pub mod prover;
 pub mod public_data;
-pub mod recursion;
 pub mod relations;
 pub mod verifier;
 

@@ -3,9 +3,9 @@
 //! composition value the proof claims at the OODS point.
 
 use prover::e2e::{ensure_guest_built, guest_bin_dir};
-use prover::recursion::transcript::composition_binding_data;
 use prover::{PcsConfig, prove_rv32im};
 use recursion::binding::CompositionRecorder;
+use recursion::transcript::composition_binding_data;
 use runner::run;
 
 #[test]
@@ -106,7 +106,7 @@ fn test_real_proof_composition_proven_in_recursion_air() {
 /// proofs, and boundaries folded to a root spanning the whole run.
 #[test]
 fn test_aggregate_with_recursion_proof_leaves() {
-    use prover::recursion::segments::prove_segments;
+    use prover::e2e::prove_segments;
     use recursion::aggregate::{aggregate_with_recursion, prove_segment_composition};
     use runner::run_segments_with_input;
 
@@ -146,7 +146,7 @@ fn test_aggregate_with_recursion_proof_leaves() {
 /// 2-to-1 tree to a root boundary spanning the whole run.
 #[test]
 fn test_recursion_pipeline_proves_10m_cycle_run() {
-    use prover::recursion::segments::prove_segments;
+    use prover::e2e::prove_segments;
     use recursion::aggregate::{aggregate_with_recursion, prove_segment_composition};
     use runner::run_segments_with_input;
 

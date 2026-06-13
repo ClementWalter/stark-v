@@ -15,10 +15,10 @@
 //! ONE recursion proof. It never sees a decommitment and never verifies an
 //! inner proof.
 
+use crate::aggregate::Boundary;
+use crate::transcript::full_binding_data_with_channel;
 use prover::Proof;
 use prover::poseidon2_channel::{Poseidon2M31MerkleChannel, Poseidon2M31MerkleHasher};
-use prover::recursion::aggregate::Boundary;
-use prover::recursion::transcript::full_binding_data_with_channel;
 use prover::{PcsConfig, Preprocessing};
 use stwo::core::channel::MerkleChannel;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;

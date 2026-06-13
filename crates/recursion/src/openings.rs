@@ -21,10 +21,10 @@
 
 use std::collections::BTreeMap;
 
+use crate::transcript::PcsBindingData;
 use prover::poseidon2_channel::{
     Poseidon2M31Channel, Poseidon2M31Hash, Poseidon2M31MerkleChannel, Poseidon2M31MerkleHasher,
 };
-use prover::recursion::transcript::PcsBindingData;
 use stwo::core::channel::{Channel, MerkleChannel};
 use stwo::core::circle::Coset;
 use stwo::core::fields::m31::BaseField;

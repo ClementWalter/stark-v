@@ -137,6 +137,153 @@ is the full language. Each step keeps the single-source invariant: AIR, witness,
 and (through the recursion recorder) the final proof all derive from the same
 definition.
 
+Steps 2 and the function-call relation are no longer hypothetical:
+`define_air_fns!` ships them (static `for`/`map`/`sum`, inline functions,
+auto-materialized s-box chains under `max_degree`, the `fn_io` activation
+relation, `embedded:` flag columns, and `embedded_component:` integration into
+the prover composition). Poseidon2 is defined through it in
+`air/src/poseidon2.rs`. What remains is step 4 below: making the opcode AIRs —
+and therefore the runner — expressible in the same language.
+
+## Step 4: migrating the opcode AIRs (the runner rewrite)
+
+Target state: one function per opcode family, whose body **is** simultaneously
+the executable semantics (the runner calls `call_lui` and gets the right
+result), the witness fill (the call pushes the table row), and the AIR (the same
+body compiled to constraints). `define_air!`'s
+`committed/derived/constraints/lookups` schema, the `components!` composition
+macro, and the hand-written opcode handlers in `runner/src/ops/` all collapse
+into these function definitions.
+
+What `define_air_fns!` is missing for opcodes, in dependency order:
+
+1. **External relation statements.** ✅ _Implemented._ A system declares
+   `relation name(arity);` at the top and function bodies use `emit name(args)`
+   / `consume name(args)`; the entry is threaded through the same single-source
+   `evaluation()` seam and the positional entry→relation mapping, drawn as an
+   `AirFnRelations` field, and balanced across the proof. See the
+   `extern_relation` tests in `crates/stwo-macros/tests/air_fns.rs` (a `source`
+   function emits `pass(x)`, a `sink` consumes it, and the relation cancels).
+   What remains is wiring the _specific_ zkVM relations (`program_access`,
+   `memory_access`, `registers_state`, range checks) — i.e. an opcode body
+   reads:
+
+   The schema entry
+
+   ```text
+   lui: {
+       committed: { clock, pc, rd, imm_0, imm_1, imm_2 },
+       derived: {
+           imm: imm_0 + pow2(4) * imm_1 + pow2(12) * imm_2,
+           pc_next: pc + 4, clock_next: clock + 1,
+           rd_val_1: imm_0 * pow2(4),
+           rd_clock_diff: clock - rd_clock_prev,
+       },
+       lookups: {
+           -enabler * program_access(pc, LUI, rd_addr, imm, 0),
+           -enabler * registers_state(pc, clock),
+           enabler * registers_state(pc_next, clock_next),
+           -enabler * range_check_8_8_4(imm_1, imm_2, imm_0),
+           -enabler * memory_access(0, rd_addr, rd_clock_prev, rd_prev_0, ...),
+           enabler * memory_access(0, rd_addr, clock, 0, rd_val_1, imm_1, imm_2),
+           -enabler * range_check_20(rd_clock_diff),
+       },
+   }
+   ```
+
+   becomes a function whose parameters are the access tuple and whose body reads
+   naturally:
+
+   ```text
+   fn lui(clock, pc, rd: Reg, imm_0, imm_1, imm_2) {
+       range_check_8_8_4(imm_1, imm_2, imm_0);
+       let imm = imm_0 + 2**4 * imm_1 + 2**12 * imm_2;
+       consume program_access(pc, LUI, rd.addr, imm, 0);
+       rd.write(clock, [0, imm_0 * 2**4, imm_1, imm_2]);
+       step registers_state(pc -> pc + 4, clock -> clock + 1);
+   }
+   ```
+
+   `Reg` is sugar for the 10-column access bundle (`addr`, `prev_0..3`,
+   `clock_prev`, …) plus the paired `memory_access` consume/emit and the
+   `range_check_20` clock-diff check — the pattern every opcode repeats today.
+   `step` is sugar for the `registers_state` consume/emit pair. Range checks are
+   statements, not lookups the author signs.
+
+2. **Witness-side access resolution.** `rd.write(...)` on the fill path must ask
+   the VM for `prev`/`clock_prev` — i.e. call
+   `Tracer::trace_reg_access`/`trace_mem_access` (gap-filling included). The
+   generated `call_lui(vm, pc, imm…)` therefore takes the machine state, not raw
+   felts: the function body is the _only_ place opcode semantics are written,
+   and `runner/src/ops/upper.rs` (and friends) are deleted. The clock catch-up
+   rows become activations of a generated `clock_gap` function, which retires
+   the hand-written `air::clock::ClockGapTable` (its layout is pinned to the
+   generated columns by `crates/air/tests/clock_layout.rs` until then — we
+   deliberately did NOT extend `define_air!` with a push-by-`Access` table API,
+   because this step supersedes it).
+
+3. **Witness hints.** ✅ _Implemented._ `hint name = expr;` declares a
+   prover-chosen committed column, free in the AIR (the body constrains it with
+   `assert`s) and filled by evaluating `expr` on the witness path — for the
+   carry bits, sign decompositions, and `diff_inv` markers opcodes commit but do
+   not derive in-row. See `test_hint_*` in
+   `crates/stwo-macros/tests/air_fns.rs`.
+
+4. **Dispatch.** Opcode families with flag columns (`base_alu_reg`'s
+   add/sub/xor/or/and) are one function with a one-hot flag parameter and
+   `if`-on-flag selects — already expressible with the static control flow. The
+   decode step stays in the runner (`air::instructions`); it just calls the
+   right generated function.
+
+The capabilities (1) and (3) are in place, and the `mini_vm` test in
+`crates/stwo-macros/tests/air_fns.rs` exercises the whole target shape on a toy:
+opcodes as functions (`step`), the `(pc, clock)` state carried by an external
+`reg_state` relation that telescopes across rows, a `boundary` function closing
+the chain, and a `hint`-backed witness column — proven and verified, with a
+broken chain rejected.
+
+The **integration seam is also in place**. `define_air!` now takes an
+`external:` section listing fn-DSL tables to fold into the `Tracer`:
+
+```text
+external: { poseidon2: crate::poseidon2 }   // air/src/schema.rs
+```
+
+Each entry generates the `Tracer` field, init, `total_traces`, debug, and column
+re-export that were previously **hardcoded** for poseidon2 — so the monolithic
+`Tracer` is now composable. poseidon2 (already a fn-DSL component wired through
+`components! { … poseidon2: air::poseidon2::component … }`) is the first entry,
+and the full e2e suite (a real prove+verify per opcode) passes through the
+generalized path. Migrating an opcode is now additive: define it via
+`define_air_fns!`, add it to `external:`, point its `components!` entry at the
+generated module, and remove it from the `trace:` block — one family per PR,
+each guarded by the existing e2e proofs, until `runner/src/ops/` and the
+schema's opcode list are empty. The remaining per-opcode work is the witness
+fill calling the runner's `Tracer` (`trace_reg_access`/`trace_mem_access`) for
+access values and the range checks resolving against the preprocessed tables.
+
+### What this retires (the `components!` question)
+
+`components!` is not redundant with `define_air!` — it generates the composition
+layer (per-opcode `air`/`witness` modules, `Claim`, `Components`, trace
+orchestration) that `define_air!` deliberately does not, because the composition
+needs prover-side stwo types the air crate does not depend on. But
+`define_air_fns!` with `embedded_component: true` already generates exactly that
+composition for poseidon2. The retirement path is therefore not "merge
+`components!` into `define_air!`" but:
+
+1. land steps 1–3 above and migrate one simple opcode (`lui`) end to end —
+   function in the air crate, generated component in the prover, handler deleted
+   from the runner;
+2. migrate the remaining families one PR each (the LogUp balance is checked by
+   the existing e2e constraint tests at every step);
+3. when the last family is out of `define_air!`'s opcode list, delete
+   `components!` (~1000 lines), the `define_air!` opcode syntax, and
+   `runner/src/ops/`.
+
+Until then `components!` stays; any interim investment in it (or in new
+`define_air!` surface) should be weighed against this plan.
+
 ## Open questions
 
 - **Materialization vs masks**: stwo also allows referencing neighboring rows

@@ -179,9 +179,6 @@ cargo bench --package prover --bench fibonacci
 
 # Parallel prover (faster individual proofs)
 cargo bench --package prover --bench fibonacci --features parallel
-
-# With jemalloc allocator
-cargo bench --package prover --bench fibonacci --features "parallel,jemalloc"
 ```
 
 ### Results
@@ -235,72 +232,9 @@ fibonacci           fastest       │ slowest       │ median        │ mean  
    │  │             526.7 Kitem/s │ 526.7 Kitem/s │ 526.7 Kitem/s │ 526.7 Kitem/s │         │
 ```
 
-With `--features jemalloc`:
-
-```sh
-cargo bench --package prover --bench fibonacci --features jemalloc
-Timer precision: 41 ns
-fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
-╰─ bench_fibonacci                │               │               │               │         │
-   ├─ 500000                      │               │               │               │         │
-   │  ├─ 8          25.65 s       │ 25.65 s       │ 25.65 s       │ 25.65 s       │ 1       │ 1
-   │  │             779.7 Kitem/s │ 779.7 Kitem/s │ 779.7 Kitem/s │ 779.7 Kitem/s │         │
-   │  ├─ 10         28.48 s       │ 28.48 s       │ 28.48 s       │ 28.48 s       │ 1       │ 1
-   │  │             877.5 Kitem/s │ 877.5 Kitem/s │ 877.5 Kitem/s │ 877.5 Kitem/s │         │
-   │  ╰─ 12         35.4 s        │ 35.4 s        │ 35.4 s        │ 35.4 s        │ 1       │ 1
-   │                847.4 Kitem/s │ 847.4 Kitem/s │ 847.4 Kitem/s │ 847.4 Kitem/s │         │
-   ├─ 750000                      │               │               │               │         │
-   │  ├─ 8          59 s          │ 59 s          │ 59 s          │ 59 s          │ 1       │ 1
-   │  │             508.4 Kitem/s │ 508.4 Kitem/s │ 508.4 Kitem/s │ 508.4 Kitem/s │         │
-```
-
-With `--features smalloc`:
-
-```sh
-cargo bench --package prover --bench fibonacci --features smalloc
-fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
-╰─ bench_fibonacci                │               │               │               │         │
-   ├─ 500000                      │               │               │               │         │
-   │  ├─ 8          25.45 s       │ 25.45 s       │ 25.45 s       │ 25.45 s       │ 1       │ 1
-   │  │             785.7 Kitem/s │ 785.7 Kitem/s │ 785.7 Kitem/s │ 785.7 Kitem/s │         │
-   │  ├─ 10         29.76 s       │ 29.76 s       │ 29.76 s       │ 29.76 s       │ 1       │ 1
-   │  │             839.9 Kitem/s │ 839.9 Kitem/s │ 839.9 Kitem/s │ 839.9 Kitem/s │         │
-   │  ╰─ 12         36.3 s        │ 36.3 s        │ 36.3 s        │ 36.3 s        │ 1       │ 1
-   │                826.4 Kitem/s │ 826.4 Kitem/s │ 826.4 Kitem/s │ 826.4 Kitem/s │         │
-   ├─ 750000                      │               │               │               │         │
-   │  ├─ 8          1.254 m       │ 1.254 m       │ 1.254 m       │ 1.254 m       │ 1       │ 1
-   │  │             398.6 Kitem/s │ 398.6 Kitem/s │ 398.6 Kitem/s │ 398.6 Kitem/s │         │
-   │  ├─ 10         2.895 m       │ 2.895 m       │ 2.895 m       │ 2.895 m       │ 1       │ 1
-```
-
-With `--features mimalloc`:
-
-```sh
-cargo bench --package prover --bench fibonacci --features mimalloc
-Timer precision: 41 ns
-fibonacci           fastest       │ slowest       │ median        │ mean          │ samples │ iters
-╰─ bench_fibonacci                │               │               │               │         │
-   ├─ 500000                      │               │               │               │         │
-   │  ├─ 8          25.67 s       │ 25.67 s       │ 25.67 s       │ 25.67 s       │ 1       │ 1
-   │  │             778.9 Kitem/s │ 778.9 Kitem/s │ 778.9 Kitem/s │ 778.9 Kitem/s │         │
-   │  ├─ 10         28.43 s       │ 28.43 s       │ 28.43 s       │ 28.43 s       │ 1       │ 1
-   │  │             879.2 Kitem/s │ 879.2 Kitem/s │ 879.2 Kitem/s │ 879.2 Kitem/s │         │
-   │  ╰─ 12         32.17 s       │ 32.17 s       │ 32.17 s       │ 32.17 s       │ 1       │ 1
-   │                932.4 Kitem/s │ 932.4 Kitem/s │ 932.4 Kitem/s │ 932.4 Kitem/s │         │
-   ├─ 750000                      │               │               │               │         │
-   │  ├─ 8          53.91 s       │ 53.91 s       │ 53.91 s       │ 53.91 s       │ 1       │ 1
-   │  │             556.4 Kitem/s │ 556.4 Kitem/s │ 556.4 Kitem/s │ 556.4 Kitem/s │         │
-   │  ├─ 10         1.182 m       │ 1.182 m       │ 1.182 m       │ 1.182 m       │ 1       │ 1
-   │  │             528.5 Kitem/s │ 528.5 Kitem/s │ 528.5 Kitem/s │ 528.5 Kitem/s │         │
-```
-
 ## Features
 
 - `parallel` — Enable Rayon parallelism in the prover
-- `jemalloc` — Use jemalloc allocator
-- `mimalloc` — Use mimalloc allocator
-- `smalloc` — Use smalloc allocator
-- `peak-alloc` — Track peak memory usage
 
 ## Contributing
 

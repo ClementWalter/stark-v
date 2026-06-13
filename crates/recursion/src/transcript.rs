@@ -25,10 +25,10 @@ use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::verifier::{COMPOSITION_LOG_SPLIT, VerificationError as StwoVerificationError};
 use stwo_constraint_framework::{PREPROCESSED_TRACE_IDX, TraceLocationAllocator};
 
-use crate::components::Components;
-use crate::errors::VerificationError;
-use crate::verifier::replay_claim_phase;
-use crate::{Preprocessing, Proof};
+use prover::VerificationError;
+use prover::components::Components;
+use prover::verifier::replay_claim_phase;
+use prover::{Preprocessing, Proof};
 
 /// The OODS composition check of a proof, replayed outside the verifier.
 #[derive(Debug, Clone, Copy)]
@@ -58,7 +58,7 @@ impl OodsCheck {
 /// relations), the channel draws, and the sampled mask values.
 pub struct CompositionBindingData {
     pub components: Components,
-    pub relations: crate::relations::Relations,
+    pub relations: prover::relations::Relations,
     pub oods_point: CirclePoint<SecureField>,
     pub random_coeff: SecureField,
     pub max_log_degree_bound: u32,
@@ -67,7 +67,7 @@ pub struct CompositionBindingData {
     /// The composition value the proof claims at the OODS point.
     pub claimed_composition: SecureField,
     /// Per-component claimed LogUp sums, as in the proof.
-    pub claimed_sums: crate::components::ClaimedSum,
+    pub claimed_sums: prover::components::ClaimedSum,
 }
 
 /// State of the polynomial commitment scheme at the OODS point: the channel
@@ -160,14 +160,13 @@ pub fn full_binding_data_with_channel<MC: MerkleChannel>(
     );
     let oods_point = CirclePoint::<SecureField>::get_random_point(&mut channel);
 
-    let claimed_composition = extract_composition_oods_eval(
-        proof,
-        oods_point,
-        max_log_degree_bound,
-    )
-    .ok_or_else(|| {
-        StwoVerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
-    })?;
+    let claimed_composition =
+        extract_composition_oods_eval(&proof.stark_proof, oods_point, max_log_degree_bound)
+            .ok_or_else(|| {
+                StwoVerificationError::InvalidStructure(
+                    "Unexpected sampled_values structure".to_string(),
+                )
+            })?;
 
     // Mask sample points, with the composition polynomial points appended —
     // exactly the `sample_points` `verify_ex` hands to `verify_values`.
@@ -265,12 +264,13 @@ pub fn replay_composition_oods(
     );
     let oods_point = CirclePoint::<SecureField>::get_random_point(&mut channel);
 
-    let claimed = extract_composition_oods_eval(proof, oods_point, max_log_degree_bound)
-        .ok_or_else(|| {
-            StwoVerificationError::InvalidStructure(
-                "Unexpected sampled_values structure".to_string(),
-            )
-        })?;
+    let claimed =
+        extract_composition_oods_eval(&proof.stark_proof, oods_point, max_log_degree_bound)
+            .ok_or_else(|| {
+                StwoVerificationError::InvalidStructure(
+                    "Unexpected sampled_values structure".to_string(),
+                )
+            })?;
     let replayed = core_components.eval_composition_polynomial_at_point(
         oods_point,
         &proof.stark_proof.sampled_values,
@@ -292,12 +292,12 @@ pub fn replay_composition_oods(
 /// The composition polynomial is committed as two splits of
 /// `SECURE_EXTENSION_DEGREE` base-field coordinate polynomials each; the
 /// full value is `left + oods_point.repeated_double(max_log_degree_bound - 1).x * right`.
-fn extract_composition_oods_eval<H: MerkleHasherLifted>(
-    proof: &Proof<H>,
+pub(crate) fn extract_composition_oods_eval<H: MerkleHasherLifted>(
+    stark_proof: &stwo::core::proof::StarkProof<H>,
     oods_point: CirclePoint<SecureField>,
     max_log_degree_bound: u32,
 ) -> Option<SecureField> {
-    let [.., left_and_right_composition_mask] = &**proof.stark_proof.sampled_values else {
+    let [.., left_and_right_composition_mask] = &**stark_proof.sampled_values else {
         return None;
     };
     let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
@@ -319,4 +319,81 @@ fn extract_composition_oods_eval<H: MerkleHasherLifted>(
     let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
     let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
     Some(left_eval + oods_point.repeated_double(max_log_degree_bound - 1).x * right_eval)
+}
+
+// =============================================================================
+// Constraint seam: the stark-v constraint system as data
+// =============================================================================
+//
+// The 2-to-1 recursive verifier consumes the same `FrameworkEval::evaluate`
+// code as the prover and the host verifier, so constraints are never copied:
+// an edit to `define_trace_tables!` changes the prover, the host verifier,
+// and everything built on these helpers in the same compilation.
+
+use stwo_constraint_framework::expr::ExprEvaluator;
+use stwo_constraint_framework::{FrameworkEval, InfoEvaluator};
+
+/// Extract a component's constraints as expression trees.
+///
+/// The result contains every polynomial constraint (`constraints`) and the
+/// formal LogUp fractions (`logup.fracs`) with relation parameters
+/// (`<relation>_z`, `<relation>_alpha<i>`) left symbolic.
+pub fn constraint_exprs<E: FrameworkEval>(eval: &E) -> ExprEvaluator {
+    eval.evaluate(ExprEvaluator::new())
+}
+
+/// Extract a component's structural summary: mask offsets per interaction
+/// and the number of constraints, as used for trace layout.
+pub fn constraint_info<E: FrameworkEval>(eval: &E) -> InfoEvaluator {
+    eval.evaluate(InfoEvaluator::empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use prover::relations::Relations;
+
+    fn lui_eval() -> prover::components::lui::air::Eval {
+        prover::components::lui::air::Eval {
+            log_size: 4,
+            relations: Relations::dummy(),
+        }
+    }
+
+    fn base_alu_imm_eval() -> prover::components::base_alu_imm::air::Eval {
+        prover::components::base_alu_imm::air::Eval {
+            log_size: 4,
+            relations: Relations::dummy(),
+        }
+    }
+
+    #[test]
+    fn test_lui_constraint_exprs_match_info_count() {
+        let exprs = constraint_exprs(&lui_eval());
+        let info = constraint_info(&lui_eval());
+        assert_eq!(exprs.constraints.len(), info.n_constraints);
+    }
+
+    #[test]
+    fn test_lui_logup_batches_become_constraints() {
+        let exprs = constraint_exprs(&lui_eval());
+        // 1 enabler booleanity + ceil(7 LogUp entries / 2) = 4 batch constraints
+        assert_eq!(exprs.constraints.len(), 5);
+    }
+
+    #[test]
+    fn test_base_alu_imm_constraint_exprs_match_info_count() {
+        let exprs = constraint_exprs(&base_alu_imm_eval());
+        let info = constraint_info(&base_alu_imm_eval());
+        assert_eq!(exprs.constraints.len(), info.n_constraints);
+    }
+
+    #[test]
+    fn test_lui_constraints_are_nonempty_expressions() {
+        let exprs = constraint_exprs(&lui_eval());
+        // The enabler booleanity constraint formats to a real expression
+        // referencing the trace column, proving constraints flow from the
+        // macro into expression data.
+        assert!(!exprs.format_constraints().is_empty());
+    }
 }

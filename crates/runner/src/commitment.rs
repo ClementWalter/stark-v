@@ -487,7 +487,7 @@ pub(crate) fn finalize_commitments(
 mod tests {
     use super::*;
     use crate::Memory;
-    use crate::{InstCache, RunError, RunResult, decode, execute, io, load_elf};
+    use crate::{InstCache, RunError, RunResult, execute, instructions, io, load_elf};
 
     fn run_with_tracer_for_test(
         elf_bytes: &[u8],
@@ -544,8 +544,8 @@ mod tests {
             tracer.trace_instr_access(cpu.pc);
 
             let is_self_loop = match inst.opcode {
-                decode::Opcode::Jal if inst.rd == 0 && inst.imm == 0 => true,
-                decode::Opcode::Jalr if inst.rd == 0 => {
+                instructions::Opcode::Jal if inst.rd == 0 && inst.imm == 0 => true,
+                instructions::Opcode::Jalr if inst.rd == 0 => {
                     let target = cpu.reg(inst.rs1).wrapping_add(inst.imm as u32) & !1;
                     target == cpu.pc
                 }
